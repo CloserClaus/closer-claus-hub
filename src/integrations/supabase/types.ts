@@ -397,6 +397,63 @@ export type Database = {
           },
         ]
       }
+      disputes: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          deal_id: string
+          id: string
+          raised_by: string
+          reason: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          deal_id: string
+          id?: string
+          raised_by: string
+          reason: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          deal_id?: string
+          id?: string
+          raised_by?: string
+          reason?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "disputes_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "disputes_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_applications: {
         Row: {
           applied_at: string
