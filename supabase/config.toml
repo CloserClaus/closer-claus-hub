@@ -1,1 +1,4 @@
 project_id = "xlgzxmzejlshsgeiidsz"
+
+[functions.callhippo]
+verify_jwt = true
