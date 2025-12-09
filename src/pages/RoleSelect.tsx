@@ -30,6 +30,20 @@ export default function RoleSelect() {
     }
 
     const assignRole = async () => {
+      // First check if user already has a role (handles page refresh/duplicate attempts)
+      const { data: existingRole } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (existingRole) {
+        // User already has a role, refresh and navigate
+        await refreshProfile();
+        navigate('/onboarding');
+        return;
+      }
+
       // Check if this is the first user (becomes platform admin)
       const { data: isFirst } = await supabase.rpc('is_first_user');
       
@@ -52,7 +66,16 @@ export default function RoleSelect() {
               role: signupRole,
             });
 
-          if (error) throw error;
+          // Handle duplicate key error gracefully
+          if (error) {
+            if (error.code === '23505') {
+              // Duplicate - user already has role, just refresh and continue
+              await refreshProfile();
+              navigate('/onboarding');
+              return;
+            }
+            throw error;
+          }
 
           await refreshProfile();
 
@@ -93,6 +116,19 @@ export default function RoleSelect() {
     setIsLoading(true);
 
     try {
+      // Check for existing role first
+      const { data: existingRole } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (existingRole) {
+        await refreshProfile();
+        navigate('/onboarding');
+        return;
+      }
+
       const { error } = await supabase
         .from('user_roles')
         .insert({
@@ -100,7 +136,15 @@ export default function RoleSelect() {
           role: 'platform_admin' as AppRole,
         });
 
-      if (error) throw error;
+      // Handle duplicate key error gracefully
+      if (error) {
+        if (error.code === '23505') {
+          await refreshProfile();
+          navigate('/onboarding');
+          return;
+        }
+        throw error;
+      }
 
       await refreshProfile();
 
