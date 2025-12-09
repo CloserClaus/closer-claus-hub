@@ -14,6 +14,101 @@ export type Database = {
   }
   public: {
     Tables: {
+      deal_activities: {
+        Row: {
+          activity_type: string
+          created_at: string
+          deal_id: string
+          description: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          activity_type: string
+          created_at?: string
+          deal_id: string
+          description: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          activity_type?: string
+          created_at?: string
+          deal_id?: string
+          description?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_activities_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deals: {
+        Row: {
+          assigned_to: string
+          closed_at: string | null
+          created_at: string
+          expected_close_date: string | null
+          id: string
+          lead_id: string | null
+          notes: string | null
+          stage: Database["public"]["Enums"]["pipeline_stage"]
+          title: string
+          updated_at: string
+          value: number
+          workspace_id: string
+        }
+        Insert: {
+          assigned_to: string
+          closed_at?: string | null
+          created_at?: string
+          expected_close_date?: string | null
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          stage?: Database["public"]["Enums"]["pipeline_stage"]
+          title: string
+          updated_at?: string
+          value?: number
+          workspace_id: string
+        }
+        Update: {
+          assigned_to?: string
+          closed_at?: string | null
+          created_at?: string
+          expected_close_date?: string | null
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          stage?: Database["public"]["Enums"]["pipeline_stage"]
+          title?: string
+          updated_at?: string
+          value?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deals_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_applications: {
         Row: {
           applied_at: string
@@ -95,6 +190,62 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "jobs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          company: string | null
+          created_at: string
+          created_by: string
+          email: string | null
+          first_name: string
+          id: string
+          last_contacted_at: string | null
+          last_name: string
+          notes: string | null
+          phone: string | null
+          title: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          company?: string | null
+          created_at?: string
+          created_by: string
+          email?: string | null
+          first_name: string
+          id?: string
+          last_contacted_at?: string | null
+          last_name: string
+          notes?: string | null
+          phone?: string | null
+          title?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          company?: string | null
+          created_at?: string
+          created_by?: string
+          email?: string | null
+          first_name?: string
+          id?: string
+          last_contacted_at?: string | null
+          last_name?: string
+          notes?: string | null
+          phone?: string | null
+          title?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -273,6 +424,14 @@ export type Database = {
         | "hired"
         | "rejected"
       employment_type: "commission_only" | "salary"
+      pipeline_stage:
+        | "new"
+        | "contacted"
+        | "discovery"
+        | "meeting"
+        | "proposal"
+        | "closed_won"
+        | "closed_lost"
       subscription_tier: "omega" | "beta" | "alpha"
     }
     CompositeTypes: {
@@ -410,6 +569,15 @@ export const Constants = {
         "rejected",
       ],
       employment_type: ["commission_only", "salary"],
+      pipeline_stage: [
+        "new",
+        "contacted",
+        "discovery",
+        "meeting",
+        "proposal",
+        "closed_won",
+        "closed_lost",
+      ],
       subscription_tier: ["omega", "beta", "alpha"],
     },
   },
