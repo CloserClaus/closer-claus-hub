@@ -20,6 +20,7 @@ import Dialer from "./pages/Dialer";
 import Training from "./pages/Training";
 import Contracts from "./pages/Contracts";
 import SignContract from "./pages/SignContract";
+import Notifications from "./pages/Notifications";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -49,6 +50,7 @@ const App = () => (
               <Route path="/training" element={<Training />} />
               <Route path="/contracts" element={<Contracts />} />
               <Route path="/sign/:contractId" element={<SignContract />} />
+              <Route path="/notifications" element={<Notifications />} />
               <Route path="/admin" element={<AdminDashboard />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />

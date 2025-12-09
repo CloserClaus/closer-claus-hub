@@ -1,4 +1,4 @@
-import { Bell, CheckCheck, DollarSign, AlertTriangle, FileText, Users, X } from 'lucide-react';
+import { Bell, CheckCheck, DollarSign, AlertTriangle, FileText, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { useNotifications } from '@/hooks/useNotifications';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { Link } from 'react-router-dom';
 
 const getNotificationIcon = (type: string) => {
   switch (type) {
@@ -114,6 +115,11 @@ export function NotificationCenter() {
             </div>
           )}
         </ScrollArea>
+        <div className="p-3 border-t border-border">
+          <Button variant="ghost" className="w-full text-sm" asChild>
+            <Link to="/notifications">View all notifications</Link>
+          </Button>
+        </div>
       </PopoverContent>
     </Popover>
   );
