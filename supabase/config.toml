@@ -14,3 +14,9 @@ verify_jwt = true
 
 [functions.unlock-workspace]
 verify_jwt = true
+
+[functions.send-commission-email]
+verify_jwt = true
+
+[functions.create-notification]
+verify_jwt = true

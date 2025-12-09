@@ -58,10 +58,27 @@ serve(async (req) => {
             .eq('id', commission.workspace.owner_id)
             .single();
 
+          const daysOld = Math.floor((now.getTime() - new Date(commission.created_at).getTime()) / (1000 * 60 * 60 * 24));
+          const totalAmount = commission.amount + commission.rake_amount;
+
+          // Create in-app notification for overdue commission
+          await supabase
+            .from('notifications')
+            .insert({
+              user_id: commission.workspace.owner_id,
+              workspace_id: commission.workspace_id,
+              type: 'commission_overdue',
+              title: 'Commission Overdue',
+              message: `A $${totalAmount.toFixed(2)} commission is ${daysOld} days overdue. Auto-charge will occur if not paid.`,
+              data: {
+                commission_id: commission.id,
+                amount: totalAmount,
+                days_overdue: daysOld,
+              },
+            });
+
           if (ownerProfile?.email) {
             // Send overdue notification email
-            const daysOld = Math.floor((now.getTime() - new Date(commission.created_at).getTime()) / (1000 * 60 * 60 * 24));
-            
             await fetch(`${supabaseUrl}/functions/v1/send-commission-email`, {
               method: 'POST',
               headers: {
@@ -73,7 +90,7 @@ serve(async (req) => {
                 to_email: ownerProfile.email,
                 to_name: ownerProfile.full_name || 'Agency Owner',
                 workspace_name: commission.workspace.name,
-                amount: commission.amount + commission.rake_amount,
+                amount: totalAmount,
                 days_overdue: daysOld,
               }),
             });
@@ -158,6 +175,21 @@ serve(async (req) => {
             .eq('status', 'pending');
 
           const totalOwed = workspaceCommissions?.reduce((sum, c) => sum + c.amount + c.rake_amount, 0) || 0;
+
+          // Create in-app notification for account locked
+          await supabase
+            .from('notifications')
+            .insert({
+              user_id: workspace.owner_id,
+              workspace_id: workspaceId,
+              type: 'account_locked',
+              title: 'Account Locked',
+              message: `Your account has been locked due to ${workspaceCommissions?.length || 0} unpaid commissions totaling $${totalOwed.toFixed(2)}. Pay now to restore access.`,
+              data: {
+                total_owed: totalOwed,
+                commission_count: workspaceCommissions?.length || 0,
+              },
+            });
 
           if (ownerProfile?.email) {
             await fetch(`${supabaseUrl}/functions/v1/send-commission-email`, {

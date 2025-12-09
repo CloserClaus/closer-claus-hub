@@ -196,7 +196,7 @@ serve(async (req) => {
           if (commissionError) {
             console.error('Error creating commission:', commissionError);
           } else {
-            // Send commission created email to agency owner
+            // Get details for notifications
             const { data: workspaceDetails } = await supabase
               .from('workspaces')
               .select('name, owner_id')
@@ -221,6 +221,46 @@ serve(async (req) => {
               .eq('id', contract.deal_id)
               .single();
 
+            const totalAmount = commissionAmount + rakeAmount;
+
+            // Create in-app notification for agency owner
+            if (workspaceDetails?.owner_id) {
+              const { error: notifError } = await supabase
+                .from('notifications')
+                .insert({
+                  user_id: workspaceDetails.owner_id,
+                  workspace_id: contract.workspace_id,
+                  type: 'commission_created',
+                  title: 'New Commission Due',
+                  message: `A $${totalAmount.toFixed(2)} commission is due for "${dealDetails?.title || 'Closed Deal'}" closed by ${sdrProfile?.full_name || 'SDR'}. Payment due within 7 days.`,
+                  data: {
+                    deal_id: contract.deal_id,
+                    commission_amount: totalAmount,
+                    sdr_name: sdrProfile?.full_name,
+                  },
+                });
+              if (notifError) console.error('Error creating commission notification:', notifError);
+              else console.log('Created commission notification for owner');
+            }
+
+            // Create notification for SDR about their commission
+            const { error: sdrNotifError } = await supabase
+              .from('notifications')
+              .insert({
+                user_id: deal.assigned_to,
+                workspace_id: contract.workspace_id,
+                type: 'commission_created',
+                title: 'Commission Earned!',
+                message: `You earned a $${commissionAmount.toFixed(2)} commission for closing "${dealDetails?.title || 'Deal'}". Payout pending agency payment.`,
+                data: {
+                  deal_id: contract.deal_id,
+                  commission_amount: commissionAmount,
+                },
+              });
+            if (sdrNotifError) console.error('Error creating SDR commission notification:', sdrNotifError);
+            else console.log('Created commission notification for SDR');
+
+            // Send commission created email
             if (ownerProfile?.email) {
               try {
                 await fetch(`${supabaseUrl}/functions/v1/send-commission-email`, {
@@ -234,7 +274,7 @@ serve(async (req) => {
                     to_email: ownerProfile.email,
                     to_name: ownerProfile.full_name || 'Agency Owner',
                     workspace_name: workspaceDetails?.name || 'Your Agency',
-                    amount: commissionAmount + rakeAmount,
+                    amount: totalAmount,
                     deal_title: dealDetails?.title || 'Closed Deal',
                     sdr_name: sdrProfile?.full_name || 'SDR',
                   }),
