@@ -1,217 +1,230 @@
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { LogOut, Building2, Headphones, Shield } from 'lucide-react';
+import { Building2, Headphones, Shield, TrendingUp, Users, DollarSign, Briefcase } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { Button } from '@/components/ui/button';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import logoFull from '@/assets/logo-full.png';
 
-export default function Dashboard() {
-  const { user, userRole, profile, loading, signOut } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/auth');
-      return;
-    }
-
-    if (!loading && user && !userRole) {
-      navigate('/role-select');
-      return;
-    }
-
-    if (!loading && user && userRole && !profile?.onboarding_completed) {
-      navigate('/onboarding');
-    }
-  }, [user, userRole, profile, loading, navigate]);
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/auth');
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
-      </div>
-    );
-  }
-
-  const getRoleIcon = () => {
-    switch (userRole) {
-      case 'platform_admin':
-        return <Shield className="w-6 h-6" />;
-      case 'agency_owner':
-        return <Building2 className="w-6 h-6" />;
-      case 'sdr':
-        return <Headphones className="w-6 h-6" />;
-      default:
-        return null;
-    }
-  };
-
-  const getRoleTitle = () => {
-    switch (userRole) {
-      case 'platform_admin':
-        return 'Platform Admin';
-      case 'agency_owner':
-        return 'Agency Owner';
-      case 'sdr':
-        return 'SDR / Closer';
-      default:
-        return 'User';
-    }
-  };
+function StatCard({
+  title,
+  description,
+  value,
+  subtext,
+  icon: Icon,
+  variant = 'default',
+}: {
+  title: string;
+  description: string;
+  value: string;
+  subtext: string;
+  icon: React.ComponentType<{ className?: string }>;
+  variant?: 'default' | 'success' | 'warning';
+}) {
+  const valueColor = {
+    default: 'text-primary',
+    success: 'text-success',
+    warning: 'text-warning',
+  }[variant];
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <img src={logoFull} alt="Closer Claus" className="h-8 object-contain" />
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              {getRoleIcon()}
-              <span>{getRoleTitle()}</span>
-            </div>
-            <Button variant="outline" size="sm" onClick={handleSignOut}>
-              <LogOut className="w-4 h-4 mr-2" />
-              Sign Out
-            </Button>
-          </div>
+    <Card className="glass hover:glow-sm transition-all duration-300">
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <div>
+          <CardTitle className="text-sm font-medium">{title}</CardTitle>
+          <CardDescription className="text-xs">{description}</CardDescription>
         </div>
-      </header>
+        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+          <Icon className="h-5 w-5 text-primary" />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className={`text-3xl font-bold ${valueColor}`}>{value}</p>
+        <p className="text-xs text-muted-foreground mt-1">{subtext}</p>
+      </CardContent>
+    </Card>
+  );
+}
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">
-            Welcome, {profile?.full_name || 'User'}!
+export default function Dashboard() {
+  const { userRole, profile } = useAuth();
+
+  const renderPlatformAdminDashboard = () => (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <StatCard
+        title="Agencies"
+        description="Total registered"
+        value="0"
+        subtext="Active agencies"
+        icon={Building2}
+      />
+      <StatCard
+        title="SDRs"
+        description="Total registered"
+        value="0"
+        subtext="Active SDRs"
+        icon={Users}
+      />
+      <StatCard
+        title="Disputes"
+        description="Pending resolution"
+        value="0"
+        subtext="Awaiting review"
+        icon={Shield}
+        variant="warning"
+      />
+      <StatCard
+        title="Revenue"
+        description="Platform rake"
+        value="$0"
+        subtext="Last 30 days"
+        icon={TrendingUp}
+        variant="success"
+      />
+      <StatCard
+        title="Payouts"
+        description="Pending SDR payouts"
+        value="$0"
+        subtext="Awaiting transfer"
+        icon={DollarSign}
+        variant="warning"
+      />
+      <StatCard
+        title="Deals"
+        description="Total closed"
+        value="0"
+        subtext="Last 30 days"
+        icon={Briefcase}
+        variant="success"
+      />
+    </div>
+  );
+
+  const renderAgencyOwnerDashboard = () => (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <StatCard
+        title="Team"
+        description="Your SDRs"
+        value="0"
+        subtext="Active members"
+        icon={Users}
+      />
+      <StatCard
+        title="Pipeline"
+        description="Total deal value"
+        value="$0"
+        subtext="Active deals"
+        icon={TrendingUp}
+        variant="success"
+      />
+      <StatCard
+        title="Commissions"
+        description="Owed to SDRs"
+        value="$0"
+        subtext="Pending payment"
+        icon={DollarSign}
+        variant="warning"
+      />
+      <StatCard
+        title="Calls"
+        description="Team activity"
+        value="0"
+        subtext="Last 7 days"
+        icon={Headphones}
+      />
+      <StatCard
+        title="Meetings"
+        description="Scheduled"
+        value="0"
+        subtext="This week"
+        icon={Building2}
+      />
+      <StatCard
+        title="Close Rate"
+        description="Win percentage"
+        value="0%"
+        subtext="Last 30 days"
+        icon={TrendingUp}
+        variant="success"
+      />
+    </div>
+  );
+
+  const renderSDRDashboard = () => (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <StatCard
+        title="Workspaces"
+        description="Active agencies"
+        value="0"
+        subtext="Companies you work for"
+        icon={Building2}
+      />
+      <StatCard
+        title="Earnings"
+        description="Total earned"
+        value="$0"
+        subtext="All time"
+        icon={DollarSign}
+        variant="success"
+      />
+      <StatCard
+        title="Pending"
+        description="Awaiting payout"
+        value="$0"
+        subtext="To be paid"
+        icon={DollarSign}
+        variant="warning"
+      />
+      <StatCard
+        title="Calls"
+        description="Your activity"
+        value="0"
+        subtext="Last 7 days"
+        icon={Headphones}
+      />
+      <StatCard
+        title="Deals"
+        description="Closed won"
+        value="0"
+        subtext="Last 30 days"
+        icon={Briefcase}
+        variant="success"
+      />
+      <StatCard
+        title="Jobs"
+        description="Open positions"
+        value="0"
+        subtext="Available now"
+        icon={Briefcase}
+      />
+    </div>
+  );
+
+  return (
+    <DashboardLayout>
+      <DashboardHeader title="Dashboard" />
+      <main className="flex-1 p-6 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold mb-1">
+            Welcome back, {profile?.full_name?.split(' ')[0] || 'User'}!
           </h1>
           <p className="text-muted-foreground">
-            {userRole === 'platform_admin' && 'Manage the platform from here.'}
-            {userRole === 'agency_owner' && 'Manage your agency and team.'}
-            {userRole === 'sdr' && 'Find jobs and start closing deals.'}
+            {userRole === 'platform_admin' && 'Platform overview and management'}
+            {userRole === 'agency_owner' && 'Your agency performance at a glance'}
+            {userRole === 'sdr' && 'Your sales performance overview'}
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {userRole === 'platform_admin' && (
-            <>
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle>Agencies</CardTitle>
-                  <CardDescription>View all registered agencies</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-3xl font-bold text-primary">0</p>
-                  <p className="text-sm text-muted-foreground">Total agencies</p>
-                </CardContent>
-              </Card>
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle>SDRs</CardTitle>
-                  <CardDescription>View all registered SDRs</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-3xl font-bold text-primary">0</p>
-                  <p className="text-sm text-muted-foreground">Total SDRs</p>
-                </CardContent>
-              </Card>
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle>Disputes</CardTitle>
-                  <CardDescription>Pending dispute resolutions</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-3xl font-bold text-warning">0</p>
-                  <p className="text-sm text-muted-foreground">Pending</p>
-                </CardContent>
-              </Card>
-            </>
-          )}
+        {userRole === 'platform_admin' && renderPlatformAdminDashboard()}
+        {userRole === 'agency_owner' && renderAgencyOwnerDashboard()}
+        {userRole === 'sdr' && renderSDRDashboard()}
 
-          {userRole === 'agency_owner' && (
-            <>
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle>Team</CardTitle>
-                  <CardDescription>Your SDR team</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-3xl font-bold text-primary">0</p>
-                  <p className="text-sm text-muted-foreground">Active SDRs</p>
-                </CardContent>
-              </Card>
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle>Deals</CardTitle>
-                  <CardDescription>Active pipeline</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-3xl font-bold text-success">$0</p>
-                  <p className="text-sm text-muted-foreground">Pipeline value</p>
-                </CardContent>
-              </Card>
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle>Commissions</CardTitle>
-                  <CardDescription>Pending payments</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-3xl font-bold text-warning">$0</p>
-                  <p className="text-sm text-muted-foreground">Owed to SDRs</p>
-                </CardContent>
-              </Card>
-            </>
-          )}
-
-          {userRole === 'sdr' && (
-            <>
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle>Jobs</CardTitle>
-                  <CardDescription>Browse available positions</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-3xl font-bold text-primary">0</p>
-                  <p className="text-sm text-muted-foreground">Open positions</p>
-                </CardContent>
-              </Card>
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle>Earnings</CardTitle>
-                  <CardDescription>Your commissions</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-3xl font-bold text-success">$0</p>
-                  <p className="text-sm text-muted-foreground">Total earned</p>
-                </CardContent>
-              </Card>
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle>Workspaces</CardTitle>
-                  <CardDescription>Active agencies</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-3xl font-bold text-primary">0</p>
-                  <p className="text-sm text-muted-foreground">Active workspaces</p>
-                </CardContent>
-              </Card>
-            </>
-          )}
-        </div>
-
-        <Card className="mt-8 border-dashed">
+        <Card className="border-dashed border-2">
           <CardContent className="p-8 text-center">
             <p className="text-muted-foreground">
-              More features coming soon! The full dashboard with CRM, Dialer, Jobs, and more will be built in the next phases.
+              Real-time data will populate here once the CRM, Dialer, and Jobs systems are built.
             </p>
           </CardContent>
         </Card>
       </main>
-    </div>
+    </DashboardLayout>
   );
 }
