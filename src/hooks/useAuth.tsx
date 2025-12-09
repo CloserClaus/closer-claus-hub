@@ -38,12 +38,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(profileData);
     }
 
-    // Fetch role
+    // Fetch role (use maybeSingle to handle no role or multiple roles gracefully)
     const { data: roleData } = await supabase
       .from('user_roles')
       .select('role')
       .eq('user_id', userId)
-      .single();
+      .limit(1)
+      .maybeSingle();
     
     if (roleData) {
       setUserRole(roleData.role);
