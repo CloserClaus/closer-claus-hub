@@ -8,6 +8,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
+import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 
 interface DashboardHeaderProps {
   title: string;
@@ -38,6 +39,10 @@ export function DashboardHeader({ title, breadcrumbs }: DashboardHeaderProps) {
       ) : (
         <h1 className="text-lg font-semibold">{title}</h1>
       )}
+
+      <div className="ml-auto">
+        <NotificationCenter />
+      </div>
     </header>
   );
 }
