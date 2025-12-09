@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { DollarSign, CheckCircle } from 'lucide-react';
+import { DollarSign, CheckCircle, CreditCard, Clock, AlertTriangle, Filter } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -13,10 +15,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
+
+type StatusFilter = 'all' | 'pending' | 'paid' | 'overdue';
 
 export function PayoutsTable() {
   const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   const { data: commissions, isLoading } = useQuery({
     queryKey: ['admin-commissions'],
@@ -26,7 +31,7 @@ export function PayoutsTable() {
         .select(`
           *,
           deals(title),
-          workspaces(name)
+          workspaces(name, is_locked)
         `)
         .order('created_at', { ascending: false });
 
@@ -41,13 +46,46 @@ export function PayoutsTable() {
 
       const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
 
-      return data?.map(c => ({
-        ...c,
-        sdr: profileMap.get(c.sdr_id),
-      })) || [];
+      return data?.map(c => {
+        const daysSinceCreated = differenceInDays(new Date(), new Date(c.created_at));
+        const isOverdue = c.status === 'pending' && daysSinceCreated >= 7;
+        
+        return {
+          ...c,
+          sdr: profileMap.get(c.sdr_id),
+          daysSinceCreated,
+          isOverdue,
+          displayStatus: isOverdue ? 'overdue' : c.status,
+        };
+      }) || [];
     },
   });
 
+  // Trigger payment via edge function (Stripe placeholder)
+  const triggerPaymentMutation = useMutation({
+    mutationFn: async (commissionId: string) => {
+      const { data, error } = await supabase.functions.invoke('pay-commission', {
+        body: { commission_id: commissionId, payment_method: 'stripe' },
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      if (data?.stripe_pending) {
+        toast.info('Stripe integration pending - commission ready for payment when configured');
+      } else {
+        toast.success('Payment processed successfully');
+      }
+      queryClient.invalidateQueries({ queryKey: ['admin-commissions'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
+    },
+    onError: (error: Error) => {
+      toast.error(`Payment failed: ${error.message}`);
+    },
+  });
+
+  // Mark as paid manually (for PayPal payouts to SDRs)
   const markPaidMutation = useMutation({
     mutationFn: async (commissionId: string) => {
       const { error } = await supabase
@@ -77,6 +115,20 @@ export function PayoutsTable() {
     overdue: 'bg-destructive/20 text-destructive',
   };
 
+  const filteredCommissions = commissions?.filter(c => {
+    if (statusFilter === 'all') return true;
+    if (statusFilter === 'overdue') return c.isOverdue;
+    if (statusFilter === 'pending') return c.status === 'pending' && !c.isOverdue;
+    return c.status === statusFilter;
+  });
+
+  const counts = {
+    all: commissions?.length || 0,
+    pending: commissions?.filter(c => c.status === 'pending' && !c.isOverdue).length || 0,
+    overdue: commissions?.filter(c => c.isOverdue).length || 0,
+    paid: commissions?.filter(c => c.status === 'paid').length || 0,
+  };
+
   if (isLoading) {
     return (
       <Card className="glass">
@@ -90,13 +142,38 @@ export function PayoutsTable() {
   return (
     <Card className="glass">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <DollarSign className="h-5 w-5" />
-          Commissions & Payouts
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <DollarSign className="h-5 w-5" />
+            Commissions & Payouts
+          </CardTitle>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Filter className="h-4 w-4" />
+              Filter:
+            </div>
+            <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+              <TabsList className="h-8">
+                <TabsTrigger value="all" className="text-xs px-3">
+                  All ({counts.all})
+                </TabsTrigger>
+                <TabsTrigger value="pending" className="text-xs px-3">
+                  Pending ({counts.pending})
+                </TabsTrigger>
+                <TabsTrigger value="overdue" className="text-xs px-3">
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  Overdue ({counts.overdue})
+                </TabsTrigger>
+                <TabsTrigger value="paid" className="text-xs px-3">
+                  Paid ({counts.paid})
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
-        {commissions && commissions.length > 0 ? (
+        {filteredCommissions && filteredCommissions.length > 0 ? (
           <Table>
             <TableHeader>
               <TableRow>
@@ -105,17 +182,25 @@ export function PayoutsTable() {
                 <TableHead>SDR</TableHead>
                 <TableHead>Commission</TableHead>
                 <TableHead>Platform Rake</TableHead>
+                <TableHead>Age</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {commissions.map((commission) => (
-                <TableRow key={commission.id}>
+              {filteredCommissions.map((commission) => (
+                <TableRow key={commission.id} className={commission.isOverdue ? 'bg-destructive/5' : ''}>
                   <TableCell className="font-medium">
                     {(commission.deals as any)?.title}
                   </TableCell>
-                  <TableCell>{(commission.workspaces as any)?.name}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      {(commission.workspaces as any)?.name}
+                      {(commission.workspaces as any)?.is_locked && (
+                        <Badge variant="destructive" className="text-xs">Locked</Badge>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <div>
                       <p className="font-medium">{commission.sdr?.full_name}</p>
@@ -129,28 +214,51 @@ export function PayoutsTable() {
                     ${Number(commission.rake_amount).toLocaleString()}
                   </TableCell>
                   <TableCell>
-                    <Badge className={statusColors[commission.status]}>
-                      {commission.status === 'paid' && commission.paid_at && (
-                        <span className="capitalize">
-                          Paid {format(new Date(commission.paid_at), 'MMM d')}
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      <span className={commission.isOverdue ? 'text-destructive font-medium' : ''}>
+                        {commission.daysSinceCreated}d
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={statusColors[commission.displayStatus]}>
+                      {commission.status === 'paid' && commission.paid_at ? (
+                        <span>Paid {format(new Date(commission.paid_at), 'MMM d')}</span>
+                      ) : commission.isOverdue ? (
+                        <span className="flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          Overdue
                         </span>
-                      )}
-                      {commission.status !== 'paid' && (
+                      ) : (
                         <span className="capitalize">{commission.status}</span>
                       )}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     {commission.status === 'pending' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => markPaidMutation.mutate(commission.id)}
-                        disabled={markPaidMutation.isPending}
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        Mark Paid
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => triggerPaymentMutation.mutate(commission.id)}
+                          disabled={triggerPaymentMutation.isPending}
+                          title="Charge via Stripe (placeholder)"
+                        >
+                          <CreditCard className="h-4 w-4 mr-1" />
+                          Charge
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => markPaidMutation.mutate(commission.id)}
+                          disabled={markPaidMutation.isPending}
+                          title="Mark as paid manually (PayPal payout completed)"
+                        >
+                          <CheckCircle className="h-4 w-4 mr-1" />
+                          Mark Paid
+                        </Button>
+                      </div>
                     )}
                   </TableCell>
                 </TableRow>
@@ -158,7 +266,9 @@ export function PayoutsTable() {
             </TableBody>
           </Table>
         ) : (
-          <p className="text-center text-muted-foreground py-8">No commissions yet</p>
+          <p className="text-center text-muted-foreground py-8">
+            {statusFilter === 'all' ? 'No commissions yet' : `No ${statusFilter} commissions`}
+          </p>
         )}
       </CardContent>
     </Card>
