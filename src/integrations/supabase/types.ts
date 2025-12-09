@@ -14,6 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
+      call_logs: {
+        Row: {
+          call_status: string
+          caller_id: string
+          callhippo_call_id: string | null
+          created_at: string
+          duration_seconds: number | null
+          ended_at: string | null
+          id: string
+          lead_id: string | null
+          notes: string | null
+          phone_number: string
+          workspace_id: string
+        }
+        Insert: {
+          call_status?: string
+          caller_id: string
+          callhippo_call_id?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          phone_number: string
+          workspace_id: string
+        }
+        Update: {
+          call_status?: string
+          caller_id?: string
+          callhippo_call_id?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          phone_number?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_logs_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_logs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_participants: {
         Row: {
           conversation_id: string
