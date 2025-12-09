@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
   Trash2,
   Edit,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -40,6 +41,7 @@ import { useToast } from '@/hooks/use-toast';
 import { LeadForm } from '@/components/crm/LeadForm';
 import { DealForm } from '@/components/crm/DealForm';
 import { PipelineBoard } from '@/components/crm/PipelineBoard';
+import { DisputeForm } from '@/components/crm/DisputeForm';
 
 interface Lead {
   id: string;
@@ -81,8 +83,10 @@ export default function CRM() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLeadForm, setShowLeadForm] = useState(false);
   const [showDealForm, setShowDealForm] = useState(false);
+  const [showDisputeForm, setShowDisputeForm] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
+  const [disputeDeal, setDisputeDeal] = useState<Deal | null>(null);
 
   const isAgencyOwner = userRole === 'agency_owner';
 
@@ -410,6 +414,20 @@ export default function CRM() {
                           <span className="font-semibold text-success">
                             ${Number(deal.value).toLocaleString()}
                           </span>
+                          {!isAgencyOwner && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDisputeDeal(deal);
+                                setShowDisputeForm(true);
+                              }}
+                              title="File a dispute"
+                            >
+                              <AlertTriangle className="h-4 w-4 text-warning" />
+                            </Button>
+                          )}
                           {isAgencyOwner && (
                             <Button
                               variant="ghost"
@@ -486,6 +504,34 @@ export default function CRM() {
                 setEditingDeal(null);
               }}
             />
+          </DialogContent>
+        </Dialog>
+
+        {/* Dispute Form Dialog */}
+        <Dialog open={showDisputeForm} onOpenChange={(open) => {
+          setShowDisputeForm(open);
+          if (!open) setDisputeDeal(null);
+        }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>File a Dispute</DialogTitle>
+              <DialogDescription>
+                Submit a dispute for review by a platform administrator
+              </DialogDescription>
+            </DialogHeader>
+            {disputeDeal && (
+              <DisputeForm
+                deal={disputeDeal}
+                onSuccess={() => {
+                  setShowDisputeForm(false);
+                  setDisputeDeal(null);
+                }}
+                onCancel={() => {
+                  setShowDisputeForm(false);
+                  setDisputeDeal(null);
+                }}
+              />
+            )}
           </DialogContent>
         </Dialog>
       </main>
