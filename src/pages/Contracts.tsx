@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -281,35 +283,43 @@ export default function Contracts() {
 
   if (!currentWorkspace) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <p className="text-muted-foreground">Please select a workspace to manage contracts.</p>
-      </div>
+      <DashboardLayout>
+        <DashboardHeader title="Contracts" />
+        <main className="flex-1 p-6">
+          <div className="flex items-center justify-center h-96">
+            <p className="text-muted-foreground">Please select a workspace to manage contracts.</p>
+          </div>
+        </main>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <FileSignature className="h-8 w-8" />
-            Contracts
-          </h1>
-          <p className="text-muted-foreground">Create and manage e-signature contracts</p>
-        </div>
+    <DashboardLayout>
+      <DashboardHeader title="Contracts" />
+      <main className="flex-1 p-6">
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold flex items-center gap-3">
+                <FileSignature className="h-8 w-8" />
+                Contracts
+              </h1>
+              <p className="text-muted-foreground">Create and manage e-signature contracts</p>
+            </div>
 
-        {isOwner && (
-          <Button onClick={() => setIsDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Contract
-          </Button>
-        )}
-      </div>
+            {isOwner && (
+              <Button onClick={() => setIsDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Contract
+              </Button>
+            )}
+          </div>
 
-      {/* Contracts List */}
-      {isLoading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
+          {/* Contracts List */}
+          {isLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
             <Card key={i} className="animate-pulse">
               <CardContent className="py-6">
                 <div className="h-4 bg-muted rounded w-1/3 mb-2" />
@@ -521,6 +531,8 @@ export default function Contracts() {
           </ScrollArea>
         </DialogContent>
       </Dialog>
-    </div>
+        </div>
+      </main>
+    </DashboardLayout>
   );
 }

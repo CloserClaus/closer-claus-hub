@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -336,14 +338,22 @@ export default function Dialer() {
 
   if (!currentWorkspace) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <p className="text-muted-foreground">Please select a workspace to access the dialer.</p>
-      </div>
+      <DashboardLayout>
+        <DashboardHeader title="Dialer" />
+        <main className="flex-1 p-6">
+          <div className="flex items-center justify-center h-96">
+            <p className="text-muted-foreground">Please select a workspace to access the dialer.</p>
+          </div>
+        </main>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <DashboardLayout>
+      <DashboardHeader title="Dialer" />
+      <main className="flex-1 p-6">
+        <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Dialer</h1>
@@ -571,7 +581,9 @@ export default function Dialer() {
             onCreditsUpdated={fetchCredits}
           />
         </TabsContent>
-      </Tabs>
-    </div>
+        </Tabs>
+        </div>
+      </main>
+    </DashboardLayout>
   );
 }
