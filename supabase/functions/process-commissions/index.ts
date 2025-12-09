@@ -47,32 +47,40 @@ serve(async (req) => {
       try {
         // TODO: Implement Stripe charging when API key is added
         // if (stripe && commission.workspace?.stripe_customer_id) {
-        //   const paymentIntent = await stripe.paymentIntents.create({
-        //     amount: Math.round((commission.amount + commission.rake_amount) * 100),
-        //     currency: 'usd',
-        //     customer: commission.workspace.stripe_customer_id,
-        //     confirm: true,
-        //     automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
-        //     metadata: {
-        //       commission_id: commission.id,
-        //       workspace_id: commission.workspace_id,
-        //       deal_id: commission.deal_id,
-        //     },
-        //   });
-        //   
-        //   if (paymentIntent.status === 'succeeded') {
-        //     await supabase
-        //       .from('commissions')
-        //       .update({
-        //         status: 'paid',
-        //         paid_at: new Date().toISOString(),
-        //         stripe_payment_intent_id: paymentIntent.id,
-        //       })
-        //       .eq('id', commission.id);
-        //   }
+        //   const paymentIntent = await stripe.paymentIntents.create({...});
         // }
 
-        // For now, just log that this commission would be charged
+        // Get owner email for notification
+        if (commission.workspace?.owner_id) {
+          const { data: ownerProfile } = await supabase
+            .from('profiles')
+            .select('email, full_name')
+            .eq('id', commission.workspace.owner_id)
+            .single();
+
+          if (ownerProfile?.email) {
+            // Send overdue notification email
+            const daysOld = Math.floor((now.getTime() - new Date(commission.created_at).getTime()) / (1000 * 60 * 60 * 24));
+            
+            await fetch(`${supabaseUrl}/functions/v1/send-commission-email`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                type: 'commission_overdue',
+                to_email: ownerProfile.email,
+                to_name: ownerProfile.full_name || 'Agency Owner',
+                workspace_name: commission.workspace.name,
+                amount: commission.amount + commission.rake_amount,
+                days_overdue: daysOld,
+              }),
+            });
+            console.log(`Sent overdue notification for commission ${commission.id}`);
+          }
+        }
+
         console.log(`Would auto-charge commission ${commission.id} for $${commission.amount + commission.rake_amount}`);
         
         chargeResults.push({
@@ -113,15 +121,63 @@ serve(async (req) => {
 
     for (const workspaceId of workspacesToLock) {
       try {
+        // Get workspace details and owner info
+        const { data: workspace } = await supabase
+          .from('workspaces')
+          .select('name, owner_id, is_locked')
+          .eq('id', workspaceId)
+          .single();
+
+        if (workspace?.is_locked) {
+          console.log(`Workspace ${workspaceId} already locked, skipping`);
+          continue;
+        }
+
         const { error: lockError } = await supabase
           .from('workspaces')
           .update({ is_locked: true })
-          .eq('id', workspaceId)
-          .eq('is_locked', false); // Only lock if not already locked
+          .eq('id', workspaceId);
 
         if (lockError) throw lockError;
 
         console.log(`Locked workspace ${workspaceId} due to overdue commissions`);
+
+        // Send account locked email
+        if (workspace?.owner_id) {
+          const { data: ownerProfile } = await supabase
+            .from('profiles')
+            .select('email, full_name')
+            .eq('id', workspace.owner_id)
+            .single();
+
+          // Get total owed for this workspace
+          const { data: workspaceCommissions } = await supabase
+            .from('commissions')
+            .select('amount, rake_amount')
+            .eq('workspace_id', workspaceId)
+            .eq('status', 'pending');
+
+          const totalOwed = workspaceCommissions?.reduce((sum, c) => sum + c.amount + c.rake_amount, 0) || 0;
+
+          if (ownerProfile?.email) {
+            await fetch(`${supabaseUrl}/functions/v1/send-commission-email`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                type: 'account_locked',
+                to_email: ownerProfile.email,
+                to_name: ownerProfile.full_name || 'Agency Owner',
+                workspace_name: workspace.name,
+                amount: totalOwed,
+                commission_count: workspaceCommissions?.length || 0,
+              }),
+            });
+            console.log(`Sent account locked notification for workspace ${workspaceId}`);
+          }
+        }
         
         lockResults.push({
           workspace_id: workspaceId,
