@@ -6,12 +6,14 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "commission_due" | "commission_overdue" | "account_locked";
+  type: "commission_created" | "commission_due" | "commission_overdue" | "account_locked";
   to_email: string;
   to_name: string;
   workspace_name: string;
   amount?: number;
   days_overdue?: number;
+  deal_title?: string;
+  sdr_name?: string;
   commission_count?: number;
 }
 
@@ -31,12 +33,26 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const { type, to_email, to_name, workspace_name, amount, days_overdue, commission_count }: EmailRequest = await req.json();
+    const { type, to_email, to_name, workspace_name, amount, days_overdue, commission_count, deal_title, sdr_name }: EmailRequest = await req.json();
 
     let subject = "";
     let html = "";
 
     switch (type) {
+      case "commission_created":
+        subject = `New Commission Created - ${deal_title || 'Deal Closed'}`;
+        html = `
+          <h1>Commission Payment Required</h1>
+          <p>Hi ${to_name},</p>
+          <p>A new commission has been created for <strong>${workspace_name}</strong>.</p>
+          <p><strong>Deal:</strong> ${deal_title || 'N/A'}</p>
+          <p><strong>SDR:</strong> ${sdr_name || 'N/A'}</p>
+          <p><strong>Amount Due:</strong> $${amount?.toFixed(2)}</p>
+          <p>Please complete the payment within 7 days to avoid automatic charging.</p>
+          <p>Best regards,<br>The Closer Claus Team</p>
+        `;
+        break;
+
       case "commission_due":
         subject = `Commission Payment Due - ${workspace_name}`;
         html = `
