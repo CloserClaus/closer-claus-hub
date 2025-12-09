@@ -16,6 +16,7 @@ import JobForm from "./pages/JobForm";
 import CRM from "./pages/CRM";
 import Conversations from "./pages/Conversations";
 import Dialer from "./pages/Dialer";
+import Training from "./pages/Training";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,6 +43,7 @@ const App = () => (
               <Route path="/crm" element={<CRM />} />
               <Route path="/conversations" element={<Conversations />} />
               <Route path="/dialer" element={<Dialer />} />
+              <Route path="/training" element={<Training />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

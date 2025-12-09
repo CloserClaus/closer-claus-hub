@@ -12,6 +12,7 @@ interface WorkspaceContextType {
   currentWorkspace: Workspace | null;
   workspaces: Workspace[];
   loading: boolean;
+  isOwner: boolean;
   setCurrentWorkspace: (workspace: Workspace) => void;
   refreshWorkspaces: () => Promise<void>;
 }
@@ -86,12 +87,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     fetchWorkspaces();
   }, [user, userRole]);
 
+  const isOwner = currentWorkspace?.owner_id === user?.id;
+
   return (
     <WorkspaceContext.Provider
       value={{
         currentWorkspace,
         workspaces,
         loading,
+        isOwner,
         setCurrentWorkspace,
         refreshWorkspaces: fetchWorkspaces,
       }}
