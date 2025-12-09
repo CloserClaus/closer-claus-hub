@@ -176,7 +176,7 @@ serve(async (req) => {
           .eq('id', contract.workspace_id)
           .single();
 
-        // Create commission record
+        // Create commission record and send notification
         if (deal && workspace) {
           const rakePercentage = workspace.rake_percentage || 2;
           const rakeAmount = (deal.value * rakePercentage) / 100;
@@ -195,6 +195,55 @@ serve(async (req) => {
 
           if (commissionError) {
             console.error('Error creating commission:', commissionError);
+          } else {
+            // Send commission created email to agency owner
+            const { data: workspaceDetails } = await supabase
+              .from('workspaces')
+              .select('name, owner_id')
+              .eq('id', contract.workspace_id)
+              .single();
+
+            const { data: ownerProfile } = await supabase
+              .from('profiles')
+              .select('email, full_name')
+              .eq('id', workspaceDetails?.owner_id)
+              .single();
+
+            const { data: sdrProfile } = await supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', deal.assigned_to)
+              .single();
+
+            const { data: dealDetails } = await supabase
+              .from('deals')
+              .select('title')
+              .eq('id', contract.deal_id)
+              .single();
+
+            if (ownerProfile?.email) {
+              try {
+                await fetch(`${supabaseUrl}/functions/v1/send-commission-email`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseKey}`,
+                  },
+                  body: JSON.stringify({
+                    type: 'commission_created',
+                    to_email: ownerProfile.email,
+                    to_name: ownerProfile.full_name || 'Agency Owner',
+                    workspace_name: workspaceDetails?.name || 'Your Agency',
+                    amount: commissionAmount + rakeAmount,
+                    deal_title: dealDetails?.title || 'Closed Deal',
+                    sdr_name: sdrProfile?.full_name || 'SDR',
+                  }),
+                });
+                console.log('Commission created email sent');
+              } catch (emailErr) {
+                console.error('Failed to send commission email:', emailErr);
+              }
+            }
           }
         }
 
