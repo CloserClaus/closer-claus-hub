@@ -14,6 +14,94 @@ export type Database = {
   }
   public: {
     Tables: {
+      job_applications: {
+        Row: {
+          applied_at: string
+          cover_letter: string | null
+          id: string
+          job_id: string
+          status: Database["public"]["Enums"]["application_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          applied_at?: string
+          cover_letter?: string | null
+          id?: string
+          job_id: string
+          status?: Database["public"]["Enums"]["application_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          applied_at?: string
+          cover_letter?: string | null
+          id?: string
+          job_id?: string
+          status?: Database["public"]["Enums"]["application_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_applications_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jobs: {
+        Row: {
+          commission_percentage: number | null
+          created_at: string
+          description: string
+          employment_type: Database["public"]["Enums"]["employment_type"]
+          id: string
+          is_active: boolean
+          requirements: string[] | null
+          salary_amount: number | null
+          title: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          commission_percentage?: number | null
+          created_at?: string
+          description: string
+          employment_type?: Database["public"]["Enums"]["employment_type"]
+          id?: string
+          is_active?: boolean
+          requirements?: string[] | null
+          salary_amount?: number | null
+          title: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          commission_percentage?: number | null
+          created_at?: string
+          description?: string
+          employment_type?: Database["public"]["Enums"]["employment_type"]
+          id?: string
+          is_active?: boolean
+          requirements?: string[] | null
+          salary_amount?: number | null
+          title?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jobs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -178,6 +266,13 @@ export type Database = {
     }
     Enums: {
       app_role: "platform_admin" | "agency_owner" | "sdr"
+      application_status:
+        | "applied"
+        | "shortlisted"
+        | "interviewing"
+        | "hired"
+        | "rejected"
+      employment_type: "commission_only" | "salary"
       subscription_tier: "omega" | "beta" | "alpha"
     }
     CompositeTypes: {
@@ -307,6 +402,14 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["platform_admin", "agency_owner", "sdr"],
+      application_status: [
+        "applied",
+        "shortlisted",
+        "interviewing",
+        "hired",
+        "rejected",
+      ],
+      employment_type: ["commission_only", "salary"],
       subscription_tier: ["omega", "beta", "alpha"],
     },
   },
