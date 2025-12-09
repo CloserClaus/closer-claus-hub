@@ -302,6 +302,41 @@ export type Database = {
           },
         ]
       }
+      credit_purchases: {
+        Row: {
+          created_at: string
+          credits_amount: number
+          id: string
+          price_paid: number
+          purchased_by: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          credits_amount: number
+          id?: string
+          price_paid: number
+          purchased_by: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          credits_amount?: number
+          id?: string
+          price_paid?: number
+          purchased_by?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_purchases_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deal_activities: {
         Row: {
           activity_type: string
@@ -776,6 +811,41 @@ export type Database = {
         }
         Relationships: []
       }
+      workspace_credits: {
+        Row: {
+          created_at: string
+          credits_balance: number
+          id: string
+          last_purchased_at: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          credits_balance?: number
+          id?: string
+          last_purchased_at?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          credits_balance?: number
+          id?: string
+          last_purchased_at?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_credits_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspace_members: {
         Row: {
           cooldown_until: string | null
@@ -807,6 +877,50 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "workspace_members_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workspace_phone_numbers: {
+        Row: {
+          callhippo_number_id: string | null
+          country_code: string
+          created_at: string
+          id: string
+          is_active: boolean
+          monthly_cost: number
+          phone_number: string
+          purchased_at: string
+          workspace_id: string
+        }
+        Insert: {
+          callhippo_number_id?: string | null
+          country_code?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          monthly_cost?: number
+          phone_number: string
+          purchased_at?: string
+          workspace_id: string
+        }
+        Update: {
+          callhippo_number_id?: string | null
+          country_code?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          monthly_cost?: number
+          phone_number?: string
+          purchased_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_phone_numbers_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"

@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Phone, 
   PhoneOff, 
@@ -17,11 +17,13 @@ import {
   Building2, 
   Search,
   PhoneCall,
-  PhoneMissed,
-  AlertCircle
+  AlertCircle,
+  ShoppingCart
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { CreditsDisplay } from "@/components/dialer/CreditsDisplay";
+import { PurchaseTab } from "@/components/dialer/PurchaseTab";
 
 interface Lead {
   id: string;
@@ -58,6 +60,42 @@ export default function Dialer() {
   const [callDuration, setCallDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [dialerAvailable, setDialerAvailable] = useState<boolean | null>(null);
+  const [creditsBalance, setCreditsBalance] = useState(0);
+  const [isLoadingCredits, setIsLoadingCredits] = useState(true);
+
+  // Fetch credits balance
+  const fetchCredits = async () => {
+    if (!currentWorkspace?.id) return;
+    
+    setIsLoadingCredits(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/callhippo`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'get_credits', workspaceId: currentWorkspace.id }),
+        }
+      );
+
+      const data = await response.json();
+      setCreditsBalance(data.credits?.credits_balance || 0);
+    } catch (error) {
+      console.error('Error fetching credits:', error);
+    } finally {
+      setIsLoadingCredits(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCredits();
+  }, [currentWorkspace?.id]);
 
   // Check if dialer is configured
   useEffect(() => {
@@ -78,7 +116,6 @@ export default function Dialer() {
           }
         );
 
-        // If we get a 503, the API key is not configured
         setDialerAvailable(response.status !== 503);
       } catch {
         setDialerAvailable(false);
@@ -307,212 +344,234 @@ export default function Dialer() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Dialer</h1>
-        <p className="text-muted-foreground">Make outbound calls to your leads</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Dialer</h1>
+          <p className="text-muted-foreground">Make outbound calls to your leads</p>
+        </div>
+        <CreditsDisplay credits={creditsBalance} isLoading={isLoadingCredits} />
       </div>
 
-      {dialerAvailable === false && (
-        <Card className="border-warning/50 bg-warning/5">
-          <CardContent className="flex items-center gap-3 py-4">
-            <AlertCircle className="h-5 w-5 text-warning" />
-            <div>
-              <p className="font-medium text-warning">Dialer Not Configured</p>
-              <p className="text-sm text-muted-foreground">
-                CallHippo API key needs to be added to enable calling functionality.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <Tabs defaultValue="dialer" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="dialer" className="flex items-center gap-2">
+            <Phone className="h-4 w-4" />
+            Dialer
+          </TabsTrigger>
+          <TabsTrigger value="purchase" className="flex items-center gap-2">
+            <ShoppingCart className="h-4 w-4" />
+            Purchase
+          </TabsTrigger>
+        </TabsList>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Dial Pad */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Phone className="h-5 w-5" />
-              Dial Pad
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {selectedLead && (
-              <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-primary" />
-                  <span className="font-medium">{selectedLead.first_name} {selectedLead.last_name}</span>
+        <TabsContent value="dialer" className="space-y-6">
+          {dialerAvailable === false && (
+            <Card className="border-warning/50 bg-warning/5">
+              <CardContent className="flex items-center gap-3 py-4">
+                <AlertCircle className="h-5 w-5 text-warning" />
+                <div>
+                  <p className="font-medium text-warning">Dialer Not Configured</p>
+                  <p className="text-sm text-muted-foreground">
+                    CallHippo API key needs to be added to enable calling functionality.
+                  </p>
                 </div>
-                {selectedLead.company && (
-                  <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-                    <Building2 className="h-3 w-3" />
-                    <span>{selectedLead.company}</span>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Dial Pad */}
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Phone className="h-5 w-5" />
+                  Dial Pad
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {selectedLead && (
+                  <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-primary" />
+                      <span className="font-medium">{selectedLead.first_name} {selectedLead.last_name}</span>
+                    </div>
+                    {selectedLead.company && (
+                      <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+                        <Building2 className="h-3 w-3" />
+                        <span>{selectedLead.company}</span>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
 
-            <Input
-              type="tel"
-              placeholder="Enter phone number"
-              value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-              className="text-center text-xl font-mono"
-              disabled={isCallActive}
-            />
-
-            <div className="grid grid-cols-3 gap-2">
-              {dialPadNumbers.map((num) => (
-                <Button
-                  key={num}
-                  variant="outline"
-                  size="lg"
-                  onClick={() => setPhoneNumber(prev => prev + num)}
+                <Input
+                  type="tel"
+                  placeholder="Enter phone number"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  className="text-center text-xl font-mono"
                   disabled={isCallActive}
-                  className="text-lg font-medium"
-                >
-                  {num}
-                </Button>
-              ))}
-            </div>
-
-            {isCallActive ? (
-              <div className="space-y-4">
-                <div className="text-center py-4">
-                  <div className="flex items-center justify-center gap-2 text-success mb-2">
-                    <PhoneCall className="h-5 w-5 animate-pulse" />
-                    <span className="font-medium">Call in progress</span>
-                  </div>
-                  <p className="text-2xl font-mono">{formatDuration(callDuration)}</p>
-                </div>
-
-                <Textarea
-                  placeholder="Call notes..."
-                  value={callNotes}
-                  onChange={(e) => setCallNotes(e.target.value)}
-                  rows={3}
                 />
 
-                <Button
-                  variant="destructive"
-                  size="lg"
-                  className="w-full"
-                  onClick={handleEndCall}
-                  disabled={isLoading}
-                >
-                  <PhoneOff className="h-5 w-5 mr-2" />
-                  End Call
-                </Button>
-              </div>
-            ) : (
-              <Button
-                size="lg"
-                className="w-full"
-                onClick={handleInitiateCall}
-                disabled={isLoading || !phoneNumber || dialerAvailable === false}
-              >
-                <Phone className="h-5 w-5 mr-2" />
-                {isLoading ? "Connecting..." : "Call"}
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Quick Dial - Leads */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Quick Dial
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search leads..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-
-            <ScrollArea className="h-[400px]">
-              <div className="space-y-2">
-                {filteredLeads.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">
-                    No leads with phone numbers found
-                  </p>
-                ) : (
-                  filteredLeads.map((lead) => (
-                    <button
-                      key={lead.id}
-                      onClick={() => handleSelectLead(lead)}
-                      className={`w-full text-left p-3 rounded-lg border transition-colors ${
-                        selectedLead?.id === lead.id
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border hover:border-primary/50 hover:bg-accent/50'
-                      }`}
+                <div className="grid grid-cols-3 gap-2">
+                  {dialPadNumbers.map((num) => (
+                    <Button
+                      key={num}
+                      variant="outline"
+                      size="lg"
+                      onClick={() => setPhoneNumber(prev => prev + num)}
                       disabled={isCallActive}
+                      className="text-lg font-medium"
                     >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">{lead.first_name} {lead.last_name}</p>
-                          {lead.company && (
-                            <p className="text-sm text-muted-foreground">{lead.company}</p>
+                      {num}
+                    </Button>
+                  ))}
+                </div>
+
+                {isCallActive ? (
+                  <div className="space-y-4">
+                    <div className="text-center py-4">
+                      <div className="flex items-center justify-center gap-2 text-success mb-2">
+                        <PhoneCall className="h-5 w-5 animate-pulse" />
+                        <span className="font-medium">Call in progress</span>
+                      </div>
+                      <p className="text-2xl font-mono">{formatDuration(callDuration)}</p>
+                    </div>
+
+                    <Textarea
+                      placeholder="Call notes..."
+                      value={callNotes}
+                      onChange={(e) => setCallNotes(e.target.value)}
+                      rows={3}
+                    />
+
+                    <Button
+                      variant="destructive"
+                      size="lg"
+                      className="w-full"
+                      onClick={handleEndCall}
+                      disabled={isLoading}
+                    >
+                      <PhoneOff className="h-5 w-5 mr-2" />
+                      End Call
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="lg"
+                    className="w-full"
+                    onClick={handleInitiateCall}
+                    disabled={isLoading || !phoneNumber || dialerAvailable === false}
+                  >
+                    <Phone className="h-5 w-5 mr-2" />
+                    {isLoading ? "Connecting..." : "Call"}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Quick Dial - Leads */}
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Quick Dial
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search leads..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+
+                <ScrollArea className="h-[400px]">
+                  <div className="space-y-2">
+                    {filteredLeads.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-8">
+                        No leads with phone numbers found
+                      </p>
+                    ) : (
+                      filteredLeads.map((lead) => (
+                        <button
+                          key={lead.id}
+                          onClick={() => handleSelectLead(lead)}
+                          className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                            selectedLead?.id === lead.id
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border hover:border-primary/50 hover:bg-accent/50'
+                          }`}
+                          disabled={isCallActive}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium">{lead.first_name} {lead.last_name}</p>
+                              {lead.company && (
+                                <p className="text-sm text-muted-foreground">{lead.company}</p>
+                              )}
+                            </div>
+                            <p className="text-sm font-mono text-muted-foreground">{lead.phone}</p>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+            {/* Call History */}
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Recent Calls
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[450px]">
+                  <div className="space-y-3">
+                    {callLogs.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-8">
+                        No call history yet
+                      </p>
+                    ) : (
+                      callLogs.map((log) => (
+                        <div key={log.id} className="p-3 rounded-lg border border-border">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="font-mono text-sm">{log.phone_number}</p>
+                            {getCallStatusBadge(log.call_status)}
+                          </div>
+                          <div className="flex items-center justify-between text-sm text-muted-foreground">
+                            <span>{format(new Date(log.created_at), 'MMM d, h:mm a')}</span>
+                            {log.duration_seconds && log.duration_seconds > 0 && (
+                              <span>{formatDuration(log.duration_seconds)}</span>
+                            )}
+                          </div>
+                          {log.notes && (
+                            <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{log.notes}</p>
                           )}
                         </div>
-                        <p className="text-sm font-mono text-muted-foreground">{lead.phone}</p>
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
 
-        {/* Call History */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Recent Calls
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[450px]">
-              <div className="space-y-3">
-                {callLogs.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">
-                    No call history yet
-                  </p>
-                ) : (
-                  callLogs.map((log) => (
-                    <div key={log.id} className="p-3 rounded-lg border border-border">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="font-mono text-sm">{log.phone_number}</p>
-                        {getCallStatusBadge(log.call_status)}
-                      </div>
-                      <div className="flex items-center justify-between text-sm text-muted-foreground">
-                        <span>{format(new Date(log.created_at), 'MMM d, h:mm a')}</span>
-                        {log.duration_seconds && log.duration_seconds > 0 && (
-                          <span>{formatDuration(log.duration_seconds)}</span>
-                        )}
-                      </div>
-                      {log.notes && (
-                        <>
-                          <Separator className="my-2" />
-                          <p className="text-sm text-muted-foreground">{log.notes}</p>
-                        </>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
-      </div>
+        <TabsContent value="purchase">
+          <PurchaseTab 
+            workspaceId={currentWorkspace.id} 
+            onCreditsUpdated={fetchCredits}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
