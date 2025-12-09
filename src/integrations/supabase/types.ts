@@ -71,6 +71,167 @@ export type Database = {
           },
         ]
       }
+      commissions: {
+        Row: {
+          amount: number
+          created_at: string
+          deal_id: string
+          id: string
+          paid_at: string | null
+          rake_amount: number
+          sdr_id: string
+          status: string
+          stripe_payment_intent_id: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          deal_id: string
+          id?: string
+          paid_at?: string | null
+          rake_amount?: number
+          sdr_id: string
+          status?: string
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          deal_id?: string
+          id?: string
+          paid_at?: string | null
+          rake_amount?: number
+          sdr_id?: string
+          status?: string
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commissions_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commissions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_signatures: {
+        Row: {
+          contract_id: string
+          id: string
+          ip_address: string | null
+          signature_data: string | null
+          signed_at: string
+          signer_email: string
+          signer_name: string
+          user_agent: string | null
+        }
+        Insert: {
+          contract_id: string
+          id?: string
+          ip_address?: string | null
+          signature_data?: string | null
+          signed_at?: string
+          signer_email: string
+          signer_name: string
+          user_agent?: string | null
+        }
+        Update: {
+          contract_id?: string
+          id?: string
+          ip_address?: string | null
+          signature_data?: string | null
+          signed_at?: string
+          signer_email?: string
+          signer_name?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_signatures_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contracts: {
+        Row: {
+          content: string
+          created_at: string
+          created_by: string
+          custom_pdf_url: string | null
+          deal_id: string
+          id: string
+          sent_at: string | null
+          signed_at: string | null
+          status: string
+          template_type: string
+          title: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          created_by: string
+          custom_pdf_url?: string | null
+          deal_id: string
+          id?: string
+          sent_at?: string | null
+          signed_at?: string | null
+          status?: string
+          template_type?: string
+          title: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          created_by?: string
+          custom_pdf_url?: string | null
+          deal_id?: string
+          id?: string
+          sent_at?: string | null
+          signed_at?: string | null
+          status?: string
+          template_type?: string
+          title?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contracts_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contracts_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_participants: {
         Row: {
           conversation_id: string

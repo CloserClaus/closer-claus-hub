@@ -2,3 +2,6 @@ project_id = "xlgzxmzejlshsgeiidsz"
 
 [functions.callhippo]
 verify_jwt = true
+
+[functions.contracts]
+verify_jwt = false
