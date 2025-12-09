@@ -15,17 +15,6 @@ serve(async (req) => {
   try {
     const CALLHIPPO_API_KEY = Deno.env.get('CALLHIPPO_API_KEY');
     
-    if (!CALLHIPPO_API_KEY) {
-      console.error('CALLHIPPO_API_KEY is not configured');
-      return new Response(
-        JSON.stringify({ 
-          error: 'CallHippo API key not configured', 
-          message: 'Please add the CALLHIPPO_API_KEY secret to enable dialer functionality'
-        }),
-        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -65,6 +54,17 @@ serve(async (req) => {
           );
         }
 
+        if (!CALLHIPPO_API_KEY) {
+          console.error('CALLHIPPO_API_KEY is not configured');
+          return new Response(
+            JSON.stringify({ 
+              error: 'CallHippo API key not configured', 
+              message: 'Please add the CALLHIPPO_API_KEY secret to enable dialer functionality'
+            }),
+            { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         // Initiate call via CallHippo API
         const callResponse = await fetch(`${CALLHIPPO_BASE_URL}/call/initiate`, {
           method: 'POST',
@@ -74,7 +74,6 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             to: phoneNumber,
-            // Additional CallHippo params can be added here
           }),
         });
 
@@ -116,7 +115,7 @@ serve(async (req) => {
         const { callId, callLogId, notes } = params;
 
         // End call via CallHippo API
-        if (callId) {
+        if (callId && CALLHIPPO_API_KEY) {
           const endResponse = await fetch(`${CALLHIPPO_BASE_URL}/call/${callId}/end`, {
             method: 'POST',
             headers: {
@@ -152,6 +151,13 @@ serve(async (req) => {
       case 'get_call_status': {
         const { callId } = params;
 
+        if (!CALLHIPPO_API_KEY) {
+          return new Response(
+            JSON.stringify({ error: 'API key not configured', configured: false }),
+            { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         const statusResponse = await fetch(`${CALLHIPPO_BASE_URL}/call/${callId}/status`, {
           method: 'GET',
           headers: {
@@ -164,6 +170,214 @@ serve(async (req) => {
         return new Response(
           JSON.stringify(statusData),
           { status: statusResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'get_available_numbers': {
+        const { countryCode = 'US' } = params;
+
+        if (!CALLHIPPO_API_KEY) {
+          // Return mock data when API key not configured
+          console.log('Returning mock phone numbers - API key not configured');
+          return new Response(
+            JSON.stringify({ 
+              configured: false,
+              numbers: [
+                { id: 'mock-1', number: '+1 (555) 123-4567', country: 'US', monthly_cost: 5.99, type: 'local' },
+                { id: 'mock-2', number: '+1 (555) 234-5678', country: 'US', monthly_cost: 5.99, type: 'local' },
+                { id: 'mock-3', number: '+1 (800) 555-0123', country: 'US', monthly_cost: 12.99, type: 'toll-free' },
+              ]
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const numbersResponse = await fetch(`${CALLHIPPO_BASE_URL}/numbers/available?country=${countryCode}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${CALLHIPPO_API_KEY}`,
+          },
+        });
+
+        const numbersData = await numbersResponse.json();
+
+        return new Response(
+          JSON.stringify({ configured: true, numbers: numbersData }),
+          { status: numbersResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'purchase_number': {
+        const { numberId, workspaceId, phoneNumber, monthlyCost, countryCode } = params;
+
+        if (!CALLHIPPO_API_KEY) {
+          // Mock purchase when API key not configured
+          console.log('Mock number purchase - API key not configured');
+          
+          const { data: insertedNumber, error: insertError } = await supabase
+            .from('workspace_phone_numbers')
+            .insert({
+              workspace_id: workspaceId,
+              phone_number: phoneNumber,
+              country_code: countryCode || 'US',
+              monthly_cost: monthlyCost || 0,
+              callhippo_number_id: numberId,
+            })
+            .select()
+            .single();
+
+          if (insertError) {
+            console.error('Error saving phone number:', insertError);
+            return new Response(
+              JSON.stringify({ error: 'Failed to save phone number' }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          return new Response(
+            JSON.stringify({ success: true, configured: false, number: insertedNumber }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const purchaseResponse = await fetch(`${CALLHIPPO_BASE_URL}/numbers/purchase`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${CALLHIPPO_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ number_id: numberId }),
+        });
+
+        const purchaseData = await purchaseResponse.json();
+
+        if (!purchaseResponse.ok) {
+          return new Response(
+            JSON.stringify({ error: 'Failed to purchase number', details: purchaseData }),
+            { status: purchaseResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Save to database
+        const { data: insertedNumber, error: insertError } = await supabase
+          .from('workspace_phone_numbers')
+          .insert({
+            workspace_id: workspaceId,
+            phone_number: phoneNumber,
+            country_code: countryCode || 'US',
+            monthly_cost: monthlyCost || 0,
+            callhippo_number_id: purchaseData.id || numberId,
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Error saving phone number:', insertError);
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, configured: true, number: insertedNumber }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'purchase_credits': {
+        const { workspaceId, creditsAmount, pricePaid } = params;
+
+        if (!workspaceId || !creditsAmount) {
+          return new Response(
+            JSON.stringify({ error: 'Workspace ID and credits amount required' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Log the purchase
+        const { error: purchaseError } = await supabase
+          .from('credit_purchases')
+          .insert({
+            workspace_id: workspaceId,
+            credits_amount: creditsAmount,
+            price_paid: pricePaid || 0,
+            purchased_by: user.id,
+          });
+
+        if (purchaseError) {
+          console.error('Error logging credit purchase:', purchaseError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to log purchase' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Update or create credits balance
+        const { data: existingCredits } = await supabase
+          .from('workspace_credits')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .single();
+
+        if (existingCredits) {
+          const { error: updateError } = await supabase
+            .from('workspace_credits')
+            .update({
+              credits_balance: existingCredits.credits_balance + creditsAmount,
+              last_purchased_at: new Date().toISOString(),
+            })
+            .eq('workspace_id', workspaceId);
+
+          if (updateError) {
+            console.error('Error updating credits:', updateError);
+          }
+        } else {
+          const { error: insertError } = await supabase
+            .from('workspace_credits')
+            .insert({
+              workspace_id: workspaceId,
+              credits_balance: creditsAmount,
+              last_purchased_at: new Date().toISOString(),
+            });
+
+          if (insertError) {
+            console.error('Error inserting credits:', insertError);
+          }
+        }
+
+        // Get updated balance
+        const { data: updatedCredits } = await supabase
+          .from('workspace_credits')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .single();
+
+        return new Response(
+          JSON.stringify({ success: true, credits: updatedCredits }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'get_credits': {
+        const { workspaceId } = params;
+
+        if (!workspaceId) {
+          return new Response(
+            JSON.stringify({ error: 'Workspace ID required' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const { data: credits, error } = await supabase
+          .from('workspace_credits')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .single();
+
+        if (error && error.code !== 'PGRST116') {
+          console.error('Error fetching credits:', error);
+        }
+
+        return new Response(
+          JSON.stringify({ credits: credits || { credits_balance: 0 } }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
