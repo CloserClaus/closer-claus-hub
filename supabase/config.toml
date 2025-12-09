@@ -5,3 +5,12 @@ verify_jwt = true
 
 [functions.contracts]
 verify_jwt = false
+
+[functions.process-commissions]
+verify_jwt = true
+
+[functions.pay-commission]
+verify_jwt = true
+
+[functions.unlock-workspace]
+verify_jwt = true
