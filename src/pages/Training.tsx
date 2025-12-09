@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -266,14 +268,22 @@ export default function Training() {
 
   if (!currentWorkspace) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <p className="text-muted-foreground">Please select a workspace to access training materials.</p>
-      </div>
+      <DashboardLayout>
+        <DashboardHeader title="Training" />
+        <main className="flex-1 p-6">
+          <div className="flex items-center justify-center h-96">
+            <p className="text-muted-foreground">Please select a workspace to access training materials.</p>
+          </div>
+        </main>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <DashboardLayout>
+      <DashboardHeader title="Training" />
+      <main className="flex-1 p-6">
+        <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-3">
@@ -539,6 +549,8 @@ export default function Training() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+        </div>
+      </main>
+    </DashboardLayout>
   );
 }
