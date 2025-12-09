@@ -64,7 +64,7 @@ export function DisputesTable() {
   });
 
   const resolveMutation = useMutation({
-    mutationFn: async ({ disputeId, status, notes }: { disputeId: string; status: DisputeStatus; notes: string }) => {
+    mutationFn: async ({ disputeId, status, notes, dispute }: { disputeId: string; status: DisputeStatus; notes: string; dispute: any }) => {
       const { error } = await supabase
         .from('disputes')
         .update({
@@ -76,6 +76,23 @@ export function DisputesTable() {
         .eq('id', disputeId);
 
       if (error) throw error;
+
+      // Send notification to the SDR who raised the dispute
+      try {
+        await supabase.functions.invoke('create-notification', {
+          body: {
+            action: 'dispute_resolved',
+            dispute_id: disputeId,
+            workspace_id: dispute.workspace_id,
+            deal_id: dispute.deal_id,
+            raised_by: dispute.raised_by,
+            resolution: status,
+            admin_notes: notes,
+          },
+        });
+      } catch (notifError) {
+        console.error('Failed to send dispute notification:', notifError);
+      }
     },
     onSuccess: () => {
       toast.success('Dispute resolved');
@@ -95,6 +112,7 @@ export function DisputesTable() {
       disputeId: selectedDispute.id,
       status,
       notes: adminNotes,
+      dispute: selectedDispute,
     });
   };
 

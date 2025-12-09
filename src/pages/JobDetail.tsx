@@ -233,7 +233,7 @@ export default function JobDetail() {
 
       if (error) throw error;
 
-      // If hired, add to workspace members
+      // If hired, add to workspace members and send notification
       if (status === 'hired') {
         const application = applications.find(a => a.id === applicationId);
         if (application && job) {
@@ -241,6 +241,19 @@ export default function JobDetail() {
             workspace_id: job.workspace_id,
             user_id: application.user_id,
           });
+
+          // Send notification about the SDR joining the team
+          try {
+            await supabase.functions.invoke('create-notification', {
+              body: {
+                action: 'sdr_joined',
+                workspace_id: job.workspace_id,
+                sdr_user_id: application.user_id,
+              },
+            });
+          } catch (notifError) {
+            console.error('Failed to send join notification:', notifError);
+          }
         }
       }
 

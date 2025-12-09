@@ -87,16 +87,31 @@ export function PayoutsTable() {
 
   // Mark as paid manually (for PayPal payouts to SDRs)
   const markPaidMutation = useMutation({
-    mutationFn: async (commissionId: string) => {
+    mutationFn: async (commission: any) => {
       const { error } = await supabase
         .from('commissions')
         .update({
           status: 'paid',
           paid_at: new Date().toISOString(),
         })
-        .eq('id', commissionId);
+        .eq('id', commission.id);
 
       if (error) throw error;
+
+      // Send notification to the SDR about the payout
+      try {
+        await supabase.functions.invoke('create-notification', {
+          body: {
+            action: 'commission_paid',
+            commission_id: commission.id,
+            sdr_user_id: commission.sdr_id,
+            workspace_id: commission.workspace_id,
+            amount: Number(commission.amount),
+          },
+        });
+      } catch (notifError) {
+        console.error('Failed to send payout notification:', notifError);
+      }
     },
     onSuccess: () => {
       toast.success('Commission marked as paid');
@@ -251,7 +266,7 @@ export function PayoutsTable() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => markPaidMutation.mutate(commission.id)}
+                          onClick={() => markPaidMutation.mutate(commission)}
                           disabled={markPaidMutation.isPending}
                           title="Mark as paid manually (PayPal payout completed)"
                         >
