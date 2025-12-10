@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Building2, Headphones, Shield, TrendingUp, Users, DollarSign, Briefcase, CreditCard, Zap } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -8,12 +9,14 @@ import { usePlatformAnalytics, useAgencyAnalytics, useSDRAnalytics, useRecentAct
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { EmailVerificationBanner } from '@/components/EmailVerificationBanner';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AnalyticsChart } from '@/components/analytics/AnalyticsChart';
 import { PeriodSelector } from '@/components/analytics/PeriodSelector';
 import { ActivityFeed } from '@/components/analytics/ActivityFeed';
+import { toast } from 'sonner';
 
 function StatCard({
   title,
@@ -59,6 +62,7 @@ export default function Dashboard() {
   const { userRole, profile, user } = useAuth();
   const { currentWorkspace, hasActiveSubscription } = useWorkspace();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [period, setPeriod] = useState<'7d' | '30d' | '90d'>('30d');
 
   const { data: platformStats } = usePlatformAdminStats();
@@ -69,6 +73,11 @@ export default function Dashboard() {
   const { data: agencyAnalytics } = useAgencyAnalytics(currentWorkspace?.id, period);
   const { data: sdrAnalytics } = useSDRAnalytics(user?.id, currentWorkspace?.id, period);
   const { data: activities } = useRecentActivity(currentWorkspace?.id, user?.id, userRole);
+
+  const handleRefresh = useCallback(async () => {
+    await queryClient.invalidateQueries();
+    toast.success('Dashboard refreshed');
+  }, [queryClient]);
 
   const formatCurrency = (value: number) => `$${value.toLocaleString()}`;
 
@@ -168,27 +177,29 @@ export default function Dashboard() {
   return (
     <DashboardLayout>
       <DashboardHeader title="Dashboard" />
-      <main className="flex-1 p-4 md:p-6 space-y-4 md:space-y-6 pb-20 md:pb-6">
-        {profile && !profile.email_verified && user && (
-          <EmailVerificationBanner email={profile.email} userId={user.id} fullName={profile.full_name || undefined} />
-        )}
+      <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-auto">
+        <main className="p-4 md:p-6 space-y-4 md:space-y-6 pb-20 md:pb-6">
+          {profile && !profile.email_verified && user && (
+            <EmailVerificationBanner email={profile.email} userId={user.id} fullName={profile.full_name || undefined} />
+          )}
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold">Welcome back, {profile?.full_name?.split(' ')[0] || 'User'}!</h1>
-            <p className="text-xs md:text-sm text-muted-foreground">
-              {userRole === 'platform_admin' && 'Platform overview and management'}
-              {userRole === 'agency_owner' && 'Your agency performance at a glance'}
-              {userRole === 'sdr' && 'Your sales performance overview'}
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold">Welcome back, {profile?.full_name?.split(' ')[0] || 'User'}!</h1>
+              <p className="text-xs md:text-sm text-muted-foreground">
+                {userRole === 'platform_admin' && 'Platform overview and management'}
+                {userRole === 'agency_owner' && 'Your agency performance at a glance'}
+                {userRole === 'sdr' && 'Your sales performance overview'}
+              </p>
+            </div>
+            <PeriodSelector value={period} onChange={setPeriod} />
           </div>
-          <PeriodSelector value={period} onChange={setPeriod} />
-        </div>
 
-        {userRole === 'platform_admin' && renderPlatformAdminDashboard()}
-        {userRole === 'agency_owner' && renderAgencyOwnerDashboard()}
-        {userRole === 'sdr' && renderSDRDashboard()}
-      </main>
+          {userRole === 'platform_admin' && renderPlatformAdminDashboard()}
+          {userRole === 'agency_owner' && renderAgencyOwnerDashboard()}
+          {userRole === 'sdr' && renderSDRDashboard()}
+        </main>
+      </PullToRefresh>
     </DashboardLayout>
   );
 }
