@@ -152,9 +152,11 @@ serve(async (req) => {
         const { callId } = params;
 
         if (!CALLHIPPO_API_KEY) {
+          // Return graceful response when API key not configured
+          console.log('Returning mock call status - API key not configured');
           return new Response(
-            JSON.stringify({ error: 'API key not configured', configured: false }),
-            { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({ configured: false, status: 'unknown', message: 'API key not configured' }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
@@ -168,7 +170,7 @@ serve(async (req) => {
         const statusData = await statusResponse.json();
 
         return new Response(
-          JSON.stringify(statusData),
+          JSON.stringify({ configured: true, ...statusData }),
           { status: statusResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
