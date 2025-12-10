@@ -83,13 +83,13 @@ export default function Dashboard() {
         <StatCard title="Deals" description="Total closed" value={String(platformStats?.closedDeals || 0)} subtext="Last 30 days" icon={Briefcase} variant="success" />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         <AnalyticsChart title="User Growth" description="Agencies vs SDRs" data={platformAnalytics?.userGrowth || []} showSecondary primaryLabel="Agencies" secondaryLabel="SDRs" />
         <AnalyticsChart title="Platform Revenue" description="Rake earnings" data={platformAnalytics?.revenue || []} color="hsl(var(--success))" valueFormatter={formatCurrency} />
         <AnalyticsChart title="Deal Funnel" data={platformAnalytics?.dealFunnel || []} type="bar" />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-3 md:gap-4 grid-cols-1 lg:grid-cols-3">
         <div className="lg:col-span-2"><ActivityFeed activities={activities || []} /></div>
       </div>
     </div>
@@ -130,12 +130,12 @@ export default function Dashboard() {
         <StatCard title="Close Rate" description="Win percentage" value={`${agencyStats?.closeRate || 0}%`} subtext="Last 30 days" icon={TrendingUp} variant="success" />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2">
         <AnalyticsChart title="Pipeline Value" description="Over time" data={agencyAnalytics?.pipelineValue || []} color="hsl(var(--success))" valueFormatter={formatCurrency} />
         <AnalyticsChart title="Deals by Stage" data={agencyAnalytics?.dealsByStage || []} type="bar" />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-3 md:gap-4 grid-cols-1 lg:grid-cols-3">
         <AnalyticsChart title="SDR Performance" description="Deals closed" data={agencyAnalytics?.sdrPerformance || []} type="bar" />
         <div className="lg:col-span-2"><ActivityFeed activities={activities || []} /></div>
       </div>
@@ -153,12 +153,12 @@ export default function Dashboard() {
         <StatCard title="Jobs" description="Open positions" value={String(sdrStats?.openJobs || 0)} subtext="Available now" icon={Briefcase} />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2">
         <AnalyticsChart title="Your Earnings" description="Commission payouts" data={sdrAnalytics?.earnings || []} color="hsl(var(--success))" valueFormatter={formatCurrency} />
         <AnalyticsChart title="Deals Closed" description="Over time" data={sdrAnalytics?.dealsClosed || []} type="bar" color="hsl(var(--primary))" />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-3 md:gap-4 grid-cols-1 lg:grid-cols-3">
         <AnalyticsChart title="Commission Status" data={sdrAnalytics?.commissionStatus || []} type="bar" />
         <div className="lg:col-span-2"><ActivityFeed activities={activities || []} /></div>
       </div>

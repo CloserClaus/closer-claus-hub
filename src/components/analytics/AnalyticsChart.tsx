@@ -50,12 +50,12 @@ export function AnalyticsChart({
 
   return (
     <Card className="h-full">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base font-medium">{title}</CardTitle>
-        {description && <CardDescription className="text-xs">{description}</CardDescription>}
+      <CardHeader className="pb-2 p-4 md:p-6 md:pb-2">
+        <CardTitle className="text-sm md:text-base font-medium">{title}</CardTitle>
+        {description && <CardDescription className="text-[10px] md:text-xs">{description}</CardDescription>}
       </CardHeader>
-      <CardContent className="pt-0">
-        <div className="h-[200px] w-full">
+      <CardContent className="pt-0 p-4 md:p-6 md:pt-0">
+        <div className="h-[160px] md:h-[200px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             {type === 'area' ? (
               <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
