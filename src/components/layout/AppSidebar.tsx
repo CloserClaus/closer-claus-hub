@@ -70,6 +70,7 @@ const platformAdminNav: NavItem[] = [
   { title: 'Payouts', url: '/admin?tab=payouts', icon: DollarSign },
   { title: 'Coupons', url: '/admin?tab=coupons', icon: Tag },
   { title: 'Conversations', url: '/conversations', icon: MessageSquare },
+  { title: 'Admin Controls', url: '/admin?tab=settings', icon: Shield },
 ];
 
 const agencyOwnerNav: NavItem[] = [

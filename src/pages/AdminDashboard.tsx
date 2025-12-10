@@ -15,6 +15,7 @@ import { ContractsTable } from '@/components/admin/ContractsTable';
 import { LeadsTable } from '@/components/admin/LeadsTable';
 import { DealsTable } from '@/components/admin/DealsTable';
 import { CallLogsTable } from '@/components/admin/CallLogsTable';
+import { AdminSettings } from '@/components/admin/AdminSettings';
 
 const tabTitles: Record<string, string> = {
   overview: 'Platform Overview',
@@ -30,6 +31,7 @@ const tabTitles: Record<string, string> = {
   disputes: 'Disputes',
   payouts: 'Payouts',
   coupons: 'Coupons',
+  settings: 'Admin Controls',
 };
 
 export default function AdminDashboard() {
@@ -77,6 +79,8 @@ export default function AdminDashboard() {
         return <PayoutsTable />;
       case 'coupons':
         return <CouponsTable />;
+      case 'settings':
+        return <AdminSettings />;
       default:
         return <AdminOverview />;
     }

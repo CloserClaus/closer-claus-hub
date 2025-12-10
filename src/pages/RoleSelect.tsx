@@ -146,6 +146,12 @@ export default function RoleSelect() {
         throw error;
       }
 
+      // Auto-verify admin's email
+      await supabase
+        .from('profiles')
+        .update({ email_verified: true })
+        .eq('id', user.id);
+
       await refreshProfile();
 
       toast({
