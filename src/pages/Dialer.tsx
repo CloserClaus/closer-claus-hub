@@ -23,7 +23,8 @@ import {
   ShoppingCart,
   Zap,
   Lock,
-  Mic
+  Mic,
+  FileText
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -398,6 +399,10 @@ export default function Dialer() {
                 <ShoppingCart className="h-4 w-4" />
                 Purchase
               </TabsTrigger>
+              <TabsTrigger value="scripts" className="flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Scripts
+              </TabsTrigger>
             </TabsList>
 
         <TabsContent value="dialer" className="space-y-6">
@@ -653,13 +658,14 @@ export default function Dialer() {
         </TabsContent>
 
         <TabsContent value="purchase">
-          <div className="space-y-6">
-            <PurchaseTab 
-              workspaceId={currentWorkspace.id} 
-              onCreditsUpdated={fetchCredits}
-            />
-            <CallScriptManager workspaceId={currentWorkspace.id} />
-          </div>
+          <PurchaseTab 
+            workspaceId={currentWorkspace.id} 
+            onCreditsUpdated={fetchCredits}
+          />
+        </TabsContent>
+
+        <TabsContent value="scripts">
+          <CallScriptManager workspaceId={currentWorkspace.id} />
         </TabsContent>
         </Tabs>
         );
