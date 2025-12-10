@@ -42,12 +42,12 @@ const colorMap = {
 export function ActivityFeed({ activities }: ActivityFeedProps) {
   return (
     <Card className="h-full">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base font-medium">Recent Activity</CardTitle>
+      <CardHeader className="pb-3 p-4 md:p-6 md:pb-3">
+        <CardTitle className="text-sm md:text-base font-medium">Recent Activity</CardTitle>
       </CardHeader>
-      <CardContent className="pt-0">
+      <CardContent className="pt-0 p-4 md:p-6 md:pt-0">
         {activities.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-8">
+          <p className="text-xs md:text-sm text-muted-foreground text-center py-6 md:py-8">
             No recent activity
           </p>
         ) : (
