@@ -80,22 +80,56 @@ serve(async (req) => {
       );
     }
 
-    // Calculate commission
+    // Get SDR profile to determine their level and platform cut
+    const { data: sdrProfile, error: sdrError } = await supabase
+      .from('profiles')
+      .select('full_name, sdr_level, total_deals_closed_value')
+      .eq('id', deal.assigned_to)
+      .single();
+
+    if (sdrError) {
+      console.error('SDR profile not found:', sdrError);
+    }
+
+    const sdrLevel = sdrProfile?.sdr_level || 1;
+    
+    // Platform cut based on SDR level: Level 1 = 15%, Level 2 = 10%, Level 3 = 5%
+    let platformCutPercentage: number;
+    switch (sdrLevel) {
+      case 3:
+        platformCutPercentage = 5;
+        break;
+      case 2:
+        platformCutPercentage = 10;
+        break;
+      default:
+        platformCutPercentage = 15;
+    }
+
+    // Calculate commission (workspace rake is separate from platform cut)
     const rakePercentage = workspace.rake_percentage || 2;
     const rakeAmount = (Number(deal.value) * rakePercentage) / 100;
-    const commissionAmount = Number(deal.value) - rakeAmount;
+    const grossCommission = Number(deal.value) - rakeAmount;
+    
+    // Platform takes a cut from the SDR's commission based on their level
+    const platformCutAmount = (grossCommission * platformCutPercentage) / 100;
+    const sdrPayoutAmount = grossCommission - platformCutAmount;
 
-    console.log(`Commission calculation: value=${deal.value}, rake=${rakePercentage}%, rakeAmount=${rakeAmount}, commissionAmount=${commissionAmount}`);
+    console.log(`Commission calculation: value=${deal.value}, rake=${rakePercentage}%, rakeAmount=${rakeAmount}, grossCommission=${grossCommission}`);
+    console.log(`SDR Level: ${sdrLevel}, Platform Cut: ${platformCutPercentage}% ($${platformCutAmount}), SDR Payout: $${sdrPayoutAmount}`);
 
-    // Create commission record
+    // Create commission record with platform cut details
     const { error: commissionError } = await supabase
       .from('commissions')
       .insert({
         workspace_id: workspaceId,
         deal_id: dealId,
         sdr_id: deal.assigned_to,
-        amount: commissionAmount,
+        amount: grossCommission,
         rake_amount: rakeAmount,
+        platform_cut_percentage: platformCutPercentage,
+        platform_cut_amount: platformCutAmount,
+        sdr_payout_amount: sdrPayoutAmount,
         status: 'pending',
       });
 
@@ -116,13 +150,7 @@ serve(async (req) => {
       .eq('id', workspace.owner_id)
       .maybeSingle();
 
-    const { data: sdrProfile } = await supabase
-      .from('profiles')
-      .select('full_name')
-      .eq('id', deal.assigned_to)
-      .maybeSingle();
-
-    const totalAmount = commissionAmount + rakeAmount;
+    const totalAmount = grossCommission + rakeAmount;
 
     // Create notification for agency owner
     if (workspace.owner_id) {
@@ -141,16 +169,19 @@ serve(async (req) => {
       console.log('Created notification for owner');
     }
 
-    // Create notification for SDR
+    // Create notification for SDR with payout details
     await supabase.from('notifications').insert({
       user_id: deal.assigned_to,
       workspace_id: workspaceId,
       type: 'commission_created',
       title: 'Commission Earned!',
-      message: `You earned a $${commissionAmount.toFixed(2)} commission for closing "${deal.title}". Payout pending agency payment.`,
+      message: `You earned a $${sdrPayoutAmount.toFixed(2)} commission for closing "${deal.title}" (Level ${sdrLevel} - ${platformCutPercentage}% platform fee applied). Payout pending agency payment.`,
       data: {
         deal_id: dealId,
-        commission_amount: commissionAmount,
+        gross_commission: grossCommission,
+        platform_cut: platformCutAmount,
+        sdr_payout: sdrPayoutAmount,
+        sdr_level: sdrLevel,
       },
     });
     console.log('Created notification for SDR');
@@ -160,8 +191,12 @@ serve(async (req) => {
         success: true, 
         message: 'Commission created successfully',
         commission: {
-          amount: commissionAmount,
+          amount: grossCommission,
           rake_amount: rakeAmount,
+          platform_cut_percentage: platformCutPercentage,
+          platform_cut_amount: platformCutAmount,
+          sdr_payout_amount: sdrPayoutAmount,
+          sdr_level: sdrLevel,
         }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
