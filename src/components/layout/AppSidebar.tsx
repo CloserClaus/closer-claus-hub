@@ -13,6 +13,7 @@ import {
   Building2,
   LogOut,
   ChevronDown,
+  CreditCard,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -67,6 +68,7 @@ const agencyOwnerNav: NavItem[] = [
   { title: 'Trainings', url: '/trainings', icon: GraduationCap },
   { title: 'Contracts', url: '/contracts', icon: FileText },
   { title: 'Commissions', url: '/commissions', icon: DollarSign },
+  { title: 'Subscription', url: '/subscription', icon: CreditCard },
 ];
 
 const sdrNav: NavItem[] = [

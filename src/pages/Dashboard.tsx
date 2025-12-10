@@ -1,8 +1,12 @@
-import { Building2, Headphones, Shield, TrendingUp, Users, DollarSign, Briefcase } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Building2, Headphones, Shield, TrendingUp, Users, DollarSign, Briefcase, CreditCard, Zap } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 function StatCard({
   title,
@@ -46,6 +50,8 @@ function StatCard({
 
 export default function Dashboard() {
   const { userRole, profile } = useAuth();
+  const { currentWorkspace, hasActiveSubscription } = useWorkspace();
+  const navigate = useNavigate();
 
   const renderPlatformAdminDashboard = () => (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -99,52 +105,87 @@ export default function Dashboard() {
   );
 
   const renderAgencyOwnerDashboard = () => (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      <StatCard
-        title="Team"
-        description="Your SDRs"
-        value="0"
-        subtext="Active members"
-        icon={Users}
-      />
-      <StatCard
-        title="Pipeline"
-        description="Total deal value"
-        value="$0"
-        subtext="Active deals"
-        icon={TrendingUp}
-        variant="success"
-      />
-      <StatCard
-        title="Commissions"
-        description="Owed to SDRs"
-        value="$0"
-        subtext="Pending payment"
-        icon={DollarSign}
-        variant="warning"
-      />
-      <StatCard
-        title="Calls"
-        description="Team activity"
-        value="0"
-        subtext="Last 7 days"
-        icon={Headphones}
-      />
-      <StatCard
-        title="Meetings"
-        description="Scheduled"
-        value="0"
-        subtext="This week"
-        icon={Building2}
-      />
-      <StatCard
-        title="Close Rate"
-        description="Win percentage"
-        value="0%"
-        subtext="Last 30 days"
-        icon={TrendingUp}
-        variant="success"
-      />
+    <div className="space-y-6">
+      {/* Subscription Banner */}
+      {currentWorkspace && !hasActiveSubscription && (
+        <Card className="border-warning/50 bg-gradient-to-r from-warning/10 via-warning/5 to-transparent">
+          <CardContent className="p-6">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className="h-12 w-12 rounded-xl bg-warning/20 flex items-center justify-center shrink-0">
+                  <Zap className="h-6 w-6 text-warning" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-lg flex items-center gap-2">
+                    Unlock Full Platform Access
+                    <Badge variant="secondary" className="bg-warning/20 text-warning">
+                      Required for SDRs
+                    </Badge>
+                  </h3>
+                  <p className="text-muted-foreground mt-1">
+                    Subscribe to post jobs, hire SDRs, and manage your sales team. Plans start at $247/month.
+                  </p>
+                </div>
+              </div>
+              <Button 
+                className="bg-warning text-warning-foreground hover:bg-warning/90 shrink-0"
+                onClick={() => navigate(`/subscription?workspace=${currentWorkspace.id}`)}
+              >
+                <CreditCard className="h-4 w-4 mr-2" />
+                View Plans
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <StatCard
+          title="Team"
+          description="Your SDRs"
+          value="0"
+          subtext="Active members"
+          icon={Users}
+        />
+        <StatCard
+          title="Pipeline"
+          description="Total deal value"
+          value="$0"
+          subtext="Active deals"
+          icon={TrendingUp}
+          variant="success"
+        />
+        <StatCard
+          title="Commissions"
+          description="Owed to SDRs"
+          value="$0"
+          subtext="Pending payment"
+          icon={DollarSign}
+          variant="warning"
+        />
+        <StatCard
+          title="Calls"
+          description="Team activity"
+          value="0"
+          subtext="Last 7 days"
+          icon={Headphones}
+        />
+        <StatCard
+          title="Meetings"
+          description="Scheduled"
+          value="0"
+          subtext="This week"
+          icon={Building2}
+        />
+        <StatCard
+          title="Close Rate"
+          description="Win percentage"
+          value="0%"
+          subtext="Last 30 days"
+          icon={TrendingUp}
+          variant="success"
+        />
+      </div>
     </div>
   );
 
