@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Upload,
 } from 'lucide-react';
+import { startOfDay, startOfWeek, startOfMonth, startOfQuarter } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { supabase } from '@/integrations/supabase/client';
@@ -23,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,7 +35,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -44,6 +45,10 @@ import { DealForm } from '@/components/crm/DealForm';
 import { PipelineBoard } from '@/components/crm/PipelineBoard';
 import { DisputeForm } from '@/components/crm/DisputeForm';
 import { CSVUpload } from '@/components/crm/CSVUpload';
+import { LeadDetailSidebar } from '@/components/crm/LeadDetailSidebar';
+import { DealDetailSidebar } from '@/components/crm/DealDetailSidebar';
+import { CRMFilters, FilterState } from '@/components/crm/CRMFilters';
+import { BulkActionsBar } from '@/components/crm/BulkActionsBar';
 
 interface Lead {
   id: string;
@@ -73,6 +78,15 @@ interface Deal {
   lead?: Lead;
 }
 
+const DEFAULT_FILTERS: FilterState = {
+  stage: '',
+  dateRange: '',
+  minValue: '',
+  maxValue: '',
+  hasEmail: '',
+  hasPhone: '',
+};
+
 export default function CRM() {
   const { user, userRole } = useAuth();
   const { currentWorkspace } = useWorkspace();
@@ -91,6 +105,21 @@ export default function CRM() {
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
   const [disputeDeal, setDisputeDeal] = useState<Deal | null>(null);
 
+  // Detail sidebars
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
+  const [showLeadDetail, setShowLeadDetail] = useState(false);
+  const [showDealDetail, setShowDealDetail] = useState(false);
+
+  // Filters
+  const [leadFilters, setLeadFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [dealFilters, setDealFilters] = useState<FilterState>(DEFAULT_FILTERS);
+
+  // Bulk selection
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  const [selectedDealIds, setSelectedDealIds] = useState<Set<string>>(new Set());
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+
   const isAgencyOwner = userRole === 'agency_owner';
 
   useEffect(() => {
@@ -104,7 +133,6 @@ export default function CRM() {
     setLoading(true);
 
     try {
-      // Fetch leads
       const { data: leadsData, error: leadsError } = await supabase
         .from('leads')
         .select('*')
@@ -114,7 +142,6 @@ export default function CRM() {
       if (leadsError) throw leadsError;
       setLeads(leadsData || []);
 
-      // Fetch deals
       const { data: dealsData, error: dealsError } = await supabase
         .from('deals')
         .select('*')
@@ -134,12 +161,225 @@ export default function CRM() {
     }
   };
 
+  // Filter logic
+  const getDateThreshold = (dateRange: string): Date | null => {
+    const now = new Date();
+    switch (dateRange) {
+      case 'today':
+        return startOfDay(now);
+      case 'week':
+        return startOfWeek(now);
+      case 'month':
+        return startOfMonth(now);
+      case 'quarter':
+        return startOfQuarter(now);
+      default:
+        return null;
+    }
+  };
+
+  const filteredLeads = useMemo(() => {
+    let result = leads;
+
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(lead => {
+        const fullName = `${lead.first_name} ${lead.last_name}`.toLowerCase();
+        return (
+          fullName.includes(query) ||
+          lead.email?.toLowerCase().includes(query) ||
+          lead.company?.toLowerCase().includes(query)
+        );
+      });
+    }
+
+    // Date range filter
+    if (leadFilters.dateRange) {
+      const threshold = getDateThreshold(leadFilters.dateRange);
+      if (threshold) {
+        result = result.filter(lead => new Date(lead.created_at) >= threshold);
+      }
+    }
+
+    // Has email filter
+    if (leadFilters.hasEmail === 'yes') {
+      result = result.filter(lead => lead.email);
+    } else if (leadFilters.hasEmail === 'no') {
+      result = result.filter(lead => !lead.email);
+    }
+
+    // Has phone filter
+    if (leadFilters.hasPhone === 'yes') {
+      result = result.filter(lead => lead.phone);
+    } else if (leadFilters.hasPhone === 'no') {
+      result = result.filter(lead => !lead.phone);
+    }
+
+    return result;
+  }, [leads, searchQuery, leadFilters]);
+
+  const filteredDeals = useMemo(() => {
+    let result = deals;
+
+    // Stage filter
+    if (dealFilters.stage) {
+      result = result.filter(deal => deal.stage === dealFilters.stage);
+    }
+
+    // Date range filter
+    if (dealFilters.dateRange) {
+      const threshold = getDateThreshold(dealFilters.dateRange);
+      if (threshold) {
+        result = result.filter(deal => new Date(deal.created_at) >= threshold);
+      }
+    }
+
+    // Value range filter
+    if (dealFilters.minValue) {
+      result = result.filter(deal => Number(deal.value) >= Number(dealFilters.minValue));
+    }
+    if (dealFilters.maxValue) {
+      result = result.filter(deal => Number(deal.value) <= Number(dealFilters.maxValue));
+    }
+
+    return result;
+  }, [deals, dealFilters]);
+
+  // Selection handlers
+  const toggleLeadSelection = (leadId: string) => {
+    setSelectedLeadIds(prev => {
+      const next = new Set(prev);
+      if (next.has(leadId)) {
+        next.delete(leadId);
+      } else {
+        next.add(leadId);
+      }
+      return next;
+    });
+  };
+
+  const toggleDealSelection = (dealId: string) => {
+    setSelectedDealIds(prev => {
+      const next = new Set(prev);
+      if (next.has(dealId)) {
+        next.delete(dealId);
+      } else {
+        next.add(dealId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllLeads = () => {
+    if (selectedLeadIds.size === filteredLeads.length) {
+      setSelectedLeadIds(new Set());
+    } else {
+      setSelectedLeadIds(new Set(filteredLeads.map(l => l.id)));
+    }
+  };
+
+  const selectAllDeals = () => {
+    if (selectedDealIds.size === filteredDeals.length) {
+      setSelectedDealIds(new Set());
+    } else {
+      setSelectedDealIds(new Set(filteredDeals.map(d => d.id)));
+    }
+  };
+
+  // Bulk actions
+  const handleBulkDeleteLeads = async () => {
+    if (selectedLeadIds.size === 0) return;
+    setIsBulkProcessing(true);
+
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .in('id', Array.from(selectedLeadIds));
+
+      if (error) throw error;
+
+      toast({ title: `Deleted ${selectedLeadIds.size} leads` });
+      setSelectedLeadIds(new Set());
+      fetchData();
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to delete leads',
+      });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleBulkDeleteDeals = async () => {
+    if (selectedDealIds.size === 0) return;
+    setIsBulkProcessing(true);
+
+    try {
+      const { error } = await supabase
+        .from('deals')
+        .delete()
+        .in('id', Array.from(selectedDealIds));
+
+      if (error) throw error;
+
+      toast({ title: `Deleted ${selectedDealIds.size} deals` });
+      setSelectedDealIds(new Set());
+      fetchData();
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to delete deals',
+      });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleBulkStageChange = async (stage: string) => {
+    if (selectedDealIds.size === 0) return;
+    setIsBulkProcessing(true);
+
+    try {
+      const { error } = await supabase
+        .from('deals')
+        .update({
+          stage: stage as 'new' | 'contacted' | 'discovery' | 'meeting' | 'proposal' | 'closed_won' | 'closed_lost',
+          closed_at: ['closed_won', 'closed_lost'].includes(stage)
+            ? new Date().toISOString()
+            : null,
+        })
+        .in('id', Array.from(selectedDealIds));
+
+      if (error) throw error;
+
+      toast({ title: `Updated ${selectedDealIds.size} deals to ${stage.replace('_', ' ')}` });
+      setSelectedDealIds(new Set());
+      fetchData();
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to update deals',
+      });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  // Individual actions
   const handleDeleteLead = async (leadId: string) => {
     try {
       const { error } = await supabase.from('leads').delete().eq('id', leadId);
       if (error) throw error;
-      
+
       toast({ title: 'Lead deleted' });
+      setShowLeadDetail(false);
+      setSelectedLead(null);
       fetchData();
     } catch (error: any) {
       toast({
@@ -154,8 +394,10 @@ export default function CRM() {
     try {
       const { error } = await supabase.from('deals').delete().eq('id', dealId);
       if (error) throw error;
-      
+
       toast({ title: 'Deal deleted' });
+      setShowDealDetail(false);
+      setSelectedDeal(null);
       fetchData();
     } catch (error: any) {
       toast({
@@ -166,15 +408,15 @@ export default function CRM() {
     }
   };
 
-  const filteredLeads = leads.filter(lead => {
-    const fullName = `${lead.first_name} ${lead.last_name}`.toLowerCase();
-    const query = searchQuery.toLowerCase();
-    return (
-      fullName.includes(query) ||
-      lead.email?.toLowerCase().includes(query) ||
-      lead.company?.toLowerCase().includes(query)
-    );
-  });
+  const openLeadDetail = (lead: Lead) => {
+    setSelectedLead(lead);
+    setShowLeadDetail(true);
+  };
+
+  const openDealDetail = (deal: Deal) => {
+    setSelectedDeal(deal);
+    setShowDealDetail(true);
+  };
 
   const pipelineValue = deals
     .filter(d => d.stage !== 'closed_lost')
@@ -269,23 +511,32 @@ export default function CRM() {
           <TabsContent value="pipeline">
             <PipelineBoard
               deals={deals}
-              onDealClick={(deal) => {
-                setEditingDeal(deal);
-                setShowDealForm(true);
-              }}
+              onDealClick={openDealDetail}
               onStageChange={fetchData}
             />
           </TabsContent>
 
           <TabsContent value="leads" className="space-y-4">
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search leads..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 bg-muted border-border"
-              />
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+              <div className="flex flex-wrap gap-2 items-center">
+                <div className="relative w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search leads..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 bg-muted border-border"
+                  />
+                </div>
+                <CRMFilters
+                  type="leads"
+                  filters={leadFilters}
+                  onFiltersChange={setLeadFilters}
+                />
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {filteredLeads.length} of {leads.length} leads
+              </div>
             </div>
 
             {loading ? (
@@ -314,74 +565,120 @@ export default function CRM() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredLeads.map(lead => (
-                  <Card key={lead.id} className="glass hover:glow-sm transition-all">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <CardTitle className="text-base">
-                            {lead.first_name} {lead.last_name}
-                          </CardTitle>
-                          {lead.company && (
-                            <CardDescription className="flex items-center gap-1 mt-1">
-                              <Building2 className="h-3 w-3" />
-                              {lead.company}
-                              {lead.title && ` • ${lead.title}`}
-                            </CardDescription>
-                          )}
-                        </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setEditingLead(lead);
-                                setShowLeadForm(true);
-                              }}
-                            >
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            {isAgencyOwner && (
-                              <DropdownMenuItem
-                                onClick={() => handleDeleteLead(lead.id)}
-                                className="text-destructive"
+              <>
+                {/* Select All */}
+                <div className="flex items-center gap-2 pb-2">
+                  <Checkbox
+                    checked={selectedLeadIds.size === filteredLeads.length && filteredLeads.length > 0}
+                    onCheckedChange={selectAllLeads}
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    Select all ({filteredLeads.length})
+                  </span>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {filteredLeads.map(lead => (
+                    <Card
+                      key={lead.id}
+                      className={`glass hover:glow-sm transition-all cursor-pointer ${
+                        selectedLeadIds.has(lead.id) ? 'ring-2 ring-primary' : ''
+                      }`}
+                      onClick={() => openLeadDetail(lead)}
+                    >
+                      <CardHeader className="pb-2">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-3">
+                            <Checkbox
+                              checked={selectedLeadIds.has(lead.id)}
+                              onCheckedChange={() => toggleLeadSelection(lead.id)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <div>
+                              <CardTitle className="text-base">
+                                {lead.first_name} {lead.last_name}
+                              </CardTitle>
+                              {lead.company && (
+                                <CardDescription className="flex items-center gap-1 mt-1">
+                                  <Building2 className="h-3 w-3" />
+                                  {lead.company}
+                                  {lead.title && ` • ${lead.title}`}
+                                </CardDescription>
+                              )}
+                            </div>
+                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="bg-popover border-border">
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingLead(lead);
+                                  setShowLeadForm(true);
+                                }}
+                              >
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit
                               </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {lead.email && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Mail className="h-4 w-4" />
-                          {lead.email}
+                              {isAgencyOwner && (
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteLead(lead.id);
+                                  }}
+                                  className="text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
-                      )}
-                      {lead.phone && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Phone className="h-4 w-4" />
-                          {lead.phone}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {lead.email && (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Mail className="h-4 w-4" />
+                            {lead.email}
+                          </div>
+                        )}
+                        {lead.phone && (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Phone className="h-4 w-4" />
+                            {lead.phone}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </>
             )}
           </TabsContent>
 
           <TabsContent value="deals" className="space-y-4">
-            {deals.length === 0 ? (
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+              <CRMFilters
+                type="deals"
+                filters={dealFilters}
+                onFiltersChange={setDealFilters}
+              />
+              <div className="text-sm text-muted-foreground">
+                {filteredDeals.length} of {deals.length} deals
+              </div>
+            </div>
+
+            {filteredDeals.length === 0 ? (
               <Card className="border-dashed">
                 <CardContent className="p-12 text-center">
                   <DollarSign className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -396,72 +693,153 @@ export default function CRM() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-3">
-                {deals.map(deal => (
-                  <Card
-                    key={deal.id}
-                    className="glass hover:glow-sm transition-all cursor-pointer"
-                    onClick={() => {
-                      setEditingDeal(deal);
-                      setShowDealForm(true);
-                    }}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="font-medium">{deal.title}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            Created {new Date(deal.created_at).toLocaleDateString()}
-                          </p>
+              <>
+                {/* Select All */}
+                <div className="flex items-center gap-2 pb-2">
+                  <Checkbox
+                    checked={selectedDealIds.size === filteredDeals.length && filteredDeals.length > 0}
+                    onCheckedChange={selectAllDeals}
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    Select all ({filteredDeals.length})
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {filteredDeals.map(deal => (
+                    <Card
+                      key={deal.id}
+                      className={`glass hover:glow-sm transition-all cursor-pointer ${
+                        selectedDealIds.has(deal.id) ? 'ring-2 ring-primary' : ''
+                      }`}
+                      onClick={() => openDealDetail(deal)}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              checked={selectedDealIds.has(deal.id)}
+                              onCheckedChange={() => toggleDealSelection(deal.id)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <div>
+                              <h3 className="font-medium">{deal.title}</h3>
+                              <p className="text-sm text-muted-foreground">
+                                Created {new Date(deal.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <Badge variant="outline" className="capitalize">
+                              {deal.stage.replace('_', ' ')}
+                            </Badge>
+                            <span className="font-semibold text-success">
+                              ${Number(deal.value).toLocaleString()}
+                            </span>
+                            {!isAgencyOwner && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDisputeDeal(deal);
+                                  setShowDisputeForm(true);
+                                }}
+                                title="File a dispute"
+                              >
+                                <AlertTriangle className="h-4 w-4 text-warning" />
+                              </Button>
+                            )}
+                            {isAgencyOwner && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteDeal(deal.id);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <Badge variant="outline" className="capitalize">
-                            {deal.stage.replace('_', ' ')}
-                          </Badge>
-                          <span className="font-semibold text-success">
-                            ${Number(deal.value).toLocaleString()}
-                          </span>
-                          {!isAgencyOwner && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDisputeDeal(deal);
-                                setShowDisputeForm(true);
-                              }}
-                              title="File a dispute"
-                            >
-                              <AlertTriangle className="h-4 w-4 text-warning" />
-                            </Button>
-                          )}
-                          {isAgencyOwner && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteDeal(deal.id);
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </>
             )}
           </TabsContent>
         </Tabs>
 
+        {/* Bulk Actions */}
+        <BulkActionsBar
+          selectedCount={selectedLeadIds.size}
+          type="leads"
+          onClearSelection={() => setSelectedLeadIds(new Set())}
+          onBulkDelete={handleBulkDeleteLeads}
+          isAgencyOwner={isAgencyOwner}
+          isProcessing={isBulkProcessing}
+        />
+
+        <BulkActionsBar
+          selectedCount={selectedDealIds.size}
+          type="deals"
+          onClearSelection={() => setSelectedDealIds(new Set())}
+          onBulkDelete={handleBulkDeleteDeals}
+          onBulkStageChange={handleBulkStageChange}
+          isAgencyOwner={isAgencyOwner}
+          isProcessing={isBulkProcessing}
+        />
+
+        {/* Lead Detail Sidebar */}
+        <LeadDetailSidebar
+          lead={selectedLead}
+          open={showLeadDetail}
+          onClose={() => {
+            setShowLeadDetail(false);
+            setSelectedLead(null);
+          }}
+          onEdit={(lead) => {
+            setShowLeadDetail(false);
+            setEditingLead(lead);
+            setShowLeadForm(true);
+          }}
+          onDelete={handleDeleteLead}
+          isAgencyOwner={isAgencyOwner}
+        />
+
+        {/* Deal Detail Sidebar */}
+        <DealDetailSidebar
+          deal={selectedDeal}
+          open={showDealDetail}
+          onClose={() => {
+            setShowDealDetail(false);
+            setSelectedDeal(null);
+          }}
+          onEdit={(deal) => {
+            setShowDealDetail(false);
+            setEditingDeal(deal);
+            setShowDealForm(true);
+          }}
+          onDelete={handleDeleteDeal}
+          onDispute={(deal) => {
+            setShowDealDetail(false);
+            setDisputeDeal(deal);
+            setShowDisputeForm(true);
+          }}
+          isAgencyOwner={isAgencyOwner}
+        />
+
         {/* Lead Form Dialog */}
-        <Dialog open={showLeadForm} onOpenChange={(open) => {
-          setShowLeadForm(open);
-          if (!open) setEditingLead(null);
-        }}>
+        <Dialog
+          open={showLeadForm}
+          onOpenChange={(open) => {
+            setShowLeadForm(open);
+            if (!open) setEditingLead(null);
+          }}
+        >
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>{editingLead ? 'Edit Lead' : 'Add New Lead'}</DialogTitle>
@@ -486,10 +864,13 @@ export default function CRM() {
         </Dialog>
 
         {/* Deal Form Dialog */}
-        <Dialog open={showDealForm} onOpenChange={(open) => {
-          setShowDealForm(open);
-          if (!open) setEditingDeal(null);
-        }}>
+        <Dialog
+          open={showDealForm}
+          onOpenChange={(open) => {
+            setShowDealForm(open);
+            if (!open) setEditingDeal(null);
+          }}
+        >
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>{editingDeal ? 'Edit Deal' : 'Create New Deal'}</DialogTitle>
@@ -515,10 +896,13 @@ export default function CRM() {
         </Dialog>
 
         {/* Dispute Form Dialog */}
-        <Dialog open={showDisputeForm} onOpenChange={(open) => {
-          setShowDisputeForm(open);
-          if (!open) setDisputeDeal(null);
-        }}>
+        <Dialog
+          open={showDisputeForm}
+          onOpenChange={(open) => {
+            setShowDisputeForm(open);
+            if (!open) setDisputeDeal(null);
+          }}
+        >
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>File a Dispute</DialogTitle>
