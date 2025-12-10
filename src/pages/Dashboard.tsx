@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Building2, Headphones, Shield, TrendingUp, Users, DollarSign, Briefcase, CreditCard, Zap } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { usePlatformAdminStats, useAgencyOwnerStats, useSDRStats } from '@/hooks/useDashboardStats';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -53,26 +54,30 @@ export default function Dashboard() {
   const { currentWorkspace, hasActiveSubscription } = useWorkspace();
   const navigate = useNavigate();
 
+  const { data: platformStats } = usePlatformAdminStats();
+  const { data: agencyStats } = useAgencyOwnerStats();
+  const { data: sdrStats } = useSDRStats();
+
   const renderPlatformAdminDashboard = () => (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       <StatCard
         title="Agencies"
         description="Total registered"
-        value="0"
+        value={String(platformStats?.agencies || 0)}
         subtext="Active agencies"
         icon={Building2}
       />
       <StatCard
         title="SDRs"
         description="Total registered"
-        value="0"
+        value={String(platformStats?.sdrs || 0)}
         subtext="Active SDRs"
         icon={Users}
       />
       <StatCard
         title="Disputes"
         description="Pending resolution"
-        value="0"
+        value={String(platformStats?.pendingDisputes || 0)}
         subtext="Awaiting review"
         icon={Shield}
         variant="warning"
@@ -80,15 +85,15 @@ export default function Dashboard() {
       <StatCard
         title="Revenue"
         description="Platform rake"
-        value="$0"
-        subtext="Last 30 days"
+        value={`$${(platformStats?.revenue || 0).toLocaleString()}`}
+        subtext="All time"
         icon={TrendingUp}
         variant="success"
       />
       <StatCard
         title="Payouts"
         description="Pending SDR payouts"
-        value="$0"
+        value={`$${(platformStats?.pendingPayouts || 0).toLocaleString()}`}
         subtext="Awaiting transfer"
         icon={DollarSign}
         variant="warning"
@@ -96,7 +101,7 @@ export default function Dashboard() {
       <StatCard
         title="Deals"
         description="Total closed"
-        value="0"
+        value={String(platformStats?.closedDeals || 0)}
         subtext="Last 30 days"
         icon={Briefcase}
         variant="success"
@@ -143,14 +148,14 @@ export default function Dashboard() {
         <StatCard
           title="Team"
           description="Your SDRs"
-          value="0"
+          value={String(agencyStats?.teamSize || 0)}
           subtext="Active members"
           icon={Users}
         />
         <StatCard
           title="Pipeline"
           description="Total deal value"
-          value="$0"
+          value={`$${(agencyStats?.pipelineValue || 0).toLocaleString()}`}
           subtext="Active deals"
           icon={TrendingUp}
           variant="success"
@@ -158,7 +163,7 @@ export default function Dashboard() {
         <StatCard
           title="Commissions"
           description="Owed to SDRs"
-          value="$0"
+          value={`$${(agencyStats?.pendingCommissions || 0).toLocaleString()}`}
           subtext="Pending payment"
           icon={DollarSign}
           variant="warning"
@@ -166,21 +171,21 @@ export default function Dashboard() {
         <StatCard
           title="Calls"
           description="Team activity"
-          value="0"
+          value={String(agencyStats?.callsLast7Days || 0)}
           subtext="Last 7 days"
           icon={Headphones}
         />
         <StatCard
           title="Meetings"
           description="Scheduled"
-          value="0"
+          value={String(agencyStats?.meetingsThisWeek || 0)}
           subtext="This week"
           icon={Building2}
         />
         <StatCard
           title="Close Rate"
           description="Win percentage"
-          value="0%"
+          value={`${agencyStats?.closeRate || 0}%`}
           subtext="Last 30 days"
           icon={TrendingUp}
           variant="success"
@@ -194,14 +199,14 @@ export default function Dashboard() {
       <StatCard
         title="Workspaces"
         description="Active agencies"
-        value="0"
+        value={String(sdrStats?.workspaces || 0)}
         subtext="Companies you work for"
         icon={Building2}
       />
       <StatCard
         title="Earnings"
         description="Total earned"
-        value="$0"
+        value={`$${(sdrStats?.totalEarnings || 0).toLocaleString()}`}
         subtext="All time"
         icon={DollarSign}
         variant="success"
@@ -209,7 +214,7 @@ export default function Dashboard() {
       <StatCard
         title="Pending"
         description="Awaiting payout"
-        value="$0"
+        value={`$${(sdrStats?.pendingPayouts || 0).toLocaleString()}`}
         subtext="To be paid"
         icon={DollarSign}
         variant="warning"
@@ -217,14 +222,14 @@ export default function Dashboard() {
       <StatCard
         title="Calls"
         description="Your activity"
-        value="0"
+        value={String(sdrStats?.callsLast7Days || 0)}
         subtext="Last 7 days"
         icon={Headphones}
       />
       <StatCard
         title="Deals"
         description="Closed won"
-        value="0"
+        value={String(sdrStats?.closedDealsLast30Days || 0)}
         subtext="Last 30 days"
         icon={Briefcase}
         variant="success"
@@ -232,7 +237,7 @@ export default function Dashboard() {
       <StatCard
         title="Jobs"
         description="Open positions"
-        value="0"
+        value={String(sdrStats?.openJobs || 0)}
         subtext="Available now"
         icon={Briefcase}
       />
