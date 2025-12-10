@@ -68,7 +68,7 @@ const agencyOwnerNav: NavItem[] = [
   { title: 'Trainings', url: '/trainings', icon: GraduationCap },
   { title: 'Contracts', url: '/contracts', icon: FileText },
   { title: 'Commissions', url: '/commissions', icon: DollarSign },
-  { title: 'Subscription', url: '/subscription', icon: CreditCard },
+  { title: 'Billing', url: '/billing', icon: CreditCard },
 ];
 
 const sdrNav: NavItem[] = [
