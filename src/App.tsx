@@ -10,6 +10,7 @@ import Auth from "./pages/Auth";
 import RoleSelect from "./pages/RoleSelect";
 import Onboarding from "./pages/Onboarding";
 import Subscription from "./pages/Subscription";
+import Billing from "./pages/Billing";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
 import Jobs from "./pages/Jobs";
@@ -41,6 +42,7 @@ const App = () => (
               <Route path="/role-select" element={<RoleSelect />} />
               <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/subscription" element={<Subscription />} />
+              <Route path="/billing" element={<Billing />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/jobs" element={<Jobs />} />
