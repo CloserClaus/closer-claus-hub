@@ -22,13 +22,16 @@ import {
   AlertCircle,
   ShoppingCart,
   Zap,
-  Lock
+  Lock,
+  Mic
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { CreditsDisplay } from "@/components/dialer/CreditsDisplay";
 import { PurchaseTab } from "@/components/dialer/PurchaseTab";
 import { PowerDialer } from "@/components/dialer/PowerDialer";
+import { CallRecorder } from "@/components/dialer/CallRecorder";
+import { CallRecordingPlayer } from "@/components/dialer/CallRecordingPlayer";
 
 interface Lead {
   id: string;
@@ -48,6 +51,7 @@ interface CallLog {
   created_at: string;
   lead_id: string | null;
   callhippo_call_id?: string | null;
+  recording_url?: string | null;
   leads?: Lead;
 }
 
@@ -170,7 +174,8 @@ export default function Dialer() {
           duration_seconds,
           notes,
           created_at,
-          lead_id
+          lead_id,
+          recording_url
         `)
         .eq('workspace_id', currentWorkspace.id)
         .order('created_at', { ascending: false })
@@ -466,6 +471,19 @@ export default function Dialer() {
                       <p className="text-2xl font-mono">{formatDuration(callDuration)}</p>
                     </div>
 
+                    {/* Call Recording Controls */}
+                    {currentCallLog && (
+                      <div className="flex justify-center">
+                        <CallRecorder
+                          callLogId={currentCallLog.id}
+                          workspaceId={currentWorkspace.id}
+                          onRecordingComplete={(url) => {
+                            setCurrentCallLog(prev => prev ? { ...prev, recording_url: url } : null);
+                          }}
+                        />
+                      </div>
+                    )}
+
                     <Textarea
                       placeholder="Call notes..."
                       value={callNotes}
@@ -569,8 +587,8 @@ export default function Dialer() {
                       </p>
                     ) : (
                       callLogs.map((log) => (
-                        <div key={log.id} className="p-3 rounded-lg border border-border">
-                          <div className="flex items-center justify-between mb-2">
+                        <div key={log.id} className="p-3 rounded-lg border border-border space-y-2">
+                          <div className="flex items-center justify-between">
                             <p className="font-mono text-sm">{log.phone_number}</p>
                             {getCallStatusBadge(log.call_status)}
                           </div>
@@ -580,8 +598,14 @@ export default function Dialer() {
                               <span>{formatDuration(log.duration_seconds)}</span>
                             )}
                           </div>
+                          {log.recording_url && (
+                            <CallRecordingPlayer 
+                              recordingUrl={log.recording_url} 
+                              callId={log.id} 
+                            />
+                          )}
                           {log.notes && (
-                            <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{log.notes}</p>
+                            <p className="text-sm text-muted-foreground line-clamp-2">{log.notes}</p>
                           )}
                         </div>
                       ))
