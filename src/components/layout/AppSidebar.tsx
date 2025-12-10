@@ -53,47 +53,48 @@ interface NavItem {
   title: string;
   url: string;
   icon: React.ComponentType<{ className?: string }>;
+  tourId?: string;
 }
 
 const platformAdminNav: NavItem[] = [
   { title: 'Overview', url: '/admin', icon: LayoutDashboard },
-  { title: 'Agencies', url: '/admin?tab=agencies', icon: Building2 },
-  { title: 'SDRs', url: '/admin?tab=sdrs', icon: Users },
-  { title: 'Jobs', url: '/admin?tab=jobs', icon: Briefcase },
+  { title: 'Agencies', url: '/admin?tab=agencies', icon: Building2, tourId: 'nav-agencies' },
+  { title: 'SDRs', url: '/admin?tab=sdrs', icon: Users, tourId: 'nav-sdrs' },
+  { title: 'Jobs', url: '/admin?tab=jobs', icon: Briefcase, tourId: 'nav-jobs' },
   { title: 'Applications', url: '/admin?tab=applications', icon: FileText },
   { title: 'Leads', url: '/admin?tab=leads', icon: UserCircle },
   { title: 'Deals', url: '/admin?tab=deals', icon: Handshake },
   { title: 'Contracts', url: '/admin?tab=contracts', icon: FileSignature },
   { title: 'Calls', url: '/admin?tab=calls', icon: Phone },
   { title: 'Trainings', url: '/admin?tab=trainings', icon: GraduationCap },
-  { title: 'Disputes', url: '/admin?tab=disputes', icon: AlertTriangle },
+  { title: 'Disputes', url: '/admin?tab=disputes', icon: AlertTriangle, tourId: 'disputes' },
   { title: 'Payouts', url: '/admin?tab=payouts', icon: DollarSign },
   { title: 'Coupons', url: '/admin?tab=coupons', icon: Tag },
   { title: 'Conversations', url: '/conversations', icon: MessageSquare },
-  { title: 'Admin Controls', url: '/admin?tab=settings', icon: Shield },
+  { title: 'Admin Controls', url: '/admin?tab=settings', icon: Shield, tourId: 'admin-controls' },
 ];
 
 const agencyOwnerNav: NavItem[] = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
-  { title: 'Jobs', url: '/jobs', icon: Briefcase },
-  { title: 'Team', url: '/team', icon: Users },
-  { title: 'CRM', url: '/crm', icon: FileText },
-  { title: 'Dialer', url: '/dialer', icon: Phone },
+  { title: 'Jobs', url: '/jobs', icon: Briefcase, tourId: 'nav-jobs' },
+  { title: 'Team', url: '/team', icon: Users, tourId: 'nav-team' },
+  { title: 'CRM', url: '/crm', icon: FileText, tourId: 'nav-crm' },
+  { title: 'Dialer', url: '/dialer', icon: Phone, tourId: 'nav-dialer' },
   { title: 'Conversations', url: '/conversations', icon: MessageSquare },
   { title: 'Trainings', url: '/trainings', icon: GraduationCap },
   { title: 'Contracts', url: '/contracts', icon: FileText },
-  { title: 'Commissions', url: '/commissions', icon: DollarSign },
+  { title: 'Commissions', url: '/commissions', icon: DollarSign, tourId: 'nav-commissions' },
   { title: 'Billing', url: '/billing', icon: CreditCard },
 ];
 
 const sdrNav: NavItem[] = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
-  { title: 'Find Jobs', url: '/jobs', icon: Briefcase },
-  { title: 'CRM', url: '/crm', icon: FileText },
-  { title: 'Dialer', url: '/dialer', icon: Phone },
+  { title: 'Find Jobs', url: '/jobs', icon: Briefcase, tourId: 'nav-jobs' },
+  { title: 'CRM', url: '/crm', icon: FileText, tourId: 'nav-crm' },
+  { title: 'Dialer', url: '/dialer', icon: Phone, tourId: 'nav-dialer' },
   { title: 'Conversations', url: '/conversations', icon: MessageSquare },
   { title: 'Trainings', url: '/trainings', icon: GraduationCap },
-  { title: 'My Earnings', url: '/earnings', icon: DollarSign },
+  { title: 'My Earnings', url: '/earnings', icon: DollarSign, tourId: 'nav-earnings' },
 ];
 
 export function AppSidebar() {
@@ -193,6 +194,7 @@ export function AppSidebar() {
                         to={item.url}
                         className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-sidebar-accent"
                         activeClassName="bg-sidebar-accent text-sidebar-primary"
+                        data-tour={item.tourId}
                       >
                         <item.icon className="h-5 w-5 shrink-0" />
                         {!collapsed && <span>{item.title}</span>}
