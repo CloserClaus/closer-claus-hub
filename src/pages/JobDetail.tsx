@@ -83,6 +83,7 @@ export default function JobDetail() {
   const [showExclusivityWarning, setShowExclusivityWarning] = useState(false);
   const [coverLetter, setCoverLetter] = useState('');
   const [currentWorkspaceCount, setCurrentWorkspaceCount] = useState(0);
+  const [cooldownUntil, setCooldownUntil] = useState<Date | null>(null);
 
   const isAgencyOwner = userRole === 'agency_owner';
   const isSDR = userRole === 'sdr';
@@ -151,14 +152,22 @@ export default function JobDetail() {
 
         setUserApplication(appData);
 
-        // Get current workspace count
+        // Get current workspace count and check cooldown
         const { data: memberships } = await supabase
           .from('workspace_members')
-          .select('id')
-          .eq('user_id', user.id)
-          .is('removed_at', null);
+          .select('id, cooldown_until')
+          .eq('user_id', user.id);
 
-        setCurrentWorkspaceCount(memberships?.length || 0);
+        const activeMemberships = memberships?.filter(m => !m.cooldown_until || new Date(m.cooldown_until) < new Date()) || [];
+        setCurrentWorkspaceCount(activeMemberships.length);
+
+        // Check if any membership has an active cooldown
+        const activeCooldown = memberships?.find(m => m.cooldown_until && new Date(m.cooldown_until) > new Date());
+        if (activeCooldown) {
+          setCooldownUntil(new Date(activeCooldown.cooldown_until));
+        } else {
+          setCooldownUntil(null);
+        }
       }
     } catch (error: any) {
       toast({
@@ -174,6 +183,17 @@ export default function JobDetail() {
 
   const handleApply = async () => {
     if (!job || !user) return;
+
+    // Check cooldown
+    if (cooldownUntil) {
+      const hoursLeft = Math.ceil((cooldownUntil.getTime() - Date.now()) / (1000 * 60 * 60));
+      toast({
+        variant: 'destructive',
+        title: 'Cooldown Active',
+        description: `You must wait ${hoursLeft} more hours before applying to new jobs.`,
+      });
+      return;
+    }
 
     // Check employment rules
     if (job.employment_type === 'salary' && currentWorkspaceCount > 0) {
@@ -237,9 +257,28 @@ export default function JobDetail() {
       if (status === 'hired') {
         const application = applications.find(a => a.id === applicationId);
         if (application && job) {
+          // For salary jobs, remove from all other workspaces first
+          if (job.employment_type === 'salary') {
+            const cooldownTime = new Date();
+            cooldownTime.setHours(cooldownTime.getHours() + 48);
+
+            // Remove from all other workspaces
+            await supabase
+              .from('workspace_members')
+              .update({
+                removed_at: new Date().toISOString(),
+                cooldown_until: cooldownTime.toISOString(),
+              })
+              .eq('user_id', application.user_id)
+              .neq('workspace_id', job.workspace_id)
+              .is('removed_at', null);
+          }
+
+          // Add to this workspace with is_salary_exclusive flag
           await supabase.from('workspace_members').insert({
             workspace_id: job.workspace_id,
             user_id: application.user_id,
+            is_salary_exclusive: job.employment_type === 'salary',
           });
 
           // Send notification about the SDR joining the team
