@@ -50,12 +50,8 @@ interface NavItem {
 }
 
 const platformAdminNav: NavItem[] = [
-  { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
-  { title: 'Agencies', url: '/agencies', icon: Building2 },
-  { title: 'SDRs', url: '/sdrs', icon: Users },
+  { title: 'Admin Panel', url: '/admin', icon: Shield },
   { title: 'Conversations', url: '/conversations', icon: MessageSquare },
-  { title: 'Disputes', url: '/disputes', icon: Shield },
-  { title: 'Payouts', url: '/payouts', icon: DollarSign },
 ];
 
 const agencyOwnerNav: NavItem[] = [
