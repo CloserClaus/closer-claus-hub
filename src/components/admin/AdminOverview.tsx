@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Building2, Users, AlertTriangle, DollarSign, Briefcase, TrendingUp } from 'lucide-react';
+import { Building2, Users, AlertTriangle, DollarSign, Briefcase, TrendingUp, FileSignature, Phone, GraduationCap, FileCheck, UserCircle, Handshake } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -45,7 +45,7 @@ function StatCard({
 
 export function AdminOverview() {
   const { data: stats } = useQuery({
-    queryKey: ['admin-stats'],
+    queryKey: ['admin-stats-extended'],
     queryFn: async () => {
       const [
         { count: agencyCount },
@@ -53,12 +53,24 @@ export function AdminOverview() {
         { count: disputeCount },
         { data: commissions },
         { count: dealCount },
+        { count: jobCount },
+        { count: applicationCount },
+        { count: contractCount },
+        { count: trainingCount },
+        { count: leadCount },
+        { count: callCount },
       ] = await Promise.all([
         supabase.from('workspaces').select('*', { count: 'exact', head: true }),
         supabase.from('user_roles').select('*', { count: 'exact', head: true }).eq('role', 'sdr'),
         supabase.from('disputes').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('commissions').select('rake_amount').eq('status', 'paid'),
         supabase.from('deals').select('*', { count: 'exact', head: true }).eq('stage', 'closed_won'),
+        supabase.from('jobs').select('*', { count: 'exact', head: true }),
+        supabase.from('job_applications').select('*', { count: 'exact', head: true }),
+        supabase.from('contracts').select('*', { count: 'exact', head: true }),
+        supabase.from('training_materials').select('*', { count: 'exact', head: true }),
+        supabase.from('leads').select('*', { count: 'exact', head: true }),
+        supabase.from('call_logs').select('*', { count: 'exact', head: true }),
       ]);
 
       const totalRake = commissions?.reduce((sum, c) => sum + Number(c.rake_amount), 0) || 0;
@@ -69,6 +81,12 @@ export function AdminOverview() {
         pendingDisputes: disputeCount || 0,
         platformRevenue: totalRake,
         closedDeals: dealCount || 0,
+        jobs: jobCount || 0,
+        applications: applicationCount || 0,
+        contracts: contractCount || 0,
+        trainings: trainingCount || 0,
+        leads: leadCount || 0,
+        calls: callCount || 0,
       };
     },
   });
@@ -85,53 +103,106 @@ export function AdminOverview() {
   });
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      <StatCard
-        title="Agencies"
-        description="Total registered"
-        value={String(stats?.agencies || 0)}
-        subtext="Active agencies"
-        icon={Building2}
-      />
-      <StatCard
-        title="SDRs"
-        description="Total registered"
-        value={String(stats?.sdrs || 0)}
-        subtext="Active SDRs"
-        icon={Users}
-      />
-      <StatCard
-        title="Disputes"
-        description="Pending resolution"
-        value={String(stats?.pendingDisputes || 0)}
-        subtext="Awaiting review"
-        icon={AlertTriangle}
-        variant="warning"
-      />
-      <StatCard
-        title="Revenue"
-        description="Platform rake"
-        value={`$${(stats?.platformRevenue || 0).toLocaleString()}`}
-        subtext="Total earned"
-        icon={TrendingUp}
-        variant="success"
-      />
-      <StatCard
-        title="Payouts"
-        description="Pending SDR payouts"
-        value={`$${(pendingPayouts || 0).toLocaleString()}`}
-        subtext="Awaiting transfer"
-        icon={DollarSign}
-        variant="warning"
-      />
-      <StatCard
-        title="Deals"
-        description="Total closed"
-        value={String(stats?.closedDeals || 0)}
-        subtext="Closed won"
-        icon={Briefcase}
-        variant="success"
-      />
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold mb-4">Core Metrics</h3>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <StatCard
+            title="Agencies"
+            description="Total registered"
+            value={String(stats?.agencies || 0)}
+            subtext="Active agencies"
+            icon={Building2}
+          />
+          <StatCard
+            title="SDRs"
+            description="Total registered"
+            value={String(stats?.sdrs || 0)}
+            subtext="Active SDRs"
+            icon={Users}
+          />
+          <StatCard
+            title="Disputes"
+            description="Pending resolution"
+            value={String(stats?.pendingDisputes || 0)}
+            subtext="Awaiting review"
+            icon={AlertTriangle}
+            variant="warning"
+          />
+          <StatCard
+            title="Revenue"
+            description="Platform rake"
+            value={`$${(stats?.platformRevenue || 0).toLocaleString()}`}
+            subtext="Total earned"
+            icon={TrendingUp}
+            variant="success"
+          />
+          <StatCard
+            title="Payouts"
+            description="Pending SDR payouts"
+            value={`$${(pendingPayouts || 0).toLocaleString()}`}
+            subtext="Awaiting transfer"
+            icon={DollarSign}
+            variant="warning"
+          />
+          <StatCard
+            title="Deals Won"
+            description="Total closed"
+            value={String(stats?.closedDeals || 0)}
+            subtext="Closed won deals"
+            icon={Handshake}
+            variant="success"
+          />
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-lg font-semibold mb-4">Platform Activity</h3>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <StatCard
+            title="Jobs"
+            description="Total posted"
+            value={String(stats?.jobs || 0)}
+            subtext="Job listings"
+            icon={Briefcase}
+          />
+          <StatCard
+            title="Applications"
+            description="Total received"
+            value={String(stats?.applications || 0)}
+            subtext="Job applications"
+            icon={FileCheck}
+          />
+          <StatCard
+            title="Leads"
+            description="Total in CRM"
+            value={String(stats?.leads || 0)}
+            subtext="All leads"
+            icon={UserCircle}
+          />
+          <StatCard
+            title="Contracts"
+            description="Total created"
+            value={String(stats?.contracts || 0)}
+            subtext="All contracts"
+            icon={FileSignature}
+          />
+          <StatCard
+            title="Trainings"
+            description="Materials uploaded"
+            value={String(stats?.trainings || 0)}
+            subtext="Training files"
+            icon={GraduationCap}
+          />
+          <StatCard
+            title="Calls"
+            description="Total made"
+            value={String(stats?.calls || 0)}
+            subtext="Call logs"
+            icon={Phone}
+          />
+        </div>
+      </div>
     </div>
   );
 }
