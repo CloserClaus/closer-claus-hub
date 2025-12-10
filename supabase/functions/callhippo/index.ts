@@ -179,15 +179,19 @@ serve(async (req) => {
         const { countryCode = 'US' } = params;
 
         if (!CALLHIPPO_API_KEY) {
-          // Return mock data when API key not configured
+          // Return mock data with city info when API key not configured
           console.log('Returning mock phone numbers - API key not configured');
           return new Response(
             JSON.stringify({ 
               configured: false,
               numbers: [
-                { id: 'mock-1', number: '+1 (555) 123-4567', country: 'US', monthly_cost: 5.99, type: 'local' },
-                { id: 'mock-2', number: '+1 (555) 234-5678', country: 'US', monthly_cost: 5.99, type: 'local' },
-                { id: 'mock-3', number: '+1 (800) 555-0123', country: 'US', monthly_cost: 12.99, type: 'toll-free' },
+                { id: 'mock-1', number: '+1 (212) 555-1234', country: 'US', city: 'New York, NY', monthly_cost: 5.99, type: 'local' },
+                { id: 'mock-2', number: '+1 (310) 555-2345', country: 'US', city: 'Los Angeles, CA', monthly_cost: 5.99, type: 'local' },
+                { id: 'mock-3', number: '+1 (312) 555-3456', country: 'US', city: 'Chicago, IL', monthly_cost: 5.99, type: 'local' },
+                { id: 'mock-4', number: '+1 (415) 555-4567', country: 'US', city: 'San Francisco, CA', monthly_cost: 6.99, type: 'local' },
+                { id: 'mock-5', number: '+1 (305) 555-5678', country: 'US', city: 'Miami, FL', monthly_cost: 5.99, type: 'local' },
+                { id: 'mock-6', number: '+1 (800) 555-0123', country: 'US', city: 'Nationwide', monthly_cost: 12.99, type: 'toll-free' },
+                { id: 'mock-7', number: '+1 (888) 555-0199', country: 'US', city: 'Nationwide', monthly_cost: 12.99, type: 'toll-free' },
               ]
             }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -210,7 +214,7 @@ serve(async (req) => {
       }
 
       case 'purchase_number': {
-        const { numberId, workspaceId, phoneNumber, monthlyCost, countryCode } = params;
+        const { numberId, workspaceId, phoneNumber, monthlyCost, countryCode, city } = params;
 
         if (!CALLHIPPO_API_KEY) {
           // Mock purchase when API key not configured
@@ -224,6 +228,7 @@ serve(async (req) => {
               country_code: countryCode || 'US',
               monthly_cost: monthlyCost || 0,
               callhippo_number_id: numberId,
+              city: city || null,
             })
             .select()
             .single();
@@ -269,6 +274,7 @@ serve(async (req) => {
             country_code: countryCode || 'US',
             monthly_cost: monthlyCost || 0,
             callhippo_number_id: purchaseData.id || numberId,
+            city: city || null,
           })
           .select()
           .single();

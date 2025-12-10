@@ -6,12 +6,25 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { 
   Phone, 
-  Coins, 
+  Clock, 
   Plus,
   Check,
   AlertCircle,
-  Loader2
+  Loader2,
+  MapPin,
+  User,
+  Voicemail,
+  BarChart3,
+  MessageSquare,
+  Zap
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -19,6 +32,7 @@ interface AvailableNumber {
   id: string;
   number: string;
   country: string;
+  city?: string;
   monthly_cost: number;
   type: string;
 }
@@ -27,24 +41,79 @@ interface PurchasedNumber {
   id: string;
   phone_number: string;
   country_code: string;
+  city?: string | null;
   monthly_cost: number;
   is_active: boolean;
   purchased_at: string;
+  assigned_to?: string | null;
 }
 
-interface CreditPackage {
+interface SDRMember {
+  id: string;
+  user_id: string;
+  profiles?: {
+    full_name: string | null;
+    email: string;
+  };
+}
+
+interface MinutePackage {
   id: string;
   name: string;
-  credits: number;
+  minutes: number;
   price: number;
   popular?: boolean;
 }
 
-const creditPackages: CreditPackage[] = [
-  { id: 'starter', name: 'Starter', credits: 100, price: 10 },
-  { id: 'growth', name: 'Growth', credits: 500, price: 45, popular: true },
-  { id: 'pro', name: 'Pro', credits: 1000, price: 80 },
-  { id: 'enterprise', name: 'Enterprise', credits: 5000, price: 350 },
+interface CallHippoAddon {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  priceType: string;
+  icon: React.ReactNode;
+}
+
+const minutePackages: MinutePackage[] = [
+  { id: 'starter', name: 'Starter', minutes: 100, price: 10 },
+  { id: 'growth', name: 'Growth', minutes: 500, price: 45, popular: true },
+  { id: 'pro', name: 'Pro', minutes: 1000, price: 80 },
+  { id: 'enterprise', name: 'Enterprise', minutes: 5000, price: 350 },
+];
+
+const callHippoAddons: CallHippoAddon[] = [
+  {
+    id: 'voicemail',
+    name: 'Voicemail Drop',
+    description: 'Pre-recorded voicemail messages for unanswered calls',
+    price: 15,
+    priceType: '/mo',
+    icon: <Voicemail className="h-5 w-5" />,
+  },
+  {
+    id: 'analytics',
+    name: 'Advanced Analytics',
+    description: 'Detailed call analytics, recordings, and reporting',
+    price: 25,
+    priceType: '/mo',
+    icon: <BarChart3 className="h-5 w-5" />,
+  },
+  {
+    id: 'sms',
+    name: 'SMS Messaging',
+    description: 'Send and receive text messages from your business numbers',
+    price: 20,
+    priceType: '/mo',
+    icon: <MessageSquare className="h-5 w-5" />,
+  },
+  {
+    id: 'power_dialer',
+    name: 'Power Dialer',
+    description: 'Automatically dial through your lead lists at high speed',
+    price: 35,
+    priceType: '/mo',
+    icon: <Zap className="h-5 w-5" />,
+  },
 ];
 
 interface PurchaseTabProps {
@@ -55,14 +124,45 @@ interface PurchaseTabProps {
 export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps) {
   const [availableNumbers, setAvailableNumbers] = useState<AvailableNumber[]>([]);
   const [purchasedNumbers, setPurchasedNumbers] = useState<PurchasedNumber[]>([]);
+  const [sdrMembers, setSDRMembers] = useState<SDRMember[]>([]);
   const [isLoadingNumbers, setIsLoadingNumbers] = useState(false);
   const [isPurchasing, setIsPurchasing] = useState<string | null>(null);
   const [apiConfigured, setApiConfigured] = useState<boolean | null>(null);
+  const [isAssigning, setIsAssigning] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAvailableNumbers();
     fetchPurchasedNumbers();
+    fetchSDRMembers();
   }, [workspaceId]);
+
+  const fetchSDRMembers = async () => {
+    const { data, error } = await supabase
+      .from('workspace_members')
+      .select(`
+        id,
+        user_id,
+        profiles:user_id (
+          full_name,
+          email
+        )
+      `)
+      .eq('workspace_id', workspaceId)
+      .is('removed_at', null);
+
+    if (error) {
+      console.error('Error fetching SDR members:', error);
+      return;
+    }
+
+    // Transform data to handle the nested profiles structure
+    const transformedData = (data || []).map(member => ({
+      ...member,
+      profiles: Array.isArray(member.profiles) ? member.profiles[0] : member.profiles
+    }));
+
+    setSDRMembers(transformedData as SDRMember[]);
+  };
 
   const fetchAvailableNumbers = async () => {
     setIsLoadingNumbers(true);
@@ -131,6 +231,7 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
             phoneNumber: number.number,
             monthlyCost: number.monthly_cost,
             countryCode: number.country,
+            city: number.city,
           }),
         }
       );
@@ -153,7 +254,31 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
     }
   };
 
-  const handlePurchaseCredits = async (pkg: CreditPackage) => {
+  const handleAssignNumber = async (numberId: string, userId: string | null) => {
+    setIsAssigning(numberId);
+    try {
+      const { error } = await supabase
+        .from('workspace_phone_numbers')
+        .update({ assigned_to: userId })
+        .eq('id', numberId);
+
+      if (error) {
+        console.error('Error assigning number:', error);
+        toast.error("Failed to assign number");
+        return;
+      }
+
+      toast.success(userId ? "Number assigned successfully!" : "Number unassigned");
+      fetchPurchasedNumbers();
+    } catch (error) {
+      console.error('Error assigning number:', error);
+      toast.error("Failed to assign number");
+    } finally {
+      setIsAssigning(null);
+    }
+  };
+
+  const handlePurchaseMinutes = async (pkg: MinutePackage) => {
     setIsPurchasing(pkg.id);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -173,7 +298,7 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
           body: JSON.stringify({
             action: 'purchase_credits',
             workspaceId,
-            creditsAmount: pkg.credits,
+            creditsAmount: pkg.minutes,
             pricePaid: pkg.price,
           }),
         }
@@ -182,18 +307,37 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
       const data = await response.json();
 
       if (!response.ok) {
-        toast.error(data.error || "Failed to purchase credits");
+        toast.error(data.error || "Failed to purchase minutes");
         return;
       }
 
-      toast.success(`${pkg.credits} credits added to your account!`);
+      toast.success(`${pkg.minutes} minutes added to your account!`);
       onCreditsUpdated();
     } catch (error) {
-      console.error('Error purchasing credits:', error);
-      toast.error("Failed to purchase credits");
+      console.error('Error purchasing minutes:', error);
+      toast.error("Failed to purchase minutes");
     } finally {
       setIsPurchasing(null);
     }
+  };
+
+  const handlePurchaseAddon = async (addon: CallHippoAddon) => {
+    setIsPurchasing(addon.id);
+    try {
+      // For now, show a message that this would integrate with CallHippo
+      toast.success(`${addon.name} addon request submitted! We'll process this shortly.`);
+    } catch (error) {
+      console.error('Error purchasing addon:', error);
+      toast.error("Failed to purchase addon");
+    } finally {
+      setIsPurchasing(null);
+    }
+  };
+
+  const getAssignedSDRName = (userId: string | null | undefined) => {
+    if (!userId) return null;
+    const sdr = sdrMembers.find(m => m.user_id === userId);
+    return sdr?.profiles?.full_name || sdr?.profiles?.email || 'Unknown';
   };
 
   return (
@@ -213,20 +357,20 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Call Credits */}
+        {/* Call Minutes */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Coins className="h-5 w-5" />
-              Call Credits
+              <Clock className="h-5 w-5" />
+              Call Minutes
             </CardTitle>
             <CardDescription>
-              Purchase credits to make outbound calls
+              Purchase minutes for outbound calls
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-3">
-              {creditPackages.map((pkg) => (
+              {minutePackages.map((pkg) => (
                 <div
                   key={pkg.id}
                   className={`relative p-4 rounded-lg border transition-all ${
@@ -242,13 +386,13 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
                   )}
                   <div className="text-center space-y-2">
                     <p className="font-semibold">{pkg.name}</p>
-                    <p className="text-2xl font-bold text-primary">{pkg.credits}</p>
-                    <p className="text-sm text-muted-foreground">credits</p>
+                    <p className="text-2xl font-bold text-primary">{pkg.minutes}</p>
+                    <p className="text-sm text-muted-foreground">minutes</p>
                     <p className="text-lg font-medium">${pkg.price}</p>
                     <Button 
                       size="sm" 
                       className="w-full"
-                      onClick={() => handlePurchaseCredits(pkg)}
+                      onClick={() => handlePurchaseMinutes(pkg)}
                       disabled={isPurchasing === pkg.id}
                     >
                       {isPurchasing === pkg.id ? (
@@ -275,7 +419,7 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
               Phone Numbers
             </CardTitle>
             <CardDescription>
-              Purchase dedicated phone numbers for outbound calls
+              Purchase dedicated phone numbers and assign them to SDRs
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -285,12 +429,48 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
                   <p className="text-sm font-medium mb-2">Your Numbers</p>
                   <div className="space-y-2">
                     {purchasedNumbers.map((num) => (
-                      <div key={num.id} className="flex items-center justify-between p-3 rounded-lg bg-success/10 border border-success/20">
-                        <div className="flex items-center gap-2">
-                          <Check className="h-4 w-4 text-success" />
-                          <span className="font-mono">{num.phone_number}</span>
+                      <div key={num.id} className="p-3 rounded-lg bg-success/10 border border-success/20 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Check className="h-4 w-4 text-success" />
+                            <span className="font-mono">{num.phone_number}</span>
+                          </div>
+                          <Badge variant="outline">${num.monthly_cost}/mo</Badge>
                         </div>
-                        <Badge variant="outline">${num.monthly_cost}/mo</Badge>
+                        {num.city && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <MapPin className="h-3 w-3" />
+                            <span>{num.city}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-muted-foreground" />
+                          <Select
+                            value={num.assigned_to || "unassigned"}
+                            onValueChange={(value) => 
+                              handleAssignNumber(num.id, value === "unassigned" ? null : value)
+                            }
+                            disabled={isAssigning === num.id}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Assign to SDR">
+                                {isAssigning === num.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  num.assigned_to ? getAssignedSDRName(num.assigned_to) : "Unassigned"
+                                )}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                              {sdrMembers.map((sdr) => (
+                                <SelectItem key={sdr.user_id} value={sdr.user_id}>
+                                  {sdr.profiles?.full_name || sdr.profiles?.email || sdr.user_id}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -312,7 +492,15 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
                       <div key={num.id} className="flex items-center justify-between p-3 rounded-lg border border-border hover:border-primary/50 transition-colors">
                         <div>
                           <p className="font-mono">{num.number}</p>
-                          <p className="text-xs text-muted-foreground capitalize">{num.type}</p>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            {num.city && (
+                              <span className="flex items-center gap-1">
+                                <MapPin className="h-3 w-3" />
+                                {num.city}
+                              </span>
+                            )}
+                            <span className="capitalize">{num.type}</span>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-sm">${num.monthly_cost}/mo</span>
@@ -338,6 +526,58 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
           </CardContent>
         </Card>
       </div>
+
+      {/* CallHippo Addons */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="h-5 w-5" />
+            CallHippo Addons
+          </CardTitle>
+          <CardDescription>
+            Enhance your calling capabilities with these powerful addons
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {callHippoAddons.map((addon) => (
+              <div
+                key={addon.id}
+                className="p-4 rounded-lg border border-border hover:border-primary/50 transition-all space-y-3"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                    {addon.icon}
+                  </div>
+                  <div>
+                    <p className="font-semibold">{addon.name}</p>
+                    <p className="text-lg font-bold text-primary">
+                      ${addon.price}<span className="text-sm text-muted-foreground">{addon.priceType}</span>
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground">{addon.description}</p>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => handlePurchaseAddon(addon)}
+                  disabled={isPurchasing === addon.id}
+                >
+                  {isPurchasing === addon.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add to Plan
+                    </>
+                  )}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

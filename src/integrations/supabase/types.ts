@@ -1043,7 +1043,9 @@ export type Database = {
       }
       workspace_phone_numbers: {
         Row: {
+          assigned_to: string | null
           callhippo_number_id: string | null
+          city: string | null
           country_code: string
           created_at: string
           id: string
@@ -1054,7 +1056,9 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          assigned_to?: string | null
           callhippo_number_id?: string | null
+          city?: string | null
           country_code?: string
           created_at?: string
           id?: string
@@ -1065,7 +1069,9 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          assigned_to?: string | null
           callhippo_number_id?: string | null
+          city?: string | null
           country_code?: string
           created_at?: string
           id?: string
