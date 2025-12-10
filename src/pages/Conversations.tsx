@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { MessageSquare, Plus, Send, Users, Menu } from "lucide-react";
+import { MessageSquare, Plus, Send, Users, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
@@ -325,17 +325,14 @@ export default function Conversations() {
 
   return (
     <DashboardLayout>
-      {/* Mobile Header */}
-      <div className="md:hidden flex items-center gap-2 p-4 border-b border-border">
-        <SidebarTrigger />
-        <h1 className="font-semibold">Conversations</h1>
-      </div>
-
-      <div className="flex h-[calc(100vh-4rem)] md:h-[calc(100vh-4rem)]">
-        {/* Sidebar - Conversation List */}
-        <div className="w-80 border-r border-border flex flex-col max-md:hidden md:flex">
+      <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)]">
+        {/* Conversation List - Always visible, full width on mobile when no conversation selected */}
+        <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} w-full md:w-80 border-r border-border flex-col`}>
           <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="font-semibold text-lg">Conversations</h2>
+            <div className="flex items-center gap-2">
+              <SidebarTrigger className="md:hidden" />
+              <h2 className="font-semibold text-lg">Conversations</h2>
+            </div>
             <Dialog open={showNewConversation} onOpenChange={setShowNewConversation}>
               <DialogTrigger asChild>
                 <Button size="sm" variant="ghost">
@@ -399,6 +396,7 @@ export default function Conversations() {
               <div className="p-4 text-center text-muted-foreground">
                 <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 <p>No conversations yet</p>
+                <p className="text-xs mt-2">Click the + button to start a new conversation</p>
               </div>
             ) : (
               <div className="p-2 space-y-1">
@@ -435,12 +433,20 @@ export default function Conversations() {
         </div>
 
         {/* Main Chat Area */}
-        <div className="flex-1 flex flex-col">
+        <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col`}>
           {selectedConversation ? (
             <>
               {/* Chat Header */}
               <div className="p-4 border-b border-border flex items-center justify-between">
                 <div className="flex items-center gap-3">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="md:hidden"
+                    onClick={() => setSelectedConversation(null)}
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </Button>
                   <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
                     {selectedConversation.is_group ? (
                       <Users className="h-5 w-5 text-primary" />
