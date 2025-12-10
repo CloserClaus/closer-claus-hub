@@ -83,7 +83,7 @@ export default function Dashboard() {
 
   const renderPlatformAdminDashboard = () => (
     <div className="space-y-6">
-      <div className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-3">
+      <div data-tour="stats-grid" className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-3">
         <StatCard title="Agencies" description="Total registered" value={String(platformStats?.agencies || 0)} subtext="Active agencies" icon={Building2} />
         <StatCard title="SDRs" description="Total registered" value={String(platformStats?.sdrs || 0)} subtext="Active SDRs" icon={Users} />
         <StatCard title="Disputes" description="Pending resolution" value={String(platformStats?.pendingDisputes || 0)} subtext="Awaiting review" icon={Shield} variant="warning" />
@@ -130,7 +130,7 @@ export default function Dashboard() {
         </Card>
       )}
 
-      <div className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-3">
+      <div data-tour="stats-grid" className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-3">
         <StatCard title="Team" description="Your SDRs" value={String(agencyStats?.teamSize || 0)} subtext="Active members" icon={Users} />
         <StatCard title="Pipeline" description="Total deal value" value={formatCurrency(agencyStats?.pipelineValue || 0)} subtext="Active deals" icon={TrendingUp} variant="success" />
         <StatCard title="Commissions" description="Owed to SDRs" value={formatCurrency(agencyStats?.pendingCommissions || 0)} subtext="Pending payment" icon={DollarSign} variant="warning" />
@@ -153,7 +153,7 @@ export default function Dashboard() {
 
   const renderSDRDashboard = () => (
     <div className="space-y-4 md:space-y-6">
-      <div className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-3">
+      <div data-tour="stats-grid" className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-3">
         <StatCard title="Workspaces" description="Active agencies" value={String(sdrStats?.workspaces || 0)} subtext="Companies you work for" icon={Building2} />
         <StatCard title="Earnings" description="Total earned" value={formatCurrency(sdrStats?.totalEarnings || 0)} subtext="All time" icon={DollarSign} variant="success" />
         <StatCard title="Pending" description="Awaiting payout" value={formatCurrency(sdrStats?.pendingPayouts || 0)} subtext="To be paid" icon={DollarSign} variant="warning" />

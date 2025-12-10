@@ -137,7 +137,7 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-border">
+    <Sidebar collapsible="icon" className="border-r border-border" data-tour="sidebar">
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3">
           {collapsed ? (
@@ -151,18 +151,18 @@ export function AppSidebar() {
       {userRole === 'sdr' && !collapsed && (
         <>
           <SidebarSeparator />
-          <div className="px-3 py-2">
+          <div className="px-3 py-2" data-tour="workspace-switcher">
             <WorkspaceSwitcher />
           </div>
           <SidebarSeparator />
-          <div className="px-3 py-2">
+          <div className="px-3 py-2" data-tour="sdr-level">
             <SDRLevelProgress />
           </div>
         </>
       )}
 
       {userRole === 'sdr' && collapsed && (
-        <div className="px-2 py-2">
+        <div className="px-2 py-2" data-tour="sdr-level">
           <SDRLevelProgress compact />
         </div>
       )}

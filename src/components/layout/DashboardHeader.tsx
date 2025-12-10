@@ -17,7 +17,10 @@ interface DashboardHeaderProps {
 
 export function DashboardHeader({ title, breadcrumbs }: DashboardHeaderProps) {
   return (
-    <header className="sticky top-0 z-10 flex h-12 md:h-14 items-center gap-2 md:gap-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-3 md:px-4">
+    <header 
+      data-tour="dashboard-header"
+      className="sticky top-0 z-10 flex h-12 md:h-14 items-center gap-2 md:gap-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-3 md:px-4"
+    >
       {/* Hide sidebar trigger on mobile - we have bottom nav */}
       <SidebarTrigger className="-ml-1 hidden md:flex" />
       <Separator orientation="vertical" className="h-6 hidden md:block" />
