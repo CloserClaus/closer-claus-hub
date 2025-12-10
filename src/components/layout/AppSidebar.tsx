@@ -14,6 +14,11 @@ import {
   LogOut,
   ChevronDown,
   CreditCard,
+  AlertTriangle,
+  Tag,
+  UserCircle,
+  Handshake,
+  FileSignature,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -50,8 +55,20 @@ interface NavItem {
 }
 
 const platformAdminNav: NavItem[] = [
-  { title: 'Admin Panel', url: '/admin', icon: Shield },
+  { title: 'Overview', url: '/admin', icon: LayoutDashboard },
+  { title: 'Agencies', url: '/admin?tab=agencies', icon: Building2 },
+  { title: 'SDRs', url: '/admin?tab=sdrs', icon: Users },
+  { title: 'Jobs', url: '/admin?tab=jobs', icon: Briefcase },
+  { title: 'Applications', url: '/admin?tab=applications', icon: FileText },
+  { title: 'Leads', url: '/admin?tab=leads', icon: UserCircle },
+  { title: 'Deals', url: '/admin?tab=deals', icon: Handshake },
+  { title: 'Contracts', url: '/admin?tab=contracts', icon: FileSignature },
+  { title: 'Calls', url: '/admin?tab=calls', icon: Phone },
+  { title: 'Trainings', url: '/admin?tab=trainings', icon: GraduationCap },
   { title: 'Conversations', url: '/conversations', icon: MessageSquare },
+  { title: 'Disputes', url: '/admin?tab=disputes', icon: AlertTriangle },
+  { title: 'Payouts', url: '/admin?tab=payouts', icon: DollarSign },
+  { title: 'Coupons', url: '/admin?tab=coupons', icon: Tag },
 ];
 
 const agencyOwnerNav: NavItem[] = [
@@ -147,24 +164,31 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={location.pathname === item.url}
-                    tooltip={item.title}
-                  >
-                    <NavLink
-                      to={item.url}
-                      className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-sidebar-accent"
-                      activeClassName="bg-sidebar-accent text-sidebar-primary"
+              {navItems.map((item) => {
+                const itemUrl = new URL(item.url, window.location.origin);
+                const isActive = item.url.includes('?') 
+                  ? location.pathname + location.search === item.url
+                  : location.pathname === item.url && !location.search;
+                
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      tooltip={item.title}
                     >
-                      <item.icon className="h-5 w-5 shrink-0" />
-                      {!collapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+                      <NavLink
+                        to={item.url}
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-sidebar-accent"
+                        activeClassName="bg-sidebar-accent text-sidebar-primary"
+                      >
+                        <item.icon className="h-5 w-5 shrink-0" />
+                        {!collapsed && <span>{item.title}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
