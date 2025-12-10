@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Upload, FileText, X, Check, AlertCircle, Download } from 'lucide-react';
+import { Upload, FileText, X, Check, AlertCircle, Download, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -60,6 +61,9 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
   const [step, setStep] = useState<'upload' | 'mapping' | 'preview' | 'complete'>('upload');
+  const [duplicates, setDuplicates] = useState<{ index: number; reason: string }[]>([]);
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [skipDuplicates, setSkipDuplicates] = useState(true);
 
   const parseCSV = useCallback((content: string): { headers: string[]; rows: ParsedRow[] } => {
     const lines = content.split(/\r?\n/).filter(line => line.trim());
@@ -207,8 +211,87 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
     return newErrors.length === 0;
   };
 
-  const handleProceedToPreview = () => {
+  const checkForDuplicates = async (leads: ReturnType<typeof transformRowToLead>[]) => {
+    setIsCheckingDuplicates(true);
+    const foundDuplicates: { index: number; reason: string }[] = [];
+
+    try {
+      // Fetch existing leads for this workspace
+      const { data: existingLeads, error } = await supabase
+        .from('leads')
+        .select('email, first_name, last_name, company')
+        .eq('workspace_id', workspaceId);
+
+      if (error) {
+        console.error('Error fetching existing leads:', error);
+        return [];
+      }
+
+      // Create lookup sets for fast duplicate detection
+      const existingEmails = new Set(
+        existingLeads?.filter(l => l.email).map(l => l.email!.toLowerCase()) || []
+      );
+      const existingNameCompanyCombos = new Set(
+        existingLeads?.map(l => 
+          `${l.first_name?.toLowerCase()}-${l.last_name?.toLowerCase()}-${l.company?.toLowerCase() || ''}`
+        ) || []
+      );
+
+      // Also track duplicates within the CSV itself
+      const csvEmails = new Set<string>();
+      const csvNameCompanyCombos = new Set<string>();
+
+      leads.forEach((lead, index) => {
+        const email = lead.email?.toLowerCase();
+        const nameCombo = `${lead.first_name.toLowerCase()}-${lead.last_name.toLowerCase()}-${lead.company?.toLowerCase() || ''}`;
+
+        // Check email duplicates (most reliable)
+        if (email) {
+          if (existingEmails.has(email)) {
+            foundDuplicates.push({ index, reason: `Email "${lead.email}" already exists` });
+            return;
+          }
+          if (csvEmails.has(email)) {
+            foundDuplicates.push({ index, reason: `Duplicate email "${lead.email}" in CSV` });
+            return;
+          }
+          csvEmails.add(email);
+        }
+
+        // Check name+company duplicates if no email
+        if (!email) {
+          if (existingNameCompanyCombos.has(nameCombo)) {
+            foundDuplicates.push({ 
+              index, 
+              reason: `"${lead.first_name} ${lead.last_name}"${lead.company ? ` at ${lead.company}` : ''} already exists` 
+            });
+            return;
+          }
+          if (csvNameCompanyCombos.has(nameCombo)) {
+            foundDuplicates.push({ 
+              index, 
+              reason: `Duplicate "${lead.first_name} ${lead.last_name}"${lead.company ? ` at ${lead.company}` : ''} in CSV` 
+            });
+            return;
+          }
+          csvNameCompanyCombos.add(nameCombo);
+        }
+      });
+    } catch (error) {
+      console.error('Duplicate check error:', error);
+    } finally {
+      setIsCheckingDuplicates(false);
+    }
+
+    return foundDuplicates;
+  };
+
+  const handleProceedToPreview = async () => {
     if (validateMapping()) {
+      const leads = rows.map(transformRowToLead);
+      const validLeads = leads.filter(lead => lead.first_name && lead.last_name);
+      const foundDuplicates = await checkForDuplicates(validLeads);
+      setDuplicates(foundDuplicates);
       setStep('preview');
     }
   };
@@ -252,11 +335,17 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
 
     try {
       const leads = rows.map(transformRowToLead);
-      const validLeads = leads.filter(lead => lead.first_name && lead.last_name);
+      let validLeads = leads.filter(lead => lead.first_name && lead.last_name);
       const invalidCount = leads.length - validLeads.length;
 
+      // Filter out duplicates if skip is enabled
+      if (skipDuplicates && duplicates.length > 0) {
+        const duplicateIndices = new Set(duplicates.map(d => d.index));
+        validLeads = validLeads.filter((_, index) => !duplicateIndices.has(index));
+      }
+
       if (validLeads.length === 0) {
-        toast.error('No valid leads to upload');
+        toast.error('No valid leads to upload (all are duplicates or invalid)');
         setIsUploading(false);
         return;
       }
@@ -428,8 +517,8 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
             <Button variant="outline" onClick={() => setStep('upload')}>
               Back
             </Button>
-            <Button onClick={handleProceedToPreview}>
-              Continue to Preview
+            <Button onClick={handleProceedToPreview} disabled={isCheckingDuplicates}>
+              {isCheckingDuplicates ? 'Checking duplicates...' : 'Continue to Preview'}
             </Button>
           </div>
         </div>
@@ -444,10 +533,50 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
                 Showing first 5 of {rows.length} leads
               </p>
             </div>
-            <Badge variant="outline" className="text-success border-success/20">
-              {rows.length} leads ready
-            </Badge>
+            <div className="flex items-center gap-2">
+              {duplicates.length > 0 && (
+                <Badge variant="outline" className="text-warning border-warning/20">
+                  {duplicates.length} duplicates
+                </Badge>
+              )}
+              <Badge variant="outline" className="text-success border-success/20">
+                {skipDuplicates ? rows.length - duplicates.length : rows.length} leads ready
+              </Badge>
+            </div>
           </div>
+
+          {duplicates.length > 0 && (
+            <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 text-warning">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span className="font-medium">{duplicates.length} Duplicate Leads Detected</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="skip-duplicates"
+                    checked={skipDuplicates}
+                    onCheckedChange={(checked) => setSkipDuplicates(checked === true)}
+                  />
+                  <label htmlFor="skip-duplicates" className="text-sm cursor-pointer">
+                    Skip duplicates
+                  </label>
+                </div>
+              </div>
+              <ScrollArea className="max-h-24">
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  {duplicates.slice(0, 5).map((dup, i) => (
+                    <li key={i} className="flex items-center gap-1">
+                      <span className="text-muted-foreground/60">Row {dup.index + 2}:</span> {dup.reason}
+                    </li>
+                  ))}
+                  {duplicates.length > 5 && (
+                    <li className="text-muted-foreground/60">...and {duplicates.length - 5} more</li>
+                  )}
+                </ul>
+              </ScrollArea>
+            </div>
+          )}
 
           <ScrollArea className="h-64 rounded-lg border">
             <Table>
