@@ -65,10 +65,10 @@ const platformAdminNav: NavItem[] = [
   { title: 'Contracts', url: '/admin?tab=contracts', icon: FileSignature },
   { title: 'Calls', url: '/admin?tab=calls', icon: Phone },
   { title: 'Trainings', url: '/admin?tab=trainings', icon: GraduationCap },
-  { title: 'Conversations', url: '/conversations', icon: MessageSquare },
   { title: 'Disputes', url: '/admin?tab=disputes', icon: AlertTriangle },
   { title: 'Payouts', url: '/admin?tab=payouts', icon: DollarSign },
   { title: 'Coupons', url: '/admin?tab=coupons', icon: Tag },
+  { title: 'Conversations', url: '/conversations', icon: MessageSquare },
 ];
 
 const agencyOwnerNav: NavItem[] = [
