@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/layout/AppSidebar';
+import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 import { useAuth } from '@/hooks/useAuth';
 
 const SIDEBAR_STORAGE_KEY = 'sidebar-open';
@@ -55,6 +56,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <SidebarInset className="flex-1">
           {children}
         </SidebarInset>
+        <MobileBottomNav />
       </div>
     </SidebarProvider>
   );
