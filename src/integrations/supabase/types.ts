@@ -1141,6 +1141,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_access_workspace_conversations: {
+        Args: { _user_id: string; _workspace_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
