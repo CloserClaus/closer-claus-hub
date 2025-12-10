@@ -1,8 +1,10 @@
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/layout/AppSidebar';
 import { useAuth } from '@/hooks/useAuth';
+
+const SIDEBAR_STORAGE_KEY = 'sidebar-open';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -11,6 +13,16 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, userRole, profile, loading } = useAuth();
   const navigate = useNavigate();
+  
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    return stored !== null ? stored === 'true' : true;
+  });
+
+  const handleSidebarOpenChange = (open: boolean) => {
+    setSidebarOpen(open);
+    localStorage.setItem(SIDEBAR_STORAGE_KEY, String(open));
+  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -37,7 +49,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <SidebarProvider defaultOpen>
+    <SidebarProvider open={sidebarOpen} onOpenChange={handleSidebarOpenChange}>
       <div className="min-h-screen flex w-full">
         <AppSidebar />
         <SidebarInset className="flex-1">
