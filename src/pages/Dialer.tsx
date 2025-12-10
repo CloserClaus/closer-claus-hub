@@ -32,6 +32,8 @@ import { PurchaseTab } from "@/components/dialer/PurchaseTab";
 import { PowerDialer } from "@/components/dialer/PowerDialer";
 import { CallRecorder } from "@/components/dialer/CallRecorder";
 import { CallRecordingPlayer } from "@/components/dialer/CallRecordingPlayer";
+import { CallScriptManager } from "@/components/dialer/CallScriptManager";
+import { CallScriptDisplay } from "@/components/dialer/CallScriptDisplay";
 
 interface Lead {
   id: string;
@@ -40,6 +42,7 @@ interface Lead {
   phone: string | null;
   company: string | null;
   email: string | null;
+  title: string | null;
 }
 
 interface CallLog {
@@ -143,7 +146,7 @@ export default function Dialer() {
 
       const { data, error } = await supabase
         .from('leads')
-        .select('id, first_name, last_name, phone, company, email')
+        .select('id, first_name, last_name, phone, company, email, title')
         .eq('workspace_id', currentWorkspace.id)
         .not('phone', 'is', null)
         .order('last_contacted_at', { ascending: false, nullsFirst: false })
@@ -463,6 +466,12 @@ export default function Dialer() {
 
                 {isCallActive ? (
                   <div className="space-y-4">
+                    {/* Call Script Display */}
+                    <CallScriptDisplay 
+                      workspaceId={currentWorkspace.id} 
+                      lead={selectedLead}
+                    />
+
                     <div className="text-center py-4">
                       <div className="flex items-center justify-center gap-2 text-success mb-2">
                         <PhoneCall className="h-5 w-5 animate-pulse" />
@@ -644,10 +653,13 @@ export default function Dialer() {
         </TabsContent>
 
         <TabsContent value="purchase">
-          <PurchaseTab 
-            workspaceId={currentWorkspace.id} 
-            onCreditsUpdated={fetchCredits}
-          />
+          <div className="space-y-6">
+            <PurchaseTab 
+              workspaceId={currentWorkspace.id} 
+              onCreditsUpdated={fetchCredits}
+            />
+            <CallScriptManager workspaceId={currentWorkspace.id} />
+          </div>
         </TabsContent>
         </Tabs>
         );
