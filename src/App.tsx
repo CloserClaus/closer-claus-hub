@@ -25,6 +25,7 @@ import SignContract from "./pages/SignContract";
 import Commissions from "./pages/Commissions";
 import Notifications from "./pages/Notifications";
 import TeamManagement from "./pages/TeamManagement";
+import VerifyEmail from "./pages/VerifyEmail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -60,6 +61,7 @@ const App = () => (
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/team" element={<TeamManagement />} />
               <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/verify-email" element={<VerifyEmail />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

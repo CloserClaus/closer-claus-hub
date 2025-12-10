@@ -462,6 +462,44 @@ export type Database = {
           },
         ]
       }
+      daily_stats: {
+        Row: {
+          created_at: string
+          id: string
+          stat_date: string
+          stat_type: string
+          stat_value: number
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          stat_date: string
+          stat_type: string
+          stat_value?: number
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          stat_date?: string
+          stat_type?: string
+          stat_value?: number
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_stats_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deal_activities: {
         Row: {
           activity_type: string
@@ -613,6 +651,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      email_verification_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          token: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          token: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          token?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       job_applications: {
         Row: {
@@ -834,6 +899,7 @@ export type Database = {
           avatar_url: string | null
           created_at: string | null
           email: string
+          email_verified: boolean | null
           full_name: string | null
           id: string
           onboarding_completed: boolean | null
@@ -844,6 +910,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string | null
           email: string
+          email_verified?: boolean | null
           full_name?: string | null
           id: string
           onboarding_completed?: boolean | null
@@ -854,6 +921,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string | null
           email?: string
+          email_verified?: boolean | null
           full_name?: string | null
           id?: string
           onboarding_completed?: boolean | null
