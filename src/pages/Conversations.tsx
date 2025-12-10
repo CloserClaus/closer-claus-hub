@@ -335,8 +335,8 @@ export default function Conversations() {
             </div>
             <Dialog open={showNewConversation} onOpenChange={setShowNewConversation}>
               <DialogTrigger asChild>
-                <Button size="sm" variant="ghost">
-                  <Plus className="h-4 w-4" />
+                <Button size="icon" variant="ghost" className="h-8 w-8">
+                  <Plus className="h-5 w-5" />
                 </Button>
               </DialogTrigger>
               <DialogContent>
