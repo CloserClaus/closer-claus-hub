@@ -109,6 +109,17 @@ export function DealForm({ deal, workspaceId, leads, onSuccess, onCancel }: Deal
           description: `Deal updated`,
         });
 
+        // Create commission if changed to closed_won
+        if (data.stage === 'closed_won' && deal.stage !== 'closed_won') {
+          try {
+            await supabase.functions.invoke('create-commission', {
+              body: { dealId: deal.id, workspaceId },
+            });
+          } catch (commErr) {
+            console.error('Failed to create commission:', commErr);
+          }
+        }
+
         toast({ title: 'Deal updated' });
       } else {
         const { data: newDeal, error } = await supabase
@@ -126,6 +137,17 @@ export function DealForm({ deal, workspaceId, leads, onSuccess, onCancel }: Deal
           activity_type: 'create',
           description: `Deal created with value $${data.value.toLocaleString()}`,
         });
+
+        // Create commission if created as closed_won
+        if (data.stage === 'closed_won') {
+          try {
+            await supabase.functions.invoke('create-commission', {
+              body: { dealId: newDeal.id, workspaceId },
+            });
+          } catch (commErr) {
+            console.error('Failed to create commission:', commErr);
+          }
+        }
 
         toast({ title: 'Deal created' });
       }

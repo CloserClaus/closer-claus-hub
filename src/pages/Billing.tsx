@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { format } from 'date-fns';
 
 interface PlanInfo {
@@ -142,14 +143,16 @@ export default function Billing() {
 
   return (
     <DashboardLayout>
-      <div className="max-w-4xl mx-auto space-y-8">
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Billing & Subscription</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your subscription plan and billing information
-          </p>
-        </div>
+      <DashboardHeader title="Billing" />
+      <main className="flex-1 p-6">
+        <div className="max-w-4xl mx-auto space-y-8">
+          {/* Header */}
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Billing & Subscription</h1>
+            <p className="text-muted-foreground mt-1">
+              Manage your subscription plan and billing information
+            </p>
+          </div>
 
         {/* Current Plan */}
         <Card className="bg-card border-border">
@@ -347,7 +350,8 @@ export default function Billing() {
             </p>
           </CardContent>
         </Card>
-      </div>
+        </div>
+      </main>
     </DashboardLayout>
   );
 }
