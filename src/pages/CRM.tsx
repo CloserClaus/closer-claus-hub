@@ -75,7 +75,6 @@ interface Deal {
   expected_close_date: string | null;
   notes: string | null;
   created_at: string;
-  lead?: Lead;
 }
 
 const DEFAULT_FILTERS: FilterState = {
