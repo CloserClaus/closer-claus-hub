@@ -12,6 +12,7 @@ import {
   Trash2,
   Edit,
   AlertTriangle,
+  Upload,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -42,6 +43,7 @@ import { LeadForm } from '@/components/crm/LeadForm';
 import { DealForm } from '@/components/crm/DealForm';
 import { PipelineBoard } from '@/components/crm/PipelineBoard';
 import { DisputeForm } from '@/components/crm/DisputeForm';
+import { CSVUpload } from '@/components/crm/CSVUpload';
 
 interface Lead {
   id: string;
@@ -84,6 +86,7 @@ export default function CRM() {
   const [showLeadForm, setShowLeadForm] = useState(false);
   const [showDealForm, setShowDealForm] = useState(false);
   const [showDisputeForm, setShowDisputeForm] = useState(false);
+  const [showCSVUpload, setShowCSVUpload] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
   const [disputeDeal, setDisputeDeal] = useState<Deal | null>(null);
@@ -248,6 +251,10 @@ export default function CRM() {
               <TabsTrigger value="deals">Deals</TabsTrigger>
             </TabsList>
             <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowCSVUpload(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Import CSV
+              </Button>
               <Button variant="outline" onClick={() => setShowLeadForm(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add Lead
@@ -532,6 +539,26 @@ export default function CRM() {
                 }}
               />
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* CSV Upload Dialog */}
+        <Dialog open={showCSVUpload} onOpenChange={setShowCSVUpload}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Import Leads from CSV</DialogTitle>
+              <DialogDescription>
+                Upload a CSV file to bulk import leads into your CRM
+              </DialogDescription>
+            </DialogHeader>
+            <CSVUpload
+              workspaceId={currentWorkspace.id}
+              onSuccess={() => {
+                setShowCSVUpload(false);
+                fetchData();
+              }}
+              onCancel={() => setShowCSVUpload(false)}
+            />
           </DialogContent>
         </Dialog>
       </main>
