@@ -6,6 +6,7 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { supabase } from '@/integrations/supabase/client';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
+import { SubscriptionGuard } from '@/components/layout/SubscriptionGuard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -189,13 +190,14 @@ export default function TeamManagement() {
   return (
     <DashboardLayout>
       <DashboardHeader title="Team Management" />
-      <main className="flex-1 p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold mb-1">Your Team</h1>
-          <p className="text-muted-foreground">
-            Manage SDRs working in your agency
-          </p>
-        </div>
+      <SubscriptionGuard feature="team">
+        <main className="flex-1 p-6 space-y-6">
+          <div>
+            <h1 className="text-2xl font-bold mb-1">Your Team</h1>
+            <p className="text-muted-foreground">
+              Manage SDRs working in your agency
+            </p>
+          </div>
 
         {/* Stats */}
         <div className="grid gap-4 md:grid-cols-3">
@@ -365,6 +367,7 @@ export default function TeamManagement() {
           </AlertDialogContent>
         </AlertDialog>
       </main>
+      </SubscriptionGuard>
     </DashboardLayout>
   );
 }

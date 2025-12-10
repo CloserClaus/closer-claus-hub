@@ -8,14 +8,15 @@ import { AlertTriangle, CreditCard } from 'lucide-react';
 
 interface SubscriptionGuardProps {
   children: ReactNode;
+  feature?: 'jobs' | 'team';
 }
 
-export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
+export function SubscriptionGuard({ children, feature = 'jobs' }: SubscriptionGuardProps) {
   const { userRole } = useAuth();
   const { currentWorkspace, hasActiveSubscription, loading } = useWorkspace();
   const navigate = useNavigate();
 
-  // Only agency owners need subscription
+  // Only agency owners need subscription for these features
   if (userRole !== 'agency_owner') {
     return <>{children}</>;
   }
@@ -27,6 +28,10 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
 
   // If agency owner has workspace but no active subscription, show paywall
   if (currentWorkspace && !hasActiveSubscription) {
+    const featureText = feature === 'jobs' 
+      ? { title: 'Post Jobs', description: 'post job listings and hire SDRs' }
+      : { title: 'Manage Team', description: 'manage your team and SDRs' };
+
     return (
       <div className="flex items-center justify-center min-h-[60vh] p-4">
         <Card className="max-w-md glass">
@@ -36,17 +41,17 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
             </div>
             <CardTitle>Subscription Required</CardTitle>
             <CardDescription>
-              Please activate your subscription to access the platform features.
+              You need an active subscription to {featureText.description}.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-sm text-muted-foreground space-y-2">
-              <p>Your workspace <strong>{currentWorkspace.name}</strong> requires an active subscription to:</p>
+              <p>Subscribe to unlock:</p>
               <ul className="list-disc list-inside space-y-1 ml-2">
-                <li>Access CRM and pipeline management</li>
-                <li>Use the dialer</li>
-                <li>Manage team and SDRs</li>
-                <li>Create and send contracts</li>
+                <li>Post unlimited job listings</li>
+                <li>Hire and manage SDRs</li>
+                <li>Track team performance</li>
+                <li>Pay commissions seamlessly</li>
               </ul>
             </div>
             <Button 
