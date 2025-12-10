@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
@@ -59,24 +60,26 @@ interface Commission {
 
 export default function Commissions() {
   const { currentWorkspace, isOwner } = useWorkspace();
+  const { user, userRole } = useAuth();
   const [commissions, setCommissions] = useState<Commission[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [payingId, setPayingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (currentWorkspace?.id) {
+    if (currentWorkspace?.id || userRole === 'sdr') {
       fetchCommissions();
     }
-  }, [currentWorkspace?.id]);
+  }, [currentWorkspace?.id, userRole, user?.id]);
 
   const fetchCommissions = async () => {
-    if (!currentWorkspace?.id) return;
+    if (!currentWorkspace?.id && userRole !== 'sdr') return;
+    if (userRole === 'sdr' && !user?.id) return;
 
     setIsLoading(true);
     
-    // Fetch commissions with deal info
-    const { data: commissionsData, error: commissionsError } = await supabase
+    // Fetch commissions based on role
+    let query = supabase
       .from('commissions')
       .select(`
         *,
@@ -90,8 +93,16 @@ export default function Commissions() {
           )
         )
       `)
-      .eq('workspace_id', currentWorkspace.id)
       .order('created_at', { ascending: false });
+
+    // Filter by workspace for agency owners, by SDR ID for SDRs
+    if (userRole === 'sdr') {
+      query = query.eq('sdr_id', user!.id);
+    } else if (currentWorkspace?.id) {
+      query = query.eq('workspace_id', currentWorkspace.id);
+    }
+
+    const { data: commissionsData, error: commissionsError } = await query;
 
     if (commissionsError) {
       console.error('Error fetching commissions:', commissionsError);
@@ -100,19 +111,23 @@ export default function Commissions() {
       return;
     }
 
-    // Fetch SDR profiles for each commission
+    // Fetch SDR profiles for each commission (only needed for agency owners)
     const commissionsWithProfiles: Commission[] = [];
     for (const commission of commissionsData || []) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, email')
-        .eq('id', commission.sdr_id)
-        .maybeSingle();
+      if (isOwner) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name, email')
+          .eq('id', commission.sdr_id)
+          .maybeSingle();
 
-      commissionsWithProfiles.push({
-        ...commission,
-        sdr_profile: profile,
-      });
+        commissionsWithProfiles.push({
+          ...commission,
+          sdr_profile: profile,
+        });
+      } else {
+        commissionsWithProfiles.push(commission);
+      }
     }
 
     setCommissions(commissionsWithProfiles);
@@ -175,7 +190,13 @@ export default function Commissions() {
     count: commissions.length,
   };
 
-  if (!currentWorkspace) {
+  // SDRs without any commissions yet
+  if (userRole === 'sdr' && commissions.length === 0 && !isLoading) {
+    // Allow page to render, will show empty state
+  }
+
+  // Non-SDR users without workspace
+  if (!currentWorkspace && userRole !== 'sdr') {
     return (
       <DashboardLayout>
         <DashboardHeader title="Commissions" />
@@ -188,18 +209,7 @@ export default function Commissions() {
     );
   }
 
-  if (!isOwner) {
-    return (
-      <DashboardLayout>
-        <DashboardHeader title="Commissions" />
-        <main className="flex-1 p-6">
-          <div className="flex items-center justify-center h-96">
-            <p className="text-muted-foreground">Only workspace owners can manage commissions.</p>
-          </div>
-        </main>
-      </DashboardLayout>
-    );
-  }
+  const isSDR = userRole === 'sdr';
 
   return (
     <DashboardLayout>
@@ -210,10 +220,10 @@ export default function Commissions() {
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-3">
               <DollarSign className="h-8 w-8" />
-              Commissions
+              {isSDR ? 'My Earnings' : 'Commissions'}
             </h1>
             <p className="text-muted-foreground">
-              Track and manage SDR commissions for closed deals
+              {isSDR ? 'Track your commissions and earnings' : 'Track and manage SDR commissions for closed deals'}
             </p>
           </div>
 
@@ -319,28 +329,32 @@ export default function Commissions() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>SDR</TableHead>
+                      <TableHead>{isSDR ? 'Agency' : 'SDR'}</TableHead>
                       <TableHead>Deal</TableHead>
                       <TableHead>Deal Value</TableHead>
-                      <TableHead>Commission</TableHead>
-                      <TableHead>Rake</TableHead>
+                      <TableHead>{isSDR ? 'Earnings' : 'Commission'}</TableHead>
+                      {!isSDR && <TableHead>Rake</TableHead>}
                       <TableHead>Status</TableHead>
                       <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      {!isSDR && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredCommissions.map((commission) => (
                       <TableRow key={commission.id}>
                         <TableCell>
-                          <div>
-                            <p className="font-medium">
-                              {commission.sdr_profile?.full_name || 'Unknown SDR'}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {commission.sdr_profile?.email}
-                            </p>
-                          </div>
+                          {isSDR ? (
+                            <p className="font-medium">{currentWorkspace?.name || 'Agency'}</p>
+                          ) : (
+                            <div>
+                              <p className="font-medium">
+                                {commission.sdr_profile?.full_name || 'Unknown SDR'}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {commission.sdr_profile?.email}
+                              </p>
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           <div>
@@ -359,36 +373,40 @@ export default function Commissions() {
                         <TableCell className="font-medium text-success">
                           ${Number(commission.amount).toLocaleString()}
                         </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          ${Number(commission.rake_amount).toLocaleString()}
-                        </TableCell>
+                        {!isSDR && (
+                          <TableCell className="text-muted-foreground">
+                            ${Number(commission.rake_amount).toLocaleString()}
+                          </TableCell>
+                        )}
                         <TableCell>{getStatusBadge(commission.status)}</TableCell>
                         <TableCell className="text-muted-foreground">
                           {format(new Date(commission.created_at), 'MMM d, yyyy')}
                         </TableCell>
-                        <TableCell className="text-right">
-                          {commission.status === 'pending' && (
-                            <Button
-                              size="sm"
-                              onClick={() => handleMarkAsPaid(commission.id)}
-                              disabled={payingId === commission.id}
-                            >
-                              {payingId === commission.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <>
-                                  <CheckCircle className="h-4 w-4 mr-2" />
-                                  Mark Paid
-                                </>
-                              )}
-                            </Button>
-                          )}
-                          {commission.status === 'paid' && commission.paid_at && (
-                            <span className="text-xs text-muted-foreground">
-                              Paid {format(new Date(commission.paid_at), 'MMM d')}
-                            </span>
-                          )}
-                        </TableCell>
+                        {!isSDR && (
+                          <TableCell className="text-right">
+                            {commission.status === 'pending' && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleMarkAsPaid(commission.id)}
+                                disabled={payingId === commission.id}
+                              >
+                                {payingId === commission.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <>
+                                    <CheckCircle className="h-4 w-4 mr-2" />
+                                    Mark Paid
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                            {commission.status === 'paid' && commission.paid_at && (
+                              <span className="text-xs text-muted-foreground">
+                                Paid {format(new Date(commission.paid_at), 'MMM d')}
+                              </span>
+                            )}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>

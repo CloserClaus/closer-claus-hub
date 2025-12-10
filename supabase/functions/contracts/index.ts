@@ -176,11 +176,49 @@ serve(async (req) => {
           .eq('id', contract.workspace_id)
           .single();
 
+        // Get commission percentage from the job (if SDR was hired through a job)
+        const { data: membership } = await supabase
+          .from('workspace_members')
+          .select('user_id')
+          .eq('workspace_id', contract.workspace_id)
+          .eq('user_id', deal?.assigned_to)
+          .maybeSingle();
+
+        // Default to 10% commission if no job commission percentage set
+        let commissionPercentage = 10;
+
+        // Try to find the job this SDR was hired for
+        if (membership) {
+          const { data: application } = await supabase
+            .from('job_applications')
+            .select('job_id')
+            .eq('user_id', deal?.assigned_to)
+            .eq('status', 'hired')
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (application?.job_id) {
+            const { data: job } = await supabase
+              .from('jobs')
+              .select('commission_percentage')
+              .eq('id', application.job_id)
+              .maybeSingle();
+
+            if (job?.commission_percentage) {
+              commissionPercentage = job.commission_percentage;
+            }
+          }
+        }
+
         // Create commission record and send notification
         if (deal && workspace) {
           const rakePercentage = workspace.rake_percentage || 2;
-          const rakeAmount = (deal.value * rakePercentage) / 100;
-          const commissionAmount = deal.value - rakeAmount;
+          // Commission is the SDR's percentage of the deal value
+          const commissionAmount = (deal.value * commissionPercentage) / 100;
+          // Rake is platform's percentage of the commission (not deal value)
+          const rakeAmount = (commissionAmount * rakePercentage) / 100;
+          const netCommission = commissionAmount - rakeAmount;
 
           const { error: commissionError } = await supabase
             .from('commissions')
@@ -188,7 +226,7 @@ serve(async (req) => {
               workspace_id: contract.workspace_id,
               deal_id: contract.deal_id,
               sdr_id: deal.assigned_to,
-              amount: commissionAmount,
+              amount: netCommission,
               rake_amount: rakeAmount,
               status: 'pending',
             });
@@ -221,7 +259,7 @@ serve(async (req) => {
               .eq('id', contract.deal_id)
               .single();
 
-            const totalAmount = commissionAmount + rakeAmount;
+            const totalAmount = commissionAmount; // Total commission before rake
 
             // Create in-app notification for agency owner
             if (workspaceDetails?.owner_id) {
