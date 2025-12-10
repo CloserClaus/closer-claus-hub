@@ -38,16 +38,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(profileData);
     }
 
-    // Fetch role (use maybeSingle to handle no role or multiple roles gracefully)
-    const { data: roleData } = await supabase
+    // Fetch roles - prioritize platform_admin if user has multiple roles
+    const { data: rolesData } = await supabase
       .from('user_roles')
       .select('role')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle();
+      .eq('user_id', userId);
     
-    if (roleData) {
-      setUserRole(roleData.role);
+    if (rolesData && rolesData.length > 0) {
+      // Prioritize platform_admin role
+      const platformAdmin = rolesData.find(r => r.role === 'platform_admin');
+      if (platformAdmin) {
+        setUserRole('platform_admin');
+      } else {
+        setUserRole(rolesData[0].role);
+      }
     } else {
       setUserRole(null);
     }
