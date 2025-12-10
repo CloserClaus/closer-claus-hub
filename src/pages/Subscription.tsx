@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Check, Zap, Crown, Rocket, Tag, Loader2 } from 'lucide-react';
+import { Check, Zap, Crown, Rocket, Tag, Loader2, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -95,6 +96,7 @@ export default function Subscription() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const { user, userRole } = useAuth();
+  const { hasActiveSubscription } = useWorkspace();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -262,6 +264,18 @@ export default function Subscription() {
   return (
     <div className="min-h-screen bg-background py-8 px-4 md:py-12 md:px-8">
       <div className="max-w-5xl mx-auto">
+        {/* Back Button */}
+        {hasActiveSubscription && (
+          <Button 
+            variant="ghost" 
+            onClick={() => navigate('/billing')} 
+            className="mb-6 gap-2 text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Billing
+          </Button>
+        )}
+
         {/* Header */}
         <div className="text-center mb-12">
           <img src={logoFull} alt="Closer Claus" className="h-10 mx-auto object-contain mb-8" />
