@@ -13,6 +13,7 @@ import {
   Edit,
   AlertTriangle,
   Upload,
+  CheckSquare,
 } from 'lucide-react';
 import { startOfDay, startOfWeek, startOfMonth, startOfQuarter } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
@@ -49,6 +50,8 @@ import { LeadDetailSidebar } from '@/components/crm/LeadDetailSidebar';
 import { DealDetailSidebar } from '@/components/crm/DealDetailSidebar';
 import { CRMFilters, FilterState } from '@/components/crm/CRMFilters';
 import { BulkActionsBar } from '@/components/crm/BulkActionsBar';
+import { TaskForm } from '@/components/crm/TaskForm';
+import { TaskList } from '@/components/crm/TaskList';
 
 interface Lead {
   id: string;
@@ -77,6 +80,18 @@ interface Deal {
   created_at: string;
 }
 
+interface Task {
+  id: string;
+  title: string;
+  description: string | null;
+  due_date: string;
+  priority: string;
+  status: string;
+  lead_id: string | null;
+  deal_id: string | null;
+  created_at: string;
+}
+
 const DEFAULT_FILTERS: FilterState = {
   stage: '',
   dateRange: '',
@@ -94,14 +109,17 @@ export default function CRM() {
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showLeadForm, setShowLeadForm] = useState(false);
   const [showDealForm, setShowDealForm] = useState(false);
   const [showDisputeForm, setShowDisputeForm] = useState(false);
   const [showCSVUpload, setShowCSVUpload] = useState(false);
+  const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [disputeDeal, setDisputeDeal] = useState<Deal | null>(null);
 
   // Detail sidebars
@@ -149,6 +167,16 @@ export default function CRM() {
 
       if (dealsError) throw dealsError;
       setDeals(dealsData || []);
+
+      // Fetch tasks
+      const { data: tasksData, error: tasksError } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('workspace_id', currentWorkspace.id)
+        .order('due_date', { ascending: true });
+
+      if (tasksError) throw tasksError;
+      setTasks(tasksData || []);
     } catch (error: any) {
       toast({
         variant: 'destructive',
@@ -490,6 +518,15 @@ export default function CRM() {
               <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
               <TabsTrigger value="leads">Leads</TabsTrigger>
               <TabsTrigger value="deals">Deals</TabsTrigger>
+              <TabsTrigger value="tasks" className="gap-2">
+                <CheckSquare className="h-4 w-4" />
+                Tasks
+                {tasks.filter(t => t.status !== 'completed').length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                    {tasks.filter(t => t.status !== 'completed').length}
+                  </Badge>
+                )}
+              </TabsTrigger>
             </TabsList>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setShowCSVUpload(true)}>
@@ -500,9 +537,13 @@ export default function CRM() {
                 <Plus className="h-4 w-4 mr-2" />
                 Add Lead
               </Button>
-              <Button onClick={() => setShowDealForm(true)}>
+              <Button variant="outline" onClick={() => setShowDealForm(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add Deal
+              </Button>
+              <Button onClick={() => setShowTaskForm(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Task
               </Button>
             </div>
           </div>
@@ -788,6 +829,32 @@ export default function CRM() {
               </>
             )}
           </TabsContent>
+
+          <TabsContent value="tasks" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-medium">Tasks & Follow-ups</h3>
+                <p className="text-sm text-muted-foreground">
+                  {tasks.filter(t => t.status !== 'completed').length} pending tasks
+                </p>
+              </div>
+              <Button onClick={() => setShowTaskForm(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Task
+              </Button>
+            </div>
+            <TaskList
+              tasks={tasks}
+              leads={leads}
+              deals={deals}
+              onEdit={(task) => {
+                setEditingTask(task);
+                setShowTaskForm(true);
+              }}
+              onRefresh={fetchData}
+              isAgencyOwner={isAgencyOwner}
+            />
+          </TabsContent>
         </Tabs>
 
         {/* Bulk Actions */}
@@ -940,6 +1007,39 @@ export default function CRM() {
                 }}
               />
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Task Form Dialog */}
+        <Dialog
+          open={showTaskForm}
+          onOpenChange={(open) => {
+            setShowTaskForm(open);
+            if (!open) setEditingTask(null);
+          }}
+        >
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{editingTask ? 'Edit Task' : 'Create New Task'}</DialogTitle>
+              <DialogDescription>
+                {editingTask ? 'Update task details' : 'Add a task or reminder for follow-up'}
+              </DialogDescription>
+            </DialogHeader>
+            <TaskForm
+              task={editingTask}
+              workspaceId={currentWorkspace.id}
+              leads={leads}
+              deals={deals}
+              onSuccess={() => {
+                setShowTaskForm(false);
+                setEditingTask(null);
+                fetchData();
+              }}
+              onCancel={() => {
+                setShowTaskForm(false);
+                setEditingTask(null);
+              }}
+            />
           </DialogContent>
         </Dialog>
 
