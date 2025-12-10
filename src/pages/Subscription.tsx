@@ -23,6 +23,8 @@ interface Plan {
   features: string[];
   icon: React.ComponentType<{ className?: string }>;
   popular?: boolean;
+  bestFor: string;
+  teamDescription: string;
 }
 
 const plans: Plan[] = [
@@ -34,14 +36,14 @@ const plans: Plan[] = [
     maxSdrs: 1,
     rakePercentage: 2,
     features: [
-      '1 SDR slot',
       'Full CRM access',
-      'Dialer integration',
+      'Integrated dialer',
       'Contract e-signatures',
-      'Training materials',
-      '2% platform rake',
+      'Priority support',
     ],
     icon: Zap,
+    bestFor: 'Agencies starting out',
+    teamDescription: 'Build your team of 1 SDR',
   },
   {
     id: 'beta',
@@ -51,16 +53,15 @@ const plans: Plan[] = [
     maxSdrs: 2,
     rakePercentage: 1.5,
     features: [
-      '2 SDR slots',
       'Full CRM access',
-      'Dialer integration',
+      'Integrated dialer',
       'Contract e-signatures',
-      'Training materials',
-      '1.5% platform rake',
       'Priority support',
     ],
     icon: Crown,
     popular: true,
+    bestFor: 'Growing agencies',
+    teamDescription: 'Build your team of 2 SDRs',
   },
   {
     id: 'alpha',
@@ -70,16 +71,14 @@ const plans: Plan[] = [
     maxSdrs: 5,
     rakePercentage: 1,
     features: [
-      '5 SDR slots',
       'Full CRM access',
-      'Dialer integration',
+      'Integrated dialer',
       'Contract e-signatures',
-      'Training materials',
-      '1% platform rake',
-      'Priority support',
       'Dedicated account manager',
     ],
     icon: Rocket,
+    bestFor: 'Established agencies',
+    teamDescription: 'Build your team of 5 SDRs',
   },
 ];
 
@@ -259,11 +258,6 @@ export default function Subscription() {
     }
   };
 
-  const yearlySavings = (plan: Plan) => {
-    const monthlyCost = plan.monthlyPrice * 12;
-    const yearlyCost = plan.yearlyPrice;
-    return Math.round(((monthlyCost - yearlyCost) / monthlyCost) * 100);
-  };
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
@@ -289,7 +283,7 @@ export default function Subscription() {
               <TabsTrigger value="yearly">
                 Yearly
                 <Badge variant="secondary" className="ml-2 bg-success/20 text-success text-xs">
-                  Save up to 16%
+                  Get 2 months free
                 </Badge>
               </TabsTrigger>
             </TabsList>
@@ -356,11 +350,22 @@ export default function Subscription() {
                     <Icon className="w-7 h-7 text-primary" />
                   </div>
                   <CardTitle className="text-2xl">{plan.name}</CardTitle>
-                  <CardDescription>
-                    Up to {plan.maxSdrs} SDR{plan.maxSdrs > 1 ? 's' : ''}
-                  </CardDescription>
+                  <Badge variant="outline" className="mt-2 text-xs">
+                    Best for: {plan.bestFor}
+                  </Badge>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {/* SDR Slots - Primary Focus */}
+                  <div className="text-center p-4 rounded-xl bg-primary/5 border border-primary/20">
+                    <p className="text-lg font-semibold text-primary mb-1">
+                      {plan.teamDescription}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {plan.rakePercentage}% platform fee on each deal closed
+                    </p>
+                  </div>
+
+                  {/* Pricing */}
                   <div className="text-center">
                     {hasDiscount && (
                       <p className="text-lg text-muted-foreground line-through">
@@ -375,7 +380,7 @@ export default function Subscription() {
                     </p>
                     {billingPeriod === 'yearly' && (
                       <p className="text-sm text-success mt-1">
-                        Save {yearlySavings(plan)}% vs monthly
+                        That's 2 months free!
                       </p>
                     )}
                   </div>
