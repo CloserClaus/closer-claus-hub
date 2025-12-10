@@ -61,7 +61,7 @@ export function PayoutsTable() {
     },
   });
 
-  // Trigger payment via edge function (Stripe placeholder)
+  // Trigger payment via edge function (Stripe)
   const triggerPaymentMutation = useMutation({
     mutationFn: async (commissionId: string) => {
       const { data, error } = await supabase.functions.invoke('pay-commission', {
@@ -72,10 +72,12 @@ export function PayoutsTable() {
       return data;
     },
     onSuccess: (data) => {
-      if (data?.stripe_pending) {
-        toast.info('Stripe integration pending - commission ready for payment when configured');
-      } else {
-        toast.success('Payment processed successfully');
+      if (data?.stripe_enabled === false) {
+        toast.info('Stripe not configured. Add STRIPE_SECRET_KEY to enable automatic payments.');
+      } else if (data?.requires_action) {
+        toast.info('Payment requires additional verification from the agency owner.');
+      } else if (data?.success) {
+        toast.success(`Payment of $${data.amount_charged?.toFixed(2)} processed successfully`);
       }
       queryClient.invalidateQueries({ queryKey: ['admin-commissions'] });
       queryClient.invalidateQueries({ queryKey: ['admin-stats'] });

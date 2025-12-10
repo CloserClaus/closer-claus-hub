@@ -201,52 +201,57 @@ export default function Subscription() {
       const price = billingPeriod === 'monthly' ? plan.monthlyPrice : plan.yearlyPrice;
       const discountedPrice = getDiscountedPrice(price);
 
-      // Update workspace with subscription info
-      const { error: workspaceError } = await supabase
-        .from('workspaces')
-        .update({
-          subscription_tier: plan.id,
-          subscription_status: 'active', // Will be 'pending' until Stripe confirms
-          max_sdrs: plan.maxSdrs,
-          rake_percentage: plan.rakePercentage,
-        })
-        .eq('id', workspaceId);
-
-      if (workspaceError) throw workspaceError;
-
-      // Record coupon redemption if applicable
-      if (appliedCoupon) {
-        const { data: couponData } = await supabase
-          .from('coupons')
-          .select('id')
-          .eq('code', appliedCoupon.code)
-          .single();
-
-        if (couponData) {
-          await supabase.from('coupon_redemptions').insert({
-            coupon_id: couponData.id,
-            workspace_id: workspaceId,
-            discount_applied: price - discountedPrice,
-          });
-        }
-      }
-
-      // TODO: Integrate with Stripe for actual payment processing
-      // For now, we'll mark subscription as active
-      // In production, this would redirect to Stripe Checkout
-
-      toast({
-        title: 'Subscription activated!',
-        description: `You're now on the ${plan.name} plan.`,
+      // Call create-subscription edge function
+      const { data, error } = await supabase.functions.invoke('create-subscription', {
+        body: {
+          workspace_id: workspaceId,
+          tier: plan.id,
+          billing_period: billingPeriod,
+          success_url: `${window.location.origin}/dashboard?subscription=success`,
+          cancel_url: `${window.location.origin}/subscription?workspace=${workspaceId}&cancelled=true`,
+        },
       });
 
-      // Mark onboarding as complete
-      await supabase
-        .from('profiles')
-        .update({ onboarding_completed: true })
-        .eq('id', user.id);
+      if (error) throw error;
 
-      navigate('/dashboard');
+      // If Stripe checkout URL is returned, redirect to it
+      if (data?.checkout_url) {
+        window.location.href = data.checkout_url;
+        return;
+      }
+
+      // If no Stripe (test mode), subscription was activated directly
+      if (data?.success) {
+        // Record coupon redemption if applicable
+        if (appliedCoupon) {
+          const { data: couponData } = await supabase
+            .from('coupons')
+            .select('id')
+            .eq('code', appliedCoupon.code)
+            .single();
+
+          if (couponData) {
+            await supabase.from('coupon_redemptions').insert({
+              coupon_id: couponData.id,
+              workspace_id: workspaceId,
+              discount_applied: price - discountedPrice,
+            });
+          }
+        }
+
+        toast({
+          title: 'Subscription activated!',
+          description: `You're now on the ${plan.name} plan.`,
+        });
+
+        // Mark onboarding as complete
+        await supabase
+          .from('profiles')
+          .update({ onboarding_completed: true })
+          .eq('id', user.id);
+
+        navigate('/dashboard');
+      }
     } catch (error: any) {
       console.error('Subscription error:', error);
       toast({
