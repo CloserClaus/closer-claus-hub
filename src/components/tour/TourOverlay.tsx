@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { X, ChevronLeft, ChevronRight, Sparkles, MousePointer2, Hand, Target } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Sparkles, MousePointer2, Hand, Target, PartyPopper } from 'lucide-react';
 import { useTour } from './TourProvider';
 import { Button } from '@/components/ui/button';
+import { Confetti } from '@/components/ui/confetti';
 import { cn } from '@/lib/utils';
 
 interface SpotlightPosition {
@@ -27,16 +28,19 @@ interface HotspotPosition {
 }
 
 export function TourOverlay() {
-  const { isActive, currentStep, steps, nextStep, prevStep, skipTour } = useTour();
+  const { isActive, currentStep, steps, nextStep, prevStep, skipTour, endTour } = useTour();
   const [spotlight, setSpotlight] = useState<SpotlightPosition | null>(null);
   const [tooltipPos, setTooltipPos] = useState<TooltipPosition>({ top: 0, left: 0 });
   const [isVisible, setIsVisible] = useState(false);
   const [hotspotPositions, setHotspotPositions] = useState<HotspotPosition[]>([]);
   const [activeHotspot, setActiveHotspot] = useState<string | null>(null);
   const [actionCompleted, setActionCompleted] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [showCompletionScreen, setShowCompletionScreen] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
   const step = steps[currentStep];
+  const isLastStep = currentStep === steps.length - 1;
 
   // Trigger haptic feedback
   const triggerHaptic = useCallback((intensity: 'light' | 'medium' | 'heavy' = 'light') => {
@@ -65,6 +69,20 @@ export function TourOverlay() {
     triggerHaptic('light');
     setActiveHotspot(activeHotspot === hotspotTarget ? null : hotspotTarget);
   }, [activeHotspot, triggerHaptic]);
+
+  // Handle tour completion with celebration
+  const handleFinishTour = useCallback(() => {
+    triggerHaptic('heavy');
+    setShowConfetti(true);
+    setShowCompletionScreen(true);
+  }, [triggerHaptic]);
+
+  // Close completion screen and end tour
+  const handleCloseCompletion = useCallback(() => {
+    setShowCompletionScreen(false);
+    setShowConfetti(false);
+    endTour();
+  }, [endTour]);
 
   useEffect(() => {
     if (!isActive || !step) {
@@ -413,12 +431,15 @@ export function TourOverlay() {
             )}
             <Button
               size="sm"
-              onClick={nextStep}
+              onClick={isLastStep ? handleFinishTour : nextStep}
               className="h-8"
               disabled={hasAction}
             >
-              {currentStep === steps.length - 1 ? (
-                'Finish'
+              {isLastStep ? (
+                <>
+                  <PartyPopper className="h-4 w-4 mr-1" />
+                  Finish
+                </>
               ) : hasAction ? (
                 'Complete action'
               ) : (
@@ -431,6 +452,28 @@ export function TourOverlay() {
           </div>
         </div>
       </div>
+
+      {/* Confetti celebration */}
+      <Confetti isActive={showConfetti} duration={4000} pieceCount={100} />
+
+      {/* Completion Screen */}
+      {showCompletionScreen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center animate-fade-in">
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
+          <div className="relative bg-card border border-border rounded-2xl shadow-2xl p-8 max-w-md mx-4 text-center animate-scale-in">
+            <div className="mx-auto w-20 h-20 rounded-full bg-gradient-to-br from-primary/30 to-success/30 flex items-center justify-center mb-6">
+              <PartyPopper className="h-10 w-10 text-primary" />
+            </div>
+            <h2 className="text-2xl font-bold mb-2">Tour Complete! 🎉</h2>
+            <p className="text-muted-foreground mb-6">
+              You're all set to start using the platform. If you ever need help, click the help button in the corner.
+            </p>
+            <Button onClick={handleCloseCompletion} size="lg" className="w-full">
+              Get Started
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
