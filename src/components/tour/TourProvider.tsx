@@ -8,6 +8,13 @@ export interface TourStep {
   content: string;
   placement?: 'top' | 'bottom' | 'left' | 'right';
   spotlightPadding?: number;
+  action?: 'click' | 'hover' | 'focus'; // Interactive action type
+  actionLabel?: string; // Label for the action button
+  hotspots?: Array<{
+    target: string;
+    label: string;
+    description: string;
+  }>;
 }
 
 interface TourContextType {
