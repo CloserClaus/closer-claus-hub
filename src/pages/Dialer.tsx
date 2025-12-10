@@ -118,7 +118,9 @@ export default function Dialer() {
           }
         );
 
-        setDialerAvailable(response.status !== 503);
+        const data = await response.json();
+        // Check the configured flag in the response
+        setDialerAvailable(data.configured === true);
       } catch {
         setDialerAvailable(false);
       }
