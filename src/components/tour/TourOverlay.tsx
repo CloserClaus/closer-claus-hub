@@ -433,15 +433,12 @@ export function TourOverlay() {
               size="sm"
               onClick={isLastStep ? handleFinishTour : nextStep}
               className="h-8"
-              disabled={hasAction}
             >
               {isLastStep ? (
                 <>
                   <PartyPopper className="h-4 w-4 mr-1" />
                   Finish
                 </>
-              ) : hasAction ? (
-                'Complete action'
               ) : (
                 <>
                   Next
