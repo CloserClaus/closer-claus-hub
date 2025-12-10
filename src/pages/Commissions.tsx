@@ -7,6 +7,7 @@ import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { SDRLevelBadge } from "@/components/ui/sdr-level-badge";
 import {
   Table,
   TableBody,
@@ -30,6 +31,7 @@ import {
   TrendingUp,
   Users,
   Loader2,
+  Percent,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -38,6 +40,9 @@ interface Commission {
   id: string;
   amount: number;
   rake_amount: number;
+  platform_cut_percentage: number;
+  platform_cut_amount: number;
+  sdr_payout_amount: number;
   status: string;
   paid_at: string | null;
   created_at: string;
@@ -55,6 +60,7 @@ interface Commission {
   sdr_profile?: {
     full_name: string | null;
     email: string;
+    sdr_level?: number;
   } | null;
 }
 
@@ -117,7 +123,7 @@ export default function Commissions() {
       if (isOwner) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('full_name, email')
+          .select('full_name, email, sdr_level')
           .eq('id', commission.sdr_id)
           .maybeSingle();
 
@@ -181,12 +187,14 @@ export default function Commissions() {
   const stats = {
     totalPending: commissions
       .filter(c => c.status === 'pending')
-      .reduce((sum, c) => sum + Number(c.amount), 0),
+      .reduce((sum, c) => sum + Number(c.sdr_payout_amount || c.amount), 0),
     totalPaid: commissions
       .filter(c => c.status === 'paid')
-      .reduce((sum, c) => sum + Number(c.amount), 0),
+      .reduce((sum, c) => sum + Number(c.sdr_payout_amount || c.amount), 0),
     totalRake: commissions
       .reduce((sum, c) => sum + Number(c.rake_amount), 0),
+    totalPlatformCut: commissions
+      .reduce((sum, c) => sum + Number(c.platform_cut_amount || 0), 0),
     count: commissions.length,
   };
 
@@ -264,8 +272,8 @@ export default function Commissions() {
                     <TrendingUp className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Platform Rake</p>
-                    <p className="text-2xl font-bold">${stats.totalRake.toLocaleString()}</p>
+                    <p className="text-sm text-muted-foreground">{isSDR ? 'Platform Fees' : 'Agency Rake'}</p>
+                    <p className="text-2xl font-bold">${isSDR ? stats.totalPlatformCut.toLocaleString() : stats.totalRake.toLocaleString()}</p>
                   </div>
                 </div>
               </CardContent>
@@ -330,9 +338,12 @@ export default function Commissions() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>{isSDR ? 'Agency' : 'SDR'}</TableHead>
+                      {!isSDR && <TableHead>Level</TableHead>}
                       <TableHead>Deal</TableHead>
                       <TableHead>Deal Value</TableHead>
-                      <TableHead>{isSDR ? 'Earnings' : 'Commission'}</TableHead>
+                      <TableHead>Gross Commission</TableHead>
+                      {isSDR && <TableHead>Platform Fee</TableHead>}
+                      <TableHead>{isSDR ? 'Net Payout' : 'SDR Payout'}</TableHead>
                       {!isSDR && <TableHead>Rake</TableHead>}
                       <TableHead>Status</TableHead>
                       <TableHead>Date</TableHead>
@@ -356,6 +367,11 @@ export default function Commissions() {
                             </div>
                           )}
                         </TableCell>
+                        {!isSDR && (
+                          <TableCell>
+                            <SDRLevelBadge level={commission.sdr_profile?.sdr_level || 1} size="sm" />
+                          </TableCell>
+                        )}
                         <TableCell>
                           <div>
                             <p className="font-medium">{commission.deals?.title || 'Unknown Deal'}</p>
@@ -370,8 +386,19 @@ export default function Commissions() {
                         <TableCell>
                           ${commission.deals?.value?.toLocaleString() || '0'}
                         </TableCell>
-                        <TableCell className="font-medium text-success">
+                        <TableCell className="text-muted-foreground">
                           ${Number(commission.amount).toLocaleString()}
+                        </TableCell>
+                        {isSDR && (
+                          <TableCell className="text-destructive">
+                            <div className="flex items-center gap-1">
+                              <Percent className="h-3 w-3" />
+                              {commission.platform_cut_percentage || 15}% (${Number(commission.platform_cut_amount || 0).toLocaleString()})
+                            </div>
+                          </TableCell>
+                        )}
+                        <TableCell className="font-medium text-success">
+                          ${Number(commission.sdr_payout_amount || commission.amount).toLocaleString()}
                         </TableCell>
                         {!isSDR && (
                           <TableCell className="text-muted-foreground">

@@ -122,8 +122,11 @@ export type Database = {
           deal_id: string
           id: string
           paid_at: string | null
+          platform_cut_amount: number | null
+          platform_cut_percentage: number | null
           rake_amount: number
           sdr_id: string
+          sdr_payout_amount: number | null
           status: string
           stripe_payment_intent_id: string | null
           updated_at: string
@@ -135,8 +138,11 @@ export type Database = {
           deal_id: string
           id?: string
           paid_at?: string | null
+          platform_cut_amount?: number | null
+          platform_cut_percentage?: number | null
           rake_amount?: number
           sdr_id: string
+          sdr_payout_amount?: number | null
           status?: string
           stripe_payment_intent_id?: string | null
           updated_at?: string
@@ -148,8 +154,11 @@ export type Database = {
           deal_id?: string
           id?: string
           paid_at?: string | null
+          platform_cut_amount?: number | null
+          platform_cut_percentage?: number | null
           rake_amount?: number
           sdr_id?: string
+          sdr_payout_amount?: number | null
           status?: string
           stripe_payment_intent_id?: string | null
           updated_at?: string
@@ -904,6 +913,8 @@ export type Database = {
           id: string
           onboarding_completed: boolean | null
           phone: string | null
+          sdr_level: number | null
+          total_deals_closed_value: number | null
           updated_at: string | null
         }
         Insert: {
@@ -915,6 +926,8 @@ export type Database = {
           id: string
           onboarding_completed?: boolean | null
           phone?: string | null
+          sdr_level?: number | null
+          total_deals_closed_value?: number | null
           updated_at?: string | null
         }
         Update: {
@@ -926,6 +939,8 @@ export type Database = {
           id?: string
           onboarding_completed?: boolean | null
           phone?: string | null
+          sdr_level?: number | null
+          total_deals_closed_value?: number | null
           updated_at?: string | null
         }
         Relationships: []
@@ -1259,10 +1274,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_sdr_level: { Args: { total_value: number }; Returns: number }
       can_access_workspace_conversations: {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
       }
+      get_platform_cut_percentage: { Args: { level: number }; Returns: number }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
