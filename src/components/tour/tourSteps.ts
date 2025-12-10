@@ -1,0 +1,171 @@
+import { TourStep } from './TourProvider';
+
+export const platformAdminTourSteps: TourStep[] = [
+  {
+    id: 'welcome',
+    target: '[data-tour="dashboard-header"]',
+    title: 'Welcome, Platform Admin! 👋',
+    content: 'As a Platform Admin, you have full control over the entire Closer Claus platform. Let\'s take a quick tour of your powerful dashboard.',
+    placement: 'bottom',
+  },
+  {
+    id: 'sidebar',
+    target: '[data-tour="sidebar"]',
+    title: 'Navigation Sidebar',
+    content: 'Access all platform sections from here: Agencies, SDRs, Jobs, Disputes, Payouts, and more. Each section gives you complete visibility into platform activity.',
+    placement: 'right',
+  },
+  {
+    id: 'stats',
+    target: '[data-tour="stats-grid"]',
+    title: 'Platform Metrics',
+    content: 'Monitor key metrics at a glance: total agencies, SDRs, pending disputes, platform revenue, and more. These update in real-time.',
+    placement: 'bottom',
+  },
+  {
+    id: 'admin-controls',
+    target: '[data-tour="admin-controls"]',
+    title: 'Admin Controls',
+    content: 'Access powerful admin tools to bypass email verification, unlock workspaces, and grant subscriptions. Use these powers responsibly!',
+    placement: 'right',
+  },
+  {
+    id: 'disputes',
+    target: '[data-tour="disputes"]',
+    title: 'Dispute Management',
+    content: 'Review and resolve disputes between agencies and SDRs. You can approve, reject, or request more information.',
+    placement: 'right',
+  },
+  {
+    id: 'complete',
+    target: '[data-tour="dashboard-header"]',
+    title: 'You\'re All Set! 🎉',
+    content: 'You now know the basics of the admin dashboard. Explore each section to manage your platform effectively. Need help? Check the documentation anytime.',
+    placement: 'bottom',
+  },
+];
+
+export const agencyOwnerTourSteps: TourStep[] = [
+  {
+    id: 'welcome',
+    target: '[data-tour="dashboard-header"]',
+    title: 'Welcome to Closer Claus! 👋',
+    content: 'This is your agency dashboard where you can manage your sales team, track deals, and grow your business. Let\'s show you around!',
+    placement: 'bottom',
+  },
+  {
+    id: 'stats',
+    target: '[data-tour="stats-grid"]',
+    title: 'Your Key Metrics',
+    content: 'See your agency\'s performance at a glance: team size, pipeline value, pending commissions, and more. Track your growth over time.',
+    placement: 'bottom',
+  },
+  {
+    id: 'jobs',
+    target: '[data-tour="nav-jobs"]',
+    title: 'Post Jobs',
+    content: 'Create job postings to attract talented SDRs. Define commission rates, requirements, and job descriptions to find the perfect fit.',
+    placement: 'right',
+  },
+  {
+    id: 'team',
+    target: '[data-tour="nav-team"]',
+    title: 'Manage Your Team',
+    content: 'View and manage your hired SDRs. Track their performance, handle applications, and build your dream sales team.',
+    placement: 'right',
+  },
+  {
+    id: 'crm',
+    target: '[data-tour="nav-crm"]',
+    title: 'CRM & Pipeline',
+    content: 'Track leads and deals through your sales pipeline. Your team can log calls, update deal stages, and close more deals.',
+    placement: 'right',
+  },
+  {
+    id: 'dialer',
+    target: '[data-tour="nav-dialer"]',
+    title: 'Power Dialer',
+    content: 'Make calls directly from the platform. Track call logs, record conversations, and boost your team\'s productivity.',
+    placement: 'right',
+  },
+  {
+    id: 'commissions',
+    target: '[data-tour="nav-commissions"]',
+    title: 'Commission Management',
+    content: 'Track and pay commissions to your SDRs. View pending payouts, payment history, and platform fees.',
+    placement: 'right',
+  },
+  {
+    id: 'complete',
+    target: '[data-tour="dashboard-header"]',
+    title: 'Ready to Grow! 🚀',
+    content: 'You\'re all set! Start by posting a job to hire your first SDR, or explore the CRM to manage your pipeline. Happy selling!',
+    placement: 'bottom',
+  },
+];
+
+export const sdrTourSteps: TourStep[] = [
+  {
+    id: 'welcome',
+    target: '[data-tour="dashboard-header"]',
+    title: 'Welcome, Sales Pro! 👋',
+    content: 'This is your SDR dashboard where you can find jobs, manage deals, and track your earnings. Let\'s get you started!',
+    placement: 'bottom',
+  },
+  {
+    id: 'level',
+    target: '[data-tour="sdr-level"]',
+    title: 'Your SDR Level',
+    content: 'As you close deals, you\'ll level up! Higher levels mean lower platform fees: Level 1 (15%), Level 2 (10%), Level 3 (5%). Keep closing deals to level up!',
+    placement: 'right',
+  },
+  {
+    id: 'stats',
+    target: '[data-tour="stats-grid"]',
+    title: 'Your Performance',
+    content: 'Track your earnings, pending payouts, calls made, and deals closed. Watch these numbers grow as you succeed!',
+    placement: 'bottom',
+  },
+  {
+    id: 'jobs',
+    target: '[data-tour="nav-jobs"]',
+    title: 'Find Jobs',
+    content: 'Browse available positions from agencies. Apply to jobs that match your skills. You can work for up to 3 commission-only companies simultaneously!',
+    placement: 'right',
+  },
+  {
+    id: 'crm',
+    target: '[data-tour="nav-crm"]',
+    title: 'Manage Leads',
+    content: 'Work your assigned leads through the sales pipeline. Log activities, update deal stages, and close more deals.',
+    placement: 'right',
+  },
+  {
+    id: 'dialer',
+    target: '[data-tour="nav-dialer"]',
+    title: 'Make Calls',
+    content: 'Use the power dialer to efficiently work through your call list. Track call outcomes and take notes.',
+    placement: 'right',
+  },
+  {
+    id: 'earnings',
+    target: '[data-tour="nav-earnings"]',
+    title: 'Track Earnings',
+    content: 'View your commissions, payout history, and level progress. See exactly how much you\'ve earned and what\'s pending.',
+    placement: 'right',
+  },
+  {
+    id: 'workspace',
+    target: '[data-tour="workspace-switcher"]',
+    title: 'Switch Workspaces',
+    content: 'If you work for multiple agencies, use the workspace switcher to toggle between them. Each workspace is completely separate.',
+    placement: 'right',
+  },
+  {
+    id: 'complete',
+    target: '[data-tour="dashboard-header"]',
+    title: 'Let\'s Crush It! 💪',
+    content: 'You\'re ready to start selling! Browse available jobs, get hired, and start closing deals. The more you sell, the more you earn!',
+    placement: 'bottom',
+  },
+];
