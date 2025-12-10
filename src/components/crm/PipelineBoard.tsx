@@ -115,6 +115,22 @@ export function PipelineBoard({ deals, leads, onDealClick, onLeadClick, onConver
         description: `Moved from ${deal.stage.replace('_', ' ')} to ${newStage.replace('_', ' ')}`,
       });
 
+      // Create commission if moved to closed_won
+      if (newStage === 'closed_won') {
+        try {
+          const response = await supabase.functions.invoke('create-commission', {
+            body: { dealId, workspaceId: deal.workspace_id },
+          });
+          if (response.error) {
+            console.error('Error creating commission:', response.error);
+          } else {
+            console.log('Commission created:', response.data);
+          }
+        } catch (commErr) {
+          console.error('Failed to create commission:', commErr);
+        }
+      }
+
       toast({
         title: 'Deal moved',
         description: `Moved to ${newStage.replace('_', ' ')}`,

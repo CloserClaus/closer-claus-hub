@@ -372,6 +372,8 @@ export default function CRM() {
     setIsBulkProcessing(true);
 
     try {
+      const dealIds = Array.from(selectedDealIds);
+      
       const { error } = await supabase
         .from('deals')
         .update({
@@ -380,9 +382,22 @@ export default function CRM() {
             ? new Date().toISOString()
             : null,
         })
-        .in('id', Array.from(selectedDealIds));
+        .in('id', dealIds);
 
       if (error) throw error;
+
+      // Create commissions for closed_won deals
+      if (stage === 'closed_won' && currentWorkspace) {
+        for (const dealId of dealIds) {
+          try {
+            await supabase.functions.invoke('create-commission', {
+              body: { dealId, workspaceId: currentWorkspace.id },
+            });
+          } catch (commErr) {
+            console.error(`Failed to create commission for deal ${dealId}:`, commErr);
+          }
+        }
+      }
 
       toast({ title: `Updated ${selectedDealIds.size} deals to ${stage.replace('_', ' ')}` });
       setSelectedDealIds(new Set());
