@@ -12,8 +12,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { MessageSquare, Plus, Send, Users } from "lucide-react";
+import { MessageSquare, Plus, Send, Users, ArrowLeft, Menu } from "lucide-react";
 import { format } from "date-fns";
+import { useSidebar } from "@/components/ui/sidebar";
 
 interface Conversation {
   id: string;
@@ -322,11 +323,21 @@ export default function Conversations() {
     return email.slice(0, 2).toUpperCase();
   };
 
+  const { toggleSidebar } = useSidebar();
+
   return (
     <DashboardLayout>
-      <div className="flex h-[calc(100vh-4rem)]">
+      {/* Mobile Header */}
+      <div className="md:hidden flex items-center gap-2 p-4 border-b border-border">
+        <Button variant="ghost" size="icon" onClick={toggleSidebar}>
+          <Menu className="h-5 w-5" />
+        </Button>
+        <h1 className="font-semibold">Conversations</h1>
+      </div>
+
+      <div className="flex h-[calc(100vh-4rem)] md:h-[calc(100vh-4rem)]">
         {/* Sidebar - Conversation List */}
-        <div className="w-80 border-r border-border flex flex-col">
+        <div className="w-80 border-r border-border flex flex-col max-md:hidden md:flex">
           <div className="p-4 border-b border-border flex items-center justify-between">
             <h2 className="font-semibold text-lg">Conversations</h2>
             <Dialog open={showNewConversation} onOpenChange={setShowNewConversation}>
