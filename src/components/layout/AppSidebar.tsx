@@ -23,6 +23,7 @@ import {
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
 import { WorkspaceSwitcher } from '@/components/layout/WorkspaceSwitcher';
+import { SDRLevelProgress } from '@/components/SDRLevelProgress';
 import {
   Sidebar,
   SidebarContent,
@@ -152,7 +153,17 @@ export function AppSidebar() {
           <div className="px-3 py-2">
             <WorkspaceSwitcher />
           </div>
+          <SidebarSeparator />
+          <div className="px-3 py-2">
+            <SDRLevelProgress />
+          </div>
         </>
+      )}
+
+      {userRole === 'sdr' && collapsed && (
+        <div className="px-2 py-2">
+          <SDRLevelProgress compact />
+        </div>
       )}
 
       <SidebarSeparator />

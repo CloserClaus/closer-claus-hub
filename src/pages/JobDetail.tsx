@@ -19,6 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { SDRLevelBadge } from '@/components/ui/sdr-level-badge';
 import {
   Dialog,
   DialogContent,
@@ -65,6 +66,8 @@ interface Application {
   profile?: {
     full_name: string | null;
     email: string;
+    sdr_level?: number;
+    total_deals_closed_value?: number;
   };
 }
 
@@ -125,7 +128,7 @@ export default function JobDetail() {
           const userIds = appData.map(a => a.user_id);
           const { data: profiles } = await supabase
             .from('profiles')
-            .select('id, full_name, email')
+            .select('id, full_name, email, sdr_level, total_deals_closed_value')
             .in('id', userIds);
 
           const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
@@ -499,14 +502,20 @@ export default function JobDetail() {
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div>
-                              <p className="font-medium">
-                                {app.profile?.full_name || 'Unknown'}
-                              </p>
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="font-medium">
+                                  {app.profile?.full_name || 'Unknown'}
+                                </p>
+                                <SDRLevelBadge 
+                                  level={app.profile?.sdr_level || 1} 
+                                  size="sm" 
+                                />
+                              </div>
                               <p className="text-sm text-muted-foreground">
                                 {app.profile?.email}
                               </p>
                               <p className="text-xs text-muted-foreground mt-1">
-                                Applied {new Date(app.applied_at).toLocaleDateString()}
+                                Applied {new Date(app.applied_at).toLocaleDateString()} • ${(app.profile?.total_deals_closed_value || 0).toLocaleString()} deals closed
                               </p>
                             </div>
                             <Badge className={getStatusColor(app.status)}>

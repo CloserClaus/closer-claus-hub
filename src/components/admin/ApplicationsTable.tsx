@@ -3,6 +3,7 @@ import { FileCheck, Building2, User } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { SDRLevelBadge } from '@/components/ui/sdr-level-badge';
 import {
   Table,
   TableBody,
@@ -27,11 +28,11 @@ export function ApplicationsTable() {
 
       if (error) throw error;
 
-      // Get applicant profiles
+      // Get applicant profiles including SDR level
       const userIds = data?.map(a => a.user_id) || [];
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, full_name, email')
+        .select('id, full_name, email, sdr_level, total_deals_closed_value')
         .in('id', userIds);
 
       const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
@@ -75,6 +76,7 @@ export function ApplicationsTable() {
             <TableHeader>
               <TableRow>
                 <TableHead>Applicant</TableHead>
+                <TableHead>Level</TableHead>
                 <TableHead>Job</TableHead>
                 <TableHead>Agency</TableHead>
                 <TableHead>Status</TableHead>
@@ -92,6 +94,9 @@ export function ApplicationsTable() {
                         <p className="text-xs text-muted-foreground">{app.applicant?.email}</p>
                       </div>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <SDRLevelBadge level={(app.applicant as any)?.sdr_level || 1} size="sm" />
                   </TableCell>
                   <TableCell className="font-medium">{(app.jobs as any)?.title || 'Unknown'}</TableCell>
                   <TableCell>
