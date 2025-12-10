@@ -1,11 +1,19 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
+
+type SubscriptionTier = Database['public']['Enums']['subscription_tier'];
 
 interface Workspace {
   id: string;
   name: string;
   owner_id: string;
+  subscription_tier: SubscriptionTier | null;
+  subscription_status: string | null;
+  max_sdrs: number | null;
+  rake_percentage: number | null;
+  is_locked: boolean | null;
 }
 
 interface WorkspaceContextType {
@@ -13,6 +21,7 @@ interface WorkspaceContextType {
   workspaces: Workspace[];
   loading: boolean;
   isOwner: boolean;
+  hasActiveSubscription: boolean;
   setCurrentWorkspace: (workspace: Workspace) => void;
   refreshWorkspaces: () => Promise<void>;
 }
@@ -40,13 +49,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         // Agency owners see workspaces they own
         const { data } = await supabase
           .from('workspaces')
-          .select('id, name, owner_id')
+          .select('id, name, owner_id, subscription_tier, subscription_status, max_sdrs, rake_percentage, is_locked')
           .eq('owner_id', user.id);
 
-        const ws = data || [];
+        const ws = (data || []) as Workspace[];
         setWorkspaces(ws);
         if (ws.length > 0 && !currentWorkspace) {
           setCurrentWorkspace(ws[0]);
+        } else if (ws.length > 0 && currentWorkspace) {
+          // Update current workspace with fresh data
+          const updated = ws.find(w => w.id === currentWorkspace.id);
+          if (updated) setCurrentWorkspace(updated);
         }
       } else if (userRole === 'sdr') {
         // SDRs see workspaces they're members of
@@ -60,10 +73,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           const workspaceIds = memberships.map(m => m.workspace_id);
           const { data } = await supabase
             .from('workspaces')
-            .select('id, name, owner_id')
+            .select('id, name, owner_id, subscription_tier, subscription_status, max_sdrs, rake_percentage, is_locked')
             .in('id', workspaceIds);
 
-          const ws = data || [];
+          const ws = (data || []) as Workspace[];
           setWorkspaces(ws);
           if (ws.length > 0 && !currentWorkspace) {
             setCurrentWorkspace(ws[0]);
@@ -88,6 +101,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [user, userRole]);
 
   const isOwner = currentWorkspace?.owner_id === user?.id;
+  const hasActiveSubscription = currentWorkspace?.subscription_status === 'active';
 
   return (
     <WorkspaceContext.Provider
@@ -96,6 +110,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         workspaces,
         loading,
         isOwner,
+        hasActiveSubscription,
         setCurrentWorkspace,
         refreshWorkspaces: fetchWorkspaces,
       }}
