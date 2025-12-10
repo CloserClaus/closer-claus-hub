@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -14,11 +14,36 @@ interface Notification {
   created_at: string;
 }
 
+interface LevelUpData {
+  old_level: number;
+  new_level: number;
+  total_deals_closed: number;
+  new_platform_cut: number;
+}
+
 export function useNotifications() {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [levelUpNotification, setLevelUpNotification] = useState<{
+    isOpen: boolean;
+    data: LevelUpData | null;
+    notificationId: string | null;
+  }>({ isOpen: false, data: null, notificationId: null });
+
+  const handleLevelUpNotification = useCallback((notification: Notification) => {
+    if (notification.type === 'level_up' && !notification.is_read) {
+      const data = notification.data as unknown as LevelUpData | null;
+      if (data && data.old_level !== undefined && data.new_level !== undefined) {
+        setLevelUpNotification({
+          isOpen: true,
+          data,
+          notificationId: notification.id,
+        });
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -34,6 +59,14 @@ export function useNotifications() {
       if (!error && data) {
         setNotifications(data as Notification[]);
         setUnreadCount(data.filter((n) => !n.is_read).length);
+        
+        // Check for unread level-up notifications
+        const unreadLevelUp = data.find(
+          (n) => n.type === 'level_up' && !n.is_read
+        );
+        if (unreadLevelUp) {
+          handleLevelUpNotification(unreadLevelUp as Notification);
+        }
       }
       setLoading(false);
     };
@@ -55,6 +88,9 @@ export function useNotifications() {
           const newNotification = payload.new as Notification;
           setNotifications((prev) => [newNotification, ...prev]);
           setUnreadCount((prev) => prev + 1);
+          
+          // Handle level-up notifications immediately
+          handleLevelUpNotification(newNotification);
         }
       )
       .subscribe();
@@ -62,7 +98,7 @@ export function useNotifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, handleLevelUpNotification]);
 
   const markAsRead = async (notificationId: string) => {
     const { error } = await supabase
@@ -93,11 +129,20 @@ export function useNotifications() {
     }
   };
 
+  const closeLevelUpCelebration = async () => {
+    if (levelUpNotification.notificationId) {
+      await markAsRead(levelUpNotification.notificationId);
+    }
+    setLevelUpNotification({ isOpen: false, data: null, notificationId: null });
+  };
+
   return {
     notifications,
     unreadCount,
     loading,
     markAsRead,
     markAllAsRead,
+    levelUpNotification,
+    closeLevelUpCelebration,
   };
 }

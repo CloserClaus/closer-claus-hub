@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/layout/AppSidebar';
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
+import { LevelUpCelebration } from '@/components/LevelUpCelebration';
 import { useAuth } from '@/hooks/useAuth';
+import { useNotifications } from '@/hooks/useNotifications';
 
 const SIDEBAR_STORAGE_KEY = 'sidebar-open';
 
@@ -14,6 +16,7 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, userRole, profile, loading } = useAuth();
   const navigate = useNavigate();
+  const { levelUpNotification, closeLevelUpCelebration } = useNotifications();
   
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
@@ -58,6 +61,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </SidebarInset>
         <MobileBottomNav />
       </div>
+      
+      {/* Level Up Celebration Modal */}
+      {levelUpNotification.data && (
+        <LevelUpCelebration
+          isOpen={levelUpNotification.isOpen}
+          onClose={closeLevelUpCelebration}
+          oldLevel={levelUpNotification.data.old_level}
+          newLevel={levelUpNotification.data.new_level}
+          totalDeals={levelUpNotification.data.total_deals_closed}
+        />
+      )}
     </SidebarProvider>
   );
 }
