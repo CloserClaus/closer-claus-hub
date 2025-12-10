@@ -246,6 +246,34 @@ export default function JobDetail() {
 
   const updateApplicationStatus = async (applicationId: string, status: Application['status']) => {
     try {
+      // If hiring, check SDR limit first
+      if (status === 'hired' && job) {
+        // Get workspace info to check SDR limit
+        const { data: workspace } = await supabase
+          .from('workspaces')
+          .select('subscription_tier, max_sdrs')
+          .eq('id', job.workspace_id)
+          .single();
+
+        if (workspace) {
+          // Get current team count
+          const { count: currentTeamCount } = await supabase
+            .from('workspace_members')
+            .select('id', { count: 'exact', head: true })
+            .eq('workspace_id', job.workspace_id)
+            .is('removed_at', null);
+
+          if ((currentTeamCount || 0) >= (workspace.max_sdrs || 1)) {
+            toast({
+              variant: 'destructive',
+              title: 'SDR Limit Reached',
+              description: `Your ${workspace.subscription_tier?.toUpperCase() || 'current'} plan allows up to ${workspace.max_sdrs} SDR(s). Please upgrade to hire more.`,
+            });
+            return;
+          }
+        }
+      }
+
       const { error } = await supabase
         .from('job_applications')
         .update({ status })
