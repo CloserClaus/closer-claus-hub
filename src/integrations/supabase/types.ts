@@ -26,6 +26,7 @@ export type Database = {
           lead_id: string | null
           notes: string | null
           phone_number: string
+          recording_url: string | null
           workspace_id: string
         }
         Insert: {
@@ -39,6 +40,7 @@ export type Database = {
           lead_id?: string | null
           notes?: string | null
           phone_number: string
+          recording_url?: string | null
           workspace_id: string
         }
         Update: {
@@ -52,6 +54,7 @@ export type Database = {
           lead_id?: string | null
           notes?: string | null
           phone_number?: string
+          recording_url?: string | null
           workspace_id?: string
         }
         Relationships: [
