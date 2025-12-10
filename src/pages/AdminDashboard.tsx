@@ -8,7 +8,8 @@ import { AgenciesTable } from '@/components/admin/AgenciesTable';
 import { SDRsTable } from '@/components/admin/SDRsTable';
 import { DisputesTable } from '@/components/admin/DisputesTable';
 import { PayoutsTable } from '@/components/admin/PayoutsTable';
-import { LayoutDashboard, Building2, Users, AlertTriangle, DollarSign } from 'lucide-react';
+import { CouponsTable } from '@/components/admin/CouponsTable';
+import { LayoutDashboard, Building2, Users, AlertTriangle, DollarSign, Tag } from 'lucide-react';
 
 export default function AdminDashboard() {
   const { userRole, loading } = useAuth();
@@ -60,6 +61,10 @@ export default function AdminDashboard() {
               <DollarSign className="h-4 w-4" />
               Payouts
             </TabsTrigger>
+            <TabsTrigger value="coupons" className="gap-2">
+              <Tag className="h-4 w-4" />
+              Coupons
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
@@ -80,6 +85,10 @@ export default function AdminDashboard() {
 
           <TabsContent value="payouts">
             <PayoutsTable />
+          </TabsContent>
+
+          <TabsContent value="coupons">
+            <CouponsTable />
           </TabsContent>
         </Tabs>
       </main>
