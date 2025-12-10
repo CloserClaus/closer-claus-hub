@@ -22,6 +22,7 @@ import Dialer from "./pages/Dialer";
 import Training from "./pages/Training";
 import Contracts from "./pages/Contracts";
 import SignContract from "./pages/SignContract";
+import Commissions from "./pages/Commissions";
 import Notifications from "./pages/Notifications";
 import TeamManagement from "./pages/TeamManagement";
 import NotFound from "./pages/NotFound";
@@ -55,6 +56,7 @@ const App = () => (
               <Route path="/trainings" element={<Training />} />
               <Route path="/contracts" element={<Contracts />} />
               <Route path="/sign/:contractId" element={<SignContract />} />
+              <Route path="/commissions" element={<Commissions />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/team" element={<TeamManagement />} />
               <Route path="/admin" element={<AdminDashboard />} />
