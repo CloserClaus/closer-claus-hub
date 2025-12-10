@@ -106,14 +106,6 @@ const callHippoAddons: CallHippoAddon[] = [
     priceType: '/mo',
     icon: <MessageSquare className="h-5 w-5" />,
   },
-  {
-    id: 'power_dialer',
-    name: 'Power Dialer',
-    description: 'Automatically dial through your lead lists at high speed',
-    price: 35,
-    priceType: '/mo',
-    icon: <Zap className="h-5 w-5" />,
-  },
 ];
 
 interface PurchaseTabProps {

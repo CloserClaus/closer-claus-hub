@@ -20,12 +20,15 @@ import {
   Search,
   PhoneCall,
   AlertCircle,
-  ShoppingCart
+  ShoppingCart,
+  Zap,
+  Lock
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { CreditsDisplay } from "@/components/dialer/CreditsDisplay";
 import { PurchaseTab } from "@/components/dialer/PurchaseTab";
+import { PowerDialer } from "@/components/dialer/PowerDialer";
 
 interface Lead {
   id: string;
@@ -364,17 +367,30 @@ export default function Dialer() {
         <CreditsDisplay credits={creditsBalance} isLoading={isLoadingCredits} />
       </div>
 
-      <Tabs defaultValue="dialer" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="dialer" className="flex items-center gap-2">
-            <Phone className="h-4 w-4" />
-            Dialer
-          </TabsTrigger>
-          <TabsTrigger value="purchase" className="flex items-center gap-2">
-            <ShoppingCart className="h-4 w-4" />
-            Purchase
-          </TabsTrigger>
-        </TabsList>
+      {/* Check if user has access to power dialer (Beta or Alpha plan) */}
+      {(() => {
+        const hasPowerDialer = currentWorkspace?.subscription_tier === 'beta' || currentWorkspace?.subscription_tier === 'alpha';
+        return (
+          <Tabs defaultValue="dialer" className="space-y-6">
+            <TabsList>
+              <TabsTrigger value="dialer" className="flex items-center gap-2">
+                <Phone className="h-4 w-4" />
+                Manual Dialer
+              </TabsTrigger>
+              <TabsTrigger 
+                value="power-dialer" 
+                className="flex items-center gap-2"
+                disabled={!hasPowerDialer}
+              >
+                <Zap className="h-4 w-4" />
+                Power Dialer
+                {!hasPowerDialer && <Lock className="h-3 w-3 ml-1" />}
+              </TabsTrigger>
+              <TabsTrigger value="purchase" className="flex items-center gap-2">
+                <ShoppingCart className="h-4 w-4" />
+                Purchase
+              </TabsTrigger>
+            </TabsList>
 
         <TabsContent value="dialer" className="space-y-6">
           {dialerAvailable === false && (
@@ -577,6 +593,32 @@ export default function Dialer() {
           </div>
         </TabsContent>
 
+        <TabsContent value="power-dialer">
+          {hasPowerDialer ? (
+            <PowerDialer 
+              workspaceId={currentWorkspace.id}
+              dialerAvailable={dialerAvailable}
+              onCreditsUpdated={fetchCredits}
+            />
+          ) : (
+            <Card className="border-primary/20">
+              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="p-4 rounded-full bg-primary/10 mb-4">
+                  <Zap className="h-8 w-8 text-primary" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2">Power Dialer</h3>
+                <p className="text-muted-foreground mb-4 max-w-md">
+                  Automatically dial through your lead list with one click. 
+                  Power Dialer is available on Beta and Alpha plans.
+                </p>
+                <Button onClick={() => window.location.href = '/subscription'}>
+                  Upgrade to Beta Plan
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
         <TabsContent value="purchase">
           <PurchaseTab 
             workspaceId={currentWorkspace.id} 
@@ -584,6 +626,8 @@ export default function Dialer() {
           />
         </TabsContent>
         </Tabs>
+        );
+      })()}
         </div>
       </main>
     </DashboardLayout>
