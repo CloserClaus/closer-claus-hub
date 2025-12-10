@@ -5,9 +5,11 @@ import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '@/hooks/useAuth';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import { supabase } from '@/integrations/supabase/client';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
+import { SubscriptionGuard } from '@/components/layout/SubscriptionGuard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -213,12 +215,13 @@ export default function JobForm() {
   return (
     <DashboardLayout>
       <DashboardHeader title={isEditing ? 'Edit Job' : 'Post New Job'} />
-      <main className="flex-1 p-6">
-        <div className="max-w-2xl space-y-6">
-          <Button variant="ghost" onClick={() => navigate('/jobs')} className="gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Jobs
-          </Button>
+      <SubscriptionGuard feature="jobs">
+        <main className="flex-1 p-6">
+          <div className="max-w-2xl space-y-6">
+            <Button variant="ghost" onClick={() => navigate('/jobs')} className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Jobs
+            </Button>
 
           <Card className="glass">
             <CardHeader>
@@ -414,6 +417,7 @@ export default function JobForm() {
           </Card>
         </div>
       </main>
+      </SubscriptionGuard>
     </DashboardLayout>
   );
 }

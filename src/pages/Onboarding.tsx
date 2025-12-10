@@ -70,24 +70,23 @@ export default function Onboarding() {
     setIsLoading(true);
 
     try {
-      // Create workspace for agency owner with pending subscription
-      const { data: workspace, error: workspaceError } = await supabase
+      // Create workspace for agency owner
+      const { error: workspaceError } = await supabase
         .from('workspaces')
         .insert({
           name: data.workspaceName,
           owner_id: user.id,
-          subscription_status: 'pending',
-        })
-        .select()
-        .single();
+          subscription_status: 'inactive',
+        });
 
       if (workspaceError) throw workspaceError;
 
-      // Update profile with phone (but don't complete onboarding yet)
+      // Update profile
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
           phone: data.phone || null,
+          onboarding_completed: true,
         })
         .eq('id', user.id);
 
@@ -96,17 +95,16 @@ export default function Onboarding() {
       await refreshProfile();
 
       toast({
-        title: 'Agency created!',
-        description: 'Now choose your subscription plan.',
+        title: 'Welcome to Closer Claus!',
+        description: 'Your agency has been set up successfully.',
       });
 
-      // Redirect to subscription page with workspace ID
-      navigate(`/subscription?workspace=${workspace.id}`);
+      navigate('/dashboard');
     } catch (error: any) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: error.message || 'Failed to create agency.',
+        description: error.message || 'Failed to complete onboarding.',
       });
     } finally {
       setIsLoading(false);

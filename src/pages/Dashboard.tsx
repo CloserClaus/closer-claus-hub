@@ -1,9 +1,7 @@
 import { Building2, Headphones, Shield, TrendingUp, Users, DollarSign, Briefcase } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { useWorkspace } from '@/hooks/useWorkspace';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
-import { SubscriptionGuard } from '@/components/layout/SubscriptionGuard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 function StatCard({
@@ -48,7 +46,6 @@ function StatCard({
 
 export default function Dashboard() {
   const { userRole, profile } = useAuth();
-  const { currentWorkspace } = useWorkspace();
 
   const renderPlatformAdminDashboard = () => (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -204,32 +201,30 @@ export default function Dashboard() {
   return (
     <DashboardLayout>
       <DashboardHeader title="Dashboard" />
-      <SubscriptionGuard>
-        <main className="flex-1 p-6 space-y-6">
-          <div>
-            <h1 className="text-2xl font-bold mb-1">
-              Welcome back, {profile?.full_name?.split(' ')[0] || 'User'}!
-            </h1>
+      <main className="flex-1 p-6 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold mb-1">
+            Welcome back, {profile?.full_name?.split(' ')[0] || 'User'}!
+          </h1>
+          <p className="text-muted-foreground">
+            {userRole === 'platform_admin' && 'Platform overview and management'}
+            {userRole === 'agency_owner' && 'Your agency performance at a glance'}
+            {userRole === 'sdr' && 'Your sales performance overview'}
+          </p>
+        </div>
+
+        {userRole === 'platform_admin' && renderPlatformAdminDashboard()}
+        {userRole === 'agency_owner' && renderAgencyOwnerDashboard()}
+        {userRole === 'sdr' && renderSDRDashboard()}
+
+        <Card className="border-dashed border-2">
+          <CardContent className="p-8 text-center">
             <p className="text-muted-foreground">
-              {userRole === 'platform_admin' && 'Platform overview and management'}
-              {userRole === 'agency_owner' && 'Your agency performance at a glance'}
-              {userRole === 'sdr' && 'Your sales performance overview'}
+              Real-time data will populate here once the CRM, Dialer, and Jobs systems are built.
             </p>
-          </div>
-
-          {userRole === 'platform_admin' && renderPlatformAdminDashboard()}
-          {userRole === 'agency_owner' && renderAgencyOwnerDashboard()}
-          {userRole === 'sdr' && renderSDRDashboard()}
-
-          <Card className="border-dashed border-2">
-            <CardContent className="p-8 text-center">
-              <p className="text-muted-foreground">
-                Real-time data will populate here once the CRM, Dialer, and Jobs systems are built.
-              </p>
-            </CardContent>
-          </Card>
-        </main>
-      </SubscriptionGuard>
+          </CardContent>
+        </Card>
+      </main>
     </DashboardLayout>
   );
 }
