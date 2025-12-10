@@ -1,8 +1,9 @@
-import { DollarSign } from 'lucide-react';
+import { DollarSign, User, Building2, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 
@@ -17,6 +18,19 @@ const PIPELINE_STAGES: { value: PipelineStage; label: string; color: string }[] 
   { value: 'closed_won', label: 'Closed Won', color: 'bg-success/20' },
   { value: 'closed_lost', label: 'Closed Lost', color: 'bg-destructive/20' },
 ];
+
+interface Lead {
+  id: string;
+  workspace_id: string;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  company: string | null;
+  title: string | null;
+  notes: string | null;
+  created_at: string;
+}
 
 interface Deal {
   id: string;
@@ -33,16 +47,30 @@ interface Deal {
 
 interface PipelineBoardProps {
   deals: Deal[];
+  leads: Lead[];
   onDealClick: (deal: Deal) => void;
+  onLeadClick: (lead: Lead) => void;
+  onConvertLead: (lead: Lead) => void;
   onStageChange: () => void;
 }
 
-export function PipelineBoard({ deals, onDealClick, onStageChange }: PipelineBoardProps) {
+export function PipelineBoard({ deals, leads, onDealClick, onLeadClick, onConvertLead, onStageChange }: PipelineBoardProps) {
   const { user } = useAuth();
   const { toast } = useToast();
 
+  // Get leads that haven't been converted to deals yet
+  const unconvertedLeads = leads.filter(lead => 
+    !deals.some(deal => deal.lead_id === lead.id)
+  );
+
   const handleDragStart = (e: React.DragEvent, dealId: string) => {
     e.dataTransfer.setData('dealId', dealId);
+    e.dataTransfer.setData('type', 'deal');
+  };
+
+  const handleLeadDragStart = (e: React.DragEvent, leadId: string) => {
+    e.dataTransfer.setData('leadId', leadId);
+    e.dataTransfer.setData('type', 'lead');
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -51,6 +79,18 @@ export function PipelineBoard({ deals, onDealClick, onStageChange }: PipelineBoa
 
   const handleDrop = async (e: React.DragEvent, newStage: PipelineStage) => {
     e.preventDefault();
+    const type = e.dataTransfer.getData('type');
+    
+    if (type === 'lead') {
+      // Converting a lead to a deal
+      const leadId = e.dataTransfer.getData('leadId');
+      const lead = leads.find(l => l.id === leadId);
+      if (lead) {
+        await convertLeadToDeal(lead, newStage);
+      }
+      return;
+    }
+
     const dealId = e.dataTransfer.getData('dealId');
     const deal = deals.find(d => d.id === dealId);
 
@@ -90,6 +130,48 @@ export function PipelineBoard({ deals, onDealClick, onStageChange }: PipelineBoa
     }
   };
 
+  const convertLeadToDeal = async (lead: Lead, stage: PipelineStage = 'new') => {
+    if (!user) return;
+
+    try {
+      const { data: newDeal, error } = await supabase
+        .from('deals')
+        .insert({
+          workspace_id: lead.workspace_id,
+          lead_id: lead.id,
+          assigned_to: user.id,
+          title: `${lead.first_name} ${lead.last_name}${lead.company ? ` - ${lead.company}` : ''}`,
+          value: 0,
+          stage,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Log activity
+      await supabase.from('deal_activities').insert({
+        deal_id: newDeal.id,
+        user_id: user.id,
+        activity_type: 'create',
+        description: `Deal created from lead "${lead.first_name} ${lead.last_name}"`,
+      });
+
+      toast({
+        title: 'Lead converted',
+        description: `Created deal in ${stage.replace('_', ' ')} stage`,
+      });
+
+      onStageChange();
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to convert lead',
+      });
+    }
+  };
+
   const getStageDeals = (stage: string) => deals.filter(d => d.stage === stage);
   const getStageValue = (stage: string) =>
     getStageDeals(stage).reduce((sum, d) => sum + Number(d.value), 0);
@@ -97,6 +179,67 @@ export function PipelineBoard({ deals, onDealClick, onStageChange }: PipelineBoa
   return (
     <ScrollArea className="w-full">
       <div className="flex gap-4 pb-4 min-w-max">
+        {/* Leads Column */}
+        <div className="w-72 shrink-0">
+          <Card className="bg-primary/10 border-border/50">
+            <CardHeader className="p-3 pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  Leads
+                </CardTitle>
+                <Badge variant="secondary" className="text-xs">
+                  {unconvertedLeads.length}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Drag to pipeline to convert
+              </p>
+            </CardHeader>
+            <CardContent className="p-2 space-y-2 min-h-[200px]">
+              {unconvertedLeads.map(lead => (
+                <Card
+                  key={lead.id}
+                  className="cursor-grab active:cursor-grabbing bg-card hover:bg-card/80 transition-colors"
+                  draggable
+                  onDragStart={(e) => handleLeadDragStart(e, lead.id)}
+                  onClick={() => onLeadClick(lead)}
+                >
+                  <CardContent className="p-3">
+                    <p className="font-medium text-sm line-clamp-1">
+                      {lead.first_name} {lead.last_name}
+                    </p>
+                    {lead.company && (
+                      <div className="flex items-center gap-1 mt-1 text-muted-foreground text-xs">
+                        <Building2 className="h-3 w-3" />
+                        {lead.company}
+                      </div>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full mt-2 h-7 text-xs gap-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onConvertLead(lead);
+                      }}
+                    >
+                      Convert to Deal
+                      <ArrowRight className="h-3 w-3" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+              {unconvertedLeads.length === 0 && (
+                <div className="h-20 flex items-center justify-center text-xs text-muted-foreground border-2 border-dashed border-border/50 rounded-lg">
+                  All leads converted
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Deal Stages */}
         {PIPELINE_STAGES.map(stage => (
           <div
             key={stage.value}
@@ -136,7 +279,7 @@ export function PipelineBoard({ deals, onDealClick, onStageChange }: PipelineBoa
                 ))}
                 {getStageDeals(stage.value).length === 0 && (
                   <div className="h-20 flex items-center justify-center text-xs text-muted-foreground border-2 border-dashed border-border/50 rounded-lg">
-                    Drop deals here
+                    Drop {stage.value === 'new' ? 'leads or deals' : 'deals'} here
                   </div>
                 )}
               </CardContent>

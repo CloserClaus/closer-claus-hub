@@ -510,7 +510,25 @@ export default function CRM() {
           <TabsContent value="pipeline">
             <PipelineBoard
               deals={deals}
+              leads={leads}
               onDealClick={openDealDetail}
+              onLeadClick={openLeadDetail}
+              onConvertLead={(lead) => {
+                setEditingLead(null);
+                setEditingDeal({
+                  id: '',
+                  workspace_id: currentWorkspace.id,
+                  lead_id: lead.id,
+                  assigned_to: user?.id || '',
+                  title: `${lead.first_name} ${lead.last_name}${lead.company ? ` - ${lead.company}` : ''}`,
+                  value: 0,
+                  stage: 'new',
+                  expected_close_date: null,
+                  notes: null,
+                  created_at: new Date().toISOString(),
+                });
+                setShowDealForm(true);
+              }}
               onStageChange={fetchData}
             />
           </TabsContent>
