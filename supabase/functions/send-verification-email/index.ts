@@ -72,7 +72,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Closer Claus <noreply@closerclaus.com>',
+        from: 'Closer Claus <onboarding@resend.dev>',
         to: email,
         subject: 'Verify your email address',
         html: `
