@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { HelpCircle, Sparkles, Play, RotateCcw, X } from 'lucide-react';
 import { useTour } from './TourProvider';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,19 +15,30 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
+// Routes where the tour can be triggered
+const TOUR_ROUTES = ['/dashboard', '/admin'];
+
 export function TourTrigger() {
-  const { userRole } = useAuth();
+  const { userRole, profile } = useAuth();
+  const location = useLocation();
   const { 
     startTour, 
     hasCompletedTour, 
     markTourComplete, 
     hasSavedProgress, 
     resumeTour,
-    clearSavedProgress 
+    clearSavedProgress,
+    isActive
   } = useTour();
   const [showWelcome, setShowWelcome] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showResume, setShowResume] = useState(false);
+
+  // Check if we're on a valid tour route
+  const isOnTourRoute = TOUR_ROUTES.some(route => location.pathname.startsWith(route));
+  
+  // Check if user has completed onboarding
+  const hasCompletedOnboarding = profile?.onboarding_completed === true;
 
   const getTourSteps = () => {
     switch (userRole) {
@@ -46,25 +58,31 @@ export function TourTrigger() {
     const steps = getTourSteps();
     if (steps.length > 0 && hasSavedProgress) {
       // Trigger a re-render with saved steps available
-      // The TourProvider will use these for resume
     }
   }, [userRole, hasSavedProgress]);
 
-  // Show welcome dialog for first-time users
+  // Show welcome dialog for first-time users (only on valid routes and after onboarding)
   useEffect(() => {
-    if (!hasCompletedTour && userRole && !hasSavedProgress) {
+    if (
+      !hasCompletedTour && 
+      userRole && 
+      !hasSavedProgress && 
+      isOnTourRoute && 
+      hasCompletedOnboarding &&
+      !isActive
+    ) {
       const timer = setTimeout(() => setShowWelcome(true), 1000);
       return () => clearTimeout(timer);
     }
-  }, [hasCompletedTour, userRole, hasSavedProgress]);
+  }, [hasCompletedTour, userRole, hasSavedProgress, isOnTourRoute, hasCompletedOnboarding, isActive]);
 
-  // Show resume dialog if there's saved progress
+  // Show resume dialog if there's saved progress (only on valid routes)
   useEffect(() => {
-    if (hasSavedProgress && userRole && !hasCompletedTour) {
+    if (hasSavedProgress && userRole && !hasCompletedTour && isOnTourRoute && !isActive) {
       const timer = setTimeout(() => setShowResume(true), 1000);
       return () => clearTimeout(timer);
     }
-  }, [hasSavedProgress, userRole, hasCompletedTour]);
+  }, [hasSavedProgress, userRole, hasCompletedTour, isOnTourRoute, isActive]);
 
   const getRoleLabel = () => {
     switch (userRole) {
@@ -113,6 +131,11 @@ export function TourTrigger() {
     clearSavedProgress();
     markTourComplete();
   };
+
+  // Don't render anything if not on a valid route or onboarding not complete
+  if (!isOnTourRoute || !hasCompletedOnboarding) {
+    return null;
+  }
 
   return (
     <>
@@ -228,7 +251,7 @@ export function TourTrigger() {
         </DialogContent>
       </Dialog>
 
-      {/* Help Button (always visible) */}
+      {/* Help Button (always visible on tour routes) */}
       <Button
         variant="outline"
         size="icon"
