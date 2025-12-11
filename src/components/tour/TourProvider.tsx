@@ -10,6 +10,7 @@ export interface TourStep {
   spotlightPadding?: number;
   action?: 'click' | 'hover' | 'focus'; // Interactive action type
   actionLabel?: string; // Label for the action button
+  route?: string; // Route to navigate to for this step
   hotspots?: Array<{
     target: string;
     label: string;
@@ -37,6 +38,8 @@ interface TourContextType {
   hasSavedProgress: boolean;
   resumeTour: () => void;
   clearSavedProgress: () => void;
+  isNavigating: boolean;
+  setIsNavigating: (value: boolean) => void;
 }
 
 const TourContext = createContext<TourContextType | undefined>(undefined);
@@ -54,6 +57,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const [currentTourId, setCurrentTourId] = useState<string>('');
   const [hasSavedProgress, setHasSavedProgress] = useState(false);
   const [savedSteps, setSavedSteps] = useState<TourStep[]>([]);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   // Get storage keys for current user
   const getStorageKeys = useCallback(() => {
@@ -160,11 +164,6 @@ export function TourProvider({ children }: { children: ReactNode }) {
     }
   }, [getStorageKeys, savedSteps, clearSavedProgress]);
 
-  // Store steps for potential resume
-  const storeStepsForResume = useCallback((tourSteps: TourStep[]) => {
-    setSavedSteps(tourSteps);
-  }, []);
-
   const nextStep = useCallback(() => {
     if (currentStep < steps.length - 1) {
       const newStep = currentStep + 1;
@@ -193,6 +192,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
     setIsActive(false);
     setCurrentStep(0);
     setSteps([]);
+    setIsNavigating(false);
     // Save progress when skipping so user can resume later
     if (currentStep > 0) {
       saveProgress(currentStep, currentTourId);
@@ -204,6 +204,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
     setIsActive(false);
     setCurrentStep(0);
     setSteps([]);
+    setIsNavigating(false);
     clearSavedProgress();
     markTourComplete();
   }, [clearSavedProgress]);
@@ -240,6 +241,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
       hasSavedProgress,
       resumeTour,
       clearSavedProgress,
+      isNavigating,
+      setIsNavigating,
     }}>
       {children}
     </TourContext.Provider>

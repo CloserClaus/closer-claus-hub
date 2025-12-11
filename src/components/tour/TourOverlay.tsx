@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { X, ChevronLeft, ChevronRight, Sparkles, MousePointer2, Hand, Target, PartyPopper } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { X, ChevronLeft, ChevronRight, Sparkles, MousePointer2, Hand, Target, PartyPopper, Loader2 } from 'lucide-react';
 import { useTour } from './TourProvider';
 import { Button } from '@/components/ui/button';
 import { Confetti } from '@/components/ui/confetti';
@@ -27,8 +28,13 @@ interface HotspotPosition {
   height: number;
 }
 
+const MAX_RETRY_ATTEMPTS = 20;
+const RETRY_DELAY_MS = 150;
+
 export function TourOverlay() {
-  const { isActive, currentStep, steps, nextStep, prevStep, skipTour, endTour } = useTour();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isActive, currentStep, steps, nextStep, prevStep, skipTour, endTour, isNavigating, setIsNavigating } = useTour();
   const [spotlight, setSpotlight] = useState<SpotlightPosition | null>(null);
   const [tooltipPos, setTooltipPos] = useState<TooltipPosition>({ top: 0, left: 0 });
   const [isVisible, setIsVisible] = useState(false);
@@ -37,7 +43,9 @@ export function TourOverlay() {
   const [actionCompleted, setActionCompleted] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [showCompletionScreen, setShowCompletionScreen] = useState(false);
+  const [elementNotFound, setElementNotFound] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const retryCountRef = useRef(0);
 
   const step = steps[currentStep];
   const isLastStep = currentStep === steps.length - 1;
@@ -84,27 +92,63 @@ export function TourOverlay() {
     endTour();
   }, [endTour]);
 
+  // Check if we need to navigate to the step's route
+  useEffect(() => {
+    if (!isActive || !step) return;
+
+    const stepRoute = step.route;
+    if (stepRoute) {
+      // Parse the step route to compare with current location
+      const stepPath = stepRoute.split('?')[0];
+      const currentPath = location.pathname;
+
+      // If we're not on the right page, navigate
+      if (stepPath !== currentPath) {
+        setIsNavigating(true);
+        setIsVisible(false);
+        retryCountRef.current = 0;
+        navigate(stepRoute);
+      }
+    }
+  }, [isActive, step, location.pathname, navigate, setIsNavigating]);
+
+  // Main positioning effect with retry logic
   useEffect(() => {
     if (!isActive || !step) {
       setIsVisible(false);
       setActionCompleted(false);
       setActiveHotspot(null);
+      setElementNotFound(false);
       return;
     }
 
-    // Small delay for animation
-    const showTimeout = setTimeout(() => setIsVisible(true), 50);
-
-    const updatePosition = () => {
+    const findElementAndPosition = () => {
       const target = document.querySelector(step.target);
+      
       if (!target) {
-        setSpotlight(null);
-        setTooltipPos({
-          top: window.innerHeight / 2 - 100,
-          left: window.innerWidth / 2 - 150,
-        });
-        return;
+        // Element not found - retry or show fallback
+        if (retryCountRef.current < MAX_RETRY_ATTEMPTS) {
+          retryCountRef.current++;
+          setTimeout(findElementAndPosition, RETRY_DELAY_MS);
+          return;
+        } else {
+          // Max retries reached - show tooltip in center with skip option
+          setElementNotFound(true);
+          setSpotlight(null);
+          setTooltipPos({
+            top: window.innerHeight / 2 - 100,
+            left: window.innerWidth / 2 - 160,
+          });
+          setIsNavigating(false);
+          setIsVisible(true);
+          return;
+        }
       }
+
+      // Element found!
+      setElementNotFound(false);
+      retryCountRef.current = 0;
+      setIsNavigating(false);
 
       const rect = target.getBoundingClientRect();
       const padding = step.spotlightPadding ?? 8;
@@ -170,25 +214,44 @@ export function TourOverlay() {
       top = Math.max(margin, Math.min(top, window.innerHeight - tooltipHeight - margin));
 
       setTooltipPos({ top, left });
+      setIsVisible(true);
 
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     };
 
-    updatePosition();
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition);
+    // Reset retry counter for new step
+    retryCountRef.current = 0;
+    setIsVisible(false);
+    
+    // Start finding element with a small delay to allow navigation to complete
+    const startTimeout = setTimeout(findElementAndPosition, 100);
+
+    const handleResize = () => findElementAndPosition();
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('scroll', handleResize);
 
     return () => {
-      clearTimeout(showTimeout);
-      window.removeEventListener('resize', updatePosition);
-      window.removeEventListener('scroll', updatePosition);
+      clearTimeout(startTimeout);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('scroll', handleResize);
     };
-  }, [isActive, step, currentStep]);
+  }, [isActive, step, currentStep, setIsNavigating]);
 
   if (!isActive || !step) return null;
 
   const hasAction = step.action && !actionCompleted;
-  const actionIcon = step.action === 'click' ? MousePointer2 : step.action === 'hover' ? Hand : Target;
+
+  // Show loading state while navigating
+  if (isNavigating) {
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Navigating to next section...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div 
@@ -256,7 +319,7 @@ export function TourOverlay() {
           {/* Action indicator */}
           {hasAction && (
             <div className="absolute -top-3 -right-3 h-8 w-8 rounded-full bg-primary flex items-center justify-center animate-bounce shadow-lg">
-              {actionIcon && <MousePointer2 className="h-4 w-4 text-primary-foreground" />}
+              <MousePointer2 className="h-4 w-4 text-primary-foreground" />
             </div>
           )}
           
@@ -372,8 +435,17 @@ export function TourOverlay() {
             {step.content}
           </p>
           
+          {/* Element not found warning */}
+          {elementNotFound && (
+            <div className="mt-3 p-2 rounded-lg bg-warning/10 border border-warning/20 flex items-center gap-2">
+              <p className="text-xs text-warning">
+                This feature isn't visible on the current page. Click Next to continue.
+              </p>
+            </div>
+          )}
+          
           {/* Action prompt */}
-          {hasAction && (
+          {hasAction && !elementNotFound && (
             <div className="mt-3 p-2 rounded-lg bg-primary/10 border border-primary/20 flex items-center gap-2">
               <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
                 <MousePointer2 className="h-3 w-3 text-primary" />
@@ -461,7 +533,7 @@ export function TourOverlay() {
             <div className="mx-auto w-20 h-20 rounded-full bg-gradient-to-br from-primary/30 to-success/30 flex items-center justify-center mb-6">
               <PartyPopper className="h-10 w-10 text-primary" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">Tour Complete! 🎉</h2>
+            <h2 className="text-2xl font-bold mb-2">Tour Complete!</h2>
             <p className="text-muted-foreground mb-6">
               You're all set to start using the platform. If you ever need help, click the help button in the corner.
             </p>
