@@ -6,6 +6,62 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const MAX_EMAILS_PER_USER = 3; // Max 3 verification emails per hour per user
+
+// Rate limiting helper function
+async function checkRateLimit(
+  supabase: any,
+  key: string,
+  maxRequests: number
+): Promise<{ allowed: boolean }> {
+  const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+
+  // Clean old entries for this key
+  await supabase
+    .from('rate_limits')
+    .delete()
+    .eq('key', key)
+    .lt('timestamp', windowStart);
+
+  // Count recent requests
+  const { count, error: countError } = await supabase
+    .from('rate_limits')
+    .select('*', { count: 'exact', head: true })
+    .eq('key', key)
+    .gte('timestamp', windowStart);
+
+  if (countError) {
+    console.error('Rate limit check error:', countError);
+    return { allowed: true };
+  }
+
+  const currentCount = count || 0;
+  const allowed = currentCount < maxRequests;
+
+  if (allowed) {
+    await supabase.from('rate_limits').insert({
+      key,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  return { allowed };
+}
+
+// Helper to sanitize email for HTML output
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return text.replace(/[&<>"']/g, m => map[m] || m);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -24,6 +80,43 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Missing user_id or email' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate UUID format for user_id
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(user_id)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid user ID format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email) || email.length > 255) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid email format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Rate limit check - per user
+    const rateLimitKey = `send_verify_email_${user_id}`;
+    const { allowed } = await checkRateLimit(supabase, rateLimitKey, MAX_EMAILS_PER_USER);
+    
+    if (!allowed) {
+      console.log('Rate limit exceeded for send-verification-email:', { user_id });
+      return new Response(
+        JSON.stringify({ error: 'Too many verification emails requested. Please try again later.' }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json',
+            'Retry-After': '3600'
+          } 
+        }
       );
     }
 
@@ -49,7 +142,10 @@ serve(async (req) => {
 
     // Build verification URL
     const appUrl = Deno.env.get('APP_URL') || 'https://xlgzxmzejlshsgeiidsz.lovableproject.com';
-    const verificationUrl = `${appUrl}/verify-email?token=${token}`;
+    const verificationUrl = `${appUrl}/verify-email?token=${encodeURIComponent(token)}`;
+
+    // Sanitize full_name for HTML output
+    const safeName = full_name ? escapeHtml(String(full_name).substring(0, 100)) : '';
 
     // Check if Resend API key is configured
     if (!resendApiKey) {
@@ -77,7 +173,7 @@ serve(async (req) => {
         subject: 'Verify your email address',
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #0D0D0F;">Welcome to Closer Claus${full_name ? `, ${full_name}` : ''}!</h1>
+            <h1 style="color: #0D0D0F;">Welcome to Closer Claus${safeName ? `, ${safeName}` : ''}!</h1>
             <p>Please verify your email address by clicking the button below:</p>
             <a href="${verificationUrl}" 
                style="display: inline-block; background-color: #4A7BF7; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 16px 0;">
@@ -88,7 +184,7 @@ serve(async (req) => {
             </p>
             <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;">
             <p style="color: #9CA3AF; font-size: 12px;">
-              © ${new Date().getFullYear()} Closer Claus. All rights reserved.
+              &copy; ${new Date().getFullYear()} Closer Claus. All rights reserved.
             </p>
           </div>
         `,

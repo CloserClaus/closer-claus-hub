@@ -6,6 +6,76 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+const MAX_SIGN_ATTEMPTS = 5; // Max 5 signing attempts per 10 minutes per IP
+const MAX_GET_ATTEMPTS = 20; // Max 20 get contract attempts per 10 minutes per IP
+
+// Helper function to sanitize name input - allow only safe characters
+function sanitizeName(name: string): string {
+  // Remove any HTML tags
+  let sanitized = name.replace(/<[^>]*>/g, '');
+  // Remove any script-like content
+  sanitized = sanitized.replace(/javascript:/gi, '');
+  sanitized = sanitized.replace(/on\w+=/gi, '');
+  // Trim and limit to allowed characters (letters, spaces, hyphens, apostrophes, periods)
+  sanitized = sanitized.trim();
+  // Replace multiple spaces with single space
+  sanitized = sanitized.replace(/\s+/g, ' ');
+  return sanitized;
+}
+
+// Helper function to sanitize email
+function sanitizeEmail(email: string): string {
+  // Remove any HTML/script content and lowercase
+  let sanitized = email.replace(/<[^>]*>/g, '').trim().toLowerCase();
+  sanitized = sanitized.replace(/javascript:/gi, '');
+  return sanitized;
+}
+
+// Rate limiting helper function
+async function checkRateLimit(
+  supabase: any,
+  key: string,
+  maxRequests: number
+): Promise<{ allowed: boolean; remaining: number }> {
+  const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+
+  // Clean old entries for this key
+  await supabase
+    .from('rate_limits')
+    .delete()
+    .eq('key', key)
+    .lt('timestamp', windowStart);
+
+  // Count recent requests
+  const { count, error: countError } = await supabase
+    .from('rate_limits')
+    .select('*', { count: 'exact', head: true })
+    .eq('key', key)
+    .gte('timestamp', windowStart);
+
+  if (countError) {
+    console.error('Rate limit check error:', countError);
+    // Fail open to not block legitimate requests on DB errors
+    return { allowed: true, remaining: maxRequests };
+  }
+
+  const currentCount = count || 0;
+  const allowed = currentCount < maxRequests;
+  const remaining = Math.max(0, maxRequests - currentCount - 1);
+
+  if (allowed) {
+    // Log this request
+    await supabase.from('rate_limits').insert({
+      key,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  return { allowed, remaining };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -16,8 +86,13 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Get client IP for rate limiting
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
+                     req.headers.get('x-real-ip') || 
+                     'unknown';
+
     const { action, ...params } = await req.json();
-    console.log(`Contract action: ${action}`, params);
+    console.log(`Contract action: ${action}`, { ip: clientIp });
 
     switch (action) {
       case 'get_contract': {
@@ -27,6 +102,34 @@ serve(async (req) => {
           return new Response(
             JSON.stringify({ error: 'Contract ID required' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Validate contractId format (UUID)
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(contractId)) {
+          return new Response(
+            JSON.stringify({ error: 'Invalid contract ID format' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Rate limit check for get_contract
+        const rateLimitKey = `get_contract_${clientIp}`;
+        const { allowed, remaining } = await checkRateLimit(supabase, rateLimitKey, MAX_GET_ATTEMPTS);
+        
+        if (!allowed) {
+          console.log('Rate limit exceeded for get_contract:', { ip: clientIp });
+          return new Response(
+            JSON.stringify({ error: 'Too many requests. Please try again later.' }),
+            { 
+              status: 429, 
+              headers: { 
+                ...corsHeaders, 
+                'Content-Type': 'application/json',
+                'Retry-After': '600'
+              } 
+            }
           );
         }
 
@@ -83,6 +186,34 @@ serve(async (req) => {
           );
         }
 
+        // Validate contractId format (UUID)
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(contractId)) {
+          return new Response(
+            JSON.stringify({ error: 'Invalid contract ID format' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Rate limit check for sign_contract - more strict
+        const rateLimitKey = `sign_contract_${clientIp}`;
+        const { allowed, remaining } = await checkRateLimit(supabase, rateLimitKey, MAX_SIGN_ATTEMPTS);
+        
+        if (!allowed) {
+          console.log('Rate limit exceeded for sign_contract:', { ip: clientIp, contractId });
+          return new Response(
+            JSON.stringify({ error: 'Too many signing attempts. Please try again later.' }),
+            { 
+              status: 429, 
+              headers: { 
+                ...corsHeaders, 
+                'Content-Type': 'application/json',
+                'Retry-After': '600'
+              } 
+            }
+          );
+        }
+
         // Validate input lengths to prevent abuse
         if (signerName.length > 200 || signerEmail.length > 255) {
           return new Response(
@@ -91,9 +222,21 @@ serve(async (req) => {
           );
         }
 
+        // Sanitize inputs
+        const sanitizedName = sanitizeName(signerName);
+        const sanitizedEmail = sanitizeEmail(signerEmail);
+
+        // Validate sanitized name is not empty and has reasonable content
+        if (sanitizedName.length < 2 || sanitizedName.length > 200) {
+          return new Response(
+            JSON.stringify({ error: 'Invalid name provided' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         // Validate email format
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(signerEmail)) {
+        if (!emailRegex.test(sanitizedEmail)) {
           return new Response(
             JSON.stringify({ error: 'Invalid email address' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -101,9 +244,7 @@ serve(async (req) => {
         }
 
         // Get client IP and user agent
-        const ipAddress = req.headers.get('x-forwarded-for')?.split(',')[0] || 
-                          req.headers.get('x-real-ip') || 
-                          'unknown';
+        const ipAddress = clientIp;
         const userAgent = req.headers.get('user-agent') || 'unknown';
 
         // Verify contract exists and is in 'sent' status, and get the associated lead email
@@ -141,13 +282,12 @@ serve(async (req) => {
 
         // Validate that signer email matches the expected lead email
         const expectedEmail = (contract.deals as any)?.leads?.email?.toLowerCase();
-        const providedEmail = signerEmail.trim().toLowerCase();
         
-        if (expectedEmail && expectedEmail !== providedEmail) {
+        if (expectedEmail && expectedEmail !== sanitizedEmail) {
           console.log('Contract signing attempt failed - email mismatch:', {
             contractId,
             expectedEmail,
-            providedEmail,
+            providedEmail: sanitizedEmail,
             ipAddress,
           });
           return new Response(
@@ -156,16 +296,16 @@ serve(async (req) => {
           );
         }
 
-        // Create signature record
+        // Create signature record with sanitized inputs
         const { error: signatureError } = await supabase
           .from('contract_signatures')
           .insert({
             contract_id: contractId,
-            signer_name: signerName.trim(),
-            signer_email: signerEmail.trim().toLowerCase(),
+            signer_name: sanitizedName,
+            signer_email: sanitizedEmail,
             signature_data: signatureData || null,
             ip_address: ipAddress,
-            user_agent: userAgent,
+            user_agent: userAgent.substring(0, 500), // Limit user agent length
           });
 
         if (signatureError) {
@@ -175,6 +315,8 @@ serve(async (req) => {
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
+
+        console.log('Contract signed successfully:', { contractId, sanitizedName, sanitizedEmail, ipAddress });
 
         // Update contract status to signed
         const { error: updateContractError } = await supabase
@@ -362,7 +504,7 @@ serve(async (req) => {
           }
         }
 
-        // Log deal activity
+        // Log deal activity with sanitized name
         if (deal) {
           await supabase
             .from('deal_activities')
@@ -370,7 +512,7 @@ serve(async (req) => {
               deal_id: contract.deal_id,
               user_id: deal.assigned_to,
               activity_type: 'contract_signed',
-              description: `Contract signed by ${signerName} (${signerEmail})`,
+              description: `Contract signed by ${sanitizedName} (${sanitizedEmail})`,
             });
         }
 

@@ -945,6 +945,24 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limits: {
+        Row: {
+          id: string
+          key: string
+          timestamp: string
+        }
+        Insert: {
+          id?: string
+          key: string
+          timestamp?: string
+        }
+        Update: {
+          id?: string
+          key?: string
+          timestamp?: string
+        }
+        Relationships: []
+      }
       tasks: {
         Row: {
           assigned_to: string
@@ -1279,6 +1297,7 @@ export type Database = {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
       }
+      cleanup_old_rate_limits: { Args: never; Returns: undefined }
       get_platform_cut_percentage: { Args: { level: number }; Returns: number }
       has_role: {
         Args: {
