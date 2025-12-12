@@ -57,24 +57,26 @@ export default function RoleSelect() {
       const signupRole = user.user_metadata?.signup_role as 'agency_owner' | 'sdr' | undefined;
 
       if (signupRole) {
-        // Auto-assign the role based on signup selection
+        // Use server-side edge function for secure role assignment
         try {
-          const { error } = await supabase
-            .from('user_roles')
-            .insert({
-              user_id: user.id,
-              role: signupRole,
-            });
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          if (!session) {
+            throw new Error('No active session');
+          }
 
-          // Handle duplicate key error gracefully
-          if (error) {
-            if (error.code === '23505') {
-              // Duplicate - user already has role, just refresh and continue
+          const response = await supabase.functions.invoke('assign-role', {
+            body: { requestedRole: signupRole },
+          });
+
+          if (response.error) {
+            // If role already assigned (409), just continue
+            if (response.error.message?.includes('already has a role')) {
               await refreshProfile();
               navigate('/onboarding');
               return;
             }
-            throw error;
+            throw new Error(response.error.message || 'Failed to assign role');
           }
 
           await refreshProfile();
@@ -88,6 +90,7 @@ export default function RoleSelect() {
 
           navigate('/onboarding');
         } catch (error: any) {
+          console.error('Role assignment error:', error);
           toast({
             variant: 'destructive',
             title: 'Error',
@@ -129,28 +132,20 @@ export default function RoleSelect() {
         return;
       }
 
-      const { error } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: user.id,
-          role: 'platform_admin' as AppRole,
-        });
+      // Use server-side edge function for secure role assignment
+      const response = await supabase.functions.invoke('assign-role', {
+        body: { requestedRole: 'platform_admin' },
+      });
 
-      // Handle duplicate key error gracefully
-      if (error) {
-        if (error.code === '23505') {
+      if (response.error) {
+        // Check if first user was already assigned
+        if (response.error.message?.includes('already has a role')) {
           await refreshProfile();
           navigate('/onboarding');
           return;
         }
-        throw error;
+        throw new Error(response.error.message || 'Failed to assign role');
       }
-
-      // Auto-verify admin's email
-      await supabase
-        .from('profiles')
-        .update({ email_verified: true })
-        .eq('id', user.id);
 
       await refreshProfile();
 
@@ -161,6 +156,7 @@ export default function RoleSelect() {
 
       navigate('/onboarding');
     } catch (error: any) {
+      console.error('First user setup error:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
