@@ -83,6 +83,14 @@ serve(async (req) => {
           );
         }
 
+        // Validate input lengths to prevent abuse
+        if (signerName.length > 200 || signerEmail.length > 255) {
+          return new Response(
+            JSON.stringify({ error: 'Input exceeds maximum length' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         // Validate email format
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(signerEmail)) {
@@ -98,14 +106,25 @@ serve(async (req) => {
                           'unknown';
         const userAgent = req.headers.get('user-agent') || 'unknown';
 
-        // Verify contract exists and is in 'sent' status
+        // Verify contract exists and is in 'sent' status, and get the associated lead email
         const { data: contract, error: contractError } = await supabase
           .from('contracts')
-          .select('id, status, deal_id, workspace_id')
+          .select(`
+            id, 
+            status, 
+            deal_id, 
+            workspace_id,
+            deals (
+              leads (
+                email
+              )
+            )
+          `)
           .eq('id', contractId)
           .single();
 
         if (contractError || !contract) {
+          console.log('Contract signing attempt failed - contract not found:', contractId);
           return new Response(
             JSON.stringify({ error: 'Contract not found' }),
             { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -113,9 +132,27 @@ serve(async (req) => {
         }
 
         if (contract.status !== 'sent') {
+          console.log('Contract signing attempt failed - invalid status:', contract.status, contractId);
           return new Response(
             JSON.stringify({ error: 'Contract cannot be signed', currentStatus: contract.status }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Validate that signer email matches the expected lead email
+        const expectedEmail = (contract.deals as any)?.leads?.email?.toLowerCase();
+        const providedEmail = signerEmail.trim().toLowerCase();
+        
+        if (expectedEmail && expectedEmail !== providedEmail) {
+          console.log('Contract signing attempt failed - email mismatch:', {
+            contractId,
+            expectedEmail,
+            providedEmail,
+            ipAddress,
+          });
+          return new Response(
+            JSON.stringify({ error: 'Email does not match contract recipient' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
