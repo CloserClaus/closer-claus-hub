@@ -57,6 +57,7 @@ const agencyOwnerMore: NavItem[] = [
   { icon: GraduationCap, label: "Trainings", path: "/trainings" },
   { icon: FileSignature, label: "Contracts", path: "/contracts" },
   { icon: DollarSign, label: "Commissions", path: "/commissions" },
+  { icon: Tag, label: "Subscription", path: "/subscription" },
   { icon: CreditCard, label: "Billing", path: "/billing" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];
@@ -153,8 +154,8 @@ export function MobileBottomNav() {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-lg border-t border-border md:hidden safe-area-bottom">
-      <div className="flex items-center justify-around h-16 px-2">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-lg border-t border-border md:hidden">
+      <div className="flex items-center justify-around h-16 px-2 safe-area-bottom">
         {primaryNav.map((item) => {
           const active = isActive(item.path);
           const pressed = pressedItem === item.path;

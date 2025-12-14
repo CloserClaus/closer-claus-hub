@@ -56,7 +56,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     <SidebarProvider open={sidebarOpen} onOpenChange={handleSidebarOpenChange}>
       <div className="min-h-screen flex w-full">
         <AppSidebar />
-        <SidebarInset className="flex-1">
+        <SidebarInset className="flex-1 mobile-nav-padding md:pb-0">
           {children}
         </SidebarInset>
         <MobileBottomNav />

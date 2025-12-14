@@ -84,6 +84,7 @@ const agencyOwnerNav: NavItem[] = [
   { title: 'Trainings', url: '/trainings', icon: GraduationCap },
   { title: 'Contracts', url: '/contracts', icon: FileText },
   { title: 'Commissions', url: '/commissions', icon: DollarSign, tourId: 'nav-commissions' },
+  { title: 'Subscription', url: '/subscription', icon: Tag },
   { title: 'Billing', url: '/billing', icon: CreditCard },
 ];
 
