@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Check, Zap, Crown, Rocket, Tag, Loader2, ArrowLeft } from 'lucide-react';
+import { Check, Zap, Crown, Rocket, Tag, Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import logoFull from '@/assets/logo-full.png';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { DashboardHeader } from '@/components/layout/DashboardHeader';
 
 type BillingPeriod = 'monthly' | 'yearly';
 
@@ -270,45 +271,34 @@ export default function Subscription() {
 
 
   return (
-    <div className="min-h-screen bg-background py-8 px-4 md:py-12 md:px-8">
-      <div className="max-w-5xl mx-auto">
-        {/* Back Button */}
-        {hasActiveSubscription && (
-          <Button 
-            variant="ghost" 
-            onClick={() => navigate('/billing')} 
-            className="mb-6 gap-2 text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Billing
-          </Button>
-        )}
+    <DashboardLayout>
+      <DashboardHeader title="Subscription" />
+      <div className="p-4 md:p-6 lg:p-8">
+        <div className="max-w-5xl mx-auto">
+          {/* Header */}
+          <div className="text-center mb-10">
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
+              Choose Your Plan
+            </h1>
+            <p className="text-muted-foreground text-sm max-w-xl mx-auto">
+              Scale your agency with the right plan. All plans include full platform access.
+            </p>
+          </div>
 
-        {/* Header */}
-        <div className="text-center mb-12">
-          <img src={logoFull} alt="Closer Claus" className="h-10 mx-auto object-contain mb-8" />
-          <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
-            Choose Your Plan
-          </h1>
-          <p className="text-muted-foreground text-base max-w-xl mx-auto">
-            Scale your agency with the right plan. All plans include full platform access.
-          </p>
-        </div>
-
-        {/* Billing Toggle */}
-        <div className="flex justify-center mb-8">
-          <Tabs value={billingPeriod} onValueChange={(v) => setBillingPeriod(v as BillingPeriod)}>
-            <TabsList className="bg-muted">
-              <TabsTrigger value="monthly" className="px-6">Monthly</TabsTrigger>
-              <TabsTrigger value="yearly" className="px-6 gap-2">
-                Yearly
-                <Badge className="bg-success/20 text-success border-0 text-xs font-medium">
-                  2 months free
-                </Badge>
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
+          {/* Billing Toggle */}
+          <div className="flex justify-center mb-8">
+            <Tabs value={billingPeriod} onValueChange={(v) => setBillingPeriod(v as BillingPeriod)}>
+              <TabsList className="bg-muted">
+                <TabsTrigger value="monthly" className="px-6">Monthly</TabsTrigger>
+                <TabsTrigger value="yearly" className="px-6 gap-2">
+                  Yearly
+                  <Badge className="bg-success/20 text-success border-0 text-xs font-medium">
+                    2 months free
+                  </Badge>
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
 
         {/* Coupon Input */}
         <div className="max-w-sm mx-auto mb-10">
@@ -443,7 +433,8 @@ export default function Subscription() {
         <p className="text-center text-sm text-muted-foreground mt-10">
           14-day money-back guarantee • Cancel anytime
         </p>
+        </div>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }
