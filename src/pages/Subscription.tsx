@@ -85,7 +85,10 @@ const plans: Plan[] = [
 
 export default function Subscription() {
   const [searchParams] = useSearchParams();
-  const workspaceId = searchParams.get('workspace');
+  const queryWorkspaceId = searchParams.get('workspace');
+  const { currentWorkspace } = useWorkspace();
+  // Use query param workspace if provided, otherwise use current workspace from context
+  const workspaceId = queryWorkspaceId || currentWorkspace?.id;
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<{
