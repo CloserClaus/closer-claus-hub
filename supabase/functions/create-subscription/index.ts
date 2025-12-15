@@ -50,7 +50,7 @@ serve(async (req) => {
     // Fetch workspace
     const { data: workspace, error: workspaceError } = await supabase
       .from('workspaces')
-      .select('*, owner:profiles!workspaces_owner_id_fkey(email, full_name)')
+      .select('*')
       .eq('id', workspace_id)
       .single();
 
