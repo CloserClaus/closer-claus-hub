@@ -25,9 +25,22 @@ serve(async (req) => {
   }
 
   try {
+    // Diagnostic logging for secrets
+    const envVars = Object.keys(Deno.env.toObject());
+    console.log('Available env vars:', envVars.join(', '));
+    
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const stripeSecretKey = Deno.env.get('STRIPE_API_KEY');
+    
+    console.log('SUPABASE_URL exists:', !!supabaseUrl);
+    console.log('SUPABASE_SERVICE_ROLE_KEY exists:', !!supabaseServiceKey);
+    console.log('STRIPE_API_KEY exists:', !!stripeSecretKey);
+    if (stripeSecretKey) {
+      console.log('STRIPE_API_KEY length:', stripeSecretKey.length);
+      console.log('STRIPE_API_KEY starts with sk_:', stripeSecretKey.startsWith('sk_'));
+    }
+    
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { workspace_id, tier, billing_period, success_url, cancel_url } = await req.json();
