@@ -224,38 +224,8 @@ export default function Subscription() {
         return;
       }
 
-      // If no Stripe (test mode), subscription was activated directly
-      if (data?.success) {
-        // Record coupon redemption if applicable
-        if (appliedCoupon) {
-          const { data: couponData } = await supabase
-            .from('coupons')
-            .select('id')
-            .eq('code', appliedCoupon.code)
-            .single();
-
-          if (couponData) {
-            await supabase.from('coupon_redemptions').insert({
-              coupon_id: couponData.id,
-              workspace_id: workspaceId,
-              discount_applied: price - discountedPrice,
-            });
-          }
-        }
-
-        toast({
-          title: 'Subscription activated!',
-          description: `You're now on the ${plan.name} plan.`,
-        });
-
-        // Mark onboarding as complete
-        await supabase
-          .from('profiles')
-          .update({ onboarding_completed: true })
-          .eq('id', user.id);
-
-        navigate('/dashboard');
-      }
+      // If no Stripe checkout URL, treat as an error (we should never activate locally)
+      throw new Error(data?.error || 'Unable to start checkout. Please try again.');
     } catch (error: any) {
       console.error('Subscription error:', error);
       toast({

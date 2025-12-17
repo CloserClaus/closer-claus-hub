@@ -26,7 +26,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     if (!stripeSecretKey) {
-      console.error('STRIPE_SECRET_KEY not configured');
+      console.error('STRIPE_API_KEY not configured');
       return new Response(
         JSON.stringify({ error: 'Stripe not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
