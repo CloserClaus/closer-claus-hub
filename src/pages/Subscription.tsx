@@ -228,10 +228,21 @@ export default function Subscription() {
       throw new Error(data?.error || 'Unable to start checkout. Please try again.');
     } catch (error: any) {
       console.error('Subscription error:', error);
+      
+      // Parse the error to provide specific feedback
+      let errorMessage = 'Failed to process subscription.';
+      if (error?.message?.includes('stripe_not_configured')) {
+        errorMessage = 'Payment system is being configured. Please try again in a few minutes or contact support.';
+      } else if (error?.message?.includes('non-2xx')) {
+        errorMessage = 'Payment service temporarily unavailable. Please try again.';
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         variant: 'destructive',
-        title: 'Error',
-        description: error.message || 'Failed to process subscription.',
+        title: 'Subscription Error',
+        description: errorMessage,
       });
     } finally {
       setIsProcessing(false);
