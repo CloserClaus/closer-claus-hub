@@ -74,102 +74,84 @@ serve(async (req) => {
     const amount = billing_period === 'yearly' ? pricing.yearly : pricing.monthly;
 
     // Check if Stripe is configured
-    if (stripeSecretKey) {
-      const { default: Stripe } = await import('https://esm.sh/stripe@14.21.0?target=deno');
-      const stripe = new Stripe(stripeSecretKey, {
-        apiVersion: '2023-10-16',
-      });
-
-      // Get or create Stripe customer
-      let customerId = workspace.stripe_customer_id;
-
-      if (!customerId) {
-        const customer = await stripe.customers.create({
-          email: ownerProfile?.email || '',
-          name: ownerProfile?.full_name || workspace.name,
-          metadata: {
-            workspace_id: workspace.id,
-            workspace_name: workspace.name,
-          },
-        });
-
-        customerId = customer.id;
-
-        await supabase
-          .from('workspaces')
-          .update({ stripe_customer_id: customerId })
-          .eq('id', workspace_id);
-
-        console.log(`Created Stripe customer ${customerId}`);
-      }
-
-      // Create Stripe Checkout Session
-      const session = await stripe.checkout.sessions.create({
-        customer: customerId,
-        payment_method_types: ['card'],
-        mode: 'subscription',
-        line_items: [
-          {
-            price_data: {
-              currency: 'usd',
-              product_data: {
-                name: `${tier.charAt(0).toUpperCase() + tier.slice(1)} Plan`,
-                description: `Up to ${limits.max_sdrs} SDR${limits.max_sdrs > 1 ? 's' : ''}, ${limits.rake_percentage}% platform fee`,
-              },
-              unit_amount: amount,
-              recurring: {
-                interval: billing_period === 'yearly' ? 'year' : 'month',
-              },
-            },
-            quantity: 1,
-          },
-        ],
-        success_url: success_url || `${req.headers.get('origin')}/dashboard?subscription=success`,
-        cancel_url: cancel_url || `${req.headers.get('origin')}/subscription?cancelled=true`,
-        metadata: {
-          workspace_id,
-          tier,
-          billing_period,
-        },
-      });
-
-      console.log(`Created checkout session ${session.id} for workspace ${workspace_id}`);
-
+    if (!stripeSecretKey) {
+      console.error('STRIPE_API_KEY not configured for create-subscription');
       return new Response(
         JSON.stringify({
-          success: true,
-          checkout_url: session.url,
-          session_id: session.id,
+          error: 'Payments are not configured. Please try again later.',
+          code: 'stripe_not_configured',
         }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Stripe not configured - update workspace directly (for testing)
-    console.log(`Stripe not configured. Activating ${tier} plan directly for workspace ${workspace_id}`);
+    console.log(`Stripe enabled for create-subscription: ${String(!!stripeSecretKey)} (len=${stripeSecretKey.length})`);
 
-    const { error: updateError } = await supabase
-      .from('workspaces')
-      .update({
-        subscription_tier: tier,
-        subscription_status: 'active',
-        max_sdrs: limits.max_sdrs,
-        rake_percentage: limits.rake_percentage,
-      })
-      .eq('id', workspace_id);
+    const { default: Stripe } = await import('https://esm.sh/stripe@14.21.0?target=deno');
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: '2023-10-16',
+    });
 
-    if (updateError) {
-      console.error('Error updating workspace:', updateError);
-      throw updateError;
+    // Get or create Stripe customer
+    let customerId = workspace.stripe_customer_id;
+
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: ownerProfile?.email || '',
+        name: ownerProfile?.full_name || workspace.name,
+        metadata: {
+          workspace_id: workspace.id,
+          workspace_name: workspace.name,
+        },
+      });
+
+      customerId = customer.id;
+
+      await supabase
+        .from('workspaces')
+        .update({ stripe_customer_id: customerId })
+        .eq('id', workspace_id);
+
+      console.log(`Created Stripe customer ${customerId}`);
     }
+
+    // Create Stripe Checkout Session
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      mode: 'subscription',
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: `${tier.charAt(0).toUpperCase() + tier.slice(1)} Plan`,
+              description: `Up to ${limits.max_sdrs} SDR${limits.max_sdrs > 1 ? 's' : ''}, ${limits.rake_percentage}% platform fee`,
+            },
+            unit_amount: amount,
+            recurring: {
+              interval: billing_period === 'yearly' ? 'year' : 'month',
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: success_url || `${req.headers.get('origin')}/dashboard?subscription=success`,
+      cancel_url: cancel_url || `${req.headers.get('origin')}/subscription?cancelled=true`,
+      metadata: {
+        workspace_id,
+        tier,
+        billing_period,
+      },
+    });
+
+    console.log(`Created checkout session ${session.id} for workspace ${workspace_id}`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Subscription activated (Stripe not configured - test mode)',
-        tier,
-        billing_period,
-        stripe_enabled: false,
+        checkout_url: session.url,
+        session_id: session.id,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
