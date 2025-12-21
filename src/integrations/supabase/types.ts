@@ -27,6 +27,7 @@ export type Database = {
           notes: string | null
           phone_number: string
           recording_url: string | null
+          twilio_call_sid: string | null
           workspace_id: string
         }
         Insert: {
@@ -41,6 +42,7 @@ export type Database = {
           notes?: string | null
           phone_number: string
           recording_url?: string | null
+          twilio_call_sid?: string | null
           workspace_id: string
         }
         Update: {
@@ -55,6 +57,7 @@ export type Database = {
           notes?: string | null
           phone_number?: string
           recording_url?: string | null
+          twilio_call_sid?: string | null
           workspace_id?: string
         }
         Relationships: [
@@ -1198,6 +1201,7 @@ export type Database = {
           monthly_cost: number
           phone_number: string
           purchased_at: string
+          twilio_phone_sid: string | null
           workspace_id: string
         }
         Insert: {
@@ -1211,6 +1215,7 @@ export type Database = {
           monthly_cost?: number
           phone_number: string
           purchased_at?: string
+          twilio_phone_sid?: string | null
           workspace_id: string
         }
         Update: {
@@ -1224,6 +1229,7 @@ export type Database = {
           monthly_cost?: number
           phone_number?: string
           purchased_at?: string
+          twilio_phone_sid?: string | null
           workspace_id?: string
         }
         Relationships: [
