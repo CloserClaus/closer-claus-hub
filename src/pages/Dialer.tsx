@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTwilioDevice } from "@/hooks/useTwilioDevice";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import {
   Zap,
   Lock,
   Mic,
+  MicOff,
   FileText
 } from "lucide-react";
 import { toast } from "sonner";
@@ -31,7 +33,6 @@ import { format } from "date-fns";
 import { CreditsDisplay } from "@/components/dialer/CreditsDisplay";
 import { PurchaseTab } from "@/components/dialer/PurchaseTab";
 import { PowerDialer } from "@/components/dialer/PowerDialer";
-import { CallRecorder } from "@/components/dialer/CallRecorder";
 import { CallRecordingPlayer } from "@/components/dialer/CallRecordingPlayer";
 import { CallScriptManager } from "@/components/dialer/CallScriptManager";
 import { CallScriptDisplay } from "@/components/dialer/CallScriptDisplay";
@@ -54,9 +55,15 @@ interface CallLog {
   notes: string | null;
   created_at: string;
   lead_id: string | null;
-  callhippo_call_id?: string | null;
+  twilio_call_sid?: string | null;
   recording_url?: string | null;
   leads?: Lead;
+}
+
+interface PhoneNumber {
+  id: string;
+  phone_number: string;
+  is_active: boolean;
 }
 
 export default function Dialer() {
@@ -67,14 +74,63 @@ export default function Dialer() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [isCallActive, setIsCallActive] = useState(false);
-  const [currentCallLog, setCurrentCallLog] = useState<CallLog | null>(null);
+  const [currentCallLogId, setCurrentCallLogId] = useState<string | null>(null);
   const [callNotes, setCallNotes] = useState("");
-  const [callDuration, setCallDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [dialerAvailable, setDialerAvailable] = useState<boolean | null>(null);
   const [creditsBalance, setCreditsBalance] = useState(0);
   const [isLoadingCredits, setIsLoadingCredits] = useState(true);
+  const [workspacePhoneNumbers, setWorkspacePhoneNumbers] = useState<PhoneNumber[]>([]);
+  const [selectedCallerId, setSelectedCallerId] = useState<string>("");
+  const [isMuted, setIsMuted] = useState(false);
+
+  // Twilio Device Hook
+  const {
+    isReady: dialerAvailable,
+    isConnecting,
+    callStatus,
+    formattedDuration,
+    makeCall,
+    endCall,
+    toggleMute,
+    sendDigits,
+    error: twilioError,
+  } = useTwilioDevice({
+    workspaceId: currentWorkspace?.id || null,
+    onCallStatusChange: (status) => {
+      console.log('Call status changed:', status);
+    },
+    onCallDisconnected: () => {
+      // Refresh call logs when call ends
+      fetchCallLogs();
+    },
+  });
+
+  const isCallActive = callStatus === 'connecting' || callStatus === 'ringing' || callStatus === 'in_progress';
+
+  // Fetch workspace phone numbers
+  const fetchPhoneNumbers = async () => {
+    if (!currentWorkspace?.id) return;
+
+    const { data, error } = await supabase
+      .from('workspace_phone_numbers')
+      .select('id, phone_number, is_active')
+      .eq('workspace_id', currentWorkspace.id)
+      .eq('is_active', true);
+
+    if (error) {
+      console.error('Error fetching phone numbers:', error);
+      return;
+    }
+
+    setWorkspacePhoneNumbers(data || []);
+    if (data && data.length > 0 && !selectedCallerId) {
+      setSelectedCallerId(data[0].phone_number);
+    }
+  };
+
+  useEffect(() => {
+    fetchPhoneNumbers();
+  }, [currentWorkspace?.id]);
 
   // Fetch credits balance
   const fetchCredits = async () => {
@@ -82,23 +138,16 @@ export default function Dialer() {
     
     setIsLoadingCredits(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      const { data, error } = await supabase.functions.invoke('twilio', {
+        body: { action: 'get_credits', workspace_id: currentWorkspace.id },
+      });
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/callhippo`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ action: 'get_credits', workspaceId: currentWorkspace.id }),
-        }
-      );
+      if (error) {
+        console.error('Error fetching credits:', error);
+        return;
+      }
 
-      const data = await response.json();
-      setCreditsBalance(data.credits?.credits_balance || 0);
+      setCreditsBalance(data?.credits_balance || 0);
     } catch (error) {
       console.error('Error fetching credits:', error);
     } finally {
@@ -109,36 +158,6 @@ export default function Dialer() {
   useEffect(() => {
     fetchCredits();
   }, [currentWorkspace?.id]);
-
-  // Check if dialer is configured
-  useEffect(() => {
-    const checkDialerStatus = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/callhippo`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${session.access_token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ action: 'get_call_status', callId: 'test' }),
-          }
-        );
-
-        const data = await response.json();
-        // Check the configured flag in the response
-        setDialerAvailable(data.configured === true);
-      } catch {
-        setDialerAvailable(false);
-      }
-    };
-
-    checkDialerStatus();
-  }, []);
 
   // Fetch leads for quick dial
   useEffect(() => {
@@ -165,53 +184,37 @@ export default function Dialer() {
   }, [currentWorkspace?.id]);
 
   // Fetch call logs
-  useEffect(() => {
-    const fetchCallLogs = async () => {
-      if (!currentWorkspace?.id) return;
+  const fetchCallLogs = async () => {
+    if (!currentWorkspace?.id) return;
 
-      const { data, error } = await supabase
-        .from('call_logs')
-        .select(`
-          id,
-          phone_number,
-          call_status,
-          duration_seconds,
-          notes,
-          created_at,
-          lead_id,
-          recording_url
-        `)
-        .eq('workspace_id', currentWorkspace.id)
-        .order('created_at', { ascending: false })
-        .limit(20);
+    const { data, error } = await supabase
+      .from('call_logs')
+      .select(`
+        id,
+        phone_number,
+        call_status,
+        duration_seconds,
+        notes,
+        created_at,
+        lead_id,
+        recording_url,
+        twilio_call_sid
+      `)
+      .eq('workspace_id', currentWorkspace.id)
+      .order('created_at', { ascending: false })
+      .limit(20);
 
-      if (error) {
-        console.error('Error fetching call logs:', error);
-        return;
-      }
-
-      setCallLogs(data || []);
-    };
-
-    fetchCallLogs();
-  }, [currentWorkspace?.id, isCallActive]);
-
-  // Call duration timer
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isCallActive) {
-      interval = setInterval(() => {
-        setCallDuration(prev => prev + 1);
-      }, 1000);
+    if (error) {
+      console.error('Error fetching call logs:', error);
+      return;
     }
-    return () => clearInterval(interval);
-  }, [isCallActive]);
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    setCallLogs(data || []);
   };
+
+  useEffect(() => {
+    fetchCallLogs();
+  }, [currentWorkspace?.id]);
 
   const handleInitiateCall = async () => {
     if (!phoneNumber || !currentWorkspace?.id) {
@@ -219,54 +222,32 @@ export default function Dialer() {
       return;
     }
 
+    if (!selectedCallerId) {
+      toast.error("Please select a caller ID or purchase a phone number");
+      return;
+    }
+
+    if (!dialerAvailable) {
+      toast.error("Phone system is not ready. Please wait...");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast.error("Please log in to make calls");
-        return;
-      }
+      const result = await makeCall(phoneNumber, selectedCallerId, selectedLead?.id);
+      
+      if (result?.callLogId) {
+        setCurrentCallLogId(result.callLogId);
+        toast.success("Call initiated successfully");
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/callhippo`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'initiate_call',
-            phoneNumber,
-            workspaceId: currentWorkspace.id,
-            leadId: selectedLead?.id,
-          }),
+        // Update lead's last contacted time
+        if (selectedLead) {
+          await supabase
+            .from('leads')
+            .update({ last_contacted_at: new Date().toISOString() })
+            .eq('id', selectedLead.id);
         }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 503) {
-          toast.error("Dialer not configured. Please add CallHippo API key.");
-        } else {
-          toast.error(data.error || "Failed to initiate call");
-        }
-        return;
-      }
-
-      setIsCallActive(true);
-      setCurrentCallLog(data.log);
-      setCallDuration(0);
-      toast.success("Call initiated successfully");
-
-      // Update lead's last contacted time
-      if (selectedLead) {
-        await supabase
-          .from('leads')
-          .update({ last_contacted_at: new Date().toISOString() })
-          .eq('id', selectedLead.id);
       }
     } catch (error) {
       console.error('Error initiating call:', error);
@@ -277,45 +258,40 @@ export default function Dialer() {
   };
 
   const handleEndCall = async () => {
-    if (!currentCallLog) {
-      setIsCallActive(false);
-      return;
-    }
-
     setIsLoading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/callhippo`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'end_call',
-            callId: currentCallLog.callhippo_call_id,
-            callLogId: currentCallLog.id,
-            notes: callNotes,
-          }),
-        }
-      );
-
-      if (response.ok) {
-        toast.success("Call ended");
+      await endCall(callNotes);
+      
+      // Update call log with notes if we have a call log ID
+      if (currentCallLogId && callNotes) {
+        await supabase
+          .from('call_logs')
+          .update({ notes: callNotes })
+          .eq('id', currentCallLogId);
       }
+
+      toast.success("Call ended");
     } catch (error) {
       console.error('Error ending call:', error);
     } finally {
-      setIsCallActive(false);
-      setCurrentCallLog(null);
+      setCurrentCallLogId(null);
       setCallNotes("");
-      setCallDuration(0);
       setIsLoading(false);
+      setIsMuted(false);
+    }
+  };
+
+  const handleToggleMute = () => {
+    const newMuteState = toggleMute();
+    setIsMuted(newMuteState);
+  };
+
+  const handleDialPadPress = (digit: string) => {
+    if (isCallActive) {
+      sendDigits(digit);
+    } else {
+      setPhoneNumber(prev => prev + digit);
     }
   };
 
@@ -342,11 +318,33 @@ export default function Dialer() {
       case 'completed':
         return <Badge variant="outline" className="bg-success/10 text-success border-success/20">Completed</Badge>;
       case 'initiated':
-        return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">Initiated</Badge>;
+      case 'ringing':
+        return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">Ringing</Badge>;
+      case 'in-progress':
+      case 'in_progress':
+        return <Badge variant="outline" className="bg-success/10 text-success border-success/20">In Progress</Badge>;
+      case 'busy':
+        return <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">Busy</Badge>;
+      case 'no-answer':
       case 'missed':
-        return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">Missed</Badge>;
+        return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">No Answer</Badge>;
+      case 'failed':
+        return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">Failed</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const getCallStatusDisplay = () => {
+    switch (callStatus) {
+      case 'connecting':
+        return { text: 'Connecting...', icon: <PhoneCall className="h-5 w-5 animate-pulse" /> };
+      case 'ringing':
+        return { text: 'Ringing...', icon: <PhoneCall className="h-5 w-5 animate-pulse" /> };
+      case 'in_progress':
+        return { text: 'Call in progress', icon: <PhoneCall className="h-5 w-5" /> };
+      default:
+        return { text: 'Call in progress', icon: <PhoneCall className="h-5 w-5" /> };
     }
   };
 
@@ -368,308 +366,351 @@ export default function Dialer() {
       <DashboardHeader title="Dialer" />
       <main className="flex-1 p-6">
         <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Dialer</h1>
-          <p className="text-muted-foreground">Make outbound calls to your leads</p>
-        </div>
-        <CreditsDisplay credits={creditsBalance} isLoading={isLoadingCredits} />
-      </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold">Dialer</h1>
+              <p className="text-muted-foreground">Make outbound calls to your leads</p>
+            </div>
+            <CreditsDisplay credits={creditsBalance} isLoading={isLoadingCredits} />
+          </div>
 
-      {/* Check if user has access to power dialer (Beta or Alpha plan) */}
-      {(() => {
-        const hasPowerDialer = currentWorkspace?.subscription_tier === 'beta' || currentWorkspace?.subscription_tier === 'alpha';
-        return (
-          <Tabs defaultValue="dialer" className="space-y-6">
-            <TabsList>
-              <TabsTrigger value="dialer" className="flex items-center gap-2">
-                <Phone className="h-4 w-4" />
-                Manual Dialer
-              </TabsTrigger>
-              <TabsTrigger 
-                value="power-dialer" 
-                className="flex items-center gap-2"
-                disabled={!hasPowerDialer}
-              >
-                <Zap className="h-4 w-4" />
-                Power Dialer
-                {!hasPowerDialer && <Lock className="h-3 w-3 ml-1" />}
-              </TabsTrigger>
-              <TabsTrigger value="purchase" className="flex items-center gap-2">
-                <ShoppingCart className="h-4 w-4" />
-                Purchase
-              </TabsTrigger>
-              <TabsTrigger value="scripts" className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Scripts
-              </TabsTrigger>
-            </TabsList>
-
-        <TabsContent value="dialer" className="space-y-6">
-          {dialerAvailable === false && (
-            <Card className="border-warning/50 bg-warning/5">
-              <CardContent className="flex items-center gap-3 py-4">
-                <AlertCircle className="h-5 w-5 text-warning" />
-                <div>
-                  <p className="font-medium text-warning">Dialer Not Configured</p>
-                  <p className="text-sm text-muted-foreground">
-                    CallHippo API key needs to be added to enable calling functionality.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Dial Pad */}
-            <Card className="lg:col-span-1">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Phone className="h-5 w-5" />
-                  Dial Pad
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {selectedLead && (
-                  <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-primary" />
-                      <span className="font-medium">{selectedLead.first_name} {selectedLead.last_name}</span>
-                    </div>
-                    {selectedLead.company && (
-                      <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-                        <Building2 className="h-3 w-3" />
-                        <span>{selectedLead.company}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <Input
-                  type="tel"
-                  placeholder="Enter phone number"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  className="text-center text-xl font-mono"
-                  disabled={isCallActive}
-                />
-
-                <div className="grid grid-cols-3 gap-2">
-                  {dialPadNumbers.map((num) => (
-                    <Button
-                      key={num}
-                      variant="outline"
-                      size="lg"
-                      onClick={() => setPhoneNumber(prev => prev + num)}
-                      disabled={isCallActive}
-                      className="text-lg font-medium"
-                    >
-                      {num}
-                    </Button>
-                  ))}
-                </div>
-
-                {isCallActive ? (
-                  <div className="space-y-4">
-                    {/* Call Script Display */}
-                    <CallScriptDisplay 
-                      workspaceId={currentWorkspace.id} 
-                      lead={selectedLead}
-                    />
-
-                    <div className="text-center py-4">
-                      <div className="flex items-center justify-center gap-2 text-success mb-2">
-                        <PhoneCall className="h-5 w-5 animate-pulse" />
-                        <span className="font-medium">Call in progress</span>
-                      </div>
-                      <p className="text-2xl font-mono">{formatDuration(callDuration)}</p>
-                    </div>
-
-                    {/* Call Recording Controls */}
-                    {currentCallLog && (
-                      <div className="flex justify-center">
-                        <CallRecorder
-                          callLogId={currentCallLog.id}
-                          workspaceId={currentWorkspace.id}
-                          onRecordingComplete={(url) => {
-                            setCurrentCallLog(prev => prev ? { ...prev, recording_url: url } : null);
-                          }}
-                        />
-                      </div>
-                    )}
-
-                    <Textarea
-                      placeholder="Call notes..."
-                      value={callNotes}
-                      onChange={(e) => setCallNotes(e.target.value)}
-                      rows={3}
-                    />
-
-                    <Button
-                      variant="destructive"
-                      size="lg"
-                      className="w-full"
-                      onClick={handleEndCall}
-                      disabled={isLoading}
-                    >
-                      <PhoneOff className="h-5 w-5 mr-2" />
-                      End Call
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    size="lg"
-                    className="w-full"
-                    onClick={handleInitiateCall}
-                    disabled={isLoading || !phoneNumber || dialerAvailable === false}
+          {/* Check if user has access to power dialer (Beta or Alpha plan) */}
+          {(() => {
+            const hasPowerDialer = currentWorkspace?.subscription_tier === 'beta' || currentWorkspace?.subscription_tier === 'alpha';
+            return (
+              <Tabs defaultValue="dialer" className="space-y-6">
+                <TabsList>
+                  <TabsTrigger value="dialer" className="flex items-center gap-2">
+                    <Phone className="h-4 w-4" />
+                    Manual Dialer
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="power-dialer" 
+                    className="flex items-center gap-2"
+                    disabled={!hasPowerDialer}
                   >
-                    <Phone className="h-5 w-5 mr-2" />
-                    {isLoading ? "Connecting..." : "Call"}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
+                    <Zap className="h-4 w-4" />
+                    Power Dialer
+                    {!hasPowerDialer && <Lock className="h-3 w-3 ml-1" />}
+                  </TabsTrigger>
+                  <TabsTrigger value="purchase" className="flex items-center gap-2">
+                    <ShoppingCart className="h-4 w-4" />
+                    Purchase
+                  </TabsTrigger>
+                  <TabsTrigger value="scripts" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Scripts
+                  </TabsTrigger>
+                </TabsList>
 
-            {/* Quick Dial - Leads */}
-            <Card className="lg:col-span-1">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  Quick Dial
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search leads..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
+                <TabsContent value="dialer" className="space-y-6">
+                  {twilioError && (
+                    <Card className="border-destructive/50 bg-destructive/5">
+                      <CardContent className="flex items-center gap-3 py-4">
+                        <AlertCircle className="h-5 w-5 text-destructive" />
+                        <div>
+                          <p className="font-medium text-destructive">Phone System Error</p>
+                          <p className="text-sm text-muted-foreground">{twilioError}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
 
-                <ScrollArea className="h-[400px]">
-                  <div className="space-y-2">
-                    {filteredLeads.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-8">
-                        No leads with phone numbers found
-                      </p>
-                    ) : (
-                      filteredLeads.map((lead) => (
-                        <button
-                          key={lead.id}
-                          onClick={() => handleSelectLead(lead)}
-                          className={`w-full text-left p-3 rounded-lg border transition-colors ${
-                            selectedLead?.id === lead.id
-                              ? 'border-primary bg-primary/5'
-                              : 'border-border hover:border-primary/50 hover:bg-accent/50'
-                          }`}
-                          disabled={isCallActive}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-medium">{lead.first_name} {lead.last_name}</p>
-                              {lead.company && (
-                                <p className="text-sm text-muted-foreground">{lead.company}</p>
-                              )}
+                  {isConnecting && (
+                    <Card className="border-primary/50 bg-primary/5">
+                      <CardContent className="flex items-center gap-3 py-4">
+                        <PhoneCall className="h-5 w-5 text-primary animate-pulse" />
+                        <div>
+                          <p className="font-medium text-primary">Initializing Phone System</p>
+                          <p className="text-sm text-muted-foreground">
+                            Setting up your browser for calls...
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {workspacePhoneNumbers.length === 0 && !isConnecting && (
+                    <Card className="border-warning/50 bg-warning/5">
+                      <CardContent className="flex items-center gap-3 py-4">
+                        <AlertCircle className="h-5 w-5 text-warning" />
+                        <div>
+                          <p className="font-medium text-warning">No Phone Numbers</p>
+                          <p className="text-sm text-muted-foreground">
+                            You need to purchase a phone number to make calls. Go to the Purchase tab.
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Dial Pad */}
+                    <Card className="lg:col-span-1">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Phone className="h-5 w-5" />
+                          Dial Pad
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {selectedLead && (
+                          <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4 text-primary" />
+                              <span className="font-medium">{selectedLead.first_name} {selectedLead.last_name}</span>
                             </div>
-                            <p className="text-sm font-mono text-muted-foreground">{lead.phone}</p>
-                          </div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-
-            {/* Call History */}
-            <Card className="lg:col-span-1">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="h-5 w-5" />
-                  Recent Calls
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[450px]">
-                  <div className="space-y-3">
-                    {callLogs.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-8">
-                        No call history yet
-                      </p>
-                    ) : (
-                      callLogs.map((log) => (
-                        <div key={log.id} className="p-3 rounded-lg border border-border space-y-2">
-                          <div className="flex items-center justify-between">
-                            <p className="font-mono text-sm">{log.phone_number}</p>
-                            {getCallStatusBadge(log.call_status)}
-                          </div>
-                          <div className="flex items-center justify-between text-sm text-muted-foreground">
-                            <span>{format(new Date(log.created_at), 'MMM d, h:mm a')}</span>
-                            {log.duration_seconds && log.duration_seconds > 0 && (
-                              <span>{formatDuration(log.duration_seconds)}</span>
+                            {selectedLead.company && (
+                              <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+                                <Building2 className="h-3 w-3" />
+                                <span>{selectedLead.company}</span>
+                              </div>
                             )}
                           </div>
-                          {log.recording_url && (
-                            <CallRecordingPlayer 
-                              recordingUrl={log.recording_url} 
-                              callId={log.id} 
-                            />
-                          )}
-                          {log.notes && (
-                            <p className="text-sm text-muted-foreground line-clamp-2">{log.notes}</p>
-                          )}
+                        )}
+
+                        {/* Caller ID Selection */}
+                        {workspacePhoneNumbers.length > 0 && (
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Caller ID</label>
+                            <select
+                              value={selectedCallerId}
+                              onChange={(e) => setSelectedCallerId(e.target.value)}
+                              className="w-full p-2 rounded-md border border-border bg-background text-sm"
+                              disabled={isCallActive}
+                            >
+                              {workspacePhoneNumbers.map((pn) => (
+                                <option key={pn.id} value={pn.phone_number}>
+                                  {pn.phone_number}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        <Input
+                          type="tel"
+                          placeholder="Enter phone number"
+                          value={phoneNumber}
+                          onChange={(e) => setPhoneNumber(e.target.value)}
+                          className="text-center text-xl font-mono"
+                          disabled={isCallActive}
+                        />
+
+                        <div className="grid grid-cols-3 gap-2">
+                          {dialPadNumbers.map((num) => (
+                            <Button
+                              key={num}
+                              variant="outline"
+                              size="lg"
+                              onClick={() => handleDialPadPress(num)}
+                              className="text-lg font-medium"
+                            >
+                              {num}
+                            </Button>
+                          ))}
                         </div>
-                      ))
-                    )}
+
+                        {isCallActive ? (
+                          <div className="space-y-4">
+                            {/* Call Script Display */}
+                            <CallScriptDisplay 
+                              workspaceId={currentWorkspace.id} 
+                              lead={selectedLead}
+                            />
+
+                            <div className="text-center py-4">
+                              <div className="flex items-center justify-center gap-2 text-success mb-2">
+                                {getCallStatusDisplay().icon}
+                                <span className="font-medium">{getCallStatusDisplay().text}</span>
+                              </div>
+                              <p className="text-2xl font-mono">{formattedDuration}</p>
+                            </div>
+
+                            {/* Call Controls */}
+                            <div className="flex justify-center gap-2">
+                              <Button
+                                variant={isMuted ? "destructive" : "outline"}
+                                size="icon"
+                                onClick={handleToggleMute}
+                                title={isMuted ? "Unmute" : "Mute"}
+                              >
+                                {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                              </Button>
+                            </div>
+
+                            <Textarea
+                              placeholder="Call notes..."
+                              value={callNotes}
+                              onChange={(e) => setCallNotes(e.target.value)}
+                              rows={3}
+                            />
+
+                            <Button
+                              variant="destructive"
+                              size="lg"
+                              className="w-full"
+                              onClick={handleEndCall}
+                              disabled={isLoading}
+                            >
+                              <PhoneOff className="h-5 w-5 mr-2" />
+                              End Call
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            size="lg"
+                            className="w-full"
+                            onClick={handleInitiateCall}
+                            disabled={isLoading || !phoneNumber || !dialerAvailable || !selectedCallerId}
+                          >
+                            <Phone className="h-5 w-5 mr-2" />
+                            {isLoading ? "Connecting..." : isConnecting ? "Initializing..." : "Call"}
+                          </Button>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Quick Dial - Leads */}
+                    <Card className="lg:col-span-1">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <User className="h-5 w-5" />
+                          Quick Dial
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Search leads..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+
+                        <ScrollArea className="h-[400px]">
+                          <div className="space-y-2">
+                            {filteredLeads.length === 0 ? (
+                              <p className="text-center text-muted-foreground py-8">
+                                No leads with phone numbers found
+                              </p>
+                            ) : (
+                              filteredLeads.map((lead) => (
+                                <button
+                                  key={lead.id}
+                                  onClick={() => handleSelectLead(lead)}
+                                  className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                                    selectedLead?.id === lead.id
+                                      ? 'border-primary bg-primary/5'
+                                      : 'border-border hover:border-primary/50 hover:bg-accent/50'
+                                  }`}
+                                  disabled={isCallActive}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <p className="font-medium">{lead.first_name} {lead.last_name}</p>
+                                      {lead.company && (
+                                        <p className="text-sm text-muted-foreground">{lead.company}</p>
+                                      )}
+                                    </div>
+                                    <p className="text-sm font-mono text-muted-foreground">{lead.phone}</p>
+                                  </div>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </ScrollArea>
+                      </CardContent>
+                    </Card>
+
+                    {/* Call History */}
+                    <Card className="lg:col-span-1">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Clock className="h-5 w-5" />
+                          Recent Calls
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ScrollArea className="h-[450px]">
+                          <div className="space-y-3">
+                            {callLogs.length === 0 ? (
+                              <p className="text-center text-muted-foreground py-8">
+                                No call history yet
+                              </p>
+                            ) : (
+                              callLogs.map((log) => (
+                                <div key={log.id} className="p-3 rounded-lg border border-border space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <p className="font-mono text-sm">{log.phone_number}</p>
+                                    {getCallStatusBadge(log.call_status)}
+                                  </div>
+                                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                                    <span>{format(new Date(log.created_at), 'MMM d, h:mm a')}</span>
+                                    {log.duration_seconds && log.duration_seconds > 0 && (
+                                      <span>{Math.floor(log.duration_seconds / 60)}:{(log.duration_seconds % 60).toString().padStart(2, '0')}</span>
+                                    )}
+                                  </div>
+                                  {log.recording_url && (
+                                    <CallRecordingPlayer 
+                                      recordingUrl={log.recording_url} 
+                                      callId={log.id} 
+                                    />
+                                  )}
+                                  {log.notes && (
+                                    <p className="text-sm text-muted-foreground line-clamp-2">{log.notes}</p>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </ScrollArea>
+                      </CardContent>
+                    </Card>
                   </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
+                </TabsContent>
 
-        <TabsContent value="power-dialer">
-          {hasPowerDialer ? (
-            <PowerDialer 
-              workspaceId={currentWorkspace.id}
-              dialerAvailable={dialerAvailable}
-              onCreditsUpdated={fetchCredits}
-            />
-          ) : (
-            <Card className="border-primary/20">
-              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="p-4 rounded-full bg-primary/10 mb-4">
-                  <Zap className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">Power Dialer</h3>
-                <p className="text-muted-foreground mb-4 max-w-md">
-                  Automatically dial through your lead list with one click. 
-                  Power Dialer is available on Beta and Alpha plans.
-                </p>
-                <Button onClick={() => window.location.href = '/subscription'}>
-                  Upgrade to Beta Plan
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
+                <TabsContent value="power-dialer">
+                  {hasPowerDialer ? (
+                    <PowerDialer 
+                      workspaceId={currentWorkspace.id}
+                      dialerAvailable={dialerAvailable}
+                      onCreditsUpdated={fetchCredits}
+                    />
+                  ) : (
+                    <Card className="border-primary/20">
+                      <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                        <div className="p-4 rounded-full bg-primary/10 mb-4">
+                          <Zap className="h-8 w-8 text-primary" />
+                        </div>
+                        <h3 className="text-xl font-semibold mb-2">Power Dialer</h3>
+                        <p className="text-muted-foreground mb-4 max-w-md">
+                          Automatically dial through your lead list with one click. 
+                          Power Dialer is available on Beta and Alpha plans.
+                        </p>
+                        <Button onClick={() => window.location.href = '/subscription'}>
+                          Upgrade to Beta Plan
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  )}
+                </TabsContent>
 
-        <TabsContent value="purchase">
-          <PurchaseTab 
-            workspaceId={currentWorkspace.id} 
-            onCreditsUpdated={fetchCredits}
-          />
-        </TabsContent>
+                <TabsContent value="purchase">
+                  <PurchaseTab 
+                    workspaceId={currentWorkspace.id} 
+                    onCreditsUpdated={fetchCredits}
+                  />
+                </TabsContent>
 
-        <TabsContent value="scripts">
-          <CallScriptManager workspaceId={currentWorkspace.id} />
-        </TabsContent>
-        </Tabs>
-        );
-      })()}
+                <TabsContent value="scripts">
+                  <CallScriptManager workspaceId={currentWorkspace.id} />
+                </TabsContent>
+              </Tabs>
+            );
+          })()}
         </div>
       </main>
     </DashboardLayout>
