@@ -61,7 +61,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
   const [dialedLeads, setDialedLeads] = useState<DialedLead[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentCallLogId, setCurrentCallLogId] = useState<string | null>(null);
-  const [currentCallHippoId, setCurrentCallHippoId] = useState<string | null>(null);
+  const [currentTwilioCallSid, setCurrentTwilioCallSid] = useState<string | null>(null);
   
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -159,8 +159,24 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
       }
 
       setIsLoading(true);
+      
+      // Get workspace phone numbers for caller ID
+      const { data: phoneNumbers } = await supabase
+        .from('workspace_phone_numbers')
+        .select('phone_number')
+        .eq('workspace_id', workspaceId)
+        .eq('is_active', true)
+        .limit(1);
+
+      const fromNumber = phoneNumbers?.[0]?.phone_number;
+      if (!fromNumber) {
+        toast.error("No phone number configured. Please purchase a number first.");
+        setDialerStatus('paused');
+        return;
+      }
+
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/callhippo`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twilio`,
         {
           method: 'POST',
           headers: {
@@ -169,9 +185,10 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
           },
           body: JSON.stringify({
             action: 'initiate_call',
-            phoneNumber: lead.phone,
-            workspaceId,
-            leadId: lead.id,
+            to_number: lead.phone,
+            from_number: fromNumber,
+            workspace_id: workspaceId,
+            lead_id: lead.id,
           }),
         }
       );
@@ -184,8 +201,8 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
         return;
       }
 
-      setCurrentCallLogId(data.log?.id || null);
-      setCurrentCallHippoId(data.call?.call_id || data.call?.id || null);
+      setCurrentCallLogId(data.call_log_id || null);
+      setCurrentTwilioCallSid(data.call_sid || null);
       setDialerStatus('in_call');
 
       // Update lead's last contacted time
@@ -207,12 +224,12 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
     if (!currentLead) return;
 
     // End the call if still active
-    if (dialerStatus === 'in_call' && currentCallLogId) {
+    if (dialerStatus === 'in_call' && currentTwilioCallSid) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
           await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/callhippo`,
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twilio`,
             {
               method: 'POST',
               headers: {
@@ -221,8 +238,8 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
               },
               body: JSON.stringify({
                 action: 'end_call',
-                callId: currentCallHippoId,
-                callLogId: currentCallLogId,
+                call_sid: currentTwilioCallSid,
+                call_log_id: currentCallLogId,
                 notes: callNotes,
               }),
             }
@@ -244,7 +261,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
     // Move to next lead
     const nextIndex = currentIndex + 1;
     setCurrentCallLogId(null);
-    setCurrentCallHippoId(null);
+    setCurrentTwilioCallSid(null);
     
     if (nextIndex >= selectedLeads.length) {
       setDialerStatus('completed');
@@ -263,12 +280,12 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
 
   const pauseDialer = async () => {
     // End current call if active
-    if (dialerStatus === 'in_call' && currentCallLogId) {
+    if (dialerStatus === 'in_call' && currentTwilioCallSid) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
           await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/callhippo`,
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twilio`,
             {
               method: 'POST',
               headers: {
@@ -277,8 +294,8 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
               },
               body: JSON.stringify({
                 action: 'end_call',
-                callId: currentCallHippoId,
-                callLogId: currentCallLogId,
+                call_sid: currentTwilioCallSid,
+                call_log_id: currentCallLogId,
                 notes: callNotes,
               }),
             }
@@ -305,7 +322,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
     setCallDuration(0);
     setCallNotes("");
     setCurrentCallLogId(null);
-    setCurrentCallHippoId(null);
+    setCurrentTwilioCallSid(null);
   };
 
   const getOutcomeIcon = (outcome: CallOutcome) => {
@@ -335,7 +352,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
           <div className="text-center">
             <p className="font-medium text-warning">Power Dialer Not Available</p>
             <p className="text-sm text-muted-foreground">
-              CallHippo API key needs to be configured to use the power dialer.
+              Twilio needs to be configured to use the power dialer.
             </p>
           </div>
         </CardContent>

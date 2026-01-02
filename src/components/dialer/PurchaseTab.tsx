@@ -65,7 +65,7 @@ interface MinutePackage {
   popular?: boolean;
 }
 
-interface CallHippoAddon {
+interface TwilioAddon {
   id: string;
   name: string;
   description: string;
@@ -81,7 +81,7 @@ const minutePackages: MinutePackage[] = [
   { id: 'enterprise', name: 'Enterprise', minutes: 5000, price: 350 },
 ];
 
-const callHippoAddons: CallHippoAddon[] = [
+const twilioAddons: TwilioAddon[] = [
   {
     id: 'voicemail',
     name: 'Voicemail Drop',
@@ -163,20 +163,27 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
       if (!session) return;
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/callhippo`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twilio`,
         {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ action: 'get_available_numbers', countryCode: 'US' }),
+          body: JSON.stringify({ action: 'get_available_numbers', country: 'US' }),
         }
       );
 
       const data = await response.json();
-      setApiConfigured(data.configured !== false);
-      setAvailableNumbers(data.numbers || []);
+      setApiConfigured(data.error !== 'Twilio not configured');
+      setAvailableNumbers((data.numbers || []).map((num: any) => ({
+        id: num.phone_number,
+        number: num.phone_number,
+        country: num.country || 'US',
+        city: num.locality || num.region,
+        monthly_cost: num.monthly_cost || 1.15,
+        type: 'local',
+      })));
     } catch (error) {
       console.error('Error fetching numbers:', error);
     } finally {
@@ -209,7 +216,7 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
       }
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/callhippo`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twilio`,
         {
           method: 'POST',
           headers: {
@@ -218,12 +225,8 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
           },
           body: JSON.stringify({
             action: 'purchase_number',
-            numberId: number.id,
-            workspaceId,
-            phoneNumber: number.number,
-            monthlyCost: number.monthly_cost,
-            countryCode: number.country,
-            city: number.city,
+            phone_number: number.number,
+            workspace_id: workspaceId,
           }),
         }
       );
@@ -280,7 +283,7 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
       }
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/callhippo`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twilio`,
         {
           method: 'POST',
           headers: {
@@ -289,9 +292,9 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
           },
           body: JSON.stringify({
             action: 'purchase_credits',
-            workspaceId,
-            creditsAmount: pkg.minutes,
-            pricePaid: pkg.price,
+            workspace_id: workspaceId,
+            credits_amount: pkg.minutes,
+            price_paid: pkg.price,
           }),
         }
       );
@@ -313,10 +316,10 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
     }
   };
 
-  const handlePurchaseAddon = async (addon: CallHippoAddon) => {
+  const handlePurchaseAddon = async (addon: TwilioAddon) => {
     setIsPurchasing(addon.id);
     try {
-      // For now, show a message that this would integrate with CallHippo
+      // For now, show a message that this would integrate with Twilio
       toast.success(`${addon.name} addon request submitted! We'll process this shortly.`);
     } catch (error) {
       console.error('Error purchasing addon:', error);
@@ -341,7 +344,7 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
             <div>
               <p className="font-medium text-warning">Demo Mode</p>
               <p className="text-sm text-muted-foreground">
-                CallHippo API key not configured. Showing demo data for testing.
+                Twilio is not configured. Showing demo data for testing.
               </p>
             </div>
           </CardContent>
@@ -519,12 +522,12 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
         </Card>
       </div>
 
-      {/* CallHippo Addons */}
+      {/* Twilio Addons */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Zap className="h-5 w-5" />
-            CallHippo Addons
+            Calling Addons
           </CardTitle>
           <CardDescription>
             Enhance your calling capabilities with these powerful addons
@@ -532,7 +535,7 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {callHippoAddons.map((addon) => (
+            {twilioAddons.map((addon) => (
               <div
                 key={addon.id}
                 className="p-4 rounded-lg border border-border hover:border-primary/50 transition-all space-y-3"
