@@ -22,6 +22,7 @@ serve(async (req) => {
     const twilioAuthToken = Deno.env.get('TWILIO_AUTH_TOKEN');
     const twilioApiKeySid = Deno.env.get('TWILIO_API_KEY_SID');
     const twilioApiKeySecret = Deno.env.get('TWILIO_API_KEY_SECRET');
+    const twilioTwimlAppSid = Deno.env.get('TWILIO_TWIML_APP_SID');
 
     if (!twilioAccountSid || !twilioAuthToken) {
       console.error('Twilio credentials not configured');
@@ -84,7 +85,7 @@ serve(async (req) => {
 
         // Generate JWT for Twilio Voice SDK
         const identity = user.id;
-        const { workspace_id } = params;
+        const twimlAppSid = params.twiml_app_sid || twilioTwimlAppSid || '';
 
         // Create a simple JWT token for Twilio Voice
         // In production, you'd use a proper JWT library
@@ -101,7 +102,7 @@ serve(async (req) => {
             identity: identity,
             voice: {
               incoming: { allow: true },
-              outgoing: { application_sid: params.twiml_app_sid || '' }
+              outgoing: { application_sid: twimlAppSid }
             }
           }
         };
