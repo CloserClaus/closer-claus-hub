@@ -211,6 +211,8 @@ export default function Subscription() {
           workspace_id: workspaceId,
           tier: plan.id,
           billing_period: billingPeriod,
+          coupon_code: appliedCoupon?.code || null,
+          discount_percentage: appliedCoupon?.discount || null,
           success_url: `${window.location.origin}/dashboard?subscription=success`,
           cancel_url: `${window.location.origin}/subscription?workspace=${workspaceId}&cancelled=true`,
         },
