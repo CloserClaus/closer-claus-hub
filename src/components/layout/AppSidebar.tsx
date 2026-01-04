@@ -95,7 +95,7 @@ const sdrNav: NavItem[] = [
   { title: 'Dialer', url: '/dialer', icon: Phone, tourId: 'nav-dialer' },
   { title: 'Conversations', url: '/conversations', icon: MessageSquare },
   { title: 'Trainings', url: '/trainings', icon: GraduationCap },
-  { title: 'My Earnings', url: '/earnings', icon: DollarSign, tourId: 'nav-earnings' },
+  { title: 'My Earnings', url: '/commissions', icon: DollarSign, tourId: 'nav-earnings' },
 ];
 
 export function AppSidebar() {
@@ -150,16 +150,20 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
 
-      {userRole === 'sdr' && !collapsed && (
+      {(userRole === 'sdr' || userRole === 'agency_owner') && !collapsed && (
         <>
           <SidebarSeparator />
           <div className="px-3 py-2" data-tour="workspace-switcher">
             <WorkspaceSwitcher />
           </div>
-          <SidebarSeparator />
-          <div className="px-3 py-2" data-tour="sdr-level">
-            <SDRLevelProgress />
-          </div>
+          {userRole === 'sdr' && (
+            <>
+              <SidebarSeparator />
+              <div className="px-3 py-2" data-tour="sdr-level">
+                <SDRLevelProgress />
+              </div>
+            </>
+          )}
         </>
       )}
 

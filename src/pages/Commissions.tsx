@@ -135,26 +135,26 @@ export default function Commissions() {
       return;
     }
 
-    // Fetch SDR profiles for each commission (only needed for agency owners)
-    const commissionsWithProfiles: Commission[] = [];
-    for (const commission of commissionsData || []) {
-      if (isOwner) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, email, sdr_level')
-          .eq('id', commission.sdr_id)
-          .maybeSingle();
+    // Fetch SDR profiles in a single batch query (only needed for agency owners)
+    if (isOwner && commissionsData && commissionsData.length > 0) {
+      const sdrIds = [...new Set(commissionsData.map(c => c.sdr_id))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, sdr_level')
+        .in('id', sdrIds);
 
-        commissionsWithProfiles.push({
-          ...commission,
-          sdr_profile: profile,
-        });
-      } else {
-        commissionsWithProfiles.push(commission);
-      }
+      const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+      
+      const commissionsWithProfiles = commissionsData.map(commission => ({
+        ...commission,
+        sdr_profile: profileMap.get(commission.sdr_id) || null,
+      }));
+      
+      setCommissions(commissionsWithProfiles);
+    } else {
+      setCommissions(commissionsData || []);
     }
-
-    setCommissions(commissionsWithProfiles);
+    
     setIsLoading(false);
   };
 

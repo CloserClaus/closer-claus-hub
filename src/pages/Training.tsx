@@ -47,6 +47,7 @@ import {
   ExternalLink,
   Search,
   GraduationCap,
+  Briefcase,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -284,8 +285,20 @@ export default function Training() {
       <DashboardLayout>
         <DashboardHeader title="Training" />
         <main className="flex-1 p-6">
-          <div className="flex items-center justify-center h-96">
-            <p className="text-muted-foreground">Please select a workspace to access training materials.</p>
+          <div className="flex flex-col items-center justify-center h-96 text-center">
+            <GraduationCap className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">No Workspace Selected</h3>
+            <p className="text-muted-foreground mb-4 max-w-md">
+              {isOwner 
+                ? "Please select a workspace from the sidebar to manage training materials."
+                : "Join a company first to access their training materials. Browse jobs to find opportunities."}
+            </p>
+            {!isOwner && (
+              <Button onClick={() => window.location.href = '/jobs'}>
+                <Briefcase className="h-4 w-4 mr-2" />
+                Browse Jobs
+              </Button>
+            )}
           </div>
         </main>
       </DashboardLayout>
