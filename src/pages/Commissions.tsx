@@ -65,7 +65,7 @@ interface Commission {
 }
 
 export default function Commissions() {
-  const { currentWorkspace, isOwner } = useWorkspace();
+  const { currentWorkspace, isOwner, loading: workspaceLoading } = useWorkspace();
   const { user, userRole } = useAuth();
   const [commissions, setCommissions] = useState<Commission[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -204,6 +204,19 @@ export default function Commissions() {
   }
 
   // Non-SDR users without workspace
+  if (workspaceLoading && userRole !== 'sdr') {
+    return (
+      <DashboardLayout>
+        <DashboardHeader title="Commissions" />
+        <main className="flex-1 p-6">
+          <div className="flex items-center justify-center h-96">
+            <div className="animate-pulse text-muted-foreground">Loading workspace...</div>
+          </div>
+        </main>
+      </DashboardLayout>
+    );
+  }
+
   if (!currentWorkspace && userRole !== 'sdr') {
     return (
       <DashboardLayout>
