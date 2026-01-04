@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { 
   Phone, 
   Clock, 
@@ -23,7 +24,9 @@ import {
   User,
   BarChart3,
   MessageSquare,
-  Zap
+  Zap,
+  Search,
+  X
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -120,6 +123,27 @@ interface PurchaseTabProps {
   onCreditsUpdated: () => void;
 }
 
+// US States for the dropdown
+const US_STATES = [
+  { code: 'AL', name: 'Alabama' }, { code: 'AK', name: 'Alaska' }, { code: 'AZ', name: 'Arizona' },
+  { code: 'AR', name: 'Arkansas' }, { code: 'CA', name: 'California' }, { code: 'CO', name: 'Colorado' },
+  { code: 'CT', name: 'Connecticut' }, { code: 'DE', name: 'Delaware' }, { code: 'FL', name: 'Florida' },
+  { code: 'GA', name: 'Georgia' }, { code: 'HI', name: 'Hawaii' }, { code: 'ID', name: 'Idaho' },
+  { code: 'IL', name: 'Illinois' }, { code: 'IN', name: 'Indiana' }, { code: 'IA', name: 'Iowa' },
+  { code: 'KS', name: 'Kansas' }, { code: 'KY', name: 'Kentucky' }, { code: 'LA', name: 'Louisiana' },
+  { code: 'ME', name: 'Maine' }, { code: 'MD', name: 'Maryland' }, { code: 'MA', name: 'Massachusetts' },
+  { code: 'MI', name: 'Michigan' }, { code: 'MN', name: 'Minnesota' }, { code: 'MS', name: 'Mississippi' },
+  { code: 'MO', name: 'Missouri' }, { code: 'MT', name: 'Montana' }, { code: 'NE', name: 'Nebraska' },
+  { code: 'NV', name: 'Nevada' }, { code: 'NH', name: 'New Hampshire' }, { code: 'NJ', name: 'New Jersey' },
+  { code: 'NM', name: 'New Mexico' }, { code: 'NY', name: 'New York' }, { code: 'NC', name: 'North Carolina' },
+  { code: 'ND', name: 'North Dakota' }, { code: 'OH', name: 'Ohio' }, { code: 'OK', name: 'Oklahoma' },
+  { code: 'OR', name: 'Oregon' }, { code: 'PA', name: 'Pennsylvania' }, { code: 'RI', name: 'Rhode Island' },
+  { code: 'SC', name: 'South Carolina' }, { code: 'SD', name: 'South Dakota' }, { code: 'TN', name: 'Tennessee' },
+  { code: 'TX', name: 'Texas' }, { code: 'UT', name: 'Utah' }, { code: 'VT', name: 'Vermont' },
+  { code: 'VA', name: 'Virginia' }, { code: 'WA', name: 'Washington' }, { code: 'WV', name: 'West Virginia' },
+  { code: 'WI', name: 'Wisconsin' }, { code: 'WY', name: 'Wyoming' }, { code: 'DC', name: 'Washington D.C.' },
+];
+
 export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps) {
   const [availableNumbers, setAvailableNumbers] = useState<AvailableNumber[]>([]);
   const [purchasedNumbers, setPurchasedNumbers] = useState<PurchasedNumber[]>([]);
@@ -128,6 +152,10 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
   const [isPurchasing, setIsPurchasing] = useState<string | null>(null);
   const [apiConfigured, setApiConfigured] = useState<boolean | null>(null);
   const [isAssigning, setIsAssigning] = useState<string | null>(null);
+  const [citySearch, setCitySearch] = useState('');
+  const [stateSearch, setStateSearch] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
 
   useEffect(() => {
     fetchAvailableNumbers();
@@ -163,11 +191,15 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
     setSDRMembers(transformedData as SDRMember[]);
   };
 
-  const fetchAvailableNumbers = async () => {
+  const fetchAvailableNumbers = async (city?: string, state?: string) => {
     setIsLoadingNumbers(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
+
+      const requestBody: any = { action: 'get_available_numbers', country: 'US' };
+      if (city) requestBody.city = city;
+      if (state) requestBody.state = state;
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twilio`,
@@ -177,7 +209,7 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ action: 'get_available_numbers', country: 'US' }),
+          body: JSON.stringify(requestBody),
         }
       );
 
@@ -187,7 +219,7 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
         id: num.phone_number,
         number: num.phone_number,
         country: num.country || 'US',
-        city: num.locality || num.region,
+        city: num.locality ? `${num.locality}${num.region ? `, ${num.region}` : ''}` : num.region,
         monthly_cost: num.monthly_cost || 1.15,
         type: 'local',
       })));
@@ -196,6 +228,25 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
     } finally {
       setIsLoadingNumbers(false);
     }
+  };
+
+  const searchNumbersByCity = async () => {
+    if (!citySearch.trim() && !stateSearch) {
+      toast.error("Please enter a city name or select a state");
+      return;
+    }
+    
+    setIsSearching(true);
+    setHasSearched(true);
+    await fetchAvailableNumbers(citySearch.trim() || undefined, stateSearch || undefined);
+    setIsSearching(false);
+  };
+
+  const clearSearch = () => {
+    setCitySearch('');
+    setStateSearch('');
+    setHasSearched(false);
+    fetchAvailableNumbers();
   };
 
   const fetchPurchasedNumbers = async () => {
@@ -514,11 +565,81 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
               </>
             )}
 
+            {/* Search by Location */}
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Search by Location</p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex-1">
+                  <Input 
+                    placeholder="City name (e.g., Los Angeles)" 
+                    value={citySearch}
+                    onChange={(e) => setCitySearch(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && searchNumbersByCity()}
+                  />
+                </div>
+                <div className="w-full sm:w-40">
+                  <Select value={stateSearch} onValueChange={setStateSearch}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="State (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Any State</SelectItem>
+                      {US_STATES.map((state) => (
+                        <SelectItem key={state.code} value={state.code}>
+                          {state.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={searchNumbersByCity}
+                    disabled={isSearching || (!citySearch.trim() && !stateSearch)}
+                  >
+                    {isSearching ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Search className="h-4 w-4 mr-1" />
+                        Search
+                      </>
+                    )}
+                  </Button>
+                  {hasSearched && (
+                    <Button variant="outline" onClick={clearSearch}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
             <div>
-              <p className="text-sm font-medium mb-2">Available Numbers</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium">
+                  {hasSearched ? 'Search Results' : 'Available Numbers'}
+                </p>
+                {hasSearched && (
+                  <Badge variant="secondary">
+                    {availableNumbers.length} found
+                  </Badge>
+                )}
+              </div>
               {isLoadingNumbers ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : availableNumbers.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Phone className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">
+                    {hasSearched 
+                      ? 'No numbers found for this location. Try a different city or state.'
+                      : 'No numbers available. Try searching for a specific location.'}
+                  </p>
                 </div>
               ) : (
                 <ScrollArea className="h-[200px]">
