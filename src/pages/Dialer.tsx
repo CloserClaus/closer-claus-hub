@@ -37,6 +37,7 @@ import { PowerDialer } from "@/components/dialer/PowerDialer";
 import { CallRecordingPlayer } from "@/components/dialer/CallRecordingPlayer";
 import { CallScriptManager } from "@/components/dialer/CallScriptManager";
 import { CallScriptDisplay } from "@/components/dialer/CallScriptDisplay";
+import { CallRecordingsTab } from "@/components/dialer/CallRecordingsTab";
 
 interface Lead {
   id: string;
@@ -449,6 +450,10 @@ export default function Dialer() {
                     <FileText className="h-4 w-4" />
                     Scripts
                   </TabsTrigger>
+                  <TabsTrigger value="recordings" className="flex items-center gap-2">
+                    <Mic className="h-4 w-4" />
+                    Recordings
+                  </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="dialer" className="space-y-6">
@@ -755,6 +760,10 @@ export default function Dialer() {
 
                 <TabsContent value="scripts">
                   <CallScriptManager workspaceId={currentWorkspace.id} />
+                </TabsContent>
+
+                <TabsContent value="recordings">
+                  <CallRecordingsTab workspaceId={currentWorkspace.id} />
                 </TabsContent>
               </Tabs>
             );

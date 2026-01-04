@@ -162,9 +162,9 @@ serve(async (req) => {
           callParams.append('StatusCallbackMethod', 'POST');
         }
         
-        // Enable recording if requested
-        if (params.record) {
-          callParams.append('Record', 'true');
+        // Always enable recording for all calls (standard feature)
+        callParams.append('Record', 'true');
+        if (webhook_url) {
           callParams.append('RecordingStatusCallback', webhook_url);
           callParams.append('RecordingStatusCallbackMethod', 'POST');
         }
