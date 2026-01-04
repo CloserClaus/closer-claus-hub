@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Bell, Shield, CreditCard, TrendingUp, Camera, Loader2, Zap, Crown, Rocket, ArrowUpRight, Calendar, CheckCircle, AlertCircle } from 'lucide-react';
+import { User, Bell, Shield, CreditCard, TrendingUp, Camera, Loader2, Zap, Crown, Rocket, ArrowUpRight, Calendar, CheckCircle, AlertCircle, ArrowUp, ArrowDown } from 'lucide-react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -22,6 +22,7 @@ import { useSDRLevel } from '@/components/SDRLevelProgress';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { format } from 'date-fns';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 const profileSchema = z.object({
   fullName: z.string().min(2, 'Name must be at least 2 characters'),
@@ -74,6 +75,8 @@ export default function Settings() {
   const [billingHistory, setBillingHistory] = useState<BillingEvent[]>([]);
   const [billingLoading, setBillingLoading] = useState(false);
   const [sdrCount, setSdrCount] = useState(0);
+  const [changingPlan, setChangingPlan] = useState<string | null>(null);
+  const [confirmPlanChange, setConfirmPlanChange] = useState<PlanInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -161,12 +164,67 @@ export default function Settings() {
   const currentPlan = plans.find(p => p.id === currentWorkspace?.subscription_tier);
   const CurrentPlanIcon = currentPlan?.icon || Zap;
 
-  const handleChangePlan = () => {
-    navigate(`/subscription?workspace=${currentWorkspace?.id}`);
+  const handleChangePlan = (plan?: PlanInfo) => {
+    // If a specific plan is provided and we have an active subscription, show confirmation
+    if (plan && currentWorkspace?.subscription_status === 'active') {
+      setConfirmPlanChange(plan);
+    } else {
+      // Otherwise navigate to subscription page for new subscriptions
+      navigate(`/subscription?workspace=${currentWorkspace?.id}`);
+    }
+  };
+
+  const handleConfirmPlanChange = async () => {
+    if (!confirmPlanChange || !currentWorkspace) return;
+    
+    setChangingPlan(confirmPlanChange.id);
+    setConfirmPlanChange(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('change-subscription', {
+        body: {
+          workspace_id: currentWorkspace.id,
+          new_tier: confirmPlanChange.id,
+          proration_behavior: 'create_prorations',
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      toast({
+        title: 'Plan Changed Successfully',
+        description: data.proration 
+          ? `Your plan has been updated. ${data.proration.amount_due > 0 ? `$${data.proration.amount_due.toFixed(2)} will be charged on your next invoice.` : 'A credit will be applied to your next invoice.'}`
+          : 'Your plan has been updated with prorated billing.',
+      });
+
+      // Refresh the page to show updated plan
+      window.location.reload();
+    } catch (error: any) {
+      console.error('Error changing plan:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Failed to Change Plan',
+        description: error.message || 'An error occurred while changing your plan.',
+      });
+    } finally {
+      setChangingPlan(null);
+    }
   };
 
   const canDowngrade = (targetPlan: PlanInfo) => {
     return sdrCount <= targetPlan.maxSdrs;
+  };
+
+  const getPlanChangeLabel = (targetPlan: PlanInfo) => {
+    if (!currentPlan) return 'Select';
+    if (targetPlan.monthlyPrice > currentPlan.monthlyPrice) return 'Upgrade';
+    if (targetPlan.monthlyPrice < currentPlan.monthlyPrice) return 'Downgrade';
+    return 'Current';
   };
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -517,7 +575,7 @@ export default function Settings() {
                                 <span className="font-semibold">{currentPlan.maxSdrs}</span> SDR slots used
                               </p>
                             </div>
-                            <Button onClick={handleChangePlan} variant="outline" className="gap-2">
+                            <Button onClick={() => handleChangePlan()} variant="outline" className="gap-2">
                               Change Plan
                               <ArrowUpRight className="w-4 h-4" />
                             </Button>
@@ -526,7 +584,7 @@ export default function Settings() {
                       ) : (
                         <div className="text-center py-6">
                           <p className="text-muted-foreground mb-4">You don't have an active subscription</p>
-                          <Button onClick={handleChangePlan}>
+                          <Button onClick={() => handleChangePlan()}>
                             Choose a Plan
                           </Button>
                         </div>
@@ -576,11 +634,19 @@ export default function Settings() {
                                 <Button 
                                   variant="outline" 
                                   size="sm" 
-                                  className="w-full"
-                                  onClick={handleChangePlan}
-                                  disabled={!canSwitch}
+                                  className="w-full gap-2"
+                                  onClick={() => handleChangePlan(plan)}
+                                  disabled={!canSwitch || changingPlan === plan.id}
                                 >
-                                  {!canSwitch ? `Need ${plan.maxSdrs} SDR max` : plan.monthlyPrice > (currentPlan?.monthlyPrice || 0) ? 'Upgrade' : 'Downgrade'}
+                                  {changingPlan === plan.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <>
+                                      {getPlanChangeLabel(plan) === 'Upgrade' && <ArrowUp className="w-3 h-3" />}
+                                      {getPlanChangeLabel(plan) === 'Downgrade' && <ArrowDown className="w-3 h-3" />}
+                                      {!canSwitch ? `Need ${plan.maxSdrs} SDR max` : getPlanChangeLabel(plan)}
+                                    </>
+                                  )}
                                 </Button>
                               )}
                             </div>
@@ -720,6 +786,44 @@ export default function Settings() {
           </Tabs>
         </div>
       </main>
+
+      {/* Plan Change Confirmation Dialog */}
+      <AlertDialog open={!!confirmPlanChange} onOpenChange={(open) => !open && setConfirmPlanChange(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmPlanChange && currentPlan && confirmPlanChange.monthlyPrice > currentPlan.monthlyPrice 
+                ? 'Upgrade' 
+                : 'Downgrade'} to {confirmPlanChange?.name}?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>
+                You're about to change from <strong>{currentPlan?.name}</strong> (${currentPlan?.monthlyPrice}/mo) 
+                to <strong>{confirmPlanChange?.name}</strong> (${confirmPlanChange?.monthlyPrice}/mo).
+              </p>
+              <p>
+                {confirmPlanChange && currentPlan && confirmPlanChange.monthlyPrice > currentPlan.monthlyPrice ? (
+                  <>
+                    The price difference will be <strong>prorated</strong> and added to your next invoice.
+                    You'll immediately get access to {confirmPlanChange.maxSdrs} SDR slots.
+                  </>
+                ) : (
+                  <>
+                    A <strong>prorated credit</strong> will be applied to your next invoice.
+                    Your SDR limit will change to {confirmPlanChange?.maxSdrs}.
+                  </>
+                )}
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmPlanChange}>
+              Confirm {confirmPlanChange && currentPlan && confirmPlanChange.monthlyPrice > currentPlan.monthlyPrice ? 'Upgrade' : 'Downgrade'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }
