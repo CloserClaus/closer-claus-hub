@@ -43,13 +43,38 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { workspace_id, tier, billing_period, success_url, cancel_url } = await req.json();
+    const { workspace_id, tier, billing_period, success_url, cancel_url, coupon_code, discount_percentage } = await req.json();
 
     if (!workspace_id || !tier || !billing_period) {
       return new Response(
         JSON.stringify({ error: 'workspace_id, tier, and billing_period are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Validate coupon if provided
+    let validatedDiscount = 0;
+    let couponId = null;
+    if (coupon_code && discount_percentage) {
+      const { data: couponData, error: couponError } = await supabase
+        .from('coupons')
+        .select('*')
+        .eq('code', coupon_code.toUpperCase())
+        .eq('is_active', true)
+        .single();
+
+      if (!couponError && couponData) {
+        const now = new Date();
+        const isValid = 
+          (!couponData.max_uses || couponData.current_uses < couponData.max_uses) &&
+          (!couponData.valid_until || new Date(couponData.valid_until) > now);
+        
+        if (isValid && couponData.discount_percentage === discount_percentage) {
+          validatedDiscount = couponData.discount_percentage;
+          couponId = couponData.id;
+          console.log(`Validated coupon ${coupon_code} with ${validatedDiscount}% discount`);
+        }
+      }
     }
 
     // Validate tier
@@ -84,7 +109,13 @@ serve(async (req) => {
 
     const pricing = TIER_PRICING[tier as keyof typeof TIER_PRICING];
     const limits = TIER_LIMITS[tier as keyof typeof TIER_LIMITS];
-    const amount = billing_period === 'yearly' ? pricing.yearly : pricing.monthly;
+    const baseAmount = billing_period === 'yearly' ? pricing.yearly : pricing.monthly;
+    // Apply discount to the amount
+    const amount = validatedDiscount > 0 
+      ? Math.round(baseAmount * (1 - validatedDiscount / 100)) 
+      : baseAmount;
+    
+    console.log(`Pricing: base=${baseAmount}, discount=${validatedDiscount}%, final=${amount}`);
 
     // Check if Stripe is configured
     if (!stripeSecretKey) {
@@ -155,10 +186,44 @@ serve(async (req) => {
         workspace_id,
         tier,
         billing_period,
+        coupon_code: coupon_code || '',
+        discount_percentage: validatedDiscount.toString(),
+        coupon_id: couponId || '',
       },
     });
 
-    console.log(`Created checkout session ${session.id} for workspace ${workspace_id}`);
+    // Record coupon redemption if applied
+    if (couponId && validatedDiscount > 0) {
+      await supabase
+        .from('coupon_redemptions')
+        .insert({
+          coupon_id: couponId,
+          workspace_id,
+          discount_applied: validatedDiscount,
+        });
+
+      // Increment coupon usage
+      await supabase
+        .from('coupons')
+        .update({ current_uses: supabase.rpc('increment_counter') })
+        .eq('id', couponId);
+      
+      // Use raw update instead
+      const { data: currentCoupon } = await supabase
+        .from('coupons')
+        .select('current_uses')
+        .eq('id', couponId)
+        .single();
+      
+      if (currentCoupon) {
+        await supabase
+          .from('coupons')
+          .update({ current_uses: (currentCoupon.current_uses || 0) + 1 })
+          .eq('id', couponId);
+      }
+    }
+
+    console.log(`Created checkout session ${session.id} for workspace ${workspace_id} with ${validatedDiscount}% discount`);
 
     return new Response(
       JSON.stringify({
