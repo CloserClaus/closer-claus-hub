@@ -51,6 +51,7 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { CallScriptDisplay } from "./CallScriptDisplay";
+import { SessionDispositionReport } from "./SessionDispositionReport";
 import { format, addHours, addDays, startOfTomorrow, setHours, setMinutes } from "date-fns";
 
 interface LeadDeal {
@@ -172,6 +173,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
   
   // Callback scheduling state
   const [scheduledCallbacks, setScheduledCallbacks] = useState<ScheduledCallback[]>([]);
+  const [sessionCallbacks, setSessionCallbacks] = useState<ScheduledCallback[]>([]);
   const [showCallbackDialog, setShowCallbackDialog] = useState(false);
   const [pendingOutcome, setPendingOutcome] = useState<CallOutcome | null>(null);
   
@@ -455,6 +457,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
     setSelectedLeads(selected);
     setCurrentIndex(0);
     setDialedLeads([]);
+    setSessionCallbacks([]);
     setDialerStatus('dialing');
     dialNextLead(selected, 0);
   };
@@ -608,7 +611,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
   const scheduleCallback = async (scheduledFor: Date) => {
     if (!currentLead || !user || !pendingOutcome) return;
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('scheduled_callbacks')
       .insert({
         workspace_id: workspaceId,
@@ -617,15 +620,25 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
         reason: pendingOutcome,
         notes: callNotes || null,
         created_by: user.id,
-      });
+      })
+      .select('id, lead_id, scheduled_for, reason, notes, status')
+      .single();
 
     if (error) {
       console.error('Error scheduling callback:', error);
       toast.error("Failed to schedule callback");
     } else {
       toast.success(`Callback scheduled for ${format(scheduledFor, 'MMM d, h:mm a')}`);
+      
+      // Add to session callbacks for report
+      const newCallback: ScheduledCallback = {
+        ...data,
+        lead: currentLead,
+      };
+      setSessionCallbacks(prev => [...prev, newCallback]);
+      
       // Refresh callbacks list
-      const { data } = await supabase
+      const { data: callbacksData } = await supabase
         .from('scheduled_callbacks')
         .select('id, lead_id, scheduled_for, reason, notes, status')
         .eq('workspace_id', workspaceId)
@@ -634,15 +647,15 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
         .order('scheduled_for', { ascending: true })
         .limit(20);
       
-      if (data) {
-        const leadIds = data.map(cb => cb.lead_id);
+      if (callbacksData) {
+        const leadIds = callbacksData.map(cb => cb.lead_id);
         const { data: leadData } = await supabase
           .from('leads')
           .select('id, first_name, last_name, phone, company, email')
           .in('id', leadIds);
         
         const leadsMap = new Map(leadData?.map(l => [l.id, l]) || []);
-        setScheduledCallbacks(data.map(cb => ({
+        setScheduledCallbacks(callbacksData.map(cb => ({
           ...cb,
           lead: leadsMap.get(cb.lead_id)
         })));
@@ -739,10 +752,54 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
     setCurrentLead(null);
     setSelectedLeads([]);
     setDialedLeads([]);
+    setSessionCallbacks([]);
     setCallDuration(0);
     setCallNotes("");
     setCurrentCallLogId(null);
     setCurrentTwilioCallSid(null);
+  };
+
+  const exportSessionReport = () => {
+    const lines: string[] = [
+      'Power Dialer Session Report',
+      `Date: ${format(new Date(), 'PPpp')}`,
+      `Total Calls: ${dialedLeads.length}`,
+      '',
+      'Outcome Summary:',
+      `  Connected: ${dialedLeads.filter(l => l.outcome === 'connected').length}`,
+      `  No Answer: ${dialedLeads.filter(l => l.outcome === 'no_answer').length}`,
+      `  Busy: ${dialedLeads.filter(l => l.outcome === 'busy').length}`,
+      `  Voicemail: ${dialedLeads.filter(l => l.outcome === 'voicemail').length}`,
+      `  Skipped: ${dialedLeads.filter(l => l.outcome === 'skipped').length}`,
+      '',
+      'Call Details:',
+    ];
+
+    dialedLeads.forEach((lead, idx) => {
+      lines.push(`${idx + 1}. ${lead.first_name} ${lead.last_name} - ${lead.outcome?.replace('_', ' ')} - ${lead.callDuration ? formatDuration(lead.callDuration) : 'N/A'}`);
+      if (lead.notes) {
+        lines.push(`   Notes: ${lead.notes}`);
+      }
+    });
+
+    if (sessionCallbacks.length > 0) {
+      lines.push('');
+      lines.push('Scheduled Callbacks:');
+      sessionCallbacks.forEach((cb) => {
+        lines.push(`  - ${cb.lead?.first_name} ${cb.lead?.last_name}: ${format(new Date(cb.scheduled_for), 'PPpp')} (${cb.reason})`);
+      });
+    }
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `power-dialer-report-${format(new Date(), 'yyyy-MM-dd-HHmm')}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Report downloaded');
   };
 
   const getOutcomeIcon = (outcome: CallOutcome) => {
@@ -1105,6 +1162,13 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
           </Card>
         )}
         </>
+      ) : dialerStatus === 'completed' ? (
+        <SessionDispositionReport
+          dialedLeads={dialedLeads}
+          sessionCallbacks={sessionCallbacks}
+          onStartNewSession={resetDialer}
+          onExportReport={exportSessionReport}
+        />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Current Call */}
@@ -1119,7 +1183,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
               <Progress value={progress} className="h-2" />
             </CardHeader>
             <CardContent className="space-y-6">
-              {currentLead && dialerStatus !== 'completed' ? (
+              {currentLead ? (
                 <>
                   {/* Lead Info */}
                   <div className="p-4 rounded-lg bg-muted/50">
@@ -1263,93 +1327,8 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
                   </div>
                 </>
               ) : (
-                <div className="space-y-6">
-                  <div className="text-center">
-                    <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-3" />
-                    <h3 className="text-xl font-semibold mb-1">Session Complete!</h3>
-                    <p className="text-muted-foreground">
-                      You've dialed through {dialedLeads.length} leads
-                    </p>
-                  </div>
-
-                  {/* Session Analytics */}
-                  {sessionAnalytics && (
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        <BarChart3 className="h-4 w-4" />
-                        Session Analytics
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="p-3 rounded-lg bg-success/10 border border-success/20">
-                          <p className="text-2xl font-bold text-success">
-                            {sessionAnalytics.connectRate.toFixed(0)}%
-                          </p>
-                          <p className="text-xs text-muted-foreground">Connect Rate</p>
-                        </div>
-                        <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
-                          <p className="text-2xl font-bold text-primary">
-                            {formatDuration(Math.round(sessionAnalytics.avgDuration))}
-                          </p>
-                          <p className="text-xs text-muted-foreground">Avg Duration</p>
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-lg bg-muted/50 space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="flex items-center gap-2">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-                            Connected
-                          </span>
-                          <span className="font-medium">{sessionAnalytics.connected}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="flex items-center gap-2">
-                            <XCircle className="h-3.5 w-3.5 text-destructive" />
-                            No Answer
-                          </span>
-                          <span className="font-medium">{sessionAnalytics.noAnswer}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="flex items-center gap-2">
-                            <AlertCircle className="h-3.5 w-3.5 text-warning" />
-                            Busy
-                          </span>
-                          <span className="font-medium">{sessionAnalytics.busy}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="flex items-center gap-2">
-                            <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                            Voicemail
-                          </span>
-                          <span className="font-medium">{sessionAnalytics.voicemail}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="flex items-center gap-2">
-                            <SkipForward className="h-3.5 w-3.5 text-muted-foreground" />
-                            Skipped
-                          </span>
-                          <span className="font-medium">{sessionAnalytics.skipped}</span>
-                        </div>
-                      </div>
-
-                      {sessionAnalytics.qualityCalls > 0 && (
-                        <div className="p-3 rounded-lg border border-success/20 bg-success/5">
-                          <p className="text-sm">
-                            <span className="font-semibold text-success">{sessionAnalytics.qualityCalls}</span>
-                            {' '}quality calls (2+ min) — 
-                            <span className="font-medium"> {sessionAnalytics.qualityRate.toFixed(0)}%</span>
-                            {' '}of connections
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <Button onClick={resetDialer} className="w-full">
-                    <RotateCcw className="h-4 w-4 mr-2" />
-                    Start New Session
-                  </Button>
+                <div className="text-center py-8 text-muted-foreground">
+                  No active call
                 </div>
               )}
             </CardContent>
