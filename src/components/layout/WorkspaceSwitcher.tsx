@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { Building2, ChevronDown, Plus } from 'lucide-react';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import {
@@ -10,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 
 export function WorkspaceSwitcher() {
+  const navigate = useNavigate();
   const { currentWorkspace, workspaces, loading, setCurrentWorkspace } = useWorkspace();
 
   if (loading) {
@@ -66,7 +68,10 @@ export function WorkspaceSwitcher() {
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem className="cursor-pointer text-muted-foreground">
+        <DropdownMenuItem 
+          className="cursor-pointer text-muted-foreground"
+          onClick={() => navigate('/jobs')}
+        >
           <Plus className="h-4 w-4 mr-2" />
           Browse Jobs
         </DropdownMenuItem>

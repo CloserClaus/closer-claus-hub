@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Building2, Headphones, Shield, TrendingUp, Users, DollarSign, Briefcase, CreditCard, Zap, Phone, Clock, PhoneCall, CheckCircle, Timer } from 'lucide-react';
+import { Building2, Headphones, Shield, TrendingUp, Users, DollarSign, Briefcase, CreditCard, Zap, Phone, Clock, PhoneCall, CheckCircle, Timer, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { usePlatformAdminStats, useAgencyOwnerStats, useSDRStats } from '@/hooks/useDashboardStats';
@@ -111,6 +111,27 @@ export default function Dashboard() {
 
   const renderPlatformAdminDashboard = () => (
     <div className="space-y-6">
+      {/* Admin Dashboard Quick Access */}
+      <Card className="border-primary/50 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent">
+        <CardContent className="p-4 md:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-start gap-3 md:gap-4">
+              <div className="h-10 w-10 md:h-12 md:w-12 rounded-xl bg-primary/20 flex items-center justify-center shrink-0">
+                <ShieldCheck className="h-5 w-5 md:h-6 md:w-6 text-primary" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold text-base md:text-lg">Platform Admin Controls</h3>
+                <p className="text-xs md:text-sm text-muted-foreground mt-1">Manage agencies, SDRs, disputes, payouts, and platform settings.</p>
+              </div>
+            </div>
+            <Button onClick={() => navigate('/admin')} className="w-full sm:w-auto">
+              <Shield className="h-4 w-4 mr-2" />
+              Open Admin Dashboard
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <div data-tour="stats-grid" className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-3">
         <StatCard title="Agencies" description="Total registered" value={String(platformStats?.agencies || 0)} subtext="Active agencies" icon={Building2} />
         <StatCard title="SDRs" description="Total registered" value={String(platformStats?.sdrs || 0)} subtext="Active SDRs" icon={Users} />

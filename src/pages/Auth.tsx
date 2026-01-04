@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Building2, Headphones, ArrowLeft } from 'lucide-react';
+import { Building2, Headphones, ArrowLeft, KeyRound } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -56,16 +56,31 @@ type SignInFormData = z.infer<typeof signInSchema>;
 type AgencySignUpFormData = z.infer<typeof agencySignUpSchema>;
 type SDRSignUpFormData = z.infer<typeof sdrSignUpSchema>;
 
-type AuthMode = 'signin' | 'signup-select' | 'signup-agency' | 'signup-sdr' | 'forgot-password';
+type AuthMode = 'signin' | 'signup-select' | 'signup-agency' | 'signup-sdr' | 'forgot-password' | 'reset-password';
 
 export default function Auth() {
   const [mode, setMode] = useState<AuthMode>('signin');
   const [isLoading, setIsLoading] = useState(false);
   const { user, userRole } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
 
+  // Check for password recovery token on mount
   useEffect(() => {
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const type = hashParams.get('type');
+    const accessToken = hashParams.get('access_token');
+    
+    if (type === 'recovery' && accessToken) {
+      setMode('reset-password');
+    }
+  }, []);
+
+  useEffect(() => {
+    // Don't redirect if we're in reset-password mode
+    if (mode === 'reset-password') return;
+    
     if (user) {
       if (!userRole) {
         navigate('/role-select');
@@ -73,7 +88,7 @@ export default function Auth() {
         navigate('/dashboard');
       }
     }
-  }, [user, userRole, navigate]);
+  }, [user, userRole, navigate, mode]);
 
   const signInForm = useForm<SignInFormData>({
     resolver: zodResolver(signInSchema),
@@ -190,6 +205,11 @@ export default function Auth() {
   const [resetEmail, setResetEmail] = useState('');
   const [isResetting, setIsResetting] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  
+  // Password reset state
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,6 +233,50 @@ export default function Auth() {
         title: 'Check your email',
         description: 'We sent you a password reset link.',
       });
+    }
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (newPassword.length < 6) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Password must be at least 6 characters.',
+      });
+      return;
+    }
+    
+    if (newPassword !== confirmNewPassword) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Passwords do not match.',
+      });
+      return;
+    }
+    
+    setIsUpdatingPassword(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setIsUpdatingPassword(false);
+
+    if (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message,
+      });
+    } else {
+      toast({
+        title: 'Password updated',
+        description: 'Your password has been successfully updated.',
+      });
+      // Clear hash and redirect to sign in
+      window.history.replaceState(null, '', '/auth');
+      setMode('signin');
+      setNewPassword('');
+      setConfirmNewPassword('');
     }
   };
 
@@ -288,6 +352,59 @@ export default function Auth() {
             Back to Sign In
           </button>
         </div>
+      </CardContent>
+    </Card>
+  );
+
+  const renderResetPassword = () => (
+    <Card className="w-full max-w-md glass animate-fade-in relative">
+      <CardHeader className="text-center space-y-4">
+        <div className="flex justify-center">
+          <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center">
+            <KeyRound className="w-8 h-8 text-primary" />
+          </div>
+        </div>
+        <div>
+          <CardTitle className="text-2xl font-bold">Set New Password</CardTitle>
+          <CardDescription className="text-muted-foreground">
+            Enter your new password below
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleUpdatePassword} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">New Password</label>
+            <Input
+              type="password"
+              placeholder="••••••••"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="bg-muted border-border"
+              required
+              minLength={6}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Confirm New Password</label>
+            <Input
+              type="password"
+              placeholder="••••••••"
+              value={confirmNewPassword}
+              onChange={(e) => setConfirmNewPassword(e.target.value)}
+              className="bg-muted border-border"
+              required
+              minLength={6}
+            />
+          </div>
+          <Button 
+            type="submit" 
+            className="w-full bg-primary hover:bg-primary/90" 
+            disabled={isUpdatingPassword || !newPassword || !confirmNewPassword}
+          >
+            {isUpdatingPassword ? 'Updating...' : 'Update Password'}
+          </Button>
+        </form>
       </CardContent>
     </Card>
   );
@@ -692,6 +809,7 @@ export default function Auth() {
       {mode === 'signup-agency' && renderAgencySignUp()}
       {mode === 'signup-sdr' && renderSDRSignUp()}
       {mode === 'forgot-password' && renderForgotPassword()}
+      {mode === 'reset-password' && renderResetPassword()}
     </div>
   );
 }

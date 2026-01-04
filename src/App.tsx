@@ -62,6 +62,7 @@ const App = () => (
                 <Route path="/contracts" element={<Contracts />} />
                 <Route path="/sign/:contractId" element={<SignContract />} />
                 <Route path="/commissions" element={<Commissions />} />
+                <Route path="/earnings" element={<Navigate to="/commissions" replace />} />
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/team" element={<TeamManagement />} />
                 <Route path="/admin" element={<AdminDashboard />} />
