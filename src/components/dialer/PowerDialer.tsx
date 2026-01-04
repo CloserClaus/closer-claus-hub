@@ -15,6 +15,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { 
   Play, 
   Pause, 
@@ -30,9 +39,14 @@ import {
   AlertCircle,
   Zap,
   RotateCcw,
-  Search
+  Search,
+  Save,
+  FolderOpen,
+  Trash2,
+  BarChart3
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
 
 interface LeadDeal {
   id: string;
@@ -48,6 +62,14 @@ interface Lead {
   email: string | null;
   selected?: boolean;
   deals?: LeadDeal[] | null;
+  last_contacted_at?: string | null;
+}
+
+interface SavedSequence {
+  id: string;
+  name: string;
+  lead_ids: string[];
+  created_at: string;
 }
 
 interface PowerDialerProps {
@@ -75,12 +97,21 @@ const PIPELINE_STAGES = [
   { value: 'closed_lost', label: 'Closed Lost' },
 ];
 
+const RECENTLY_CALLED_OPTIONS = [
+  { value: 'all', label: 'All Leads' },
+  { value: '24h', label: 'Not called in 24h' },
+  { value: '48h', label: 'Not called in 48h' },
+  { value: '72h', label: 'Not called in 72h' },
+  { value: '7d', label: 'Not called in 7 days' },
+];
+
 const getStageLabel = (stage: string): string => {
   const found = PIPELINE_STAGES.find(s => s.value === stage);
   return found ? found.label : stage;
 };
 
 export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: PowerDialerProps) {
+  const { user } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedLeads, setSelectedLeads] = useState<Lead[]>([]);
   const [dialerStatus, setDialerStatus] = useState<DialerStatus>('idle');
@@ -96,6 +127,13 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
   // Filter states
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [recentlyCalledFilter, setRecentlyCalledFilter] = useState<string>('all');
+  
+  // Saved sequences state
+  const [savedSequences, setSavedSequences] = useState<SavedSequence[]>([]);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [loadDialogOpen, setLoadDialogOpen] = useState(false);
+  const [sequenceName, setSequenceName] = useState('');
   
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -111,6 +149,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
           phone, 
           company, 
           email,
+          last_contacted_at,
           deals!deals_lead_id_fkey(id, stage)
         `)
         .eq('workspace_id', workspaceId)
@@ -129,8 +168,27 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
     fetchLeads();
   }, [workspaceId]);
 
-  // Filtered leads based on stage and search
+  // Fetch saved sequences
+  useEffect(() => {
+    const fetchSequences = async () => {
+      const { data, error } = await supabase
+        .from('dialer_sequences')
+        .select('id, name, lead_ids, created_at')
+        .eq('workspace_id', workspaceId)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setSavedSequences(data);
+      }
+    };
+
+    fetchSequences();
+  }, [workspaceId]);
+
+  // Filtered leads based on stage, search, and recently called
   const filteredLeads = useMemo(() => {
+    const now = new Date();
+    
     return leads.filter(lead => {
       // Stage filter
       if (stageFilter !== 'all') {
@@ -139,6 +197,27 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
         } else {
           const hasMatchingStage = lead.deals?.some(d => d.stage === stageFilter);
           if (!hasMatchingStage) return false;
+        }
+      }
+      
+      // Recently called filter
+      if (recentlyCalledFilter !== 'all' && lead.last_contacted_at) {
+        const lastContacted = new Date(lead.last_contacted_at);
+        const hoursDiff = (now.getTime() - lastContacted.getTime()) / (1000 * 60 * 60);
+        
+        switch (recentlyCalledFilter) {
+          case '24h':
+            if (hoursDiff < 24) return false;
+            break;
+          case '48h':
+            if (hoursDiff < 48) return false;
+            break;
+          case '72h':
+            if (hoursDiff < 72) return false;
+            break;
+          case '7d':
+            if (hoursDiff < 168) return false;
+            break;
         }
       }
       
@@ -153,7 +232,42 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
       
       return true;
     });
-  }, [leads, stageFilter, searchQuery]);
+  }, [leads, stageFilter, searchQuery, recentlyCalledFilter]);
+
+  // Calculate session analytics
+  const sessionAnalytics = useMemo(() => {
+    if (dialedLeads.length === 0) return null;
+
+    const totalCalls = dialedLeads.length;
+    const connected = dialedLeads.filter(l => l.outcome === 'connected').length;
+    const noAnswer = dialedLeads.filter(l => l.outcome === 'no_answer').length;
+    const busy = dialedLeads.filter(l => l.outcome === 'busy').length;
+    const voicemail = dialedLeads.filter(l => l.outcome === 'voicemail').length;
+    const skipped = dialedLeads.filter(l => l.outcome === 'skipped').length;
+    
+    const connectRate = totalCalls > 0 ? (connected / totalCalls) * 100 : 0;
+    
+    const callsWithDuration = dialedLeads.filter(l => l.callDuration && l.callDuration > 0);
+    const totalDuration = callsWithDuration.reduce((sum, l) => sum + (l.callDuration || 0), 0);
+    const avgDuration = callsWithDuration.length > 0 ? totalDuration / callsWithDuration.length : 0;
+    
+    // Calls over 2 minutes (quality calls)
+    const qualityCalls = dialedLeads.filter(l => l.callDuration && l.callDuration >= 120).length;
+    const qualityRate = connected > 0 ? (qualityCalls / connected) * 100 : 0;
+
+    return {
+      totalCalls,
+      connected,
+      noAnswer,
+      busy,
+      voicemail,
+      skipped,
+      connectRate,
+      avgDuration,
+      qualityCalls,
+      qualityRate,
+    };
+  }, [dialedLeads]);
 
   // Call duration timer
   useEffect(() => {
@@ -192,6 +306,72 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
 
   const deselectAllLeads = () => {
     setLeads(prev => prev.map(lead => ({ ...lead, selected: false })));
+  };
+
+  // Save current selection as a sequence
+  const saveSequence = async () => {
+    const selectedIds = leads.filter(l => l.selected).map(l => l.id);
+    if (selectedIds.length === 0) {
+      toast.error("Please select at least one lead to save");
+      return;
+    }
+    if (!sequenceName.trim()) {
+      toast.error("Please enter a sequence name");
+      return;
+    }
+    if (!user) {
+      toast.error("Please log in to save sequences");
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('dialer_sequences')
+      .insert({
+        workspace_id: workspaceId,
+        name: sequenceName.trim(),
+        lead_ids: selectedIds,
+        created_by: user.id,
+      })
+      .select('id, name, lead_ids, created_at')
+      .single();
+
+    if (error) {
+      toast.error("Failed to save sequence");
+      console.error(error);
+      return;
+    }
+
+    setSavedSequences(prev => [data, ...prev]);
+    setSequenceName('');
+    setSaveDialogOpen(false);
+    toast.success(`Sequence "${data.name}" saved`);
+  };
+
+  // Load a saved sequence
+  const loadSequence = (sequence: SavedSequence) => {
+    const sequenceIdSet = new Set(sequence.lead_ids);
+    setLeads(prev => prev.map(lead => ({
+      ...lead,
+      selected: sequenceIdSet.has(lead.id)
+    })));
+    setLoadDialogOpen(false);
+    toast.success(`Loaded "${sequence.name}" (${sequence.lead_ids.length} leads)`);
+  };
+
+  // Delete a saved sequence
+  const deleteSequence = async (sequenceId: string) => {
+    const { error } = await supabase
+      .from('dialer_sequences')
+      .delete()
+      .eq('id', sequenceId);
+
+    if (error) {
+      toast.error("Failed to delete sequence");
+      return;
+    }
+
+    setSavedSequences(prev => prev.filter(s => s.id !== sequenceId));
+    toast.success("Sequence deleted");
   };
 
   const startPowerDialer = () => {
@@ -481,22 +661,36 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Filters */}
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Select value={stageFilter} onValueChange={setStageFilter}>
-                  <SelectTrigger className="w-full sm:w-[180px]">
-                    <SelectValue placeholder="Filter by stage" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Stages</SelectItem>
-                    <SelectItem value="no_deal">No Deal</SelectItem>
-                    {PIPELINE_STAGES.map(stage => (
-                      <SelectItem key={stage.value} value={stage.value}>
-                        {stage.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="relative flex-1">
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Select value={stageFilter} onValueChange={setStageFilter}>
+                    <SelectTrigger className="w-full sm:w-[160px]">
+                      <SelectValue placeholder="Filter by stage" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Stages</SelectItem>
+                      <SelectItem value="no_deal">No Deal</SelectItem>
+                      {PIPELINE_STAGES.map(stage => (
+                        <SelectItem key={stage.value} value={stage.value}>
+                          {stage.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={recentlyCalledFilter} onValueChange={setRecentlyCalledFilter}>
+                    <SelectTrigger className="w-full sm:w-[170px]">
+                      <SelectValue placeholder="Recently called" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RECENTLY_CALLED_OPTIONS.map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search leads..."
@@ -591,6 +785,94 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
                   <li>• Add notes during or after each call</li>
                   <li>• Pause or skip leads at any time</li>
                 </ul>
+              </div>
+
+              {/* Save/Load Sequence Buttons */}
+              <div className="flex gap-2">
+                <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      className="flex-1"
+                      disabled={leads.filter(l => l.selected).length === 0}
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      Save List
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Save Call Sequence</DialogTitle>
+                      <DialogDescription>
+                        Save your current selection as a reusable call list.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <Input
+                      placeholder="Sequence name..."
+                      value={sequenceName}
+                      onChange={(e) => setSequenceName(e.target.value)}
+                    />
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setSaveDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button onClick={saveSequence}>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save ({leads.filter(l => l.selected).length} leads)
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={loadDialogOpen} onOpenChange={setLoadDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="flex-1">
+                      <FolderOpen className="h-4 w-4 mr-2" />
+                      Load List
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Load Saved Sequence</DialogTitle>
+                      <DialogDescription>
+                        Select a saved call list to load.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <ScrollArea className="max-h-[300px]">
+                      <div className="space-y-2">
+                        {savedSequences.length === 0 ? (
+                          <p className="text-center text-muted-foreground py-4">
+                            No saved sequences yet
+                          </p>
+                        ) : (
+                          savedSequences.map((seq) => (
+                            <div
+                              key={seq.id}
+                              className="flex items-center justify-between p-3 rounded-lg border border-border hover:border-primary/50 transition-colors"
+                            >
+                              <div 
+                                className="flex-1 cursor-pointer"
+                                onClick={() => loadSequence(seq)}
+                              >
+                                <p className="font-medium">{seq.name}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {seq.lead_ids.length} leads
+                                </p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => deleteSequence(seq.id)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </DialogContent>
+                </Dialog>
               </div>
 
               <Button 
@@ -731,13 +1013,90 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
                   </div>
                 </>
               ) : (
-                <div className="text-center py-8">
-                  <CheckCircle2 className="h-16 w-16 text-success mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold mb-2">Session Complete!</h3>
-                  <p className="text-muted-foreground mb-6">
-                    You've dialed through {dialedLeads.length} leads
-                  </p>
-                  <Button onClick={resetDialer}>
+                <div className="space-y-6">
+                  <div className="text-center">
+                    <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-3" />
+                    <h3 className="text-xl font-semibold mb-1">Session Complete!</h3>
+                    <p className="text-muted-foreground">
+                      You've dialed through {dialedLeads.length} leads
+                    </p>
+                  </div>
+
+                  {/* Session Analytics */}
+                  {sessionAnalytics && (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <BarChart3 className="h-4 w-4" />
+                        Session Analytics
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="p-3 rounded-lg bg-success/10 border border-success/20">
+                          <p className="text-2xl font-bold text-success">
+                            {sessionAnalytics.connectRate.toFixed(0)}%
+                          </p>
+                          <p className="text-xs text-muted-foreground">Connect Rate</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+                          <p className="text-2xl font-bold text-primary">
+                            {formatDuration(Math.round(sessionAnalytics.avgDuration))}
+                          </p>
+                          <p className="text-xs text-muted-foreground">Avg Duration</p>
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-muted/50 space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="flex items-center gap-2">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                            Connected
+                          </span>
+                          <span className="font-medium">{sessionAnalytics.connected}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="flex items-center gap-2">
+                            <XCircle className="h-3.5 w-3.5 text-destructive" />
+                            No Answer
+                          </span>
+                          <span className="font-medium">{sessionAnalytics.noAnswer}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="flex items-center gap-2">
+                            <AlertCircle className="h-3.5 w-3.5 text-warning" />
+                            Busy
+                          </span>
+                          <span className="font-medium">{sessionAnalytics.busy}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="flex items-center gap-2">
+                            <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                            Voicemail
+                          </span>
+                          <span className="font-medium">{sessionAnalytics.voicemail}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="flex items-center gap-2">
+                            <SkipForward className="h-3.5 w-3.5 text-muted-foreground" />
+                            Skipped
+                          </span>
+                          <span className="font-medium">{sessionAnalytics.skipped}</span>
+                        </div>
+                      </div>
+
+                      {sessionAnalytics.qualityCalls > 0 && (
+                        <div className="p-3 rounded-lg border border-success/20 bg-success/5">
+                          <p className="text-sm">
+                            <span className="font-semibold text-success">{sessionAnalytics.qualityCalls}</span>
+                            {' '}quality calls (2+ min) — 
+                            <span className="font-medium"> {sessionAnalytics.qualityRate.toFixed(0)}%</span>
+                            {' '}of connections
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <Button onClick={resetDialer} className="w-full">
                     <RotateCcw className="h-4 w-4 mr-2" />
                     Start New Session
                   </Button>
