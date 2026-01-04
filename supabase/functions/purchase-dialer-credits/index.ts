@@ -15,10 +15,18 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const stripeApiKey = Deno.env.get('STRIPE_API_KEY');
+
+    // Stripe secret can be stored under different names depending on configuration
+    const stripeApiKey = (
+      Deno.env.get('STRIPE_API_KEY') ??
+      Deno.env.get('STRIPE_SECRET_KEY') ??
+      Deno.env.get('STRIPE_SECRET')
+    )?.trim();
+
+    console.log('Stripe key present:', !!stripeApiKey);
 
     if (!stripeApiKey) {
-      console.error('STRIPE_API_KEY not configured');
+      console.error('Stripe API key not configured (expected STRIPE_API_KEY)');
       return new Response(
         JSON.stringify({ error: 'stripe_not_configured', message: 'Stripe API key is not configured' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
