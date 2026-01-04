@@ -21,7 +21,6 @@ import {
   Loader2,
   MapPin,
   User,
-  Voicemail,
   BarChart3,
   MessageSquare,
   Zap
@@ -85,17 +84,8 @@ const minutePackages: MinutePackage[] = [
   { id: 'enterprise', name: 'Enterprise', minutes: 5000, price: 100 },
 ];
 
-// Real Twilio add-ons with 20% margin
+// Real Twilio add-ons with 20% margin (Call Recording is included free for all accounts)
 const twilioAddons: TwilioAddon[] = [
-  {
-    id: 'recording',
-    name: 'Call Recording',
-    description: 'Automatically record all calls for training and compliance',
-    price: 0.003, // $0.0025/min + 20%
-    priceUnit: '/min',
-    priceType: 'per_minute',
-    icon: <Voicemail className="h-5 w-5" />,
-  },
   {
     id: 'transcription',
     name: 'Call Transcription',
