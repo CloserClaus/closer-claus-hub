@@ -528,8 +528,8 @@ export default function CRM() {
         </div>
 
         <Tabs defaultValue="pipeline" className="space-y-6">
-          <div className="flex flex-col gap-3">
-            <TabsList className="bg-muted w-full overflow-x-auto">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <TabsList className="bg-muted w-full lg:w-auto overflow-x-auto">
               <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
               <TabsTrigger value="leads">Leads</TabsTrigger>
               <TabsTrigger value="deals">Deals</TabsTrigger>
@@ -543,58 +543,55 @@ export default function CRM() {
                 )}
               </TabsTrigger>
             </TabsList>
-
-            {/* Actions: always visible, wrap instead of overflowing */}
-            <div className="flex flex-wrap gap-2 sm:justify-end">
+            
+            {/* Desktop: Individual buttons */}
+            <div className="hidden lg:flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setShowCSVUpload(true)}>
-                <Upload className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Import CSV</span>
+                <Upload className="h-4 w-4 mr-2" />
+                Import CSV
               </Button>
               <Button variant="outline" onClick={() => setShowLeadForm(true)}>
-                <Plus className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Add Lead</span>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Lead
               </Button>
               <Button variant="outline" onClick={() => setShowDealForm(true)}>
-                <Plus className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Add Deal</span>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Deal
               </Button>
               <Button onClick={() => setShowTaskForm(true)}>
-                <Plus className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Add Task</span>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Task
               </Button>
-
-              {/* Extra small screens: optional dropdown duplicate for discoverability */}
-              <div className="sm:hidden">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline">
-                      <MoreHorizontal className="h-4 w-4" />
-                      <span className="sr-only">More actions</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className="z-50 w-48 border border-border bg-popover text-popover-foreground shadow-md"
-                  >
-                    <DropdownMenuItem onClick={() => setShowCSVUpload(true)}>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Import CSV
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setShowLeadForm(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Lead
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setShowDealForm(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Deal
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setShowTaskForm(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Task
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+            </div>
+            
+            {/* Mobile/Tablet: Dropdown menu */}
+            <div className="lg:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Actions
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => setShowCSVUpload(true)}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Import CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowLeadForm(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Lead
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowDealForm(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Deal
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowTaskForm(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Task
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
