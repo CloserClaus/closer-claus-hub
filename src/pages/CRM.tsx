@@ -14,7 +14,6 @@ import {
   AlertTriangle,
   Upload,
   CheckSquare,
-  UserPlus,
 } from 'lucide-react';
 import { startOfDay, startOfWeek, startOfMonth, startOfQuarter } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
@@ -33,8 +32,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { FloatingCRMActions } from '@/components/crm/FloatingCRMActions';
-
 import {
   Dialog,
   DialogContent,
@@ -531,27 +528,72 @@ export default function CRM() {
         </div>
 
         <Tabs defaultValue="pipeline" className="space-y-6">
-          <TabsList className="bg-muted w-fit overflow-x-auto">
-            <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
-            <TabsTrigger value="leads">Leads</TabsTrigger>
-            <TabsTrigger value="deals">Deals</TabsTrigger>
-            <TabsTrigger value="tasks" className="gap-2">
-              <CheckSquare className="h-4 w-4" />
-              Tasks
-              {tasks.filter(t => t.status !== 'completed').length > 0 && (
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
-                  {tasks.filter(t => t.status !== 'completed').length}
-                </Badge>
-              )}
-            </TabsTrigger>
-          </TabsList>
-
-          <FloatingCRMActions
-            onImportCSV={() => setShowCSVUpload(true)}
-            onAddLead={() => setShowLeadForm(true)}
-            onAddDeal={() => setShowDealForm(true)}
-            onAddTask={() => setShowTaskForm(true)}
-          />
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <TabsList className="bg-muted w-full lg:w-auto overflow-x-auto">
+              <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
+              <TabsTrigger value="leads">Leads</TabsTrigger>
+              <TabsTrigger value="deals">Deals</TabsTrigger>
+              <TabsTrigger value="tasks" className="gap-2">
+                <CheckSquare className="h-4 w-4" />
+                Tasks
+                {tasks.filter(t => t.status !== 'completed').length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                    {tasks.filter(t => t.status !== 'completed').length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+            
+            {/* Desktop: Individual buttons */}
+            <div className="hidden lg:flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setShowCSVUpload(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Import CSV
+              </Button>
+              <Button variant="outline" onClick={() => setShowLeadForm(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Lead
+              </Button>
+              <Button variant="outline" onClick={() => setShowDealForm(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Deal
+              </Button>
+              <Button onClick={() => setShowTaskForm(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Task
+              </Button>
+            </div>
+            
+            {/* Mobile/Tablet: Dropdown menu */}
+            <div className="lg:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Actions
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => setShowCSVUpload(true)}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Import CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowLeadForm(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Lead
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowDealForm(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Deal
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowTaskForm(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Task
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
 
           <TabsContent value="pipeline">
             <PipelineBoard
