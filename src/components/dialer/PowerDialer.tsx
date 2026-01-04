@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -7,6 +7,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   Play, 
   Pause, 
@@ -21,9 +29,15 @@ import {
   XCircle,
   AlertCircle,
   Zap,
-  RotateCcw
+  RotateCcw,
+  Search
 } from "lucide-react";
 import { toast } from "sonner";
+
+interface LeadDeal {
+  id: string;
+  stage: string;
+}
 
 interface Lead {
   id: string;
@@ -33,6 +47,7 @@ interface Lead {
   company: string | null;
   email: string | null;
   selected?: boolean;
+  deals?: LeadDeal[] | null;
 }
 
 interface PowerDialerProps {
@@ -50,6 +65,21 @@ interface DialedLead extends Lead {
   callDuration?: number;
 }
 
+const PIPELINE_STAGES = [
+  { value: 'new', label: 'New' },
+  { value: 'contacted', label: 'Contacted' },
+  { value: 'discovery', label: 'Discovery' },
+  { value: 'meeting', label: 'Meeting' },
+  { value: 'proposal', label: 'Proposal' },
+  { value: 'closed_won', label: 'Closed Won' },
+  { value: 'closed_lost', label: 'Closed Lost' },
+];
+
+const getStageLabel = (stage: string): string => {
+  const found = PIPELINE_STAGES.find(s => s.value === stage);
+  return found ? found.label : stage;
+};
+
 export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: PowerDialerProps) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedLeads, setSelectedLeads] = useState<Lead[]>([]);
@@ -63,18 +93,30 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
   const [currentCallLogId, setCurrentCallLogId] = useState<string | null>(null);
   const [currentTwilioCallSid, setCurrentTwilioCallSid] = useState<string | null>(null);
   
+  // Filter states
+  const [stageFilter, setStageFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch leads with phone numbers
+  // Fetch leads with phone numbers and their associated deals
   useEffect(() => {
     const fetchLeads = async () => {
       const { data, error } = await supabase
         .from('leads')
-        .select('id, first_name, last_name, phone, company, email')
+        .select(`
+          id, 
+          first_name, 
+          last_name, 
+          phone, 
+          company, 
+          email,
+          deals!deals_lead_id_fkey(id, stage)
+        `)
         .eq('workspace_id', workspaceId)
         .not('phone', 'is', null)
         .order('last_contacted_at', { ascending: true, nullsFirst: true })
-        .limit(100);
+        .limit(200);
 
       if (error) {
         console.error('Error fetching leads:', error);
@@ -86,6 +128,32 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
 
     fetchLeads();
   }, [workspaceId]);
+
+  // Filtered leads based on stage and search
+  const filteredLeads = useMemo(() => {
+    return leads.filter(lead => {
+      // Stage filter
+      if (stageFilter !== 'all') {
+        if (stageFilter === 'no_deal') {
+          if (lead.deals && lead.deals.length > 0) return false;
+        } else {
+          const hasMatchingStage = lead.deals?.some(d => d.stage === stageFilter);
+          if (!hasMatchingStage) return false;
+        }
+      }
+      
+      // Search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchesName = `${lead.first_name} ${lead.last_name}`.toLowerCase().includes(query);
+        const matchesCompany = lead.company?.toLowerCase().includes(query) || false;
+        const matchesPhone = lead.phone?.includes(query) || false;
+        if (!matchesName && !matchesCompany && !matchesPhone) return false;
+      }
+      
+      return true;
+    });
+  }, [leads, stageFilter, searchQuery]);
 
   // Call duration timer
   useEffect(() => {
@@ -113,8 +181,13 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
     ));
   };
 
-  const selectAllLeads = () => {
-    setLeads(prev => prev.map(lead => ({ ...lead, selected: true })));
+  // Select all currently filtered leads
+  const selectAllFilteredLeads = () => {
+    const filteredIds = new Set(filteredLeads.map(l => l.id));
+    setLeads(prev => prev.map(lead => ({
+      ...lead,
+      selected: filteredIds.has(lead.id) ? true : lead.selected
+    })));
   };
 
   const deselectAllLeads = () => {
@@ -394,7 +467,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
                   Select Leads to Dial
                 </span>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={selectAllLeads}>
+                  <Button size="sm" variant="outline" onClick={selectAllFilteredLeads}>
                     Select All
                   </Button>
                   <Button size="sm" variant="ghost" onClick={deselectAllLeads}>
@@ -403,18 +476,47 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
                 </div>
               </CardTitle>
               <CardDescription>
-                {leads.filter(l => l.selected).length} of {leads.length} leads selected
+                {leads.filter(l => l.selected).length} selected ({filteredLeads.length} of {leads.length} shown)
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[400px]">
+            <CardContent className="space-y-4">
+              {/* Filters */}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Select value={stageFilter} onValueChange={setStageFilter}>
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="Filter by stage" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Stages</SelectItem>
+                    <SelectItem value="no_deal">No Deal</SelectItem>
+                    {PIPELINE_STAGES.map(stage => (
+                      <SelectItem key={stage.value} value={stage.value}>
+                        {stage.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search leads..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+
+              <ScrollArea className="h-[350px]">
                 <div className="space-y-2">
-                  {leads.length === 0 ? (
+                  {filteredLeads.length === 0 ? (
                     <p className="text-center text-muted-foreground py-8">
-                      No leads with phone numbers found
+                      {leads.length === 0 
+                        ? "No leads with phone numbers found"
+                        : "No leads match your filters"}
                     </p>
                   ) : (
-                    leads.map((lead) => (
+                    filteredLeads.map((lead) => (
                       <div
                         key={lead.id}
                         className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
@@ -429,14 +531,25 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
                           onCheckedChange={() => toggleLeadSelection(lead.id)}
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">
-                            {lead.first_name} {lead.last_name}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium truncate">
+                              {lead.first_name} {lead.last_name}
+                            </p>
+                            {lead.deals && lead.deals.length > 0 ? (
+                              <Badge variant="outline" className="text-xs shrink-0">
+                                {getStageLabel(lead.deals[0].stage)}
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs shrink-0">
+                                No Deal
+                              </Badge>
+                            )}
+                          </div>
                           {lead.company && (
                             <p className="text-sm text-muted-foreground truncate">{lead.company}</p>
                           )}
                         </div>
-                        <p className="text-sm font-mono text-muted-foreground">{lead.phone}</p>
+                        <p className="text-sm font-mono text-muted-foreground hidden sm:block">{lead.phone}</p>
                       </div>
                     ))
                   )}
