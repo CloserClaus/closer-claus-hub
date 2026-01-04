@@ -528,8 +528,8 @@ export default function CRM() {
         </div>
 
         <Tabs defaultValue="pipeline" className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <TabsList className="bg-muted">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <TabsList className="bg-muted w-full lg:w-auto overflow-x-auto">
               <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
               <TabsTrigger value="leads">Leads</TabsTrigger>
               <TabsTrigger value="deals">Deals</TabsTrigger>
@@ -543,7 +543,9 @@ export default function CRM() {
                 )}
               </TabsTrigger>
             </TabsList>
-            <div className="flex gap-2">
+            
+            {/* Desktop: Individual buttons */}
+            <div className="hidden md:flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setShowCSVUpload(true)}>
                 <Upload className="h-4 w-4 mr-2" />
                 Import CSV
@@ -560,6 +562,36 @@ export default function CRM() {
                 <Plus className="h-4 w-4 mr-2" />
                 Add Task
               </Button>
+            </div>
+            
+            {/* Mobile: Dropdown menu */}
+            <div className="md:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Actions
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => setShowCSVUpload(true)}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Import CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowLeadForm(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Lead
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowDealForm(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Deal
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowTaskForm(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Task
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
