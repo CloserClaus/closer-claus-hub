@@ -272,9 +272,8 @@ serve(async (req) => {
       }
 
       case 'get_available_numbers': {
-        const { country = 'US', area_code, contains } = params;
+        const { country = 'US', area_code, contains, city, state } = params;
 
-        let endpoint = `/AvailablePhoneNumbers/${country}/Local.json?`;
         const searchParams = new URLSearchParams();
         
         if (area_code) {
@@ -282,6 +281,14 @@ serve(async (req) => {
         }
         if (contains) {
           searchParams.append('Contains', contains);
+        }
+        // City/locality search
+        if (city) {
+          searchParams.append('InLocality', city);
+        }
+        // State/region search
+        if (state) {
+          searchParams.append('InRegion', state);
         }
         searchParams.append('VoiceEnabled', 'true');
 
