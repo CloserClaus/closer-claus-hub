@@ -113,6 +113,15 @@ export default function Settings() {
                   <CardContent>
                     <Form {...form}>
                       <form onSubmit={form.handleSubmit(handleUpdateProfile)} className="space-y-4">
+                        <div className="space-y-2">
+                          <FormLabel>Email Address</FormLabel>
+                          <Input 
+                            value={profile?.email || user?.email || ''} 
+                            disabled
+                            className="bg-muted border-border max-w-md opacity-70"
+                          />
+                          <p className="text-xs text-muted-foreground">Email cannot be changed</p>
+                        </div>
                         <FormField
                           control={form.control}
                           name="fullName"
