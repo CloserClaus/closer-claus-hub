@@ -33,6 +33,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { FloatingCRMActions } from '@/components/crm/FloatingCRMActions';
+
 import {
   Dialog,
   DialogContent,
@@ -544,44 +546,12 @@ export default function CRM() {
             </TabsTrigger>
           </TabsList>
 
-          {/* Floating action buttons on right side */}
-          <div className="fixed right-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-2">
-            <Button 
-              variant="outline" 
-              size="icon"
-              onClick={() => setShowCSVUpload(true)}
-              className="h-10 w-10 rounded-full shadow-lg bg-background hover:bg-muted"
-              title="Import CSV"
-            >
-              <Upload className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="outline" 
-              size="icon"
-              onClick={() => setShowLeadForm(true)}
-              className="h-10 w-10 rounded-full shadow-lg bg-background hover:bg-muted"
-              title="Add Lead"
-            >
-              <UserPlus className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="outline" 
-              size="icon"
-              onClick={() => setShowDealForm(true)}
-              className="h-10 w-10 rounded-full shadow-lg bg-background hover:bg-muted"
-              title="Add Deal"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button 
-              size="icon"
-              onClick={() => setShowTaskForm(true)}
-              className="h-10 w-10 rounded-full shadow-lg"
-              title="Add Task"
-            >
-              <CheckSquare className="h-4 w-4" />
-            </Button>
-          </div>
+          <FloatingCRMActions
+            onImportCSV={() => setShowCSVUpload(true)}
+            onAddLead={() => setShowLeadForm(true)}
+            onAddDeal={() => setShowDealForm(true)}
+            onAddTask={() => setShowTaskForm(true)}
+          />
 
           <TabsContent value="pipeline">
             <PipelineBoard
