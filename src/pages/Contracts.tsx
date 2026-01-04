@@ -89,7 +89,7 @@ ACCEPTANCE:
 By signing below, the Buyer acknowledges that they have read, understood, and agree to be bound by the terms of this Agreement.`;
 
 export default function Contracts() {
-  const { currentWorkspace, isOwner } = useWorkspace();
+  const { currentWorkspace, isOwner, loading: workspaceLoading } = useWorkspace();
   const { user } = useAuth();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -280,6 +280,19 @@ export default function Contracts() {
         return <Badge variant="outline">Draft</Badge>;
     }
   };
+
+  if (workspaceLoading) {
+    return (
+      <DashboardLayout>
+        <DashboardHeader title="Contracts" />
+        <main className="flex-1 p-6">
+          <div className="flex items-center justify-center h-96">
+            <div className="animate-pulse text-muted-foreground">Loading workspace...</div>
+          </div>
+        </main>
+      </DashboardLayout>
+    );
+  }
 
   if (!currentWorkspace) {
     return (

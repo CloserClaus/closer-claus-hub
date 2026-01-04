@@ -64,7 +64,7 @@ interface TrainingMaterial {
 }
 
 export default function Training() {
-  const { currentWorkspace, isOwner } = useWorkspace();
+  const { currentWorkspace, isOwner, loading: workspaceLoading } = useWorkspace();
   const { user } = useAuth();
   const [materials, setMaterials] = useState<TrainingMaterial[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -265,6 +265,19 @@ export default function Training() {
     const matchesType = filterType === 'all' || material.content_type === filterType;
     return matchesSearch && matchesType;
   });
+
+  if (workspaceLoading) {
+    return (
+      <DashboardLayout>
+        <DashboardHeader title="Training" />
+        <main className="flex-1 p-6">
+          <div className="flex items-center justify-center h-96">
+            <div className="animate-pulse text-muted-foreground">Loading workspace...</div>
+          </div>
+        </main>
+      </DashboardLayout>
+    );
+  }
 
   if (!currentWorkspace) {
     return (

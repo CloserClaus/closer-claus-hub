@@ -67,7 +67,7 @@ interface PhoneNumber {
 }
 
 export default function Dialer() {
-  const { currentWorkspace } = useWorkspace();
+  const { currentWorkspace, loading: workspaceLoading } = useWorkspace();
   const { user } = useAuth();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -347,6 +347,19 @@ export default function Dialer() {
         return { text: 'Call in progress', icon: <PhoneCall className="h-5 w-5" /> };
     }
   };
+
+  if (workspaceLoading) {
+    return (
+      <DashboardLayout>
+        <DashboardHeader title="Dialer" />
+        <main className="flex-1 p-6">
+          <div className="flex items-center justify-center h-96">
+            <div className="animate-pulse text-muted-foreground">Loading workspace...</div>
+          </div>
+        </main>
+      </DashboardLayout>
+    );
+  }
 
   if (!currentWorkspace) {
     return (
