@@ -1,5 +1,8 @@
 project_id = "xlgzxmzejlshsgeiidsz"
 
+[functions.change-subscription]
+verify_jwt = false
+
 [functions.callhippo]
 verify_jwt = true
 
