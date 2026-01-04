@@ -70,41 +70,58 @@ interface TwilioAddon {
   name: string;
   description: string;
   price: number;
-  priceType: string;
+  priceUnit: string;
+  priceType: 'per_minute' | 'per_call';
   icon: React.ReactNode;
 }
 
+// Twilio pricing with 20% margin
+// Twilio outbound: $0.014/min -> $0.017/min with margin
+// Packages rounded for simplicity
 const minutePackages: MinutePackage[] = [
-  { id: 'starter', name: 'Starter', minutes: 100, price: 10 },
-  { id: 'growth', name: 'Growth', minutes: 500, price: 45, popular: true },
-  { id: 'pro', name: 'Pro', minutes: 1000, price: 80 },
-  { id: 'enterprise', name: 'Enterprise', minutes: 5000, price: 350 },
+  { id: 'starter', name: 'Starter', minutes: 100, price: 2 },
+  { id: 'growth', name: 'Growth', minutes: 500, price: 10, popular: true },
+  { id: 'pro', name: 'Pro', minutes: 1000, price: 20 },
+  { id: 'enterprise', name: 'Enterprise', minutes: 5000, price: 100 },
 ];
 
+// Real Twilio add-ons with 20% margin
 const twilioAddons: TwilioAddon[] = [
   {
-    id: 'voicemail',
-    name: 'Voicemail Drop',
-    description: 'Pre-recorded voicemail messages for unanswered calls',
-    price: 15,
-    priceType: '/mo',
+    id: 'recording',
+    name: 'Call Recording',
+    description: 'Automatically record all calls for training and compliance',
+    price: 0.003, // $0.0025/min + 20%
+    priceUnit: '/min',
+    priceType: 'per_minute',
     icon: <Voicemail className="h-5 w-5" />,
   },
   {
-    id: 'analytics',
-    name: 'Advanced Analytics',
-    description: 'Detailed call analytics, recordings, and reporting',
-    price: 25,
-    priceType: '/mo',
-    icon: <BarChart3 className="h-5 w-5" />,
+    id: 'transcription',
+    name: 'Call Transcription',
+    description: 'AI-powered transcription of call recordings',
+    price: 0.029, // $0.024/min + 20%
+    priceUnit: '/min',
+    priceType: 'per_minute',
+    icon: <MessageSquare className="h-5 w-5" />,
   },
   {
-    id: 'sms',
-    name: 'SMS Messaging',
-    description: 'Send and receive text messages from your business numbers',
-    price: 20,
-    priceType: '/mo',
-    icon: <MessageSquare className="h-5 w-5" />,
+    id: 'amd',
+    name: 'Answering Machine Detection',
+    description: 'Detect voicemail and answering machines automatically',
+    price: 0.009, // $0.0075/call + 20%
+    priceUnit: '/call',
+    priceType: 'per_call',
+    icon: <Zap className="h-5 w-5" />,
+  },
+  {
+    id: 'voice_insights',
+    name: 'Voice Insights',
+    description: 'Advanced call quality metrics and analytics',
+    price: 0.003, // $0.0024/min + 20%
+    priceUnit: '/min',
+    priceType: 'per_minute',
+    icon: <BarChart3 className="h-5 w-5" />,
   },
 ];
 
@@ -352,6 +369,22 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Free Minutes Info */}
+        <Card className="lg:col-span-2 border-primary/30 bg-primary/5">
+          <CardContent className="flex items-center gap-4 py-4">
+            <div className="p-3 rounded-full bg-primary/20">
+              <Clock className="h-6 w-6 text-primary" />
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold text-primary">1,000 Free Minutes Every Month</p>
+              <p className="text-sm text-muted-foreground">
+                Your Closer Claus subscription includes 1,000 free calling minutes per month. 
+                Purchase additional minutes when you need more.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Call Minutes */}
         <Card>
           <CardHeader>
@@ -360,7 +393,7 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
               Call Minutes
             </CardTitle>
             <CardDescription>
-              Purchase minutes for outbound calls
+              Purchase additional minutes for outbound calls • $0.02/min
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -527,10 +560,10 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Zap className="h-5 w-5" />
-            Calling Addons
+            Calling Features
           </CardTitle>
           <CardDescription>
-            Enhance your calling capabilities with these powerful addons
+            Enable usage-based features for your calls • Only pay for what you use
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -547,7 +580,7 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
                   <div>
                     <p className="font-semibold">{addon.name}</p>
                     <p className="text-lg font-bold text-primary">
-                      ${addon.price}<span className="text-sm text-muted-foreground">{addon.priceType}</span>
+                      ${addon.price.toFixed(3)}<span className="text-sm text-muted-foreground">{addon.priceUnit}</span>
                     </p>
                   </div>
                 </div>
@@ -564,7 +597,7 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
                   ) : (
                     <>
                       <Plus className="h-4 w-4 mr-1" />
-                      Add to Plan
+                      Enable Feature
                     </>
                   )}
                 </Button>

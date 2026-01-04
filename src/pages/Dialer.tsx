@@ -78,6 +78,7 @@ export default function Dialer() {
   const [callNotes, setCallNotes] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [creditsBalance, setCreditsBalance] = useState(0);
+  const [freeMinutesRemaining, setFreeMinutesRemaining] = useState(0);
   const [isLoadingCredits, setIsLoadingCredits] = useState(true);
   const [workspacePhoneNumbers, setWorkspacePhoneNumbers] = useState<PhoneNumber[]>([]);
   const [selectedCallerId, setSelectedCallerId] = useState<string>("");
@@ -148,6 +149,7 @@ export default function Dialer() {
       }
 
       setCreditsBalance(data?.credits_balance || 0);
+      setFreeMinutesRemaining(data?.free_minutes_remaining ?? 1000);
     } catch (error) {
       console.error('Error fetching credits:', error);
     } finally {
@@ -384,7 +386,11 @@ export default function Dialer() {
               <h1 className="text-3xl font-bold">Dialer</h1>
               <p className="text-muted-foreground">Make outbound calls to your leads</p>
             </div>
-            <CreditsDisplay credits={creditsBalance} isLoading={isLoadingCredits} />
+            <CreditsDisplay 
+              credits={creditsBalance} 
+              freeMinutesRemaining={freeMinutesRemaining}
+              isLoading={isLoadingCredits} 
+            />
           </div>
 
           {/* Check if user has access to power dialer (Beta or Alpha plan) */}

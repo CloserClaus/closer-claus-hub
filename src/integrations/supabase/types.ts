@@ -1120,6 +1120,8 @@ export type Database = {
         Row: {
           created_at: string
           credits_balance: number
+          free_minutes_remaining: number | null
+          free_minutes_reset_at: string | null
           id: string
           last_purchased_at: string | null
           updated_at: string
@@ -1128,6 +1130,8 @@ export type Database = {
         Insert: {
           created_at?: string
           credits_balance?: number
+          free_minutes_remaining?: number | null
+          free_minutes_reset_at?: string | null
           id?: string
           last_purchased_at?: string | null
           updated_at?: string
@@ -1136,6 +1140,8 @@ export type Database = {
         Update: {
           created_at?: string
           credits_balance?: number
+          free_minutes_remaining?: number | null
+          free_minutes_reset_at?: string | null
           id?: string
           last_purchased_at?: string | null
           updated_at?: string
@@ -1146,6 +1152,41 @@ export type Database = {
             foreignKeyName: "workspace_credits_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workspace_dialer_features: {
+        Row: {
+          created_at: string
+          feature_type: string
+          id: string
+          is_enabled: boolean
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          feature_type: string
+          id?: string
+          is_enabled?: boolean
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          feature_type?: string
+          id?: string
+          is_enabled?: boolean
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_dialer_features_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
@@ -1321,6 +1362,7 @@ export type Database = {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
       }
+      reset_free_minutes: { Args: never; Returns: undefined }
     }
     Enums: {
       app_role: "platform_admin" | "agency_owner" | "sdr"
