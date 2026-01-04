@@ -446,6 +446,7 @@ export type Database = {
           id: string
           price_paid: number
           purchased_by: string
+          stripe_session_id: string | null
           workspace_id: string
         }
         Insert: {
@@ -454,6 +455,7 @@ export type Database = {
           id?: string
           price_paid: number
           purchased_by: string
+          stripe_session_id?: string | null
           workspace_id: string
         }
         Update: {
@@ -462,6 +464,7 @@ export type Database = {
           id?: string
           price_paid?: number
           purchased_by?: string
+          stripe_session_id?: string | null
           workspace_id?: string
         }
         Relationships: [
@@ -1294,6 +1297,7 @@ export type Database = {
           rake_percentage: number | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
+          subscription_anchor_day: number | null
           subscription_status: string | null
           subscription_tier:
             | Database["public"]["Enums"]["subscription_tier"]
@@ -1310,6 +1314,7 @@ export type Database = {
           rake_percentage?: number | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          subscription_anchor_day?: number | null
           subscription_status?: string | null
           subscription_tier?:
             | Database["public"]["Enums"]["subscription_tier"]
@@ -1326,6 +1331,7 @@ export type Database = {
           rake_percentage?: number | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          subscription_anchor_day?: number | null
           subscription_status?: string | null
           subscription_tier?:
             | Database["public"]["Enums"]["subscription_tier"]

@@ -38,3 +38,18 @@ verify_jwt = true
 
 [functions.verify-email]
 verify_jwt = false
+
+[functions.twilio]
+verify_jwt = true
+
+[functions.twilio-webhook]
+verify_jwt = false
+
+[functions.assign-role]
+verify_jwt = true
+
+[functions.reset-free-minutes]
+verify_jwt = false
+
+[functions.purchase-dialer-credits]
+verify_jwt = true

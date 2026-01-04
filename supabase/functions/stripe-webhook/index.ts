@@ -65,10 +65,142 @@ serve(async (req) => {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
-        const { workspace_id, tier, billing_period } = session.metadata || {};
+        const metadata = session.metadata || {};
+        
+        // Check if this is a dialer purchase (one-time payment)
+        if (session.mode === 'payment' && metadata.purchase_type) {
+          const { purchase_type, workspace_id, minutes_amount, phone_number, country_code, number_type, monthly_cost, user_id } = metadata;
+          
+          console.log('Processing dialer purchase:', { purchase_type, workspace_id });
+          
+          if (purchase_type === 'call_minutes' && minutes_amount) {
+            // Add minutes to workspace credits
+            const { data: currentCredits } = await supabase
+              .from('workspace_credits')
+              .select('credits_balance')
+              .eq('workspace_id', workspace_id)
+              .single();
+            
+            const newBalance = (currentCredits?.credits_balance || 0) + parseInt(minutes_amount);
+            
+            await supabase
+              .from('workspace_credits')
+              .upsert({
+                workspace_id,
+                credits_balance: newBalance,
+                last_purchased_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'workspace_id' });
+            
+            // Log the purchase
+            await supabase.from('credit_purchases').insert({
+              workspace_id,
+              credits_amount: parseInt(minutes_amount),
+              price_paid: session.amount_total / 100,
+              purchased_by: user_id,
+              stripe_session_id: session.id,
+            });
+            
+            console.log(`Added ${minutes_amount} minutes to workspace ${workspace_id}`);
+            
+            // Send notification
+            if (user_id) {
+              await supabase.from('notifications').insert({
+                user_id,
+                workspace_id,
+                type: 'credits_purchased',
+                title: 'Credits Purchased',
+                message: `Successfully added ${minutes_amount} calling minutes to your account.`,
+                data: { minutes: parseInt(minutes_amount), amount: session.amount_total / 100 },
+              });
+            }
+          }
+          
+          if (purchase_type === 'phone_number' && phone_number) {
+            // Purchase and provision the phone number via Twilio
+            const twilioAccountSid = Deno.env.get('TWILIO_ACCOUNT_SID');
+            const twilioAuthToken = Deno.env.get('TWILIO_AUTH_TOKEN');
+            
+            if (twilioAccountSid && twilioAuthToken) {
+              try {
+                const twilioAuth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
+                
+                // Purchase the number from Twilio
+                const purchaseResponse = await fetch(
+                  `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/IncomingPhoneNumbers.json`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Basic ${twilioAuth}`,
+                      'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                      PhoneNumber: phone_number,
+                    }),
+                  }
+                );
+                
+                if (purchaseResponse.ok) {
+                  const purchasedNumber = await purchaseResponse.json();
+                  
+                  // Save to database
+                  await supabase.from('workspace_phone_numbers').insert({
+                    workspace_id,
+                    phone_number: purchasedNumber.phone_number,
+                    country_code: country_code || 'US',
+                    twilio_phone_sid: purchasedNumber.sid,
+                    monthly_cost: parseFloat(monthly_cost || '1.40'),
+                    is_active: true,
+                  });
+                  
+                  console.log(`Phone number ${phone_number} purchased and provisioned`);
+                  
+                  // Send notification
+                  if (user_id) {
+                    await supabase.from('notifications').insert({
+                      user_id,
+                      workspace_id,
+                      type: 'phone_number_purchased',
+                      title: 'Phone Number Purchased',
+                      message: `Your new phone number ${phone_number} is now active.`,
+                      data: { phone_number },
+                    });
+                  }
+                } else {
+                  console.error('Failed to purchase Twilio number:', await purchaseResponse.text());
+                }
+              } catch (twilioError) {
+                console.error('Twilio error:', twilioError);
+              }
+            }
+          }
+          
+          break;
+        }
+
+        // Handle subscription checkout
+        const { workspace_id, tier, billing_period } = metadata;
 
         if (workspace_id && tier) {
           const limits = TIER_LIMITS[tier as keyof typeof TIER_LIMITS];
+
+          // Get subscription details to determine anchor day
+          let anchorDay = 1;
+          if (session.subscription) {
+            try {
+              const subscription = await stripe.subscriptions.retrieve(session.subscription);
+              const anchorDate = new Date(subscription.current_period_end * 1000);
+              anchorDay = Math.min(anchorDate.getDate(), 28); // Cap at 28 for all months
+              console.log('Subscription anchor day:', anchorDay);
+            } catch (subError) {
+              console.error('Error fetching subscription:', subError);
+            }
+          }
+
+          // Calculate next free minutes reset date
+          const nextResetDate = new Date();
+          nextResetDate.setMonth(nextResetDate.getMonth() + 1);
+          nextResetDate.setDate(anchorDay);
 
           await supabase
             .from('workspaces')
@@ -76,12 +208,28 @@ serve(async (req) => {
               subscription_tier: tier,
               subscription_status: 'active',
               stripe_subscription_id: session.subscription,
+              stripe_customer_id: session.customer,
               max_sdrs: limits?.max_sdrs || 1,
               rake_percentage: limits?.rake_percentage || 2.0,
+              subscription_anchor_day: anchorDay,
+              is_locked: false,
+              updated_at: new Date().toISOString(),
             })
             .eq('id', workspace_id);
 
           console.log(`Activated ${tier} subscription for workspace ${workspace_id}`);
+
+          // Initialize or update free minutes for the subscriber
+          await supabase
+            .from('workspace_credits')
+            .upsert({
+              workspace_id,
+              free_minutes_remaining: 1000,
+              free_minutes_reset_at: nextResetDate.toISOString(),
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'workspace_id' });
+
+          console.log(`Initialized 1000 free minutes for workspace ${workspace_id}`);
 
           // Get workspace owner for notification
           const { data: workspace } = await supabase
@@ -91,14 +239,13 @@ serve(async (req) => {
             .single();
 
           if (workspace?.owner_id) {
-            await supabase.functions.invoke('create-notification', {
-              body: {
-                user_id: workspace.owner_id,
-                title: 'Subscription Activated',
-                message: `Your ${tier.charAt(0).toUpperCase() + tier.slice(1)} plan is now active!`,
-                type: 'subscription_activated',
-                workspace_id,
-              },
+            await supabase.from('notifications').insert({
+              user_id: workspace.owner_id,
+              workspace_id,
+              type: 'subscription_activated',
+              title: 'Subscription Activated',
+              message: `Your ${tier.charAt(0).toUpperCase() + tier.slice(1)} plan is now active! You have 1000 free calling minutes this month.`,
+              data: { tier, maxSdrs: limits?.max_sdrs },
             });
           }
         }
@@ -120,7 +267,10 @@ serve(async (req) => {
           
           await supabase
             .from('workspaces')
-            .update({ subscription_status: status })
+            .update({ 
+              subscription_status: status,
+              updated_at: new Date().toISOString(),
+            })
             .eq('id', workspace.id);
 
           console.log(`Updated subscription status to ${status} for workspace ${workspace.id}`);
@@ -143,20 +293,19 @@ serve(async (req) => {
             .update({
               subscription_status: 'cancelled',
               stripe_subscription_id: null,
+              updated_at: new Date().toISOString(),
             })
             .eq('id', workspace.id);
 
           console.log(`Cancelled subscription for workspace ${workspace.id}`);
 
           if (workspace.owner_id) {
-            await supabase.functions.invoke('create-notification', {
-              body: {
-                user_id: workspace.owner_id,
-                title: 'Subscription Cancelled',
-                message: 'Your subscription has been cancelled. Please resubscribe to continue using premium features.',
-                type: 'subscription_cancelled',
-                workspace_id: workspace.id,
-              },
+            await supabase.from('notifications').insert({
+              user_id: workspace.owner_id,
+              workspace_id: workspace.id,
+              type: 'subscription_cancelled',
+              title: 'Subscription Cancelled',
+              message: 'Your subscription has been cancelled. Please resubscribe to continue using premium features.',
             });
           }
         }
@@ -166,6 +315,44 @@ serve(async (req) => {
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object;
         console.log(`Invoice ${invoice.id} paid successfully`);
+        
+        // Only reset free minutes for subscription renewals
+        if (invoice.subscription && invoice.billing_reason === 'subscription_cycle') {
+          const { data: workspace } = await supabase
+            .from('workspaces')
+            .select('id, subscription_anchor_day, owner_id')
+            .eq('stripe_subscription_id', invoice.subscription)
+            .single();
+          
+          if (workspace) {
+            // Calculate next reset date based on anchor day
+            const nextReset = new Date();
+            nextReset.setMonth(nextReset.getMonth() + 1);
+            nextReset.setDate(Math.min(workspace.subscription_anchor_day || 1, 28));
+            
+            await supabase
+              .from('workspace_credits')
+              .update({
+                free_minutes_remaining: 1000,
+                free_minutes_reset_at: nextReset.toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('workspace_id', workspace.id);
+            
+            console.log(`Reset 1000 free minutes for workspace ${workspace.id} (subscription renewal)`);
+            
+            // Send notification
+            if (workspace.owner_id) {
+              await supabase.from('notifications').insert({
+                user_id: workspace.owner_id,
+                workspace_id: workspace.id,
+                type: 'free_minutes_reset',
+                title: 'Free Minutes Renewed',
+                message: 'Your 1000 free calling minutes have been renewed for this billing cycle!',
+              });
+            }
+          }
+        }
         break;
       }
 
@@ -183,18 +370,19 @@ serve(async (req) => {
         if (workspace) {
           await supabase
             .from('workspaces')
-            .update({ subscription_status: 'past_due' })
+            .update({ 
+              subscription_status: 'past_due',
+              updated_at: new Date().toISOString(),
+            })
             .eq('id', workspace.id);
 
           if (workspace.owner_id) {
-            await supabase.functions.invoke('create-notification', {
-              body: {
-                user_id: workspace.owner_id,
-                title: 'Payment Failed',
-                message: 'Your subscription payment failed. Please update your payment method to avoid service interruption.',
-                type: 'payment_failed',
-                workspace_id: workspace.id,
-              },
+            await supabase.from('notifications').insert({
+              user_id: workspace.owner_id,
+              workspace_id: workspace.id,
+              type: 'payment_failed',
+              title: 'Payment Failed',
+              message: 'Your subscription payment failed. Please update your payment method to avoid service interruption.',
             });
           }
 
@@ -215,6 +403,7 @@ serve(async (req) => {
               status: 'paid',
               paid_at: new Date().toISOString(),
               stripe_payment_intent_id: paymentIntent.id,
+              updated_at: new Date().toISOString(),
             })
             .eq('id', commission_id);
 
@@ -228,14 +417,13 @@ serve(async (req) => {
             .single();
 
           if (commission?.sdr_id) {
-            await supabase.functions.invoke('create-notification', {
-              body: {
-                user_id: commission.sdr_id,
-                title: 'Commission Paid',
-                message: `Your commission of $${Number(commission.amount).toFixed(2)} has been paid!`,
-                type: 'commission_paid',
-                workspace_id: commission.workspace_id,
-              },
+            await supabase.from('notifications').insert({
+              user_id: commission.sdr_id,
+              workspace_id: commission.workspace_id,
+              type: 'commission_paid',
+              title: 'Commission Paid',
+              message: `Your commission of $${Number(commission.amount).toFixed(2)} has been paid!`,
+              data: { commission_id, amount: commission.amount },
             });
           }
 
@@ -249,7 +437,10 @@ serve(async (req) => {
           if (!pendingCommissions?.length) {
             await supabase
               .from('workspaces')
-              .update({ is_locked: false })
+              .update({ 
+                is_locked: false,
+                updated_at: new Date().toISOString(),
+              })
               .eq('id', commission?.workspace_id)
               .eq('is_locked', true);
 
