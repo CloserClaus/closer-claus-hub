@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { User, Bell, Shield, CreditCard, TrendingUp } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { User, Bell, Shield, CreditCard, TrendingUp, Camera, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { SDRLevelBadge, getSDRLevelInfo, getNextLevelThreshold } from '@/components/ui/sdr-level-badge';
 import { useSDRLevel } from '@/components/SDRLevelProgress';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 const profileSchema = z.object({
   fullName: z.string().min(2, 'Name must be at least 2 characters'),
@@ -24,9 +25,23 @@ const profileSchema = z.object({
 
 type ProfileFormData = z.infer<typeof profileSchema>;
 
+const passwordSchema = z.object({
+  currentPassword: z.string().min(6, 'Password must be at least 6 characters'),
+  newPassword: z.string().min(6, 'Password must be at least 6 characters'),
+  confirmPassword: z.string().min(6, 'Password must be at least 6 characters'),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+});
+
+type PasswordFormData = z.infer<typeof passwordSchema>;
+
 export default function Settings() {
   const { user, profile, userRole, refreshProfile } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const form = useForm<ProfileFormData>({
@@ -36,6 +51,109 @@ export default function Settings() {
       phone: profile?.phone || '',
     },
   });
+
+  const passwordForm = useForm<PasswordFormData>({
+    resolver: zodResolver(passwordSchema),
+    defaultValues: {
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    },
+  });
+
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !user) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid file type',
+        description: 'Please upload an image file.',
+      });
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        variant: 'destructive',
+        title: 'File too large',
+        description: 'Please upload an image smaller than 5MB.',
+      });
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${user.id}/avatar.${fileExt}`;
+
+      // Upload the file
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Get the public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      // Update profile with new avatar URL
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: `${publicUrl}?t=${Date.now()}` })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      await refreshProfile();
+
+      toast({
+        title: 'Avatar updated',
+        description: 'Your profile picture has been updated.',
+      });
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Upload failed',
+        description: error.message || 'Failed to upload avatar.',
+      });
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  const handleChangePassword = async (data: PasswordFormData) => {
+    setIsChangingPassword(true);
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: data.newPassword,
+      });
+
+      if (error) throw error;
+
+      passwordForm.reset();
+
+      toast({
+        title: 'Password changed',
+        description: 'Your password has been updated successfully.',
+      });
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to change password.',
+      });
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   const handleUpdateProfile = async (data: ProfileFormData) => {
     if (!user) return;
@@ -102,6 +220,60 @@ export default function Settings() {
               <div className="space-y-6">
                 {/* SDR Level Card */}
                 {userRole === 'sdr' && <SDRLevelCard />}
+                
+                {/* Avatar Upload Card */}
+                <Card className="glass">
+                  <CardHeader>
+                    <CardTitle>Profile Picture</CardTitle>
+                    <CardDescription>
+                      Upload a profile picture to personalize your account
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-6">
+                      <div className="relative">
+                        <Avatar className="h-24 w-24">
+                          <AvatarImage src={profile?.avatar_url || ''} alt={profile?.full_name || 'Avatar'} />
+                          <AvatarFallback className="text-2xl">
+                            {profile?.full_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isUploadingAvatar}
+                          className="absolute bottom-0 right-0 p-1.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                        >
+                          {isUploadingAvatar ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Camera className="h-4 w-4" />
+                          )}
+                        </button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleAvatarUpload}
+                          className="hidden"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">Upload a new photo</p>
+                        <p className="text-xs text-muted-foreground">
+                          JPG, PNG or GIF. Max size 5MB.
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isUploadingAvatar}
+                        >
+                          {isUploadingAvatar ? 'Uploading...' : 'Choose File'}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
                 
                 <Card className="glass">
                   <CardHeader>
@@ -204,15 +376,75 @@ export default function Settings() {
             <TabsContent value="security">
               <Card className="glass">
                 <CardHeader>
-                  <CardTitle>Security Settings</CardTitle>
+                  <CardTitle>Change Password</CardTitle>
                   <CardDescription>
-                    Manage your password and security preferences
+                    Update your password to keep your account secure
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-muted-foreground">
-                    Password change and 2FA settings coming soon.
-                  </p>
+                  <Form {...passwordForm}>
+                    <form onSubmit={passwordForm.handleSubmit(handleChangePassword)} className="space-y-4">
+                      <FormField
+                        control={passwordForm.control}
+                        name="currentPassword"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Current Password</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field} 
+                                type="password"
+                                placeholder="Enter current password"
+                                className="bg-muted border-border max-w-md"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={passwordForm.control}
+                        name="newPassword"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>New Password</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field} 
+                                type="password"
+                                placeholder="Enter new password"
+                                className="bg-muted border-border max-w-md"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={passwordForm.control}
+                        name="confirmPassword"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Confirm New Password</FormLabel>
+                            <FormControl>
+                              <Input 
+                                {...field} 
+                                type="password"
+                                placeholder="Confirm new password"
+                                className="bg-muted border-border max-w-md"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <div className="pt-4">
+                        <Button type="submit" disabled={isChangingPassword}>
+                          {isChangingPassword ? 'Changing Password...' : 'Change Password'}
+                        </Button>
+                      </div>
+                    </form>
+                  </Form>
                 </CardContent>
               </Card>
             </TabsContent>
