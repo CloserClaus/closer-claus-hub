@@ -26,7 +26,6 @@ const profileSchema = z.object({
 type ProfileFormData = z.infer<typeof profileSchema>;
 
 const passwordSchema = z.object({
-  currentPassword: z.string().min(6, 'Password must be at least 6 characters'),
   newPassword: z.string().min(6, 'Password must be at least 6 characters'),
   confirmPassword: z.string().min(6, 'Password must be at least 6 characters'),
 }).refine((data) => data.newPassword === data.confirmPassword, {
@@ -55,7 +54,6 @@ export default function Settings() {
   const passwordForm = useForm<PasswordFormData>({
     resolver: zodResolver(passwordSchema),
     defaultValues: {
-      currentPassword: '',
       newPassword: '',
       confirmPassword: '',
     },
@@ -384,24 +382,6 @@ export default function Settings() {
                 <CardContent>
                   <Form {...passwordForm}>
                     <form onSubmit={passwordForm.handleSubmit(handleChangePassword)} className="space-y-4">
-                      <FormField
-                        control={passwordForm.control}
-                        name="currentPassword"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Current Password</FormLabel>
-                            <FormControl>
-                              <Input 
-                                {...field} 
-                                type="password"
-                                placeholder="Enter current password"
-                                className="bg-muted border-border max-w-md"
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
                       <FormField
                         control={passwordForm.control}
                         name="newPassword"

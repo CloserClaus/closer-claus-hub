@@ -75,6 +75,11 @@ export default function Jobs() {
         }
       }
 
+      // SDRs should only see active jobs
+      if (isSDR) {
+        query = query.eq('is_active', true);
+      }
+
       const { data: jobsData, error } = await query;
 
       if (error) throw error;

@@ -24,6 +24,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DollarSign,
   Clock,
   CheckCircle,
@@ -48,6 +58,7 @@ interface Commission {
   created_at: string;
   deal_id: string;
   sdr_id: string;
+  workspace_id: string;
   deals?: {
     title: string;
     value: number;
@@ -62,6 +73,9 @@ interface Commission {
     email: string;
     sdr_level?: number;
   } | null;
+  workspace?: {
+    name: string;
+  } | null;
 }
 
 export default function Commissions() {
@@ -71,6 +85,7 @@ export default function Commissions() {
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [payingId, setPayingId] = useState<string | null>(null);
+  const [confirmPayCommission, setConfirmPayCommission] = useState<Commission | null>(null);
 
   useEffect(() => {
     if (currentWorkspace?.id || userRole === 'sdr') {
@@ -97,6 +112,9 @@ export default function Commissions() {
             last_name,
             company
           )
+        ),
+        workspace:workspaces (
+          name
         )
       `)
       .order('created_at', { ascending: false });
@@ -142,6 +160,7 @@ export default function Commissions() {
 
   const handleMarkAsPaid = async (commissionId: string) => {
     setPayingId(commissionId);
+    setConfirmPayCommission(null);
     
     try {
       const { error } = await supabase
@@ -165,6 +184,10 @@ export default function Commissions() {
     } finally {
       setPayingId(null);
     }
+  };
+
+  const handleConfirmPay = (commission: Commission) => {
+    setConfirmPayCommission(commission);
   };
 
   const getStatusBadge = (status: string) => {
@@ -368,7 +391,7 @@ export default function Commissions() {
                       <TableRow key={commission.id}>
                         <TableCell>
                           {isSDR ? (
-                            <p className="font-medium">{currentWorkspace?.name || 'Agency'}</p>
+                            <p className="font-medium">{commission.workspace?.name || 'Agency'}</p>
                           ) : (
                             <div>
                               <p className="font-medium">
@@ -427,7 +450,7 @@ export default function Commissions() {
                             {commission.status === 'pending' && (
                               <Button
                                 size="sm"
-                                onClick={() => handleMarkAsPaid(commission.id)}
+                                onClick={() => handleConfirmPay(commission)}
                                 disabled={payingId === commission.id}
                               >
                                 {payingId === commission.id ? (
@@ -455,6 +478,31 @@ export default function Commissions() {
             </Card>
           )}
         </div>
+
+        {/* Confirmation Dialog */}
+        <AlertDialog open={!!confirmPayCommission} onOpenChange={(open) => !open && setConfirmPayCommission(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm Commission Payment</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to mark this commission as paid?
+                {confirmPayCommission && (
+                  <div className="mt-4 p-3 rounded-lg bg-muted space-y-1">
+                    <p><strong>SDR:</strong> {confirmPayCommission.sdr_profile?.full_name || 'Unknown'}</p>
+                    <p><strong>Deal:</strong> {confirmPayCommission.deals?.title || 'Unknown'}</p>
+                    <p><strong>Amount:</strong> ${Number(confirmPayCommission.sdr_payout_amount || confirmPayCommission.amount).toLocaleString()}</p>
+                  </div>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => confirmPayCommission && handleMarkAsPaid(confirmPayCommission.id)}>
+                Confirm Payment
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
     </DashboardLayout>
   );

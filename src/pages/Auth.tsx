@@ -56,7 +56,7 @@ type SignInFormData = z.infer<typeof signInSchema>;
 type AgencySignUpFormData = z.infer<typeof agencySignUpSchema>;
 type SDRSignUpFormData = z.infer<typeof sdrSignUpSchema>;
 
-type AuthMode = 'signin' | 'signup-select' | 'signup-agency' | 'signup-sdr';
+type AuthMode = 'signin' | 'signup-select' | 'signup-agency' | 'signup-sdr' | 'forgot-password';
 
 export default function Auth() {
   const [mode, setMode] = useState<AuthMode>('signin');
@@ -187,6 +187,111 @@ export default function Auth() {
     }
   };
 
+  const [resetEmail, setResetEmail] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetEmail.trim()) return;
+    
+    setIsResetting(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
+      redirectTo: `${window.location.origin}/auth`,
+    });
+    setIsResetting(false);
+
+    if (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message,
+      });
+    } else {
+      setResetSent(true);
+      toast({
+        title: 'Check your email',
+        description: 'We sent you a password reset link.',
+      });
+    }
+  };
+
+  const renderForgotPassword = () => (
+    <Card className="w-full max-w-md glass animate-fade-in relative">
+      <CardHeader className="text-center space-y-4">
+        <button
+          type="button"
+          onClick={() => { setMode('signin'); setResetSent(false); setResetEmail(''); }}
+          className="absolute left-4 top-4 p-2 rounded-lg hover:bg-muted transition-colors"
+        >
+          <ArrowLeft className="h-5 w-5 text-muted-foreground" />
+        </button>
+        <div className="flex justify-center">
+          <img src={logoFull} alt="Closer Claus" className="h-12 object-contain" />
+        </div>
+        <div>
+          <CardTitle className="text-2xl font-bold">Reset Password</CardTitle>
+          <CardDescription className="text-muted-foreground">
+            {resetSent 
+              ? 'Check your email for a reset link'
+              : 'Enter your email to receive a reset link'}
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {resetSent ? (
+          <div className="text-center space-y-4">
+            <div className="w-16 h-16 mx-auto rounded-full bg-success/10 flex items-center justify-center">
+              <svg className="w-8 h-8 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              We've sent a password reset link to <strong>{resetEmail}</strong>
+            </p>
+            <Button 
+              variant="outline" 
+              className="w-full"
+              onClick={() => { setMode('signin'); setResetSent(false); setResetEmail(''); }}
+            >
+              Back to Sign In
+            </Button>
+          </div>
+        ) : (
+          <form onSubmit={handleForgotPassword} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Email Address</label>
+              <Input
+                type="email"
+                placeholder="you@example.com"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+                className="bg-muted border-border"
+                required
+              />
+            </div>
+            <Button 
+              type="submit" 
+              className="w-full bg-primary hover:bg-primary/90" 
+              disabled={isResetting || !resetEmail.trim()}
+            >
+              {isResetting ? 'Sending...' : 'Send Reset Link'}
+            </Button>
+          </form>
+        )}
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => { setMode('signin'); setResetSent(false); setResetEmail(''); }}
+            className="text-sm text-muted-foreground hover:text-primary transition-colors"
+          >
+            Back to Sign In
+          </button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   const renderSignIn = () => (
     <Card className="w-full max-w-md glass animate-fade-in relative">
       <CardHeader className="text-center space-y-4">
@@ -248,7 +353,16 @@ export default function Auth() {
             </Button>
           </form>
         </Form>
-        <div className="mt-6 text-center">
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => setMode('forgot-password')}
+            className="text-sm text-primary hover:underline transition-colors"
+          >
+            Forgot your password?
+          </button>
+        </div>
+        <div className="mt-2 text-center">
           <button
             type="button"
             onClick={() => setMode('signup-select')}
@@ -577,6 +691,7 @@ export default function Auth() {
       {mode === 'signup-select' && renderSignUpSelect()}
       {mode === 'signup-agency' && renderAgencySignUp()}
       {mode === 'signup-sdr' && renderSDRSignUp()}
+      {mode === 'forgot-password' && renderForgotPassword()}
     </div>
   );
 }
