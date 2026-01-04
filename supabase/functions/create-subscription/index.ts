@@ -43,7 +43,7 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { workspace_id, tier, billing_period, success_url, cancel_url, coupon_code, discount_percentage, is_first_subscription } = await req.json();
+    const { workspace_id, tier, billing_period, success_url, cancel_url, coupon_code, discount_percentage } = await req.json();
 
     if (!workspace_id || !tier || !billing_period) {
       return new Response(
@@ -159,28 +159,6 @@ serve(async (req) => {
       console.log(`Created Stripe customer ${customerId}`);
     }
 
-    // Determine if we should charge 2 months upfront (first-time monthly subscribers only)
-    const shouldChargeTwoMonths = is_first_subscription && billing_period === 'monthly';
-    
-    // Build subscription_data with optional extra month charge
-    const subscriptionData: any = {};
-    
-    if (shouldChargeTwoMonths) {
-      // Add one-time charge for the additional month upfront
-      subscriptionData.add_invoice_items = [{
-        price_data: {
-          currency: 'usd',
-          product_data: {
-            name: `${tier.charAt(0).toUpperCase() + tier.slice(1)} Plan - First Month`,
-            description: 'Additional month included in 2-month minimum',
-          },
-          unit_amount: amount,
-        },
-        quantity: 1,
-      }];
-      console.log(`Adding extra month charge for first-time subscriber: $${amount / 100}`);
-    }
-
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
@@ -202,7 +180,6 @@ serve(async (req) => {
           quantity: 1,
         },
       ],
-      subscription_data: Object.keys(subscriptionData).length > 0 ? subscriptionData : undefined,
       success_url: success_url || `${req.headers.get('origin')}/dashboard?subscription=success`,
       cancel_url: cancel_url || `${req.headers.get('origin')}/subscription?cancelled=true`,
       metadata: {
@@ -212,7 +189,6 @@ serve(async (req) => {
         coupon_code: coupon_code || '',
         discount_percentage: validatedDiscount.toString(),
         coupon_id: couponId || '',
-        is_first_subscription: shouldChargeTwoMonths ? 'true' : 'false',
       },
     });
 

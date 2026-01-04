@@ -179,7 +179,7 @@ serve(async (req) => {
         }
 
         // Handle subscription checkout
-        const { workspace_id, tier, billing_period, coupon_code, coupon_id, discount_percentage, is_first_subscription } = metadata;
+        const { workspace_id, tier, billing_period, coupon_code, coupon_id, discount_percentage } = metadata;
 
         if (workspace_id && tier) {
           const limits = TIER_LIMITS[tier as keyof typeof TIER_LIMITS];
@@ -202,28 +202,19 @@ serve(async (req) => {
           nextResetDate.setMonth(nextResetDate.getMonth() + 1);
           nextResetDate.setDate(anchorDay);
 
-          // Build workspace update - include first_subscription_at if this is a first-time subscription
-          const workspaceUpdate: any = {
-            subscription_tier: tier,
-            subscription_status: 'active',
-            stripe_subscription_id: session.subscription,
-            stripe_customer_id: session.customer,
-            max_sdrs: limits?.max_sdrs || 1,
-            rake_percentage: limits?.rake_percentage || 2.0,
-            subscription_anchor_day: anchorDay,
-            is_locked: false,
-            updated_at: new Date().toISOString(),
-          };
-
-          // Set first_subscription_at if this is the first subscription
-          if (is_first_subscription === 'true') {
-            workspaceUpdate.first_subscription_at = new Date().toISOString();
-            console.log(`Recording first subscription for workspace ${workspace_id}`);
-          }
-
           await supabase
             .from('workspaces')
-            .update(workspaceUpdate)
+            .update({
+              subscription_tier: tier,
+              subscription_status: 'active',
+              stripe_subscription_id: session.subscription,
+              stripe_customer_id: session.customer,
+              max_sdrs: limits?.max_sdrs || 1,
+              rake_percentage: limits?.rake_percentage || 2.0,
+              subscription_anchor_day: anchorDay,
+              is_locked: false,
+              updated_at: new Date().toISOString(),
+            })
             .eq('id', workspace_id);
 
           console.log(`Activated ${tier} subscription for workspace ${workspace_id}`);

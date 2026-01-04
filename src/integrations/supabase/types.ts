@@ -1384,7 +1384,6 @@ export type Database = {
       workspaces: {
         Row: {
           created_at: string | null
-          first_subscription_at: string | null
           id: string
           is_locked: boolean | null
           max_sdrs: number | null
@@ -1402,7 +1401,6 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
-          first_subscription_at?: string | null
           id?: string
           is_locked?: boolean | null
           max_sdrs?: number | null
@@ -1420,7 +1418,6 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
-          first_subscription_at?: string | null
           id?: string
           is_locked?: boolean | null
           max_sdrs?: number | null
