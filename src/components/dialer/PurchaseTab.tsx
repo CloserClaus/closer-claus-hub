@@ -578,12 +578,12 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
                   />
                 </div>
                 <div className="w-full sm:w-40">
-                  <Select value={stateSearch} onValueChange={setStateSearch}>
+                  <Select value={stateSearch || "any"} onValueChange={(val) => setStateSearch(val === "any" ? "" : val)}>
                     <SelectTrigger>
                       <SelectValue placeholder="State (optional)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any State</SelectItem>
+                      <SelectItem value="any">Any State</SelectItem>
                       {US_STATES.map((state) => (
                         <SelectItem key={state.code} value={state.code}>
                           {state.name}
