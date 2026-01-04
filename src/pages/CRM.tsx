@@ -52,6 +52,8 @@ import { CRMFilters, FilterState } from '@/components/crm/CRMFilters';
 import { BulkActionsBar } from '@/components/crm/BulkActionsBar';
 import { TaskForm } from '@/components/crm/TaskForm';
 import { TaskList } from '@/components/crm/TaskList';
+import { CRMPagination } from '@/components/crm/Pagination';
+import { DeleteConfirmDialog } from '@/components/crm/DeleteConfirmDialog';
 
 interface Lead {
   id: string;
@@ -101,6 +103,8 @@ const DEFAULT_FILTERS: FilterState = {
   hasPhone: '',
 };
 
+const ITEMS_PER_PAGE = 12;
+
 export default function CRM() {
   const { user, userRole } = useAuth();
   const { currentWorkspace } = useWorkspace();
@@ -136,6 +140,16 @@ export default function CRM() {
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
   const [selectedDealIds, setSelectedDealIds] = useState<Set<string>>(new Set());
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+
+  // Pagination
+  const [leadsPage, setLeadsPage] = useState(1);
+  const [dealsPage, setDealsPage] = useState(1);
+
+  // Delete confirmation
+  const [deleteLeadConfirm, setDeleteLeadConfirm] = useState<{ open: boolean; leadId: string | null }>({ open: false, leadId: null });
+  const [deleteDealConfirm, setDeleteDealConfirm] = useState<{ open: boolean; dealId: string | null }>({ open: false, dealId: null });
+  const [bulkDeleteLeadsConfirm, setBulkDeleteLeadsConfirm] = useState(false);
+  const [bulkDeleteDealsConfirm, setBulkDeleteDealsConfirm] = useState(false);
 
   const isAgencyOwner = userRole === 'agency_owner';
 
@@ -273,7 +287,28 @@ export default function CRM() {
     return result;
   }, [deals, dealFilters]);
 
-  // Selection handlers
+  // Paginated data
+  const totalLeadsPages = Math.ceil(filteredLeads.length / ITEMS_PER_PAGE);
+  const totalDealsPages = Math.ceil(filteredDeals.length / ITEMS_PER_PAGE);
+
+  const paginatedLeads = useMemo(() => {
+    const start = (leadsPage - 1) * ITEMS_PER_PAGE;
+    return filteredLeads.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredLeads, leadsPage]);
+
+  const paginatedDeals = useMemo(() => {
+    const start = (dealsPage - 1) * ITEMS_PER_PAGE;
+    return filteredDeals.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredDeals, dealsPage]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setLeadsPage(1);
+  }, [searchQuery, leadFilters]);
+
+  useEffect(() => {
+    setDealsPage(1);
+  }, [dealFilters]);
   const toggleLeadSelection = (leadId: string) => {
     setSelectedLeadIds(prev => {
       const next = new Set(prev);
@@ -683,7 +718,7 @@ export default function CRM() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {filteredLeads.map(lead => (
+                  {paginatedLeads.map(lead => (
                     <Card
                       key={lead.id}
                       className={`glass hover:glow-sm transition-all cursor-pointer ${
@@ -738,7 +773,7 @@ export default function CRM() {
                                 <DropdownMenuItem
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleDeleteLead(lead.id);
+                                    setDeleteLeadConfirm({ open: true, leadId: lead.id });
                                   }}
                                   className="text-destructive"
                                 >
@@ -767,6 +802,11 @@ export default function CRM() {
                     </Card>
                   ))}
                 </div>
+                <CRMPagination
+                  currentPage={leadsPage}
+                  totalPages={totalLeadsPages}
+                  onPageChange={setLeadsPage}
+                />
               </>
             )}
           </TabsContent>
@@ -811,7 +851,7 @@ export default function CRM() {
                 </div>
 
                 <div className="space-y-3">
-                  {filteredDeals.map(deal => (
+                  {paginatedDeals.map(deal => (
                     <Card
                       key={deal.id}
                       className={`glass hover:glow-sm transition-all cursor-pointer ${
@@ -861,7 +901,7 @@ export default function CRM() {
                                 size="icon"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleDeleteDeal(deal.id);
+                                  setDeleteDealConfirm({ open: true, dealId: deal.id });
                                 }}
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
@@ -873,6 +913,11 @@ export default function CRM() {
                     </Card>
                   ))}
                 </div>
+                <CRMPagination
+                  currentPage={dealsPage}
+                  totalPages={totalDealsPages}
+                  onPageChange={setDealsPage}
+                />
               </>
             )}
           </TabsContent>
@@ -909,7 +954,7 @@ export default function CRM() {
           selectedCount={selectedLeadIds.size}
           type="leads"
           onClearSelection={() => setSelectedLeadIds(new Set())}
-          onBulkDelete={handleBulkDeleteLeads}
+          onBulkDelete={() => setBulkDeleteLeadsConfirm(true)}
           isAgencyOwner={isAgencyOwner}
           isProcessing={isBulkProcessing}
         />
@@ -918,7 +963,7 @@ export default function CRM() {
           selectedCount={selectedDealIds.size}
           type="deals"
           onClearSelection={() => setSelectedDealIds(new Set())}
-          onBulkDelete={handleBulkDeleteDeals}
+          onBulkDelete={() => setBulkDeleteDealsConfirm(true)}
           onBulkStageChange={handleBulkStageChange}
           isAgencyOwner={isAgencyOwner}
           isProcessing={isBulkProcessing}
@@ -1109,6 +1154,60 @@ export default function CRM() {
             />
           </DialogContent>
         </Dialog>
+
+        {/* Delete Lead Confirmation */}
+        <DeleteConfirmDialog
+          open={deleteLeadConfirm.open}
+          onOpenChange={(open) => setDeleteLeadConfirm({ open, leadId: open ? deleteLeadConfirm.leadId : null })}
+          title="Delete Lead"
+          description="Are you sure you want to delete this lead? This action cannot be undone."
+          onConfirm={() => {
+            if (deleteLeadConfirm.leadId) {
+              handleDeleteLead(deleteLeadConfirm.leadId);
+              setDeleteLeadConfirm({ open: false, leadId: null });
+            }
+          }}
+        />
+
+        {/* Delete Deal Confirmation */}
+        <DeleteConfirmDialog
+          open={deleteDealConfirm.open}
+          onOpenChange={(open) => setDeleteDealConfirm({ open, dealId: open ? deleteDealConfirm.dealId : null })}
+          title="Delete Deal"
+          description="Are you sure you want to delete this deal? This action cannot be undone."
+          onConfirm={() => {
+            if (deleteDealConfirm.dealId) {
+              handleDeleteDeal(deleteDealConfirm.dealId);
+              setDeleteDealConfirm({ open: false, dealId: null });
+            }
+          }}
+        />
+
+        {/* Bulk Delete Leads Confirmation */}
+        <DeleteConfirmDialog
+          open={bulkDeleteLeadsConfirm}
+          onOpenChange={setBulkDeleteLeadsConfirm}
+          title="Delete Selected Leads"
+          description={`Are you sure you want to delete ${selectedLeadIds.size} lead(s)? This action cannot be undone.`}
+          onConfirm={() => {
+            handleBulkDeleteLeads();
+            setBulkDeleteLeadsConfirm(false);
+          }}
+          isProcessing={isBulkProcessing}
+        />
+
+        {/* Bulk Delete Deals Confirmation */}
+        <DeleteConfirmDialog
+          open={bulkDeleteDealsConfirm}
+          onOpenChange={setBulkDeleteDealsConfirm}
+          title="Delete Selected Deals"
+          description={`Are you sure you want to delete ${selectedDealIds.size} deal(s)? This action cannot be undone.`}
+          onConfirm={() => {
+            handleBulkDeleteDeals();
+            setBulkDeleteDealsConfirm(false);
+          }}
+          isProcessing={isBulkProcessing}
+        />
       </main>
     </DashboardLayout>
   );

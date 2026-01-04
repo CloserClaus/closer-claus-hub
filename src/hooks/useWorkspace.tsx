@@ -1,9 +1,11 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { useState, useEffect, createContext, useContext, ReactNode, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 
 type SubscriptionTier = Database['public']['Enums']['subscription_tier'];
+
+const WORKSPACE_STORAGE_KEY = 'selected_workspace_id';
 
 interface Workspace {
   id: string;
@@ -30,19 +32,39 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefin
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { user, userRole } = useAuth();
-  const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
+  const [currentWorkspace, setCurrentWorkspaceState] = useState<Workspace | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Persist workspace selection to localStorage
+  const setCurrentWorkspace = useCallback((workspace: Workspace) => {
+    setCurrentWorkspaceState(workspace);
+    try {
+      localStorage.setItem(WORKSPACE_STORAGE_KEY, workspace.id);
+    } catch (e) {
+      console.warn('Failed to persist workspace to localStorage:', e);
+    }
+  }, []);
+
+  // Get saved workspace ID from localStorage
+  const getSavedWorkspaceId = useCallback((): string | null => {
+    try {
+      return localStorage.getItem(WORKSPACE_STORAGE_KEY);
+    } catch (e) {
+      return null;
+    }
+  }, []);
 
   const fetchWorkspaces = async () => {
     if (!user) {
       setWorkspaces([]);
-      setCurrentWorkspace(null);
+      setCurrentWorkspaceState(null);
       setLoading(false);
       return;
     }
 
     setLoading(true);
+    const savedWorkspaceId = getSavedWorkspaceId();
 
     try {
       if (userRole === 'agency_owner') {
@@ -54,12 +76,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
         const ws = (data || []) as Workspace[];
         setWorkspaces(ws);
-        if (ws.length > 0 && !currentWorkspace) {
-          setCurrentWorkspace(ws[0]);
-        } else if (ws.length > 0 && currentWorkspace) {
-          // Update current workspace with fresh data
-          const updated = ws.find(w => w.id === currentWorkspace.id);
-          if (updated) setCurrentWorkspace(updated);
+        
+        if (ws.length > 0) {
+          // Try to restore saved workspace, otherwise use first
+          const savedWorkspace = savedWorkspaceId ? ws.find(w => w.id === savedWorkspaceId) : null;
+          const workspaceToSet = savedWorkspace || ws[0];
+          
+          if (!currentWorkspace || currentWorkspace.id !== workspaceToSet.id) {
+            setCurrentWorkspaceState(workspaceToSet);
+          } else {
+            // Update current workspace with fresh data
+            const updated = ws.find(w => w.id === currentWorkspace.id);
+            if (updated) setCurrentWorkspaceState(updated);
+          }
         }
       } else if (userRole === 'sdr') {
         // SDRs see workspaces they're members of
@@ -78,16 +107,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
           const ws = (data || []) as Workspace[];
           setWorkspaces(ws);
+          
           if (ws.length > 0 && !currentWorkspace) {
-            setCurrentWorkspace(ws[0]);
+            // Try to restore saved workspace, otherwise use first
+            const savedWorkspace = savedWorkspaceId ? ws.find(w => w.id === savedWorkspaceId) : null;
+            setCurrentWorkspaceState(savedWorkspace || ws[0]);
           }
         } else {
           setWorkspaces([]);
-          setCurrentWorkspace(null);
+          setCurrentWorkspaceState(null);
         }
       } else {
         setWorkspaces([]);
-        setCurrentWorkspace(null);
+        setCurrentWorkspaceState(null);
       }
     } catch (error) {
       console.error('Error fetching workspaces:', error);

@@ -20,6 +20,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
+import { DeleteConfirmDialog } from '@/components/crm/DeleteConfirmDialog';
 
 interface Lead {
   id: string;
@@ -61,6 +62,7 @@ export function LeadDetailSidebar({
 }: LeadDetailSidebarProps) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [relatedDeals, setRelatedDeals] = useState<{ id: string; title: string; value: number; stage: string }[]>([]);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (lead && open) {
@@ -141,175 +143,188 @@ export function LeadDetailSidebar({
   if (!lead) return null;
 
   return (
-    <Sheet open={open} onOpenChange={onClose}>
-      <SheetContent className="w-full sm:max-w-lg p-0 bg-background border-l border-border">
-        <div className="flex flex-col h-full">
-          {/* Header */}
-          <SheetHeader className="p-6 pb-4 border-b border-border">
-            <div className="flex items-start justify-between">
-              <div>
-                <SheetTitle className="text-xl">
-                  {lead.first_name} {lead.last_name}
-                </SheetTitle>
-                {lead.company && (
-                  <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
-                    <Building2 className="h-3 w-3" />
-                    {lead.company}
-                    {lead.title && ` • ${lead.title}`}
-                  </p>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => onEdit(lead)}
-                >
-                  <Edit className="h-4 w-4" />
-                </Button>
-                {isAgencyOwner && (
+    <>
+      <Sheet open={open} onOpenChange={onClose}>
+        <SheetContent className="w-full sm:max-w-lg p-0 bg-background border-l border-border">
+          <div className="flex flex-col h-full">
+            {/* Header */}
+            <SheetHeader className="p-6 pb-4 border-b border-border">
+              <div className="flex items-start justify-between">
+                <div>
+                  <SheetTitle className="text-xl">
+                    {lead.first_name} {lead.last_name}
+                  </SheetTitle>
+                  {lead.company && (
+                    <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
+                      <Building2 className="h-3 w-3" />
+                      {lead.company}
+                      {lead.title && ` • ${lead.title}`}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2">
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => onDelete(lead.id)}
-                    className="text-destructive hover:text-destructive"
+                    onClick={() => onEdit(lead)}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Edit className="h-4 w-4" />
                   </Button>
-                )}
-              </div>
-            </div>
-          </SheetHeader>
-
-          <ScrollArea className="flex-1">
-            <div className="p-6 space-y-6">
-              {/* Contact Info */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                  Contact Information
-                </h3>
-                <div className="space-y-2">
-                  {lead.email && (
-                    <a
-                      href={`mailto:${lead.email}`}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                  {isAgencyOwner && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="text-destructive hover:text-destructive"
                     >
-                      <Mail className="h-4 w-4 text-primary" />
-                      <span className="text-sm">{lead.email}</span>
-                    </a>
-                  )}
-                  {lead.phone && (
-                    <a
-                      href={`tel:${lead.phone}`}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-                    >
-                      <Phone className="h-4 w-4 text-primary" />
-                      <span className="text-sm">{lead.phone}</span>
-                    </a>
-                  )}
-                  {!lead.email && !lead.phone && (
-                    <p className="text-sm text-muted-foreground italic">
-                      No contact information
-                    </p>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   )}
                 </div>
               </div>
+            </SheetHeader>
 
-              <Separator />
-
-              {/* Notes */}
-              {lead.notes && (
-                <>
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                      Notes
-                    </h3>
-                    <p className="text-sm whitespace-pre-wrap bg-muted/50 p-3 rounded-lg">
-                      {lead.notes}
-                    </p>
-                  </div>
-                  <Separator />
-                </>
-              )}
-
-              {/* Related Deals */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                  Related Deals ({relatedDeals.length})
-                </h3>
-                {relatedDeals.length > 0 ? (
+            <ScrollArea className="flex-1">
+              <div className="p-6 space-y-6">
+                {/* Contact Info */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                    Contact Information
+                  </h3>
                   <div className="space-y-2">
-                    {relatedDeals.map(deal => (
-                      <div
-                        key={deal.id}
-                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                    {lead.email && (
+                      <a
+                        href={`mailto:${lead.email}`}
+                        className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
                       >
-                        <div>
-                          <p className="text-sm font-medium">{deal.title}</p>
-                          <Badge variant="outline" className="text-xs capitalize mt-1">
-                            {deal.stage.replace('_', ' ')}
-                          </Badge>
-                        </div>
-                        <span className="text-sm font-semibold text-success">
-                          ${Number(deal.value).toLocaleString()}
-                        </span>
-                      </div>
-                    ))}
+                        <Mail className="h-4 w-4 text-primary" />
+                        <span className="text-sm">{lead.email}</span>
+                      </a>
+                    )}
+                    {lead.phone && (
+                      <a
+                        href={`tel:${lead.phone}`}
+                        className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                      >
+                        <Phone className="h-4 w-4 text-primary" />
+                        <span className="text-sm">{lead.phone}</span>
+                      </a>
+                    )}
+                    {!lead.email && !lead.phone && (
+                      <p className="text-sm text-muted-foreground italic">
+                        No contact information
+                      </p>
+                    )}
                   </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground italic">
-                    No deals associated with this lead
-                  </p>
+                </div>
+
+                <Separator />
+
+                {/* Notes */}
+                {lead.notes && (
+                  <>
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                        Notes
+                      </h3>
+                      <p className="text-sm whitespace-pre-wrap bg-muted/50 p-3 rounded-lg">
+                        {lead.notes}
+                      </p>
+                    </div>
+                    <Separator />
+                  </>
                 )}
-              </div>
 
-              <Separator />
-
-              {/* Activity Timeline */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                  Activity Timeline
-                </h3>
-                {activities.length > 0 ? (
-                  <div className="space-y-4">
-                    {activities.map((activity, index) => (
-                      <div key={activity.id} className="flex gap-3">
-                        <div className="flex flex-col items-center">
-                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-                            {getActivityIcon(activity.type)}
+                {/* Related Deals */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                    Related Deals ({relatedDeals.length})
+                  </h3>
+                  {relatedDeals.length > 0 ? (
+                    <div className="space-y-2">
+                      {relatedDeals.map(deal => (
+                        <div
+                          key={deal.id}
+                          className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                        >
+                          <div>
+                            <p className="text-sm font-medium">{deal.title}</p>
+                            <Badge variant="outline" className="text-xs capitalize mt-1">
+                              {deal.stage.replace('_', ' ')}
+                            </Badge>
                           </div>
-                          {index < activities.length - 1 && (
-                            <div className="w-px h-full bg-border mt-2" />
-                          )}
+                          <span className="text-sm font-semibold text-success">
+                            ${Number(deal.value).toLocaleString()}
+                          </span>
                         </div>
-                        <div className="flex-1 pb-4">
-                          <p className="text-sm">{activity.description}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {format(new Date(activity.created_at), 'MMM d, yyyy • h:mm a')}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground italic">
-                    No activity recorded
-                  </p>
-                )}
-              </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">
+                      No deals associated with this lead
+                    </p>
+                  )}
+                </div>
 
-              {/* Metadata */}
-              <Separator />
-              <div className="space-y-2 text-xs text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-3 w-3" />
-                  Created {format(new Date(lead.created_at), 'MMM d, yyyy')}
+                <Separator />
+
+                {/* Activity Timeline */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                    Activity Timeline
+                  </h3>
+                  {activities.length > 0 ? (
+                    <div className="space-y-4">
+                      {activities.map((activity, index) => (
+                        <div key={activity.id} className="flex gap-3">
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                              {getActivityIcon(activity.type)}
+                            </div>
+                            {index < activities.length - 1 && (
+                              <div className="w-px h-full bg-border mt-2" />
+                            )}
+                          </div>
+                          <div className="flex-1 pb-4">
+                            <p className="text-sm">{activity.description}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {format(new Date(activity.created_at), 'MMM d, yyyy • h:mm a')}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">
+                      No activity recorded
+                    </p>
+                  )}
+                </div>
+
+                {/* Metadata */}
+                <Separator />
+                <div className="space-y-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-3 w-3" />
+                    Created {format(new Date(lead.created_at), 'MMM d, yyyy')}
+                  </div>
                 </div>
               </div>
-            </div>
-          </ScrollArea>
-        </div>
-      </SheetContent>
-    </Sheet>
+            </ScrollArea>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <DeleteConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        title="Delete Lead"
+        description={`Are you sure you want to delete "${lead.first_name} ${lead.last_name}"? This action cannot be undone.`}
+        onConfirm={() => {
+          onDelete(lead.id);
+          setShowDeleteConfirm(false);
+        }}
+      />
+    </>
   );
 }
