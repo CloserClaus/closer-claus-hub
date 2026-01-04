@@ -287,6 +287,7 @@ serve(async (req) => {
 
         const numbersResult = await twilioFetch(`/AvailablePhoneNumbers/${country}/Local.json?${searchParams.toString()}`);
         
+        // Twilio local number: $1.15/mo + 20% margin = $1.38 (rounded to $1.40)
         const numbers = (numbersResult.available_phone_numbers || []).map((num: any) => ({
           phone_number: num.phone_number,
           friendly_name: num.friendly_name,
@@ -294,7 +295,7 @@ serve(async (req) => {
           region: num.region,
           country: num.iso_country,
           capabilities: num.capabilities,
-          monthly_cost: 1.15, // Twilio local number base price
+          monthly_cost: 1.40, // Twilio local number $1.15 + 20% margin
         }));
 
         return new Response(
@@ -322,7 +323,7 @@ serve(async (req) => {
         console.log('Number purchased:', purchaseResult);
 
         if (purchaseResult.sid) {
-          // Save to database
+          // Save to database with 20% margin on Twilio's $1.15/mo
           const { data: phoneNumber, error: saveError } = await supabase
             .from('workspace_phone_numbers')
             .insert({
@@ -331,7 +332,7 @@ serve(async (req) => {
               twilio_phone_sid: purchaseResult.sid,
               country_code: purchaseResult.phone_number.substring(0, 2),
               city: purchaseResult.locality || null,
-              monthly_cost: 1.15,
+              monthly_cost: 1.40, // Twilio $1.15 + 20% margin
               is_active: true,
             })
             .select()
@@ -482,12 +483,94 @@ serve(async (req) => {
 
         const { data: credits } = await supabase
           .from('workspace_credits')
-          .select('credits_balance')
+          .select('credits_balance, free_minutes_remaining, free_minutes_reset_at')
           .eq('workspace_id', workspace_id)
           .single();
 
+        // Check if free minutes need to be reset
+        if (credits?.free_minutes_reset_at) {
+          const resetDate = new Date(credits.free_minutes_reset_at);
+          if (resetDate <= new Date()) {
+            // Reset free minutes
+            const nextResetDate = new Date();
+            nextResetDate.setMonth(nextResetDate.getMonth() + 1);
+            nextResetDate.setDate(1);
+            nextResetDate.setHours(0, 0, 0, 0);
+            
+            await supabase
+              .from('workspace_credits')
+              .update({
+                free_minutes_remaining: 1000,
+                free_minutes_reset_at: nextResetDate.toISOString(),
+              })
+              .eq('workspace_id', workspace_id);
+            
+            return new Response(
+              JSON.stringify({ 
+                credits_balance: credits?.credits_balance || 0,
+                free_minutes_remaining: 1000,
+              }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+
         return new Response(
-          JSON.stringify({ credits_balance: credits?.credits_balance || 0 }),
+          JSON.stringify({ 
+            credits_balance: credits?.credits_balance || 0,
+            free_minutes_remaining: credits?.free_minutes_remaining ?? 1000,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'deduct_minutes': {
+        const { workspace_id, minutes_used } = params;
+
+        if (!workspace_id || !minutes_used) {
+          return new Response(
+            JSON.stringify({ error: 'Missing required parameters' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const { data: credits } = await supabase
+          .from('workspace_credits')
+          .select('credits_balance, free_minutes_remaining')
+          .eq('workspace_id', workspace_id)
+          .single();
+
+        let freeMinutes = credits?.free_minutes_remaining ?? 1000;
+        let paidMinutes = credits?.credits_balance || 0;
+        let remainingToDeduct = minutes_used;
+
+        // First deduct from free minutes
+        if (freeMinutes > 0) {
+          const deductFromFree = Math.min(freeMinutes, remainingToDeduct);
+          freeMinutes -= deductFromFree;
+          remainingToDeduct -= deductFromFree;
+        }
+
+        // Then deduct from paid minutes
+        if (remainingToDeduct > 0) {
+          paidMinutes = Math.max(0, paidMinutes - remainingToDeduct);
+        }
+
+        await supabase
+          .from('workspace_credits')
+          .update({
+            free_minutes_remaining: freeMinutes,
+            credits_balance: paidMinutes,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('workspace_id', workspace_id);
+
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            free_minutes_remaining: freeMinutes,
+            credits_balance: paidMinutes,
+          }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
