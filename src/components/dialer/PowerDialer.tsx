@@ -47,6 +47,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { CallScriptDisplay } from "./CallScriptDisplay";
 
 interface LeadDeal {
   id: string;
@@ -923,6 +924,17 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
                       </div>
                     </div>
                   </div>
+
+                  {/* Call Script Display - shows during active calls */}
+                  {(dialerStatus === 'in_call' || dialerStatus === 'dialing') && (
+                    <CallScriptDisplay 
+                      workspaceId={workspaceId} 
+                      lead={{
+                        ...currentLead,
+                        title: null // Power dialer leads don't have title in selection
+                      }} 
+                    />
+                  )}
 
                   {/* Call Status */}
                   {dialerStatus === 'in_call' && (
