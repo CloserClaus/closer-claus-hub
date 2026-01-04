@@ -10,6 +10,7 @@ import { useCallAnalytics, type CallPeriod } from '@/hooks/useCallAnalytics';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { EmailVerificationBanner } from '@/components/EmailVerificationBanner';
+import { SDRLevelProgress } from '@/components/SDRLevelProgress';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -217,6 +218,21 @@ export default function Dashboard() {
 
   const renderSDRDashboard = () => (
     <div className="space-y-4 md:space-y-6">
+      {/* SDR Level Progress Card */}
+      <Card className="glass border-primary/20 bg-gradient-to-r from-primary/5 via-transparent to-transparent">
+        <CardContent className="p-4 md:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-1">
+              <h3 className="font-semibold text-base md:text-lg mb-1">Your SDR Level</h3>
+              <p className="text-xs md:text-sm text-muted-foreground mb-3">
+                Close more deals to level up and reduce your platform fee
+              </p>
+              <SDRLevelProgress />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Main Stats Grid */}
       <div data-tour="stats-grid" className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-3">
         <StatCard title="Workspaces" description="Active agencies" value={String(sdrStats?.workspaces || 0)} subtext="Companies you work for" icon={Building2} />

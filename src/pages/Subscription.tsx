@@ -87,7 +87,7 @@ const plans: Plan[] = [
 export default function Subscription() {
   const [searchParams] = useSearchParams();
   const queryWorkspaceId = searchParams.get('workspace');
-  const { currentWorkspace } = useWorkspace();
+  const { currentWorkspace, loading: workspaceLoading } = useWorkspace();
   // Use query param workspace if provided, otherwise use current workspace from context
   const workspaceId = queryWorkspaceId || currentWorkspace?.id;
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
@@ -103,6 +103,33 @@ export default function Subscription() {
   const { hasActiveSubscription } = useWorkspace();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+    if (userRole !== 'agency_owner') {
+      navigate('/dashboard');
+    }
+  }, [user, userRole, navigate]);
+
+  // Show loading state while workspace context is loading
+  if (workspaceLoading && !queryWorkspaceId) {
+    return (
+      <DashboardLayout>
+        <DashboardHeader title="Subscription" />
+        <div className="p-4 md:p-6 lg:p-8">
+          <div className="max-w-5xl mx-auto flex items-center justify-center min-h-[400px]">
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-muted-foreground">Loading subscription options...</p>
+            </div>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   useEffect(() => {
     if (!user) {

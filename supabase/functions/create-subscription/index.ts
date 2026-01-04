@@ -192,36 +192,8 @@ serve(async (req) => {
       },
     });
 
-    // Record coupon redemption if applied
-    if (couponId && validatedDiscount > 0) {
-      await supabase
-        .from('coupon_redemptions')
-        .insert({
-          coupon_id: couponId,
-          workspace_id,
-          discount_applied: validatedDiscount,
-        });
-
-      // Increment coupon usage
-      await supabase
-        .from('coupons')
-        .update({ current_uses: supabase.rpc('increment_counter') })
-        .eq('id', couponId);
-      
-      // Use raw update instead
-      const { data: currentCoupon } = await supabase
-        .from('coupons')
-        .select('current_uses')
-        .eq('id', couponId)
-        .single();
-      
-      if (currentCoupon) {
-        await supabase
-          .from('coupons')
-          .update({ current_uses: (currentCoupon.current_uses || 0) + 1 })
-          .eq('id', couponId);
-      }
-    }
+    // NOTE: Coupon redemption is now handled in stripe-webhook after successful payment
+    // This prevents coupon consumption if checkout is abandoned
 
     console.log(`Created checkout session ${session.id} for workspace ${workspace_id} with ${validatedDiscount}% discount`);
 

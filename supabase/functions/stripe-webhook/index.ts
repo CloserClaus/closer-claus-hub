@@ -179,7 +179,7 @@ serve(async (req) => {
         }
 
         // Handle subscription checkout
-        const { workspace_id, tier, billing_period } = metadata;
+        const { workspace_id, tier, billing_period, coupon_code, coupon_id, discount_percentage } = metadata;
 
         if (workspace_id && tier) {
           const limits = TIER_LIMITS[tier as keyof typeof TIER_LIMITS];
@@ -247,6 +247,37 @@ serve(async (req) => {
               message: `Your ${tier.charAt(0).toUpperCase() + tier.slice(1)} plan is now active! You have 1000 free calling minutes this month.`,
               data: { tier, maxSdrs: limits?.max_sdrs },
             });
+          }
+
+          // Record coupon redemption after successful payment
+          if (coupon_id && discount_percentage) {
+            const discountValue = parseFloat(discount_percentage);
+            if (discountValue > 0) {
+              // Record redemption
+              await supabase
+                .from('coupon_redemptions')
+                .insert({
+                  coupon_id,
+                  workspace_id,
+                  discount_applied: discountValue,
+                });
+
+              // Increment coupon usage
+              const { data: currentCoupon } = await supabase
+                .from('coupons')
+                .select('current_uses')
+                .eq('id', coupon_id)
+                .single();
+
+              if (currentCoupon) {
+                await supabase
+                  .from('coupons')
+                  .update({ current_uses: (currentCoupon.current_uses || 0) + 1 })
+                  .eq('id', coupon_id);
+              }
+
+              console.log(`Recorded coupon redemption for ${coupon_code} after successful payment`);
+            }
           }
         }
         break;
