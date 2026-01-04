@@ -19,6 +19,11 @@ interface AgencyOwnerStats {
   callsLast7Days: number;
   meetingsThisWeek: number;
   closeRate: number;
+  // Call analytics
+  totalCallMinutes: number;
+  avgCallDuration: number;
+  callsToday: number;
+  connectedCallRate: number;
 }
 
 interface SDRStats {
@@ -28,6 +33,11 @@ interface SDRStats {
   callsLast7Days: number;
   closedDealsLast30Days: number;
   openJobs: number;
+  // Call analytics
+  totalCallMinutes: number;
+  avgCallDuration: number;
+  callsToday: number;
+  connectedCallRate: number;
 }
 
 export function usePlatformAdminStats() {
@@ -80,19 +90,27 @@ export function useAgencyOwnerStats() {
     queryKey: ['agency-owner-stats', currentWorkspace?.id],
     queryFn: async (): Promise<AgencyOwnerStats> => {
       if (!currentWorkspace) {
-        return { teamSize: 0, pipelineValue: 0, pendingCommissions: 0, callsLast7Days: 0, meetingsThisWeek: 0, closeRate: 0 };
+        return { 
+          teamSize: 0, pipelineValue: 0, pendingCommissions: 0, callsLast7Days: 0, 
+          meetingsThisWeek: 0, closeRate: 0, totalCallMinutes: 0, avgCallDuration: 0,
+          callsToday: 0, connectedCallRate: 0
+        };
       }
 
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
 
       const [
         teamResult,
         pipelineResult,
         commissionsResult,
-        callsResult,
+        callsLast7DaysResult,
         closedWonResult,
         totalDealsResult,
+        allCallsResult,
+        callsTodayResult,
       ] = await Promise.all([
         // Team size
         supabase.from('workspace_members').select('id', { count: 'exact', head: true })
@@ -106,7 +124,7 @@ export function useAgencyOwnerStats() {
         supabase.from('commissions').select('amount')
           .eq('workspace_id', currentWorkspace.id)
           .eq('status', 'pending'),
-        // Calls last 7 days
+        // Calls last 7 days (count)
         supabase.from('call_logs').select('id', { count: 'exact', head: true })
           .eq('workspace_id', currentWorkspace.id)
           .gte('created_at', sevenDaysAgo),
@@ -120,6 +138,14 @@ export function useAgencyOwnerStats() {
           .eq('workspace_id', currentWorkspace.id)
           .in('stage', ['closed_won', 'closed_lost'])
           .gte('closed_at', thirtyDaysAgo),
+        // All calls with duration for analytics (last 30 days)
+        supabase.from('call_logs').select('duration_seconds, call_status')
+          .eq('workspace_id', currentWorkspace.id)
+          .gte('created_at', thirtyDaysAgo),
+        // Calls today
+        supabase.from('call_logs').select('id', { count: 'exact', head: true })
+          .eq('workspace_id', currentWorkspace.id)
+          .gte('created_at', todayStart.toISOString()),
       ]);
 
       const pipelineValue = pipelineResult.data?.reduce((sum, d) => sum + (d.value || 0), 0) || 0;
@@ -128,13 +154,25 @@ export function useAgencyOwnerStats() {
       const totalClosed = totalDealsResult.count || 0;
       const closeRate = totalClosed > 0 ? Math.round((closedWon / totalClosed) * 100) : 0;
 
+      // Call analytics
+      const allCalls = allCallsResult.data || [];
+      const totalCallSeconds = allCalls.reduce((sum, c) => sum + (c.duration_seconds || 0), 0);
+      const totalCallMinutes = Math.round(totalCallSeconds / 60);
+      const avgCallDuration = allCalls.length > 0 ? Math.round(totalCallSeconds / allCalls.length) : 0;
+      const connectedCalls = allCalls.filter(c => c.call_status === 'completed').length;
+      const connectedCallRate = allCalls.length > 0 ? Math.round((connectedCalls / allCalls.length) * 100) : 0;
+
       return {
         teamSize: teamResult.count || 0,
         pipelineValue,
         pendingCommissions,
-        callsLast7Days: callsResult.count || 0,
-        meetingsThisWeek: 0, // Would need a meetings table
+        callsLast7Days: callsLast7DaysResult.count || 0,
+        meetingsThisWeek: 0,
         closeRate,
+        totalCallMinutes,
+        avgCallDuration,
+        callsToday: callsTodayResult.count || 0,
+        connectedCallRate,
       };
     },
     enabled: !!currentWorkspace,
@@ -148,19 +186,27 @@ export function useSDRStats() {
     queryKey: ['sdr-stats', user?.id],
     queryFn: async (): Promise<SDRStats> => {
       if (!user) {
-        return { workspaces: 0, totalEarnings: 0, pendingPayouts: 0, callsLast7Days: 0, closedDealsLast30Days: 0, openJobs: 0 };
+        return { 
+          workspaces: 0, totalEarnings: 0, pendingPayouts: 0, callsLast7Days: 0, 
+          closedDealsLast30Days: 0, openJobs: 0, totalCallMinutes: 0, avgCallDuration: 0,
+          callsToday: 0, connectedCallRate: 0
+        };
       }
 
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
 
       const [
         workspacesResult,
         paidCommissionsResult,
         pendingCommissionsResult,
-        callsResult,
+        callsLast7DaysResult,
         dealsResult,
         jobsResult,
+        allCallsResult,
+        callsTodayResult,
       ] = await Promise.all([
         // Active workspaces
         supabase.from('workspace_members').select('id', { count: 'exact', head: true })
@@ -170,7 +216,7 @@ export function useSDRStats() {
         supabase.from('commissions').select('amount').eq('sdr_id', user.id).eq('status', 'paid'),
         // Pending payouts
         supabase.from('commissions').select('amount').eq('sdr_id', user.id).eq('status', 'pending'),
-        // Calls last 7 days
+        // Calls last 7 days (count)
         supabase.from('call_logs').select('id', { count: 'exact', head: true })
           .eq('caller_id', user.id)
           .gte('created_at', sevenDaysAgo),
@@ -181,18 +227,38 @@ export function useSDRStats() {
           .gte('closed_at', thirtyDaysAgo),
         // Open jobs
         supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('is_active', true),
+        // All calls with duration for analytics (last 30 days)
+        supabase.from('call_logs').select('duration_seconds, call_status')
+          .eq('caller_id', user.id)
+          .gte('created_at', thirtyDaysAgo),
+        // Calls today
+        supabase.from('call_logs').select('id', { count: 'exact', head: true })
+          .eq('caller_id', user.id)
+          .gte('created_at', todayStart.toISOString()),
       ]);
 
       const totalEarnings = paidCommissionsResult.data?.reduce((sum, c) => sum + (c.amount || 0), 0) || 0;
       const pendingPayouts = pendingCommissionsResult.data?.reduce((sum, c) => sum + (c.amount || 0), 0) || 0;
 
+      // Call analytics
+      const allCalls = allCallsResult.data || [];
+      const totalCallSeconds = allCalls.reduce((sum, c) => sum + (c.duration_seconds || 0), 0);
+      const totalCallMinutes = Math.round(totalCallSeconds / 60);
+      const avgCallDuration = allCalls.length > 0 ? Math.round(totalCallSeconds / allCalls.length) : 0;
+      const connectedCalls = allCalls.filter(c => c.call_status === 'completed').length;
+      const connectedCallRate = allCalls.length > 0 ? Math.round((connectedCalls / allCalls.length) * 100) : 0;
+
       return {
         workspaces: workspacesResult.count || 0,
         totalEarnings,
         pendingPayouts,
-        callsLast7Days: callsResult.count || 0,
+        callsLast7Days: callsLast7DaysResult.count || 0,
         closedDealsLast30Days: dealsResult.count || 0,
         openJobs: jobsResult.count || 0,
+        totalCallMinutes,
+        avgCallDuration,
+        callsToday: callsTodayResult.count || 0,
+        connectedCallRate,
       };
     },
     enabled: !!user,

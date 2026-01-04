@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Building2, Headphones, Shield, TrendingUp, Users, DollarSign, Briefcase, CreditCard, Zap } from 'lucide-react';
+import { Building2, Headphones, Shield, TrendingUp, Users, DollarSign, Briefcase, CreditCard, Zap, Phone, Clock, PhoneCall, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { usePlatformAdminStats, useAgencyOwnerStats, useSDRStats } from '@/hooks/useDashboardStats';
@@ -104,6 +104,13 @@ export default function Dashboard() {
     </div>
   );
 
+  const formatDuration = (seconds: number) => {
+    if (seconds < 60) return `${seconds}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+  };
+
   const renderAgencyOwnerDashboard = () => (
     <div className="space-y-4 md:space-y-6">
       {currentWorkspace && !hasActiveSubscription && (
@@ -130,22 +137,43 @@ export default function Dashboard() {
         </Card>
       )}
 
+      {/* Main Stats Grid */}
       <div data-tour="stats-grid" className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-3">
         <StatCard title="Team" description="Your SDRs" value={String(agencyStats?.teamSize || 0)} subtext="Active members" icon={Users} />
         <StatCard title="Pipeline" description="Total deal value" value={formatCurrency(agencyStats?.pipelineValue || 0)} subtext="Active deals" icon={TrendingUp} variant="success" />
         <StatCard title="Commissions" description="Owed to SDRs" value={formatCurrency(agencyStats?.pendingCommissions || 0)} subtext="Pending payment" icon={DollarSign} variant="warning" />
-        <StatCard title="Calls" description="Team activity" value={String(agencyStats?.callsLast7Days || 0)} subtext="Last 7 days" icon={Headphones} />
-        <StatCard title="Meetings" description="Scheduled" value={String(agencyStats?.meetingsThisWeek || 0)} subtext="This week" icon={Building2} />
         <StatCard title="Close Rate" description="Win percentage" value={`${agencyStats?.closeRate || 0}%`} subtext="Last 30 days" icon={TrendingUp} variant="success" />
+        <StatCard title="Meetings" description="Scheduled" value={String(agencyStats?.meetingsThisWeek || 0)} subtext="This week" icon={Building2} />
+        <StatCard title="Calls Today" description="Team activity" value={String(agencyStats?.callsToday || 0)} subtext="Made today" icon={Phone} />
+      </div>
+
+      {/* Call Analytics Section */}
+      <div className="space-y-3">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <PhoneCall className="h-5 w-5 text-primary" />
+          Call Analytics
+        </h2>
+        <div className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-4">
+          <StatCard title="Calls (7d)" description="Team calls" value={String(agencyStats?.callsLast7Days || 0)} subtext="Last 7 days" icon={Headphones} />
+          <StatCard title="Total Minutes" description="Talk time" value={String(agencyStats?.totalCallMinutes || 0)} subtext="Last 30 days" icon={Clock} />
+          <StatCard title="Avg Duration" description="Per call" value={formatDuration(agencyStats?.avgCallDuration || 0)} subtext="Last 30 days" icon={Clock} />
+          <StatCard title="Connect Rate" description="Completed calls" value={`${agencyStats?.connectedCallRate || 0}%`} subtext="Last 30 days" icon={CheckCircle} variant="success" />
+        </div>
+      </div>
+
+      {/* Charts */}
+      <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2">
+        <AnalyticsChart title="Call Volume" description="Total vs Connected" data={agencyAnalytics?.callVolume || []} showSecondary primaryLabel="Total Calls" secondaryLabel="Connected" />
+        <AnalyticsChart title="Talk Time" description="Minutes per day" data={agencyAnalytics?.callDuration || []} color="hsl(var(--primary))" valueFormatter={(v) => `${v}m`} />
       </div>
 
       <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2">
         <AnalyticsChart title="Pipeline Value" description="Over time" data={agencyAnalytics?.pipelineValue || []} color="hsl(var(--success))" valueFormatter={formatCurrency} />
-        <AnalyticsChart title="Deals by Stage" data={agencyAnalytics?.dealsByStage || []} type="bar" />
+        <AnalyticsChart title="Call Outcomes" data={agencyAnalytics?.callStatusBreakdown || []} type="bar" />
       </div>
 
       <div className="grid gap-3 md:gap-4 grid-cols-1 lg:grid-cols-3">
-        <AnalyticsChart title="SDR Performance" description="Deals closed" data={agencyAnalytics?.sdrPerformance || []} type="bar" />
+        <AnalyticsChart title="SDR Performance" description="Deals & Calls" data={agencyAnalytics?.sdrPerformance || []} type="bar" showSecondary primaryLabel="Deals" secondaryLabel="Calls" />
         <div className="lg:col-span-2"><ActivityFeed activities={activities || []} /></div>
       </div>
     </div>
@@ -153,18 +181,39 @@ export default function Dashboard() {
 
   const renderSDRDashboard = () => (
     <div className="space-y-4 md:space-y-6">
+      {/* Main Stats Grid */}
       <div data-tour="stats-grid" className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-3">
         <StatCard title="Workspaces" description="Active agencies" value={String(sdrStats?.workspaces || 0)} subtext="Companies you work for" icon={Building2} />
         <StatCard title="Earnings" description="Total earned" value={formatCurrency(sdrStats?.totalEarnings || 0)} subtext="All time" icon={DollarSign} variant="success" />
         <StatCard title="Pending" description="Awaiting payout" value={formatCurrency(sdrStats?.pendingPayouts || 0)} subtext="To be paid" icon={DollarSign} variant="warning" />
-        <StatCard title="Calls" description="Your activity" value={String(sdrStats?.callsLast7Days || 0)} subtext="Last 7 days" icon={Headphones} />
         <StatCard title="Deals" description="Closed won" value={String(sdrStats?.closedDealsLast30Days || 0)} subtext="Last 30 days" icon={Briefcase} variant="success" />
         <StatCard title="Jobs" description="Open positions" value={String(sdrStats?.openJobs || 0)} subtext="Available now" icon={Briefcase} />
+        <StatCard title="Calls Today" description="Your activity" value={String(sdrStats?.callsToday || 0)} subtext="Made today" icon={Phone} />
+      </div>
+
+      {/* Call Analytics Section */}
+      <div className="space-y-3">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <PhoneCall className="h-5 w-5 text-primary" />
+          Call Analytics
+        </h2>
+        <div className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-4">
+          <StatCard title="Calls (7d)" description="Your calls" value={String(sdrStats?.callsLast7Days || 0)} subtext="Last 7 days" icon={Headphones} />
+          <StatCard title="Total Minutes" description="Talk time" value={String(sdrStats?.totalCallMinutes || 0)} subtext="Last 30 days" icon={Clock} />
+          <StatCard title="Avg Duration" description="Per call" value={formatDuration(sdrStats?.avgCallDuration || 0)} subtext="Last 30 days" icon={Clock} />
+          <StatCard title="Connect Rate" description="Completed calls" value={`${sdrStats?.connectedCallRate || 0}%`} subtext="Last 30 days" icon={CheckCircle} variant="success" />
+        </div>
+      </div>
+
+      {/* Charts */}
+      <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2">
+        <AnalyticsChart title="Call Volume" description="Total vs Connected" data={sdrAnalytics?.callVolume || []} showSecondary primaryLabel="Total Calls" secondaryLabel="Connected" />
+        <AnalyticsChart title="Talk Time" description="Minutes per day" data={sdrAnalytics?.callDuration || []} color="hsl(var(--primary))" valueFormatter={(v) => `${v}m`} />
       </div>
 
       <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2">
         <AnalyticsChart title="Your Earnings" description="Commission payouts" data={sdrAnalytics?.earnings || []} color="hsl(var(--success))" valueFormatter={formatCurrency} />
-        <AnalyticsChart title="Deals Closed" description="Over time" data={sdrAnalytics?.dealsClosed || []} type="bar" color="hsl(var(--primary))" />
+        <AnalyticsChart title="Call Outcomes" data={sdrAnalytics?.callStatusBreakdown || []} type="bar" />
       </div>
 
       <div className="grid gap-3 md:gap-4 grid-cols-1 lg:grid-cols-3">
