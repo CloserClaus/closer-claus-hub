@@ -545,7 +545,7 @@ export default function CRM() {
             </TabsList>
             
             {/* Desktop: Individual buttons */}
-            <div className="hidden md:flex flex-wrap gap-2">
+            <div className="hidden lg:flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setShowCSVUpload(true)}>
                 <Upload className="h-4 w-4 mr-2" />
                 Import CSV
@@ -564,8 +564,8 @@ export default function CRM() {
               </Button>
             </div>
             
-            {/* Mobile: Dropdown menu */}
-            <div className="md:hidden">
+            {/* Mobile/Tablet: Dropdown menu */}
+            <div className="lg:hidden">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button>
