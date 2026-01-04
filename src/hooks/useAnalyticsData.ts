@@ -127,7 +127,7 @@ export function useAgencyAnalytics(workspaceId: string | undefined, period: Peri
       // Get call logs
       const { data: calls } = await supabase
         .from('call_logs')
-        .select('created_at, duration_seconds, caller_id')
+        .select('created_at, duration_seconds, caller_id, call_status')
         .eq('workspace_id', workspaceId!)
         .gte('created_at', startDate.toISOString());
 
@@ -189,14 +189,61 @@ export function useAgencyAnalytics(workspaceId: string | undefined, period: Peri
         return { name: dateStr, value: paid };
       });
 
+      // Call volume over time
+      const callVolumeData = dateRange.map(date => {
+        const dateStr = format(date, 'MMM dd');
+        const dayStart = startOfDay(date);
+        const dayEnd = startOfDay(subDays(date, -1));
+        
+        const callCount = calls?.filter(c => {
+          const d = new Date(c.created_at);
+          return d >= dayStart && d < dayEnd;
+        }).length || 0;
+
+        const connectedCount = calls?.filter(c => {
+          const d = new Date(c.created_at);
+          return d >= dayStart && d < dayEnd && c.call_status === 'completed';
+        }).length || 0;
+
+        return { name: dateStr, value: callCount, value2: connectedCount };
+      });
+
+      // Call duration over time (in minutes)
+      const callDurationData = dateRange.map(date => {
+        const dateStr = format(date, 'MMM dd');
+        const dayStart = startOfDay(date);
+        const dayEnd = startOfDay(subDays(date, -1));
+        
+        const totalSeconds = calls?.filter(c => {
+          const d = new Date(c.created_at);
+          return d >= dayStart && d < dayEnd;
+        }).reduce((sum, c) => sum + (c.duration_seconds || 0), 0) || 0;
+
+        return { name: dateStr, value: Math.round(totalSeconds / 60) };
+      });
+
+      // Call status breakdown
+      const callStatusBreakdown = [
+        { name: 'Completed', value: calls?.filter(c => c.call_status === 'completed').length || 0 },
+        { name: 'No Answer', value: calls?.filter(c => c.call_status === 'no-answer').length || 0 },
+        { name: 'Busy', value: calls?.filter(c => c.call_status === 'busy').length || 0 },
+        { name: 'Failed', value: calls?.filter(c => c.call_status === 'failed').length || 0 },
+        { name: 'Other', value: calls?.filter(c => !['completed', 'no-answer', 'busy', 'failed'].includes(c.call_status)).length || 0 },
+      ].filter(item => item.value > 0);
+
       return {
         pipelineValue: pipelineData,
         dealsByStage,
         sdrPerformance,
         commissionPayouts: commissionData,
+        callVolume: callVolumeData,
+        callDuration: callDurationData,
+        callStatusBreakdown,
         totalPipelineValue: deals?.filter(d => d.stage !== 'closed_lost' && d.stage !== 'closed_won').reduce((sum, d) => sum + Number(d.value), 0) || 0,
         totalCalls: calls?.length || 0,
         totalDealsWon: deals?.filter(d => d.stage === 'closed_won').length || 0,
+        totalCallMinutes: Math.round((calls?.reduce((sum, c) => sum + (c.duration_seconds || 0), 0) || 0) / 60),
+        connectedCallRate: calls?.length ? Math.round((calls.filter(c => c.call_status === 'completed').length / calls.length) * 100) : 0,
       };
     }
   });
@@ -272,6 +319,48 @@ export function useSDRAnalytics(userId: string | undefined, workspaceId: string 
         { name: 'Overdue', value: commissions?.filter(c => c.status === 'overdue').length || 0 },
       ];
 
+      // Call volume over time
+      const callVolumeData = dateRange.map(date => {
+        const dateStr = format(date, 'MMM dd');
+        const dayStart = startOfDay(date);
+        const dayEnd = startOfDay(subDays(date, -1));
+        
+        const callCount = calls?.filter(c => {
+          const d = new Date(c.created_at);
+          return d >= dayStart && d < dayEnd;
+        }).length || 0;
+
+        const connectedCount = calls?.filter(c => {
+          const d = new Date(c.created_at);
+          return d >= dayStart && d < dayEnd && c.call_status === 'completed';
+        }).length || 0;
+
+        return { name: dateStr, value: callCount, value2: connectedCount };
+      });
+
+      // Call duration over time (in minutes)
+      const callDurationData = dateRange.map(date => {
+        const dateStr = format(date, 'MMM dd');
+        const dayStart = startOfDay(date);
+        const dayEnd = startOfDay(subDays(date, -1));
+        
+        const totalSeconds = calls?.filter(c => {
+          const d = new Date(c.created_at);
+          return d >= dayStart && d < dayEnd;
+        }).reduce((sum, c) => sum + (c.duration_seconds || 0), 0) || 0;
+
+        return { name: dateStr, value: Math.round(totalSeconds / 60) };
+      });
+
+      // Call status breakdown
+      const callStatusBreakdown = [
+        { name: 'Completed', value: calls?.filter(c => c.call_status === 'completed').length || 0 },
+        { name: 'No Answer', value: calls?.filter(c => c.call_status === 'no-answer').length || 0 },
+        { name: 'Busy', value: calls?.filter(c => c.call_status === 'busy').length || 0 },
+        { name: 'Failed', value: calls?.filter(c => c.call_status === 'failed').length || 0 },
+        { name: 'Other', value: calls?.filter(c => !['completed', 'no-answer', 'busy', 'failed'].includes(c.call_status)).length || 0 },
+      ].filter(item => item.value > 0);
+
       // Calculate call conversion (calls leading to deals)
       const totalCalls = calls?.length || 0;
       const connectedCalls = calls?.filter(c => c.call_status === 'completed').length || 0;
@@ -281,11 +370,15 @@ export function useSDRAnalytics(userId: string | undefined, workspaceId: string 
         earnings: earningsData,
         dealsClosed: dealsClosedData,
         commissionStatus,
+        callVolume: callVolumeData,
+        callDuration: callDurationData,
+        callStatusBreakdown,
         totalEarnings: commissions?.filter(c => c.status === 'paid').reduce((sum, c) => sum + Number(c.amount), 0) || 0,
         pendingEarnings: commissions?.filter(c => c.status === 'pending').reduce((sum, c) => sum + Number(c.amount), 0) || 0,
         callConversionRate: conversionRate,
         totalDeals: deals?.filter(d => d.stage === 'closed_won').length || 0,
         totalCalls,
+        totalCallMinutes: Math.round((calls?.reduce((sum, c) => sum + (c.duration_seconds || 0), 0) || 0) / 60),
       };
     }
   });
