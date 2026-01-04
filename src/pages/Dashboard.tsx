@@ -1,11 +1,12 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Building2, Headphones, Shield, TrendingUp, Users, DollarSign, Briefcase, CreditCard, Zap, Phone, Clock, PhoneCall, CheckCircle } from 'lucide-react';
+import { Building2, Headphones, Shield, TrendingUp, Users, DollarSign, Briefcase, CreditCard, Zap, Phone, Clock, PhoneCall, CheckCircle, Timer } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { usePlatformAdminStats, useAgencyOwnerStats, useSDRStats } from '@/hooks/useDashboardStats';
 import { usePlatformAnalytics, useAgencyAnalytics, useSDRAnalytics, useRecentActivity } from '@/hooks/useAnalyticsData';
+import { useCallAnalytics, type CallPeriod } from '@/hooks/useCallAnalytics';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { EmailVerificationBanner } from '@/components/EmailVerificationBanner';
@@ -15,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AnalyticsChart } from '@/components/analytics/AnalyticsChart';
 import { PeriodSelector } from '@/components/analytics/PeriodSelector';
+import { CallPeriodSelector } from '@/components/analytics/CallPeriodSelector';
 import { ActivityFeed } from '@/components/analytics/ActivityFeed';
 import { toast } from 'sonner';
 
@@ -64,6 +66,9 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [period, setPeriod] = useState<'7d' | '30d' | '90d'>('30d');
+  const [callPeriod, setCallPeriod] = useState<CallPeriod>('30d');
+  const [customStartDate, setCustomStartDate] = useState<Date | undefined>();
+  const [customEndDate, setCustomEndDate] = useState<Date | undefined>();
 
   const { data: platformStats } = usePlatformAdminStats();
   const { data: agencyStats } = useAgencyOwnerStats();
@@ -73,6 +78,28 @@ export default function Dashboard() {
   const { data: agencyAnalytics } = useAgencyAnalytics(currentWorkspace?.id, period);
   const { data: sdrAnalytics } = useSDRAnalytics(user?.id, currentWorkspace?.id, period);
   const { data: activities } = useRecentActivity(currentWorkspace?.id, user?.id, userRole);
+
+  // Call analytics with time filtering
+  const { data: agencyCallStats } = useCallAnalytics({
+    workspaceId: currentWorkspace?.id,
+    period: callPeriod,
+    customStartDate,
+    customEndDate,
+    isAgency: true,
+  });
+
+  const { data: sdrCallStats } = useCallAnalytics({
+    userId: user?.id,
+    period: callPeriod,
+    customStartDate,
+    customEndDate,
+    isAgency: false,
+  });
+
+  const handleCustomDateChange = (start: Date | undefined, end: Date | undefined) => {
+    setCustomStartDate(start);
+    setCustomEndDate(end);
+  };
 
   const handleRefresh = useCallback(async () => {
     await queryClient.invalidateQueries();
@@ -149,15 +176,24 @@ export default function Dashboard() {
 
       {/* Call Analytics Section */}
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <PhoneCall className="h-5 w-5 text-primary" />
-          Call Analytics
-        </h2>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <PhoneCall className="h-5 w-5 text-primary" />
+            Call Analytics
+          </h2>
+          <CallPeriodSelector
+            value={callPeriod}
+            onChange={setCallPeriod}
+            customStartDate={customStartDate}
+            customEndDate={customEndDate}
+            onCustomDateChange={handleCustomDateChange}
+          />
+        </div>
         <div className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-4">
-          <StatCard title="Calls (7d)" description="Team calls" value={String(agencyStats?.callsLast7Days || 0)} subtext="Last 7 days" icon={Headphones} />
-          <StatCard title="Total Minutes" description="Talk time" value={String(agencyStats?.totalCallMinutes || 0)} subtext="Last 30 days" icon={Clock} />
-          <StatCard title="Avg Duration" description="Per call" value={formatDuration(agencyStats?.avgCallDuration || 0)} subtext="Last 30 days" icon={Clock} />
-          <StatCard title="Connect Rate" description="Completed calls" value={`${agencyStats?.connectedCallRate || 0}%`} subtext="Last 30 days" icon={CheckCircle} variant="success" />
+          <StatCard title="Calls Made" description="Total calls" value={String(agencyCallStats?.totalCalls || 0)} subtext="In selected period" icon={Headphones} />
+          <StatCard title="Connect Rate" description="Pickup rate" value={`${agencyCallStats?.connectRate || 0}%`} subtext={`${agencyCallStats?.connectedCalls || 0} connected`} icon={CheckCircle} variant="success" />
+          <StatCard title="2+ Min Calls" description="Quality conversations" value={String(agencyCallStats?.callsOver2Min || 0)} subtext="Over 2 minutes" icon={Clock} />
+          <StatCard title="6+ Min Calls" description="Deep conversations" value={String(agencyCallStats?.callsOver6Min || 0)} subtext="Over 6 minutes" icon={Timer} variant="success" />
         </div>
       </div>
 
@@ -193,15 +229,24 @@ export default function Dashboard() {
 
       {/* Call Analytics Section */}
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <PhoneCall className="h-5 w-5 text-primary" />
-          Call Analytics
-        </h2>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <PhoneCall className="h-5 w-5 text-primary" />
+            Call Analytics
+          </h2>
+          <CallPeriodSelector
+            value={callPeriod}
+            onChange={setCallPeriod}
+            customStartDate={customStartDate}
+            customEndDate={customEndDate}
+            onCustomDateChange={handleCustomDateChange}
+          />
+        </div>
         <div className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-4">
-          <StatCard title="Calls (7d)" description="Your calls" value={String(sdrStats?.callsLast7Days || 0)} subtext="Last 7 days" icon={Headphones} />
-          <StatCard title="Total Minutes" description="Talk time" value={String(sdrStats?.totalCallMinutes || 0)} subtext="Last 30 days" icon={Clock} />
-          <StatCard title="Avg Duration" description="Per call" value={formatDuration(sdrStats?.avgCallDuration || 0)} subtext="Last 30 days" icon={Clock} />
-          <StatCard title="Connect Rate" description="Completed calls" value={`${sdrStats?.connectedCallRate || 0}%`} subtext="Last 30 days" icon={CheckCircle} variant="success" />
+          <StatCard title="Calls Made" description="Total calls" value={String(sdrCallStats?.totalCalls || 0)} subtext="In selected period" icon={Headphones} />
+          <StatCard title="Connect Rate" description="Pickup rate" value={`${sdrCallStats?.connectRate || 0}%`} subtext={`${sdrCallStats?.connectedCalls || 0} connected`} icon={CheckCircle} variant="success" />
+          <StatCard title="2+ Min Calls" description="Quality conversations" value={String(sdrCallStats?.callsOver2Min || 0)} subtext="Over 2 minutes" icon={Clock} />
+          <StatCard title="6+ Min Calls" description="Deep conversations" value={String(sdrCallStats?.callsOver6Min || 0)} subtext="Over 6 minutes" icon={Timer} variant="success" />
         </div>
       </div>
 
