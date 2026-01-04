@@ -99,10 +99,28 @@ export default function Subscription() {
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [isFirstSubscription, setIsFirstSubscription] = useState(true);
   const { user, userRole } = useAuth();
   const { hasActiveSubscription } = useWorkspace();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Check if this is first-time subscription
+  useEffect(() => {
+    const checkFirstSubscription = async () => {
+      if (!workspaceId) return;
+      
+      const { data } = await supabase
+        .from('workspaces')
+        .select('first_subscription_at')
+        .eq('id', workspaceId)
+        .single();
+      
+      setIsFirstSubscription(!data?.first_subscription_at);
+    };
+    
+    checkFirstSubscription();
+  }, [workspaceId]);
 
   useEffect(() => {
     if (!user) {
@@ -240,6 +258,7 @@ export default function Subscription() {
           billing_period: billingPeriod,
           coupon_code: appliedCoupon?.code || null,
           discount_percentage: appliedCoupon?.discount || null,
+          is_first_subscription: isFirstSubscription,
           success_url: `${window.location.origin}/dashboard?subscription=success`,
           cancel_url: `${window.location.origin}/subscription?workspace=${workspaceId}&cancelled=true`,
         },
@@ -392,15 +411,26 @@ export default function Subscription() {
                   <div className="text-center py-2">
                     {hasDiscount && (
                       <p className="text-sm text-muted-foreground line-through">
-                        ${price}
+                        ${billingPeriod === 'monthly' && isFirstSubscription ? price * 2 : price}
                       </p>
                     )}
                     <p className="text-3xl font-bold text-foreground">
-                      ${discountedPrice}
-                      <span className="text-sm font-normal text-muted-foreground">
-                        /{billingPeriod === 'monthly' ? 'mo' : 'yr'}
-                      </span>
+                      ${billingPeriod === 'monthly' && isFirstSubscription ? discountedPrice * 2 : discountedPrice}
+                      {billingPeriod === 'monthly' && isFirstSubscription ? (
+                        <span className="text-sm font-normal text-muted-foreground">
+                          {' '}for 2 months
+                        </span>
+                      ) : (
+                        <span className="text-sm font-normal text-muted-foreground">
+                          /{billingPeriod === 'monthly' ? 'mo' : 'yr'}
+                        </span>
+                      )}
                     </p>
+                    {billingPeriod === 'monthly' && isFirstSubscription && (
+                      <p className="text-xs text-primary mt-1">
+                        2-month minimum • Then ${discountedPrice}/mo
+                      </p>
+                    )}
                     {billingPeriod === 'yearly' && (
                       <p className="text-xs text-success mt-1">
                         2 months free
