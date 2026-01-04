@@ -43,11 +43,15 @@ import {
   Save,
   FolderOpen,
   Trash2,
-  BarChart3
+  BarChart3,
+  CalendarClock,
+  MessageSquarePlus,
+  X
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { CallScriptDisplay } from "./CallScriptDisplay";
+import { format, addHours, addDays, startOfTomorrow, setHours, setMinutes } from "date-fns";
 
 interface LeadDeal {
   id: string;
@@ -106,6 +110,36 @@ const RECENTLY_CALLED_OPTIONS = [
   { value: '7d', label: 'Not called in 7 days' },
 ];
 
+const QUICK_NOTES = [
+  { label: 'Left voicemail', text: 'Left voicemail with callback request.' },
+  { label: 'Not interested', text: 'Not interested at this time.' },
+  { label: 'Call back later', text: 'Requested callback at a later time.' },
+  { label: 'Wrong number', text: 'Wrong number / invalid contact.' },
+  { label: 'Interested', text: 'Showed interest, follow up needed.' },
+  { label: 'Meeting booked', text: 'Meeting scheduled successfully.' },
+  { label: 'Needs info', text: 'Requested more information via email.' },
+  { label: 'Gatekeeper', text: 'Spoke with gatekeeper, need to call back.' },
+];
+
+const CALLBACK_OPTIONS = [
+  { label: 'In 1 hour', getValue: () => addHours(new Date(), 1) },
+  { label: 'In 2 hours', getValue: () => addHours(new Date(), 2) },
+  { label: 'Tomorrow 9 AM', getValue: () => setMinutes(setHours(startOfTomorrow(), 9), 0) },
+  { label: 'Tomorrow 2 PM', getValue: () => setMinutes(setHours(startOfTomorrow(), 14), 0) },
+  { label: 'In 2 days', getValue: () => addDays(new Date(), 2) },
+  { label: 'In 1 week', getValue: () => addDays(new Date(), 7) },
+];
+
+interface ScheduledCallback {
+  id: string;
+  lead_id: string;
+  scheduled_for: string;
+  reason: string | null;
+  notes: string | null;
+  status: string;
+  lead?: Lead;
+}
+
 const getStageLabel = (stage: string): string => {
   const found = PIPELINE_STAGES.find(s => s.value === stage);
   return found ? found.label : stage;
@@ -135,6 +169,11 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const [sequenceName, setSequenceName] = useState('');
+  
+  // Callback scheduling state
+  const [scheduledCallbacks, setScheduledCallbacks] = useState<ScheduledCallback[]>([]);
+  const [showCallbackDialog, setShowCallbackDialog] = useState(false);
+  const [pendingOutcome, setPendingOutcome] = useState<CallOutcome | null>(null);
   
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -184,6 +223,37 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
     };
 
     fetchSequences();
+  }, [workspaceId]);
+
+  // Fetch scheduled callbacks
+  useEffect(() => {
+    const fetchCallbacks = async () => {
+      const { data, error } = await supabase
+        .from('scheduled_callbacks')
+        .select('id, lead_id, scheduled_for, reason, notes, status')
+        .eq('workspace_id', workspaceId)
+        .eq('status', 'pending')
+        .gte('scheduled_for', new Date().toISOString())
+        .order('scheduled_for', { ascending: true })
+        .limit(20);
+
+      if (!error && data) {
+        // Enrich with lead data
+        const leadIds = data.map(cb => cb.lead_id);
+        const { data: leadData } = await supabase
+          .from('leads')
+          .select('id, first_name, last_name, phone, company, email')
+          .in('id', leadIds);
+        
+        const leadsMap = new Map(leadData?.map(l => [l.id, l]) || []);
+        setScheduledCallbacks(data.map(cb => ({
+          ...cb,
+          lead: leadsMap.get(cb.lead_id)
+        })));
+      }
+    };
+
+    fetchCallbacks();
   }, [workspaceId]);
 
   // Filtered leads based on stage, search, and recently called
@@ -474,8 +544,15 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
     }
   }, [workspaceId]);
 
-  const handleCallOutcome = async (outcome: CallOutcome) => {
+  const handleCallOutcome = async (outcome: CallOutcome, skipCallbackPrompt = false) => {
     if (!currentLead) return;
+
+    // For non-connected outcomes, show callback scheduling dialog (unless skipping)
+    if (!skipCallbackPrompt && ['no_answer', 'busy', 'voicemail'].includes(outcome)) {
+      setPendingOutcome(outcome);
+      setShowCallbackDialog(true);
+      return;
+    }
 
     // End the call if still active
     if (dialerStatus === 'in_call' && currentTwilioCallSid) {
@@ -525,6 +602,95 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
     } else {
       setDialerStatus('dialing');
       dialNextLead(selectedLeads, nextIndex);
+    }
+  };
+
+  const scheduleCallback = async (scheduledFor: Date) => {
+    if (!currentLead || !user || !pendingOutcome) return;
+
+    const { error } = await supabase
+      .from('scheduled_callbacks')
+      .insert({
+        workspace_id: workspaceId,
+        lead_id: currentLead.id,
+        scheduled_for: scheduledFor.toISOString(),
+        reason: pendingOutcome,
+        notes: callNotes || null,
+        created_by: user.id,
+      });
+
+    if (error) {
+      console.error('Error scheduling callback:', error);
+      toast.error("Failed to schedule callback");
+    } else {
+      toast.success(`Callback scheduled for ${format(scheduledFor, 'MMM d, h:mm a')}`);
+      // Refresh callbacks list
+      const { data } = await supabase
+        .from('scheduled_callbacks')
+        .select('id, lead_id, scheduled_for, reason, notes, status')
+        .eq('workspace_id', workspaceId)
+        .eq('status', 'pending')
+        .gte('scheduled_for', new Date().toISOString())
+        .order('scheduled_for', { ascending: true })
+        .limit(20);
+      
+      if (data) {
+        const leadIds = data.map(cb => cb.lead_id);
+        const { data: leadData } = await supabase
+          .from('leads')
+          .select('id, first_name, last_name, phone, company, email')
+          .in('id', leadIds);
+        
+        const leadsMap = new Map(leadData?.map(l => [l.id, l]) || []);
+        setScheduledCallbacks(data.map(cb => ({
+          ...cb,
+          lead: leadsMap.get(cb.lead_id)
+        })));
+      }
+    }
+
+    // Continue with the outcome
+    setShowCallbackDialog(false);
+    handleCallOutcome(pendingOutcome, true);
+    setPendingOutcome(null);
+  };
+
+  const skipCallback = () => {
+    if (pendingOutcome) {
+      setShowCallbackDialog(false);
+      handleCallOutcome(pendingOutcome, true);
+      setPendingOutcome(null);
+    }
+  };
+
+  const insertQuickNote = (text: string) => {
+    setCallNotes(prev => prev ? `${prev}\n${text}` : text);
+  };
+
+  const dialScheduledCallback = (callback: ScheduledCallback) => {
+    if (!callback.lead) return;
+    
+    // Add the lead to selection and start dialing
+    setLeads(prev => prev.map(l => 
+      l.id === callback.lead_id ? { ...l, selected: true } : l
+    ));
+    
+    const leadToDial = leads.find(l => l.id === callback.lead_id);
+    if (leadToDial) {
+      setSelectedLeads([leadToDial]);
+      setCurrentIndex(0);
+      setDialedLeads([]);
+      setDialerStatus('dialing');
+      dialNextLead([leadToDial], 0);
+      
+      // Mark callback as completed
+      supabase
+        .from('scheduled_callbacks')
+        .update({ status: 'completed', completed_at: new Date().toISOString() })
+        .eq('id', callback.id)
+        .then(() => {
+          setScheduledCallbacks(prev => prev.filter(c => c.id !== callback.id));
+        });
     }
   };
 
@@ -638,6 +804,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
       </div>
 
       {dialerStatus === 'idle' ? (
+        <>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Lead Selection */}
           <Card>
@@ -888,6 +1055,56 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
             </CardContent>
           </Card>
         </div>
+
+        {/* Scheduled Callbacks - Idle State */}
+        {scheduledCallbacks.length > 0 && (
+          <Card className="border-primary/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CalendarClock className="h-5 w-5 text-primary" />
+                Scheduled Callbacks
+              </CardTitle>
+              <CardDescription>
+                {scheduledCallbacks.length} callback{scheduledCallbacks.length !== 1 ? 's' : ''} waiting
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {scheduledCallbacks.slice(0, 8).map((callback) => (
+                  <div
+                    key={callback.id}
+                    className="p-3 rounded-lg border border-border hover:border-primary/50 transition-colors bg-card"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-sm truncate">
+                        {callback.lead?.first_name} {callback.lead?.last_name}
+                      </span>
+                      <Badge variant="outline" className="text-xs capitalize shrink-0 ml-1">
+                        {callback.reason?.replace('_', ' ')}
+                      </Badge>
+                    </div>
+                    {callback.lead?.company && (
+                      <p className="text-xs text-muted-foreground truncate">{callback.lead.company}</p>
+                    )}
+                    <p className="text-xs text-primary font-medium mt-1 mb-2">
+                      {format(new Date(callback.scheduled_for), 'MMM d, h:mm a')}
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full h-7 text-xs"
+                      onClick={() => dialScheduledCallback(callback)}
+                    >
+                      <Phone className="h-3 w-3 mr-1" />
+                      Call Now
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        </>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Current Call */}
@@ -955,6 +1172,27 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
                       </div>
                     </div>
                   )}
+
+                  {/* Quick Notes */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <MessageSquarePlus className="h-4 w-4" />
+                      <span>Quick Notes</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {QUICK_NOTES.map((note) => (
+                        <Button
+                          key={note.label}
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => insertQuickNote(note.text)}
+                        >
+                          {note.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
 
                   {/* Notes */}
                   <Textarea
@@ -1157,8 +1395,95 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
               </ScrollArea>
             </CardContent>
           </Card>
+
+          {/* Scheduled Callbacks - show in sidebar when there are callbacks */}
+          {scheduledCallbacks.length > 0 && (
+            <Card className="lg:col-span-3">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <CalendarClock className="h-5 w-5 text-primary" />
+                  Scheduled Callbacks
+                </CardTitle>
+                <CardDescription>
+                  {scheduledCallbacks.length} upcoming callback{scheduledCallbacks.length !== 1 ? 's' : ''}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {scheduledCallbacks.slice(0, 6).map((callback) => (
+                    <div
+                      key={callback.id}
+                      className="p-3 rounded-lg border border-border hover:border-primary/50 transition-colors"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-sm truncate">
+                          {callback.lead?.first_name} {callback.lead?.last_name}
+                        </span>
+                        <Badge variant="outline" className="text-xs capitalize shrink-0">
+                          {callback.reason?.replace('_', ' ')}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        {format(new Date(callback.scheduled_for), 'MMM d, h:mm a')}
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full h-7 text-xs"
+                        onClick={() => dialScheduledCallback(callback)}
+                      >
+                        <Phone className="h-3 w-3 mr-1" />
+                        Call Now
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
+
+      {/* Callback Scheduling Dialog */}
+      <Dialog open={showCallbackDialog} onOpenChange={setShowCallbackDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarClock className="h-5 w-5 text-primary" />
+              Schedule Callback
+            </DialogTitle>
+            <DialogDescription>
+              {currentLead && (
+                <>Schedule a follow-up call with {currentLead.first_name} {currentLead.last_name}</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-2">
+              {CALLBACK_OPTIONS.map((option) => (
+                <Button
+                  key={option.label}
+                  variant="outline"
+                  className="justify-start"
+                  onClick={() => scheduleCallback(option.getValue())}
+                >
+                  <Clock className="h-4 w-4 mr-2" />
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="ghost"
+              onClick={skipCallback}
+              className="w-full sm:w-auto"
+            >
+              Skip & Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
