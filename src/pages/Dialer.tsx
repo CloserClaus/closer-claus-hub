@@ -3,6 +3,7 @@ import { useWorkspace } from "@/hooks/useWorkspace";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTwilioDevice } from "@/hooks/useTwilioDevice";
+import { useSearchParams } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,7 @@ interface PhoneNumber {
 export default function Dialer() {
   const { currentWorkspace, loading: workspaceLoading } = useWorkspace();
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -83,6 +85,33 @@ export default function Dialer() {
   const [workspacePhoneNumbers, setWorkspacePhoneNumbers] = useState<PhoneNumber[]>([]);
   const [selectedCallerId, setSelectedCallerId] = useState<string>("");
   const [isMuted, setIsMuted] = useState(false);
+  const [activeTab, setActiveTab] = useState("dialer");
+
+  // Handle purchase success/cancel from Stripe redirect
+  useEffect(() => {
+    const purchaseStatus = searchParams.get('purchase');
+    const purchaseType = searchParams.get('type');
+    
+    if (purchaseStatus === 'success') {
+      if (purchaseType === 'call_minutes') {
+        toast.success("Call minutes purchased successfully!");
+      } else if (purchaseType === 'phone_number') {
+        toast.success("Phone number purchased successfully!");
+      } else {
+        toast.success("Purchase completed successfully!");
+      }
+      // Refresh credits after successful purchase
+      fetchCredits();
+      fetchPhoneNumbers();
+      // Clear URL params
+      setSearchParams({});
+      setActiveTab("purchase");
+    } else if (purchaseStatus === 'cancelled') {
+      toast.info("Purchase was cancelled");
+      setSearchParams({});
+      setActiveTab("purchase");
+    }
+  }, [searchParams]);
 
   // Twilio Device Hook
   const {
@@ -397,7 +426,7 @@ export default function Dialer() {
           {(() => {
             const hasPowerDialer = currentWorkspace?.subscription_tier === 'beta' || currentWorkspace?.subscription_tier === 'alpha';
             return (
-              <Tabs defaultValue="dialer" className="space-y-6">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
                 <TabsList>
                   <TabsTrigger value="dialer" className="flex items-center gap-2">
                     <Phone className="h-4 w-4" />

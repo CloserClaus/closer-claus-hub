@@ -232,8 +232,9 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
         return;
       }
 
+      // Use Stripe checkout for phone number purchase
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twilio`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/purchase-dialer-credits`,
         {
           method: 'POST',
           headers: {
@@ -241,9 +242,11 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            action: 'purchase_number',
-            phone_number: number.number,
+            purchase_type: 'phone_number',
             workspace_id: workspaceId,
+            phone_number: number.number,
+            country_code: number.country,
+            number_type: number.type,
           }),
         }
       );
@@ -251,13 +254,19 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
       const data = await response.json();
 
       if (!response.ok) {
-        toast.error(data.error || "Failed to purchase number");
+        if (data.error === 'stripe_not_configured') {
+          toast.error("Payment system is not configured. Please contact support.");
+        } else {
+          toast.error(data.error || "Failed to initiate purchase");
+        }
         return;
       }
 
-      toast.success("Phone number purchased successfully!");
-      fetchPurchasedNumbers();
-      fetchAvailableNumbers();
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+      } else {
+        toast.error("Failed to create checkout session");
+      }
     } catch (error) {
       console.error('Error purchasing number:', error);
       toast.error("Failed to purchase number");
@@ -299,8 +308,9 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
         return;
       }
 
+      // Use Stripe checkout for minutes purchase
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twilio`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/purchase-dialer-credits`,
         {
           method: 'POST',
           headers: {
@@ -308,10 +318,10 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            action: 'purchase_credits',
+            purchase_type: 'call_minutes',
             workspace_id: workspaceId,
-            credits_amount: pkg.minutes,
-            price_paid: pkg.price,
+            minutes: pkg.minutes,
+            price: pkg.price,
           }),
         }
       );
@@ -319,12 +329,19 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
       const data = await response.json();
 
       if (!response.ok) {
-        toast.error(data.error || "Failed to purchase minutes");
+        if (data.error === 'stripe_not_configured') {
+          toast.error("Payment system is not configured. Please contact support.");
+        } else {
+          toast.error(data.error || "Failed to initiate purchase");
+        }
         return;
       }
 
-      toast.success(`${pkg.minutes} minutes added to your account!`);
-      onCreditsUpdated();
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+      } else {
+        toast.error("Failed to create checkout session");
+      }
     } catch (error) {
       console.error('Error purchasing minutes:', error);
       toast.error("Failed to purchase minutes");
