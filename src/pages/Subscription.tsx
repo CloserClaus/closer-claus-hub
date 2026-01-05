@@ -100,26 +100,32 @@ export default function Subscription() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [isFirstSubscription, setIsFirstSubscription] = useState(true);
+  const [currentTier, setCurrentTier] = useState<string | null>(null);
   const { user, userRole } = useAuth();
   const { hasActiveSubscription } = useWorkspace();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Check if this is first-time subscription
+  // Check if this is first-time subscription and get current tier
   useEffect(() => {
-    const checkFirstSubscription = async () => {
+    const checkSubscriptionStatus = async () => {
       if (!workspaceId) return;
       
       const { data } = await supabase
         .from('workspaces')
-        .select('first_subscription_at')
+        .select('first_subscription_at, subscription_tier, subscription_status')
         .eq('id', workspaceId)
         .single();
       
       setIsFirstSubscription(!data?.first_subscription_at);
+      if (data?.subscription_status === 'active' && data?.subscription_tier) {
+        setCurrentTier(data.subscription_tier);
+      } else {
+        setCurrentTier(null);
+      }
     };
     
-    checkFirstSubscription();
+    checkSubscriptionStatus();
   }, [workspaceId]);
 
   useEffect(() => {
@@ -372,15 +378,23 @@ export default function Subscription() {
             const price = billingPeriod === 'monthly' ? plan.monthlyPrice : plan.yearlyPrice;
             const discountedPrice = getDiscountedPrice(price);
             const hasDiscount = appliedCoupon && discountedPrice < price;
+            const isCurrentPlan = currentTier === plan.id;
 
             return (
               <Card
                 key={plan.id}
                 className={`relative bg-card border-border transition-all duration-200 hover:border-primary/50 ${
                   plan.popular ? 'ring-2 ring-primary border-primary' : ''
-                }`}
+                } ${isCurrentPlan ? 'ring-2 ring-success border-success' : ''}`}
               >
-                {plan.popular && (
+                {isCurrentPlan && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                    <Badge className="bg-success text-success-foreground px-3">
+                      Current Plan
+                    </Badge>
+                  </div>
+                )}
+                {plan.popular && !isCurrentPlan && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                     <Badge className="bg-primary text-primary-foreground px-3">
                       Most Popular
@@ -388,8 +402,10 @@ export default function Subscription() {
                   </div>
                 )}
                 <CardHeader className="text-center pt-8 pb-4">
-                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                    <Icon className="w-6 h-6 text-primary" />
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-4 ${
+                    isCurrentPlan ? 'bg-success/10' : 'bg-primary/10'
+                  }`}>
+                    <Icon className={`w-6 h-6 ${isCurrentPlan ? 'text-success' : 'text-primary'}`} />
                   </div>
                   <CardTitle className="text-xl font-semibold">{plan.name}</CardTitle>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -449,21 +465,36 @@ export default function Subscription() {
                   </ul>
 
                   {/* CTA Button */}
-                  <Button
-                    className="w-full mt-4"
-                    variant={plan.popular ? 'default' : 'outline'}
-                    onClick={() => handleSelectPlan(plan.id)}
-                    disabled={isProcessing}
-                  >
-                    {isProcessing && selectedPlan === plan.id ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      `Get Started`
-                    )}
-                  </Button>
+                  {isCurrentPlan ? (
+                    <Button
+                      className="w-full mt-4"
+                      variant="outline"
+                      disabled
+                    >
+                      <Check className="w-4 h-4 mr-2" />
+                      Active
+                    </Button>
+                  ) : (
+                    <Button
+                      className="w-full mt-4"
+                      variant={plan.popular ? 'default' : 'outline'}
+                      onClick={() => handleSelectPlan(plan.id)}
+                      disabled={isProcessing}
+                    >
+                      {isProcessing && selectedPlan === plan.id ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Processing...
+                        </>
+                      ) : currentTier ? (
+                        plans.findIndex(p => p.id === plan.id) > plans.findIndex(p => p.id === currentTier) 
+                          ? 'Upgrade' 
+                          : 'Downgrade'
+                      ) : (
+                        'Get Started'
+                      )}
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             );
