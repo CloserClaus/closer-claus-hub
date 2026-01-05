@@ -155,14 +155,14 @@ export function CRMFilters({ type, filters, onFiltersChange }: CRMFiltersProps) 
               <div className="space-y-2">
                 <label className="text-sm text-muted-foreground">Stage</label>
                 <Select
-                  value={filters.stage}
-                  onValueChange={(value) => handleFilterChange('stage', value)}
+                  value={filters.stage || "all"}
+                  onValueChange={(value) => handleFilterChange('stage', value === "all" ? "" : value)}
                 >
                   <SelectTrigger className="bg-muted border-border">
                     <SelectValue placeholder="All stages" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All stages</SelectItem>
+                    <SelectItem value="all">All stages</SelectItem>
                     {PIPELINE_STAGES.map(stage => (
                       <SelectItem key={stage.value} value={stage.value}>
                         {stage.label}
@@ -176,14 +176,14 @@ export function CRMFilters({ type, filters, onFiltersChange }: CRMFiltersProps) 
             <div className="space-y-2">
               <label className="text-sm text-muted-foreground">Date Range</label>
               <Select
-                value={filters.dateRange}
-                onValueChange={(value) => handleFilterChange('dateRange', value)}
+                value={filters.dateRange || "any"}
+                onValueChange={(value) => handleFilterChange('dateRange', value === "any" ? "" : value)}
               >
                 <SelectTrigger className="bg-muted border-border">
                   <SelectValue placeholder="Any time" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any time</SelectItem>
+                  <SelectItem value="any">Any time</SelectItem>
                   <SelectItem value="today">Today</SelectItem>
                   <SelectItem value="week">This week</SelectItem>
                   <SelectItem value="month">This month</SelectItem>
@@ -219,14 +219,14 @@ export function CRMFilters({ type, filters, onFiltersChange }: CRMFiltersProps) 
                 <div className="space-y-2">
                   <label className="text-sm text-muted-foreground">Has Email</label>
                   <Select
-                    value={filters.hasEmail}
-                    onValueChange={(value) => handleFilterChange('hasEmail', value)}
+                    value={filters.hasEmail || "any"}
+                    onValueChange={(value) => handleFilterChange('hasEmail', value === "any" ? "" : value)}
                   >
                     <SelectTrigger className="bg-muted border-border">
                       <SelectValue placeholder="Any" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any</SelectItem>
+                      <SelectItem value="any">Any</SelectItem>
                       <SelectItem value="yes">Has email</SelectItem>
                       <SelectItem value="no">No email</SelectItem>
                     </SelectContent>
@@ -236,14 +236,14 @@ export function CRMFilters({ type, filters, onFiltersChange }: CRMFiltersProps) 
                 <div className="space-y-2">
                   <label className="text-sm text-muted-foreground">Has Phone</label>
                   <Select
-                    value={filters.hasPhone}
-                    onValueChange={(value) => handleFilterChange('hasPhone', value)}
+                    value={filters.hasPhone || "any"}
+                    onValueChange={(value) => handleFilterChange('hasPhone', value === "any" ? "" : value)}
                   >
                     <SelectTrigger className="bg-muted border-border">
                       <SelectValue placeholder="Any" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any</SelectItem>
+                      <SelectItem value="any">Any</SelectItem>
                       <SelectItem value="yes">Has phone</SelectItem>
                       <SelectItem value="no">No phone</SelectItem>
                     </SelectContent>

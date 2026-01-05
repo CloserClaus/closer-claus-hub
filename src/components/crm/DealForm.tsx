@@ -227,14 +227,14 @@ export function DealForm({ deal, workspaceId, leads, onSuccess, onCancel }: Deal
           render={({ field }) => (
             <FormItem>
               <FormLabel>Associated Lead</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={(value) => field.onChange(value === "none" ? "" : value)} defaultValue={field.value || "none"}>
                 <FormControl>
                   <SelectTrigger className="bg-muted border-border">
                     <SelectValue placeholder="Select a lead (optional)" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="">No lead</SelectItem>
+                  <SelectItem value="none">No lead</SelectItem>
                   {leads.map(lead => (
                     <SelectItem key={lead.id} value={lead.id}>
                       {lead.first_name} {lead.last_name}
