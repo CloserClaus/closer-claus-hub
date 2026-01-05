@@ -861,22 +861,30 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* Caller ID Selection */}
-          {phoneNumbers.length > 0 && dialerStatus === 'idle' && (
+          {/* Caller ID Selection - Always visible when idle */}
+          {dialerStatus === 'idle' && (
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium whitespace-nowrap">Caller ID:</label>
-              <Select value={selectedCallerId} onValueChange={onCallerIdChange}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Select number" />
-                </SelectTrigger>
-                <SelectContent>
-                  {phoneNumbers.map((pn) => (
-                    <SelectItem key={pn.id} value={pn.phone_number}>
-                      {pn.phone_number}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {phoneNumbers.length > 0 ? (
+                <Select value={selectedCallerId} onValueChange={onCallerIdChange}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Select number" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {phoneNumbers.map((pn) => (
+                      <SelectItem key={pn.id} value={pn.phone_number}>
+                        {pn.phone_number}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select disabled>
+                  <SelectTrigger className="w-[180px] text-muted-foreground">
+                    <SelectValue placeholder="No numbers - Add one" />
+                  </SelectTrigger>
+                </Select>
+              )}
             </div>
           )}
           {dialerStatus !== 'idle' && (
