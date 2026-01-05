@@ -657,10 +657,10 @@ serve(async (req) => {
           .eq('id', contract.deal_id)
           .single();
 
-        // Get workspace rake percentage
+        // Get workspace rake percentage and owner_id
         const { data: workspace } = await supabase
           .from('workspaces')
-          .select('rake_percentage')
+          .select('rake_percentage, owner_id')
           .eq('id', contract.workspace_id)
           .single();
 
@@ -700,104 +700,188 @@ serve(async (req) => {
         // Create commission record and notifications
         if (deal && workspace) {
           const rakePercentage = workspace.rake_percentage || 2;
-          const commissionAmount = (deal.value * commissionPercentage) / 100;
-          const rakeAmount = (commissionAmount * rakePercentage) / 100;
-          const netCommission = commissionAmount - rakeAmount;
+          
+          // Check if deal was closed by agency owner (no SDR involved)
+          const isAgencyClosed = deal.assigned_to === workspace.owner_id;
+          
+          // Calculate agency rake from deal value (always charged)
+          const agencyRakeAmount = (deal.value * rakePercentage) / 100;
+          
+          if (isAgencyClosed) {
+            // Agency closed deal themselves - no SDR commission, just track the rake
+            console.log('Agency closed deal - no SDR commission created, agency rake:', agencyRakeAmount);
+            
+            // Create a record for the agency rake only (no SDR payout)
+            const { error: commissionError } = await supabase
+              .from('commissions')
+              .insert({
+                workspace_id: contract.workspace_id,
+                deal_id: contract.deal_id,
+                sdr_id: deal.assigned_to, // Agency owner
+                amount: 0, // No SDR commission
+                rake_amount: agencyRakeAmount,
+                agency_rake_amount: agencyRakeAmount,
+                platform_cut_percentage: 0,
+                platform_cut_amount: 0,
+                sdr_payout_amount: 0,
+                status: 'pending',
+              });
 
-          const { error: commissionError } = await supabase
-            .from('commissions')
-            .insert({
-              workspace_id: contract.workspace_id,
-              deal_id: contract.deal_id,
-              sdr_id: deal.assigned_to,
-              amount: netCommission,
-              rake_amount: rakeAmount,
-              status: 'pending',
-            });
+            if (commissionError) {
+              console.error('Error creating agency rake record:', commissionError);
+            } else {
+              // Notify agency owner about the rake
+              const { data: dealDetails } = await supabase
+                .from('deals')
+                .select('title')
+                .eq('id', contract.deal_id)
+                .single();
 
-          if (commissionError) {
-            console.error('Error creating commission:', commissionError);
-          } else {
-            const { data: workspaceDetails } = await supabase
-              .from('workspaces')
-              .select('name, owner_id')
-              .eq('id', contract.workspace_id)
-              .single();
-
-            const { data: ownerProfile } = await supabase
-              .from('profiles')
-              .select('email, full_name')
-              .eq('id', workspaceDetails?.owner_id)
-              .single();
-
-            const { data: sdrProfile } = await supabase
-              .from('profiles')
-              .select('full_name')
-              .eq('id', deal.assigned_to)
-              .single();
-
-            const { data: dealDetails } = await supabase
-              .from('deals')
-              .select('title')
-              .eq('id', contract.deal_id)
-              .single();
-
-            const totalAmount = commissionAmount;
-
-            if (workspaceDetails?.owner_id) {
               const { error: notifError } = await supabase
                 .from('notifications')
                 .insert({
-                  user_id: workspaceDetails.owner_id,
+                  user_id: workspace.owner_id,
                   workspace_id: contract.workspace_id,
                   type: 'commission_created',
-                  title: 'New Commission Due',
-                  message: `A $${totalAmount.toFixed(2)} commission is due for "${dealDetails?.title || 'Closed Deal'}" closed by ${sdrProfile?.full_name || 'SDR'}. Payment due within 7 days.`,
+                  title: 'Deal Closed - Platform Fee Due',
+                  message: `Platform fee of $${agencyRakeAmount.toFixed(2)} is due for "${dealDetails?.title || 'Closed Deal'}". Payment due within 7 days.`,
                   data: {
                     deal_id: contract.deal_id,
-                    commission_amount: totalAmount,
-                    sdr_name: sdrProfile?.full_name,
+                    agency_rake_amount: agencyRakeAmount,
                   },
                 });
-              if (notifError) console.error('Error creating commission notification:', notifError);
+              if (notifError) console.error('Error creating rake notification:', notifError);
             }
+          } else {
+            // SDR closed the deal - full commission calculation
+            const sdrGrossCommission = (deal.value * commissionPercentage) / 100;
+            
+            // Get SDR level for platform cut calculation
+            const { data: sdrProfile } = await supabase
+              .from('profiles')
+              .select('sdr_level, full_name, email')
+              .eq('id', deal.assigned_to)
+              .single();
 
-            const { error: sdrNotifError } = await supabase
-              .from('notifications')
+            const sdrLevel = sdrProfile?.sdr_level || 1;
+            
+            // Platform cut from SDR based on level: 5% L1, 4% L2, 2.5% L3
+            let platformCutPercentage = 5; // Level 1
+            if (sdrLevel === 2) platformCutPercentage = 4;
+            if (sdrLevel >= 3) platformCutPercentage = 2.5;
+
+            const platformCutAmount = (sdrGrossCommission * platformCutPercentage) / 100;
+            const sdrPayoutAmount = sdrGrossCommission - platformCutAmount;
+
+            console.log('Commission calculation:', {
+              dealValue: deal.value,
+              commissionPercentage,
+              sdrGrossCommission,
+              sdrLevel,
+              platformCutPercentage,
+              platformCutAmount,
+              sdrPayoutAmount,
+              agencyRakeAmount,
+            });
+
+            const { error: commissionError } = await supabase
+              .from('commissions')
               .insert({
-                user_id: deal.assigned_to,
                 workspace_id: contract.workspace_id,
-                type: 'commission_created',
-                title: 'Commission Earned!',
-                message: `You earned a $${commissionAmount.toFixed(2)} commission for closing "${dealDetails?.title || 'Deal'}". Payout pending agency payment.`,
-                data: {
-                  deal_id: contract.deal_id,
-                  commission_amount: commissionAmount,
-                },
+                deal_id: contract.deal_id,
+                sdr_id: deal.assigned_to,
+                amount: sdrGrossCommission,
+                rake_amount: agencyRakeAmount,
+                agency_rake_amount: agencyRakeAmount,
+                platform_cut_percentage: platformCutPercentage,
+                platform_cut_amount: platformCutAmount,
+                sdr_payout_amount: sdrPayoutAmount,
+                status: 'pending',
               });
-            if (sdrNotifError) console.error('Error creating SDR commission notification:', sdrNotifError);
 
-            if (ownerProfile?.email) {
-              try {
-                await fetch(`${supabaseUrl}/functions/v1/send-commission-email`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${supabaseKey}`,
-                  },
-                  body: JSON.stringify({
+            if (commissionError) {
+              console.error('Error creating commission:', commissionError);
+            } else {
+              const { data: workspaceDetails } = await supabase
+                .from('workspaces')
+                .select('name, owner_id')
+                .eq('id', contract.workspace_id)
+                .single();
+
+              const { data: ownerProfile } = await supabase
+                .from('profiles')
+                .select('email, full_name')
+                .eq('id', workspaceDetails?.owner_id)
+                .single();
+
+              const { data: dealDetails } = await supabase
+                .from('deals')
+                .select('title')
+                .eq('id', contract.deal_id)
+                .single();
+
+              // Total agency owes = SDR commission + agency rake
+              const totalAgencyOwes = sdrGrossCommission + agencyRakeAmount;
+
+              if (workspaceDetails?.owner_id) {
+                const { error: notifError } = await supabase
+                  .from('notifications')
+                  .insert({
+                    user_id: workspaceDetails.owner_id,
+                    workspace_id: contract.workspace_id,
                     type: 'commission_created',
-                    to_email: ownerProfile.email,
-                    to_name: ownerProfile.full_name || 'Agency Owner',
-                    workspace_name: workspaceDetails?.name || 'Your Agency',
-                    amount: totalAmount,
-                    deal_title: dealDetails?.title || 'Closed Deal',
-                    sdr_name: sdrProfile?.full_name || 'SDR',
-                  }),
+                    title: 'New Commission Due',
+                    message: `Commission of $${sdrGrossCommission.toFixed(2)} plus $${agencyRakeAmount.toFixed(2)} platform fee (total: $${totalAgencyOwes.toFixed(2)}) is due for "${dealDetails?.title || 'Closed Deal'}" closed by ${sdrProfile?.full_name || 'SDR'}. Payment due within 7 days.`,
+                    data: {
+                      deal_id: contract.deal_id,
+                      commission_amount: sdrGrossCommission,
+                      agency_rake_amount: agencyRakeAmount,
+                      total_due: totalAgencyOwes,
+                      sdr_name: sdrProfile?.full_name,
+                    },
+                  });
+                if (notifError) console.error('Error creating commission notification:', notifError);
+              }
+
+              const { error: sdrNotifError } = await supabase
+                .from('notifications')
+                .insert({
+                  user_id: deal.assigned_to,
+                  workspace_id: contract.workspace_id,
+                  type: 'commission_created',
+                  title: 'Commission Earned!',
+                  message: `You earned a $${sdrGrossCommission.toFixed(2)} commission for closing "${dealDetails?.title || 'Deal'}". After ${platformCutPercentage}% platform fee, your payout will be $${sdrPayoutAmount.toFixed(2)}.`,
+                  data: {
+                    deal_id: contract.deal_id,
+                    gross_commission: sdrGrossCommission,
+                    platform_cut: platformCutAmount,
+                    net_payout: sdrPayoutAmount,
+                  },
                 });
-                console.log('Commission created email sent');
-              } catch (emailErr) {
-                console.error('Failed to send commission email:', emailErr);
+              if (sdrNotifError) console.error('Error creating SDR commission notification:', sdrNotifError);
+
+              if (ownerProfile?.email) {
+                try {
+                  await fetch(`${supabaseUrl}/functions/v1/send-commission-email`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${supabaseKey}`,
+                    },
+                    body: JSON.stringify({
+                      type: 'commission_created',
+                      to_email: ownerProfile.email,
+                      to_name: ownerProfile.full_name || 'Agency Owner',
+                      workspace_name: workspaceDetails?.name || 'Your Agency',
+                      amount: totalAgencyOwes,
+                      deal_title: dealDetails?.title || 'Closed Deal',
+                      sdr_name: sdrProfile?.full_name || 'SDR',
+                    }),
+                  });
+                  console.log('Commission created email sent');
+                } catch (emailErr) {
+                  console.error('Failed to send commission email:', emailErr);
+                }
               }
             }
           }

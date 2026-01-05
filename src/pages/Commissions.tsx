@@ -50,6 +50,7 @@ interface Commission {
   id: string;
   amount: number;
   rake_amount: number;
+  agency_rake_amount: number;
   platform_cut_percentage: number;
   platform_cut_amount: number;
   sdr_payout_amount: number;
@@ -75,6 +76,7 @@ interface Commission {
   } | null;
   workspace?: {
     name: string;
+    owner_id?: string;
   } | null;
 }
 
@@ -114,7 +116,8 @@ export default function Commissions() {
           )
         ),
         workspace:workspaces (
-          name
+          name,
+          owner_id
         )
       `)
       .order('created_at', { ascending: false });
@@ -208,14 +211,26 @@ export default function Commissions() {
   );
 
   const stats = {
+    // For SDRs: show their net payout; For agencies: show total due (commission + rake)
     totalPending: commissions
       .filter(c => c.status === 'pending')
-      .reduce((sum, c) => sum + Number(c.sdr_payout_amount || c.amount), 0),
+      .reduce((sum, c) => {
+        if (isSDR) {
+          return sum + Number(c.sdr_payout_amount || c.amount);
+        }
+        // Agency sees total due: commission + agency rake
+        return sum + Number(c.amount) + Number(c.agency_rake_amount || c.rake_amount);
+      }, 0),
     totalPaid: commissions
       .filter(c => c.status === 'paid')
-      .reduce((sum, c) => sum + Number(c.sdr_payout_amount || c.amount), 0),
+      .reduce((sum, c) => {
+        if (isSDR) {
+          return sum + Number(c.sdr_payout_amount || c.amount);
+        }
+        return sum + Number(c.amount) + Number(c.agency_rake_amount || c.rake_amount);
+      }, 0),
     totalRake: commissions
-      .reduce((sum, c) => sum + Number(c.rake_amount), 0),
+      .reduce((sum, c) => sum + Number(c.agency_rake_amount || c.rake_amount), 0),
     totalPlatformCut: commissions
       .reduce((sum, c) => sum + Number(c.platform_cut_amount || 0), 0),
     count: commissions.length,
@@ -373,74 +388,98 @@ export default function Commissions() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{isSDR ? 'Agency' : 'SDR'}</TableHead>
-                      {!isSDR && <TableHead>Level</TableHead>}
+                      <TableHead>{isSDR ? 'Agency' : 'Closed By'}</TableHead>
                       <TableHead>Deal</TableHead>
                       <TableHead>Deal Value</TableHead>
-                      <TableHead>Gross Commission</TableHead>
+                      {isSDR && <TableHead>Gross Commission</TableHead>}
                       {isSDR && <TableHead>Platform Fee</TableHead>}
-                      <TableHead>{isSDR ? 'Net Payout' : 'SDR Payout'}</TableHead>
-                      {!isSDR && <TableHead>Rake</TableHead>}
+                      {isSDR && <TableHead>Net Payout</TableHead>}
+                      {!isSDR && <TableHead>SDR Commission</TableHead>}
+                      {!isSDR && <TableHead>Platform Fee</TableHead>}
+                      {!isSDR && <TableHead>Total Due</TableHead>}
                       <TableHead>Status</TableHead>
                       <TableHead>Date</TableHead>
                       {!isSDR && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredCommissions.map((commission) => (
-                      <TableRow key={commission.id}>
-                        <TableCell>
-                          {isSDR ? (
-                            <p className="font-medium">{commission.workspace?.name || 'Agency'}</p>
-                          ) : (
-                            <div>
-                              <p className="font-medium">
-                                {commission.sdr_profile?.full_name || 'Unknown SDR'}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {commission.sdr_profile?.email}
-                              </p>
-                            </div>
-                          )}
-                        </TableCell>
-                        {!isSDR && (
+                    {filteredCommissions.map((commission) => {
+                      // Check if this was closed by the agency (amount is 0 means no SDR involved)
+                      const isAgencyClosed = commission.amount === 0 || commission.sdr_id === commission.workspace?.owner_id;
+                      const totalAgencyDue = Number(commission.amount) + Number(commission.agency_rake_amount || commission.rake_amount);
+                      
+                      return (
+                        <TableRow key={commission.id}>
                           <TableCell>
-                            <SDRLevelBadge level={commission.sdr_profile?.sdr_level || 1} size="sm" />
-                          </TableCell>
-                        )}
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{commission.deals?.title || 'Unknown Deal'}</p>
-                            {commission.deals?.leads && (
-                              <p className="text-xs text-muted-foreground">
-                                {commission.deals.leads.first_name} {commission.deals.leads.last_name}
-                                {commission.deals.leads.company && ` • ${commission.deals.leads.company}`}
-                              </p>
+                            {isSDR ? (
+                              <p className="font-medium">{commission.workspace?.name || 'Agency'}</p>
+                            ) : (
+                              <div>
+                                {isAgencyClosed ? (
+                                  <Badge variant="outline" className="bg-muted">Agency Closed</Badge>
+                                ) : (
+                                  <>
+                                    <p className="font-medium">
+                                      {commission.sdr_profile?.full_name || 'Unknown SDR'}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <SDRLevelBadge level={commission.sdr_profile?.sdr_level || 1} size="sm" />
+                                      <span className="text-xs text-muted-foreground">
+                                        {commission.sdr_profile?.email}
+                                      </span>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
                             )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          ${commission.deals?.value?.toLocaleString() || '0'}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          ${Number(commission.amount).toLocaleString()}
-                        </TableCell>
-                        {isSDR && (
-                          <TableCell className="text-destructive">
-                            <div className="flex items-center gap-1">
-                              <Percent className="h-3 w-3" />
-                              {commission.platform_cut_percentage || 15}% (${Number(commission.platform_cut_amount || 0).toLocaleString()})
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{commission.deals?.title || 'Unknown Deal'}</p>
+                              {commission.deals?.leads && (
+                                <p className="text-xs text-muted-foreground">
+                                  {commission.deals.leads.first_name} {commission.deals.leads.last_name}
+                                  {commission.deals.leads.company && ` • ${commission.deals.leads.company}`}
+                                </p>
+                              )}
                             </div>
                           </TableCell>
-                        )}
-                        <TableCell className="font-medium text-success">
-                          ${Number(commission.sdr_payout_amount || commission.amount).toLocaleString()}
-                        </TableCell>
-                        {!isSDR && (
-                          <TableCell className="text-muted-foreground">
-                            ${Number(commission.rake_amount).toLocaleString()}
+                          <TableCell>
+                            ${commission.deals?.value?.toLocaleString() || '0'}
                           </TableCell>
-                        )}
+                          {isSDR && (
+                            <>
+                              <TableCell className="text-muted-foreground">
+                                ${Number(commission.amount).toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-destructive">
+                                <div className="flex items-center gap-1">
+                                  <Percent className="h-3 w-3" />
+                                  {commission.platform_cut_percentage || 5}% (${Number(commission.platform_cut_amount || 0).toLocaleString()})
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-medium text-success">
+                                ${Number(commission.sdr_payout_amount || commission.amount).toLocaleString()}
+                              </TableCell>
+                            </>
+                          )}
+                          {!isSDR && (
+                            <>
+                              <TableCell className="text-muted-foreground">
+                                {isAgencyClosed ? (
+                                  <span className="text-muted-foreground">—</span>
+                                ) : (
+                                  `$${Number(commission.amount).toLocaleString()}`
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                ${Number(commission.agency_rake_amount || commission.rake_amount).toLocaleString()}
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                ${totalAgencyDue.toLocaleString()}
+                              </TableCell>
+                            </>
+                          )}
                         <TableCell>{getStatusBadge(commission.status)}</TableCell>
                         <TableCell className="text-muted-foreground">
                           {format(new Date(commission.created_at), 'MMM d, yyyy')}
@@ -470,8 +509,9 @@ export default function Commissions() {
                             )}
                           </TableCell>
                         )}
-                      </TableRow>
-                    ))}
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </CardContent>
