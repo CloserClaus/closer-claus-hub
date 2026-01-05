@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   Users,
+  Target,
+  TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,6 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
 import { SDRLevelBadge } from '@/components/ui/sdr-level-badge';
 import {
   Dialog,
@@ -45,6 +48,21 @@ interface Job {
   workspace_id: string;
   title: string;
   description: string;
+  company_description: string | null;
+  offer_description: string | null;
+  dream_outcome: string | null;
+  icp_job_titles: string[] | null;
+  icp_industry: string | null;
+  icp_company_type: string | null;
+  icp_company_size_min: number | null;
+  icp_company_size_max: number | null;
+  icp_revenue_min: number | null;
+  icp_revenue_max: number | null;
+  icp_founding_year_min: number | null;
+  icp_founding_year_max: number | null;
+  icp_intent_signal: string | null;
+  average_ticket_size: number | null;
+  payment_type: string | null;
   employment_type: 'commission_only' | 'salary';
   commission_percentage: number | null;
   salary_amount: number | null;
@@ -342,14 +360,19 @@ export default function JobDetail() {
     }
   };
 
-  const formatCompensation = (job: Job) => {
-    if (job.employment_type === 'salary' && job.salary_amount) {
-      return `$${job.salary_amount.toLocaleString()}/month`;
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const formatRevenue = (amount: number) => {
+    if (amount >= 1000) {
+      return `$${(amount / 1000).toFixed(0)}M`;
     }
-    if (job.commission_percentage) {
-      return `${job.commission_percentage}% commission`;
-    }
-    return 'Compensation TBD';
+    return `$${amount}K`;
   };
 
   const getStatusColor = (status: Application['status']) => {
@@ -405,60 +428,67 @@ export default function JobDetail() {
     <DashboardLayout>
       <DashboardHeader title="Job Details" />
       <main className="flex-1 p-6 space-y-6">
-        <Button variant="ghost" onClick={() => navigate('/jobs')} className="gap-2">
-          <ArrowLeft className="h-4 w-4" />
-          Back to Jobs
-        </Button>
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" onClick={() => navigate('/jobs')} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Jobs
+          </Button>
+          {isAgencyOwner && (
+            <Button onClick={() => navigate(`/jobs/edit/${job.id}`)}>
+              Edit Position
+            </Button>
+          )}
+        </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Job Details */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Header Card */}
             <Card className="glass">
               <CardHeader>
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <CardTitle className="text-2xl">{job.title}</CardTitle>
+                    <CardTitle className="text-2xl">SDR at {job.workspace?.name || 'Agency'}</CardTitle>
                     <CardDescription className="flex items-center gap-2 mt-2">
                       <Building2 className="h-4 w-4" />
                       {job.workspace?.name || 'Unknown Agency'}
                     </CardDescription>
                   </div>
-                  <Badge
-                    variant={job.employment_type === 'salary' ? 'default' : 'secondary'}
-                    className="shrink-0"
-                  >
-                    {job.employment_type === 'salary' ? 'Salary' : 'Commission Only'}
-                  </Badge>
+                  <div className="flex gap-2">
+                    <Badge variant={job.is_active ? 'default' : 'secondary'}>
+                      {job.is_active ? 'Hiring' : 'Closed'}
+                    </Badge>
+                    <Badge variant="outline">
+                      {job.employment_type === 'salary' ? 'Salary + Commission' : 'Commission Only'}
+                    </Badge>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="flex flex-wrap gap-4">
-                  <div className="flex items-center gap-2 text-success">
-                    <DollarSign className="h-5 w-5" />
-                    <span className="font-medium">{formatCompensation(job)}</span>
+                {/* Dream Outcome */}
+                {job.dream_outcome && (
+                  <div className="bg-primary/5 p-4 rounded-lg border border-primary/20">
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4" />
+                      Dream Outcome
+                    </h4>
+                    <p className="text-foreground italic">"{job.dream_outcome}"</p>
                   </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Clock className="h-5 w-5" />
-                    <span>Posted {new Date(job.created_at).toLocaleDateString()}</span>
-                  </div>
-                </div>
+                )}
 
-                <div>
-                  <h3 className="font-medium mb-2">Description</h3>
-                  <p className="text-muted-foreground whitespace-pre-wrap">{job.description}</p>
-                </div>
-
-                {job.requirements && job.requirements.length > 0 && (
+                {/* Company Description */}
+                {job.company_description && (
                   <div>
-                    <h3 className="font-medium mb-2">Requirements</h3>
-                    <ul className="space-y-2">
-                      {job.requirements.map((req, index) => (
-                        <li key={index} className="flex items-start gap-2 text-muted-foreground">
-                          <CheckCircle2 className="h-5 w-5 text-success shrink-0 mt-0.5" />
-                          {req}
-                        </li>
-                      ))}
-                    </ul>
+                    <h3 className="font-medium mb-2">About the Company</h3>
+                    <p className="text-muted-foreground">{job.company_description}</p>
+                  </div>
+                )}
+
+                {/* What You'll Be Selling */}
+                {job.offer_description && (
+                  <div>
+                    <h3 className="font-medium mb-2">What You'll Be Selling</h3>
+                    <p className="text-muted-foreground">{job.offer_description}</p>
                   </div>
                 )}
 
@@ -474,6 +504,91 @@ export default function JobDetail() {
                         </p>
                       </div>
                     </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* ICP Card */}
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5" />
+                  Ideal Customer Profile
+                </CardTitle>
+                <CardDescription>Who you'll be prospecting and selling to</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {job.icp_job_titles && job.icp_job_titles.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground mb-2">Target Titles</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {job.icp_job_titles.map((title) => (
+                          <Badge key={title} variant="secondary">{title}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {job.icp_industry && (
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground mb-2">Industry</h4>
+                      <p className="text-foreground">{job.icp_industry}</p>
+                    </div>
+                  )}
+
+                  {job.icp_company_type && (
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground mb-2">Company Type</h4>
+                      <p className="text-foreground">{job.icp_company_type}</p>
+                    </div>
+                  )}
+
+                  {(job.icp_company_size_min || job.icp_company_size_max) && (
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground mb-2">Company Size</h4>
+                      <p className="text-foreground">
+                        {job.icp_company_size_min && job.icp_company_size_max
+                          ? `${job.icp_company_size_min} - ${job.icp_company_size_max} employees`
+                          : job.icp_company_size_min
+                          ? `${job.icp_company_size_min}+ employees`
+                          : `Up to ${job.icp_company_size_max} employees`}
+                      </p>
+                    </div>
+                  )}
+
+                  {(job.icp_revenue_min || job.icp_revenue_max) && (
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground mb-2">Annual Revenue</h4>
+                      <p className="text-foreground">
+                        {job.icp_revenue_min && job.icp_revenue_max
+                          ? `${formatRevenue(job.icp_revenue_min)} - ${formatRevenue(job.icp_revenue_max)}`
+                          : job.icp_revenue_min
+                          ? `${formatRevenue(job.icp_revenue_min)}+`
+                          : `Up to ${formatRevenue(job.icp_revenue_max!)}`}
+                      </p>
+                    </div>
+                  )}
+
+                  {(job.icp_founding_year_min || job.icp_founding_year_max) && (
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground mb-2">Founded</h4>
+                      <p className="text-foreground">
+                        {job.icp_founding_year_min && job.icp_founding_year_max
+                          ? `${job.icp_founding_year_min} - ${job.icp_founding_year_max}`
+                          : job.icp_founding_year_min
+                          ? `${job.icp_founding_year_min} or later`
+                          : `Before ${job.icp_founding_year_max}`}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {job.icp_intent_signal && (
+                  <div className="mt-4 pt-4 border-t">
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2">Intent Signals</h4>
+                    <p className="text-foreground">{job.icp_intent_signal}</p>
                   </div>
                 )}
               </CardContent>
@@ -501,87 +616,70 @@ export default function JobDetail() {
                           className="p-4 rounded-lg bg-muted/50 border border-border"
                         >
                           <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className="font-medium">
-                                  {app.profile?.full_name || 'Unknown'}
-                                </p>
-                                <SDRLevelBadge 
-                                  level={app.profile?.sdr_level || 1} 
-                                  size="sm" 
-                                />
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-medium">
+                                  {app.profile?.full_name || 'Unknown SDR'}
+                                </h4>
+                                {app.profile?.sdr_level && (
+                                  <SDRLevelBadge level={app.profile.sdr_level} size="sm" />
+                                )}
                               </div>
                               <p className="text-sm text-muted-foreground">
                                 {app.profile?.email}
                               </p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Applied {new Date(app.applied_at).toLocaleDateString()} • ${(app.profile?.total_deals_closed_value || 0).toLocaleString()} deals closed
+                              {app.cover_letter && (
+                                <p className="text-sm mt-2 text-muted-foreground">
+                                  "{app.cover_letter}"
+                                </p>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Applied {new Date(app.applied_at).toLocaleDateString()}
                               </p>
                             </div>
-                            <Badge className={getStatusColor(app.status)}>
-                              {app.status.charAt(0).toUpperCase() + app.status.slice(1)}
-                            </Badge>
-                          </div>
-
-                          {app.cover_letter && (
-                            <p className="mt-3 text-sm text-muted-foreground">
-                              "{app.cover_letter}"
-                            </p>
-                          )}
-
-                          <div className="flex flex-wrap gap-2 mt-4">
-                            {app.status === 'applied' && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  onClick={() => updateApplicationStatus(app.id, 'shortlisted')}
-                                >
-                                  Shortlist
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => updateApplicationStatus(app.id, 'rejected')}
-                                >
-                                  Reject
-                                </Button>
-                              </>
-                            )}
-                            {app.status === 'shortlisted' && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  onClick={() => updateApplicationStatus(app.id, 'interviewing')}
-                                >
-                                  Move to Interview
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => updateApplicationStatus(app.id, 'rejected')}
-                                >
-                                  Reject
-                                </Button>
-                              </>
-                            )}
-                            {app.status === 'interviewing' && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  className="bg-success hover:bg-success/90"
-                                  onClick={() => updateApplicationStatus(app.id, 'hired')}
-                                >
-                                  Hire
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => updateApplicationStatus(app.id, 'rejected')}
-                                >
-                                  Reject
-                                </Button>
-                              </>
-                            )}
+                            <div className="flex flex-col items-end gap-2">
+                              <Badge className={getStatusColor(app.status)}>
+                                {app.status}
+                              </Badge>
+                              {app.status !== 'hired' && app.status !== 'rejected' && (
+                                <div className="flex gap-2 mt-2">
+                                  {app.status === 'applied' && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => updateApplicationStatus(app.id, 'shortlisted')}
+                                    >
+                                      Shortlist
+                                    </Button>
+                                  )}
+                                  {(app.status === 'applied' || app.status === 'shortlisted') && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => updateApplicationStatus(app.id, 'interviewing')}
+                                    >
+                                      Interview
+                                    </Button>
+                                  )}
+                                  {app.status === 'interviewing' && (
+                                    <Button
+                                      size="sm"
+                                      onClick={() => updateApplicationStatus(app.id, 'hired')}
+                                    >
+                                      Hire
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-destructive"
+                                    onClick={() => updateApplicationStatus(app.id, 'rejected')}
+                                  >
+                                    Reject
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -592,68 +690,124 @@ export default function JobDetail() {
             )}
           </div>
 
-          {/* Apply Section (SDR View) */}
-          {isSDR && (
-            <div>
-              <Card className="glass sticky top-20">
-                <CardHeader>
-                  <CardTitle>Apply for this position</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Deal Structure Card */}
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Briefcase className="h-5 w-5" />
+                  Deal Structure
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {job.average_ticket_size && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Average Ticket</span>
+                    <span className="font-semibold text-lg">{formatCurrency(job.average_ticket_size)}</span>
+                  </div>
+                )}
+                {job.payment_type && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Revenue Type</span>
+                    <Badge variant="outline">
+                      {job.payment_type === 'recurring' ? 'Recurring' : 'One-Time'}
+                    </Badge>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Compensation Card */}
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5" />
+                  Your Earnings
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {job.employment_type === 'salary' && job.salary_amount && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Monthly Salary</span>
+                    <span className="font-semibold text-lg">{formatCurrency(job.salary_amount)}</span>
+                  </div>
+                )}
+                {job.commission_percentage && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Commission</span>
+                    <span className="font-semibold text-lg">{job.commission_percentage}%</span>
+                  </div>
+                )}
+                {job.average_ticket_size && job.commission_percentage && (
+                  <>
+                    <Separator />
+                    <div className="flex justify-between items-center text-primary">
+                      <span>Earning per Deal</span>
+                      <span className="font-bold text-lg">
+                        {formatCurrency((job.average_ticket_size * job.commission_percentage) / 100)}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Apply Card (SDR View) */}
+            {isSDR && (
+              <Card className="glass">
+                <CardContent className="pt-6">
                   {userApplication ? (
-                    <div className="text-center space-y-4">
-                      <Badge className={`${getStatusColor(userApplication.status)} text-base px-4 py-2`}>
-                        {userApplication.status.charAt(0).toUpperCase() +
-                          userApplication.status.slice(1)}
+                    <div className="text-center space-y-2">
+                      <CheckCircle2 className="h-8 w-8 mx-auto text-success" />
+                      <p className="font-medium">You've Applied</p>
+                      <Badge className={getStatusColor(userApplication.status)}>
+                        {userApplication.status}
                       </Badge>
-                      <p className="text-sm text-muted-foreground">
-                        You applied on{' '}
-                        {new Date(userApplication.applied_at).toLocaleDateString()}
-                      </p>
+                    </div>
+                  ) : !job.is_active ? (
+                    <div className="text-center space-y-2">
+                      <p className="text-muted-foreground">This position is no longer accepting applications</p>
                     </div>
                   ) : (
-                    <>
-                      <div className="space-y-2 text-sm text-muted-foreground">
-                        <p>
-                          <strong>Compensation:</strong> {formatCompensation(job)}
-                        </p>
-                        <p>
-                          <strong>Type:</strong>{' '}
-                          {job.employment_type === 'salary'
-                            ? 'Salary (Exclusive)'
-                            : 'Commission Only'}
-                        </p>
-                      </div>
-                      <Button onClick={handleApply} className="w-full">
+                    <div className="space-y-4">
+                      <p className="text-center text-muted-foreground">
+                        Ready to join {job.workspace?.name || 'this team'} as an SDR?
+                      </p>
+                      <Button className="w-full" onClick={handleApply}>
                         Apply Now
                       </Button>
-                    </>
+                    </div>
                   )}
                 </CardContent>
               </Card>
+            )}
+
+            {/* Posted Date */}
+            <div className="text-center text-sm text-muted-foreground">
+              <Clock className="h-4 w-4 inline mr-1" />
+              Posted {new Date(job.created_at).toLocaleDateString()}
             </div>
-          )}
+          </div>
         </div>
 
         {/* Apply Dialog */}
         <Dialog open={showApplyDialog} onOpenChange={setShowApplyDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Apply for {job.title}</DialogTitle>
+              <DialogTitle>Apply for SDR Position</DialogTitle>
               <DialogDescription>
-                Submit your application to {job.workspace?.name}
+                Apply to join {job?.workspace?.name || 'this agency'} as an SDR
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="cover-letter">Cover Letter (Optional)</Label>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Why are you a great fit? (Optional)</Label>
                 <Textarea
-                  id="cover-letter"
+                  placeholder="Share your relevant experience, what excites you about this opportunity..."
                   value={coverLetter}
                   onChange={(e) => setCoverLetter(e.target.value)}
-                  placeholder="Tell the agency why you're a great fit..."
-                  rows={5}
-                  className="mt-2 bg-muted border-border"
+                  className="min-h-[100px]"
                 />
               </div>
             </div>
@@ -672,23 +826,22 @@ export default function JobDetail() {
         <AlertDialog open={showExclusivityWarning} onOpenChange={setShowExclusivityWarning}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Exclusivity Required</AlertDialogTitle>
+              <AlertDialogTitle>Salary Position - Exclusivity Required</AlertDialogTitle>
               <AlertDialogDescription>
                 This is a salary position that requires exclusivity. If you're hired, you will be
-                automatically removed from all other workspaces. You currently work with{' '}
-                {currentWorkspaceCount} other {currentWorkspaceCount === 1 ? 'agency' : 'agencies'}.
-                <br />
-                <br />
-                Are you sure you want to apply?
+                removed from all other workspaces and won't be able to apply to new jobs for 48
+                hours. Are you sure you want to proceed?
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => {
-                setShowExclusivityWarning(false);
-                setShowApplyDialog(true);
-              }}>
-                I Understand, Apply Anyway
+              <AlertDialogAction
+                onClick={() => {
+                  setShowExclusivityWarning(false);
+                  setShowApplyDialog(true);
+                }}
+              >
+                I Understand, Proceed
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
