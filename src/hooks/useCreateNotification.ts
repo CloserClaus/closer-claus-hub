@@ -5,7 +5,9 @@ type NotificationAction =
   | 'dispute_resolved'
   | 'sdr_joined'
   | 'sdr_removed'
-  | 'commission_paid';
+  | 'commission_paid'
+  | 'conversation_started'
+  | 'video_call_started';
 
 interface DisputeCreatedParams {
   action: 'dispute_created';
@@ -47,12 +49,29 @@ interface CommissionPaidParams {
   amount: number;
 }
 
+interface ConversationStartedParams {
+  action: 'conversation_started';
+  workspace_id: string;
+  sdr_user_id: string;
+  agency_owner_id: string;
+}
+
+interface VideoCallStartedParams {
+  action: 'video_call_started';
+  conversation_id: string;
+  caller_id: string;
+  callee_id: string;
+  room_name: string;
+}
+
 type NotificationParams = 
   | DisputeCreatedParams 
   | DisputeResolvedParams 
   | SdrJoinedParams 
   | SdrRemovedParams 
-  | CommissionPaidParams;
+  | CommissionPaidParams
+  | ConversationStartedParams
+  | VideoCallStartedParams;
 
 export async function createNotification(params: NotificationParams): Promise<void> {
   try {
