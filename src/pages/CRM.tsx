@@ -1005,6 +1005,11 @@ export default function CRM() {
             setDisputeDeal(deal);
             setShowDisputeForm(true);
           }}
+          onEditLead={(lead) => {
+            setShowDealDetail(false);
+            setEditingLead(lead as Lead);
+            setShowLeadForm(true);
+          }}
           isAgencyOwner={isAgencyOwner}
         />
 
