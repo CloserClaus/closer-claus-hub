@@ -135,25 +135,35 @@ export function useTwilioVideo({
 
   const toggleMute = useCallback(() => {
     if (localAudioTrack) {
-      if (isMuted) {
-        localAudioTrack.enable();
-      } else {
+      const newMutedState = !isMuted;
+      if (newMutedState) {
         localAudioTrack.disable();
+      } else {
+        localAudioTrack.enable();
       }
-      setIsMuted(!isMuted);
+      setIsMuted(newMutedState);
     }
   }, [localAudioTrack, isMuted]);
 
-  const toggleVideo = useCallback(() => {
-    if (localVideoTrack) {
-      if (isVideoOff) {
-        localVideoTrack.enable();
-      } else {
-        localVideoTrack.disable();
+  const toggleVideo = useCallback(async () => {
+    if (!room) return;
+    
+    const newVideoOffState = !isVideoOff;
+    
+    if (newVideoOffState) {
+      // Turn off camera
+      if (originalVideoTrackRef.current) {
+        originalVideoTrackRef.current.disable();
       }
-      setIsVideoOff(!isVideoOff);
+    } else {
+      // Turn on camera - need to re-enable the track
+      if (originalVideoTrackRef.current) {
+        originalVideoTrackRef.current.enable();
+        setLocalVideoTrack(originalVideoTrackRef.current);
+      }
     }
-  }, [localVideoTrack, isVideoOff]);
+    setIsVideoOff(newVideoOffState);
+  }, [room, isVideoOff]);
 
   const startScreenShare = useCallback(async () => {
     if (!room || isScreenSharing) return;
@@ -199,32 +209,45 @@ export function useTwilioVideo({
   }, [room, isScreenSharing]);
 
   const stopScreenShare = useCallback(async () => {
-    if (!room || !screenTrack) return;
+    if (!room) return;
+    
+    const currentScreenTrack = screenTrack;
+    if (!currentScreenTrack) {
+      setIsScreenSharing(false);
+      return;
+    }
 
     try {
+      // Set state first to prevent re-entry
+      setIsScreenSharing(false);
+      setScreenTrack(null);
+      
       // Unpublish and stop the screen share track
-      room.localParticipant.unpublishTrack(screenTrack);
-      screenTrack.stop();
+      room.localParticipant.unpublishTrack(currentScreenTrack);
+      currentScreenTrack.stop();
 
-      // Re-publish the camera video track
-      if (originalVideoTrackRef.current) {
+      // Re-publish the camera video track if video wasn't off
+      if (originalVideoTrackRef.current && !isVideoOff) {
+        originalVideoTrackRef.current.enable();
         await room.localParticipant.publishTrack(originalVideoTrackRef.current);
         setLocalVideoTrack(originalVideoTrackRef.current);
-      } else {
+      } else if (!originalVideoTrackRef.current && !isVideoOff) {
         // Create a new camera track if the original was lost
         const newCameraTrack = await createLocalVideoTrack({ width: 640, height: 480 });
         await room.localParticipant.publishTrack(newCameraTrack);
         setLocalVideoTrack(newCameraTrack);
         originalVideoTrackRef.current = newCameraTrack;
+      } else {
+        setLocalVideoTrack(originalVideoTrackRef.current);
       }
 
-      setScreenTrack(null);
-      setIsScreenSharing(false);
       console.log('Screen sharing stopped');
     } catch (err) {
       console.error('Error stopping screen share:', err);
+      setIsScreenSharing(false);
+      setScreenTrack(null);
     }
-  }, [room, screenTrack]);
+  }, [room, screenTrack, isVideoOff]);
 
   const toggleScreenShare = useCallback(() => {
     if (isScreenSharing) {
