@@ -1429,6 +1429,7 @@ export type Database = {
           id: string
           is_salary_exclusive: boolean | null
           joined_at: string | null
+          pending_leave_at: string | null
           removed_at: string | null
           user_id: string
           workspace_id: string
@@ -1438,6 +1439,7 @@ export type Database = {
           id?: string
           is_salary_exclusive?: boolean | null
           joined_at?: string | null
+          pending_leave_at?: string | null
           removed_at?: string | null
           user_id: string
           workspace_id: string
@@ -1447,6 +1449,7 @@ export type Database = {
           id?: string
           is_salary_exclusive?: boolean | null
           joined_at?: string | null
+          pending_leave_at?: string | null
           removed_at?: string | null
           user_id?: string
           workspace_id?: string
