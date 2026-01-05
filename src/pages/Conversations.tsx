@@ -276,48 +276,24 @@ export default function Conversations() {
     const isGroup = selectedMembers.length > 1;
     const name = isGroup ? conversationName : null;
 
-    // Create conversation
-    const { data: conversation, error: convError } = await supabase
-      .from('conversations')
-      .insert({
+    const { data, error } = await supabase.functions.invoke('create-conversation', {
+      body: {
         workspace_id: currentWorkspace.id,
+        member_ids: selectedMembers,
         name,
-        is_group: isGroup
-      })
-      .select()
-      .single();
+        is_group: isGroup,
+      },
+    });
 
-    if (convError) {
-      toast.error(convError.message || 'Failed to create conversation');
-      console.error(convError);
+    if (error) {
+      toast.error(error.message || 'Failed to create conversation');
+      console.error(error);
       return;
     }
 
-    // Add current user as participant
-    const { error: selfError } = await supabase
-      .from('conversation_participants')
-      .insert({
-        conversation_id: conversation.id,
-        user_id: user.id
-      });
-
-    if (selfError) {
-      console.error(selfError);
-    }
-
-    // Add selected members as participants
-    const participantInserts = selectedMembers.map(memberId => ({
-      conversation_id: conversation.id,
-      user_id: memberId
-    }));
-
-    const { error: partError } = await supabase
-      .from('conversation_participants')
-      .insert(participantInserts);
-
-    if (partError) {
-      toast.error('Failed to add participants');
-      console.error(partError);
+    const conversation = (data as any)?.conversation as Conversation | undefined;
+    if (!conversation) {
+      toast.error('Failed to create conversation');
       return;
     }
 
@@ -325,7 +301,7 @@ export default function Conversations() {
     setShowNewConversation(false);
     setSelectedMembers([]);
     setConversationName("");
-    fetchConversations();
+    await fetchConversations();
     setSelectedConversation(conversation);
   };
 
