@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, Zap, Crown, Rocket, ArrowUpRight, Calendar, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { CreditCard, Zap, Crown, Rocket, ArrowUpRight, Calendar, CheckCircle, AlertCircle, Loader2, Download, ExternalLink, Clock, FileText } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { supabase } from '@/integrations/supabase/client';
@@ -11,7 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 
 interface PlanInfo {
   id: 'omega' | 'beta' | 'alpha';
@@ -45,6 +45,27 @@ interface PaymentMethod {
   exp_year?: number;
 }
 
+interface Invoice {
+  id: string;
+  number: string | null;
+  amount: number;
+  status: string;
+  created: number;
+  paid_at: number | null;
+  invoice_pdf: string | null;
+  hosted_invoice_url: string | null;
+  description: string;
+  type: 'subscription' | 'commission';
+}
+
+interface UpcomingCharge {
+  id: string;
+  deal_title: string;
+  amount: number;
+  auto_charge_date: string;
+  sdr_name: string | null;
+}
+
 export default function Billing() {
   const { user, userRole } = useAuth();
   const { currentWorkspace } = useWorkspace();
@@ -55,6 +76,10 @@ export default function Billing() {
   const [sdrCount, setSdrCount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [paymentMethodLoading, setPaymentMethodLoading] = useState(false);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+  const [upcomingCharges, setUpcomingCharges] = useState<UpcomingCharge[]>([]);
+  const [upcomingLoading, setUpcomingLoading] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -70,8 +95,76 @@ export default function Billing() {
     if (currentWorkspace) {
       fetchBillingData();
       fetchPaymentMethod();
+      fetchInvoices();
+      fetchUpcomingCharges();
     }
   }, [currentWorkspace]);
+
+  const fetchInvoices = async () => {
+    if (!currentWorkspace) return;
+    setInvoicesLoading(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('get-invoices', {
+        body: { workspace_id: currentWorkspace.id, limit: 20 },
+      });
+
+      if (error) throw error;
+      setInvoices(data?.invoices || []);
+    } catch (error) {
+      console.error('Error fetching invoices:', error);
+    } finally {
+      setInvoicesLoading(false);
+    }
+  };
+
+  const fetchUpcomingCharges = async () => {
+    if (!currentWorkspace) return;
+    setUpcomingLoading(true);
+
+    try {
+      // Fetch pending commissions that will be auto-charged
+      const { data: pendingCommissions, error } = await supabase
+        .from('commissions')
+        .select(`
+          id,
+          amount,
+          rake_amount,
+          agency_rake_amount,
+          created_at,
+          deal:deals(title),
+          sdr_id
+        `)
+        .eq('workspace_id', currentWorkspace.id)
+        .in('status', ['pending', 'overdue'])
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      // Get SDR names
+      const sdrIds = [...new Set(pendingCommissions?.map(c => c.sdr_id).filter(Boolean))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', sdrIds);
+
+      const profileMap = new Map(profiles?.map(p => [p.id, p.full_name]) || []);
+
+      const charges: UpcomingCharge[] = (pendingCommissions || []).map(c => ({
+        id: c.id,
+        deal_title: c.deal?.title || 'Deal',
+        amount: Number(c.amount) + Number(c.agency_rake_amount || c.rake_amount),
+        auto_charge_date: addDays(new Date(c.created_at), 7).toISOString(),
+        sdr_name: profileMap.get(c.sdr_id) || null,
+      }));
+
+      setUpcomingCharges(charges);
+    } catch (error) {
+      console.error('Error fetching upcoming charges:', error);
+    } finally {
+      setUpcomingLoading(false);
+    }
+  };
 
   const fetchPaymentMethod = async () => {
     if (!currentWorkspace) return;
@@ -307,21 +400,139 @@ export default function Billing() {
           </CardContent>
         </Card>
 
-        {/* Billing History */}
+        {/* Upcoming Auto-Charges */}
+        {upcomingCharges.length > 0 && (
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-muted-foreground" />
+                <CardTitle className="text-lg">Upcoming Auto-Charges</CardTitle>
+              </div>
+              <CardDescription>Pending commission payments that will be auto-charged</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {upcomingLoading ? (
+                <div className="flex items-center justify-center p-4">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {upcomingCharges.map((charge) => (
+                    <div
+                      key={charge.id}
+                      className="flex items-center justify-between py-3 border-b border-border last:border-0"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-warning/20 flex items-center justify-center">
+                          <Clock className="w-4 h-4 text-warning" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{charge.deal_title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {charge.sdr_name && `${charge.sdr_name} • `}
+                            Auto-charges on {format(new Date(charge.auto_charge_date), 'MMM d, yyyy')}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-foreground">${charge.amount.toFixed(2)}</p>
+                        <Badge variant="outline" className="text-xs">Pending</Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Invoice History */}
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-muted-foreground" />
+              <CardTitle className="text-lg">Invoice History</CardTitle>
+            </div>
+            <CardDescription>Download invoices and receipts for your payments</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {invoicesLoading ? (
+              <div className="flex items-center justify-center p-4">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : invoices.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground">
+                No invoices yet
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {invoices.map((invoice) => (
+                  <div
+                    key={invoice.id}
+                    className="flex items-center justify-between py-3 border-b border-border last:border-0"
+                  >
+                    <div className="flex items-center gap-3">
+                      <CheckCircle className="w-4 h-4 text-success" />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{invoice.description}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {invoice.number && `#${invoice.number} • `}
+                          {format(new Date(invoice.created), 'MMM d, yyyy')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-foreground">${invoice.amount.toFixed(2)}</p>
+                        <Badge variant="secondary" className={`text-xs ${invoice.type === 'subscription' ? 'bg-primary/20 text-primary' : 'bg-success/20 text-success'}`}>
+                          {invoice.type === 'subscription' ? 'Subscription' : 'Commission'}
+                        </Badge>
+                      </div>
+                      <div className="flex gap-1">
+                        {invoice.invoice_pdf && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => window.open(invoice.invoice_pdf!, '_blank')}
+                          >
+                            <Download className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {invoice.hosted_invoice_url && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => window.open(invoice.hosted_invoice_url!, '_blank')}
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Billing Events */}
         <Card className="bg-card border-border">
           <CardHeader>
             <div className="flex items-center gap-2">
               <Calendar className="w-5 h-5 text-muted-foreground" />
-              <CardTitle className="text-lg">Billing History</CardTitle>
+              <CardTitle className="text-lg">Billing Events</CardTitle>
             </div>
-            <CardDescription>Your recent billing events and transactions</CardDescription>
+            <CardDescription>Discounts and other billing events</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
               <div className="py-8 text-center text-muted-foreground">Loading...</div>
             ) : billingHistory.length === 0 ? (
               <div className="py-8 text-center text-muted-foreground">
-                No billing history yet
+                No billing events yet
               </div>
             ) : (
               <div className="space-y-3">

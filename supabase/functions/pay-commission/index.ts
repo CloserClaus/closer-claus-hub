@@ -234,7 +234,25 @@ serve(async (req) => {
 
         if (autoChargeError.code === 'card_declined') {
           console.log('Card was declined');
-          // Notify workspace owner about failed payment
+          // Get workspace owner details for email
+          const { data: ownerProfile } = await supabase
+            .from('profiles')
+            .select('email, full_name')
+            .eq('id', commission.workspace?.owner_id)
+            .single();
+
+          // Get payment method details for email
+          let cardLast4 = '';
+          if (savedPaymentMethod) {
+            try {
+              const pm = await stripe.paymentMethods.retrieve(savedPaymentMethod);
+              cardLast4 = pm.card?.last4 || '';
+            } catch (e) {
+              console.error('Failed to retrieve payment method details:', e);
+            }
+          }
+
+          // Notify workspace owner about failed payment via in-app notification
           if (commission.workspace?.owner_id) {
             await supabase.from('notifications').insert({
               user_id: commission.workspace.owner_id,
@@ -245,6 +263,27 @@ serve(async (req) => {
               data: { commission_id, amount: totalAmount },
             });
           }
+
+          // Send email notification about failed auto-charge
+          if (ownerProfile) {
+            try {
+              await supabase.functions.invoke('send-commission-email', {
+                body: {
+                  type: 'auto_charge_failed',
+                  to_email: ownerProfile.email,
+                  to_name: ownerProfile.full_name || 'Agency Owner',
+                  workspace_name: commission.workspace?.name || 'Your workspace',
+                  amount: totalAmount,
+                  deal_title: commission.deal?.title,
+                  error_reason: 'Card was declined',
+                  last4: cardLast4,
+                },
+              });
+            } catch (emailError) {
+              console.error('Failed to send auto-charge failure email:', emailError);
+            }
+          }
+
           return new Response(
             JSON.stringify({
               success: false,
