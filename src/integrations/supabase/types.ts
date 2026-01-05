@@ -772,12 +772,27 @@ export type Database = {
       }
       jobs: {
         Row: {
+          average_ticket_size: number | null
           commission_percentage: number | null
+          company_description: string | null
           created_at: string
           description: string
+          dream_outcome: string | null
           employment_type: Database["public"]["Enums"]["employment_type"]
+          icp_company_size_max: number | null
+          icp_company_size_min: number | null
+          icp_company_type: string | null
+          icp_founding_year_max: number | null
+          icp_founding_year_min: number | null
+          icp_industry: string | null
+          icp_intent_signal: string | null
+          icp_job_titles: string[] | null
+          icp_revenue_max: number | null
+          icp_revenue_min: number | null
           id: string
           is_active: boolean
+          offer_description: string | null
+          payment_type: string | null
           requirements: string[] | null
           salary_amount: number | null
           title: string
@@ -785,12 +800,27 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          average_ticket_size?: number | null
           commission_percentage?: number | null
+          company_description?: string | null
           created_at?: string
           description: string
+          dream_outcome?: string | null
           employment_type?: Database["public"]["Enums"]["employment_type"]
+          icp_company_size_max?: number | null
+          icp_company_size_min?: number | null
+          icp_company_type?: string | null
+          icp_founding_year_max?: number | null
+          icp_founding_year_min?: number | null
+          icp_industry?: string | null
+          icp_intent_signal?: string | null
+          icp_job_titles?: string[] | null
+          icp_revenue_max?: number | null
+          icp_revenue_min?: number | null
           id?: string
           is_active?: boolean
+          offer_description?: string | null
+          payment_type?: string | null
           requirements?: string[] | null
           salary_amount?: number | null
           title: string
@@ -798,12 +828,27 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          average_ticket_size?: number | null
           commission_percentage?: number | null
+          company_description?: string | null
           created_at?: string
           description?: string
+          dream_outcome?: string | null
           employment_type?: Database["public"]["Enums"]["employment_type"]
+          icp_company_size_max?: number | null
+          icp_company_size_min?: number | null
+          icp_company_type?: string | null
+          icp_founding_year_max?: number | null
+          icp_founding_year_min?: number | null
+          icp_industry?: string | null
+          icp_intent_signal?: string | null
+          icp_job_titles?: string[] | null
+          icp_revenue_max?: number | null
+          icp_revenue_min?: number | null
           id?: string
           is_active?: boolean
+          offer_description?: string | null
+          payment_type?: string | null
           requirements?: string[] | null
           salary_amount?: number | null
           title?: string
