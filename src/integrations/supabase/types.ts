@@ -1588,6 +1588,10 @@ export type Database = {
         Returns: boolean
       }
       cleanup_old_rate_limits: { Args: never; Returns: undefined }
+      get_conversation_workspace_id: {
+        Args: { _conversation_id: string }
+        Returns: string
+      }
       get_platform_cut_percentage: { Args: { level: number }; Returns: number }
       has_role: {
         Args: {
