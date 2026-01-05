@@ -181,11 +181,15 @@ serve(async (req) => {
       console.log(`Adding extra month charge for first-time subscriber: $${amount / 100}`);
     }
 
-    // Create Stripe Checkout Session
+    // Create Stripe Checkout Session with saved payment method for future charges
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       payment_method_types: ['card'],
       mode: 'subscription',
+      // Save the payment method for future off-session charges (auto-charging commissions)
+      payment_intent_data: {
+        setup_future_usage: 'off_session',
+      },
       line_items: [
         {
           price_data: {

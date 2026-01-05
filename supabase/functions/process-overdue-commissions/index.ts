@@ -108,20 +108,20 @@ serve(async (req) => {
         console.log(`Commission ${commission.id} is 7+ days overdue - attempting auto-charge`);
 
         try {
-          // Call pay-commission function
+          // Call pay-commission function with auto_charge flag to use saved payment method
           const { data: paymentResult, error: paymentError } = await supabase.functions.invoke('pay-commission', {
             body: {
               commission_id: commission.id,
-              payment_method: 'stripe',
+              auto_charge: true, // Use saved payment method for automatic charging
             },
           });
 
           if (paymentError) {
             console.error(`Auto-charge failed for commission ${commission.id}:`, paymentError);
             results.errors.push(`Auto-charge failed for ${commission.id}: ${paymentError.message}`);
-          } else if (paymentResult?.success) {
+          } else if (paymentResult?.auto_charged) {
             results.auto_charged++;
-            console.log(`Auto-charged commission ${commission.id}`);
+            console.log(`Auto-charged commission ${commission.id} successfully`);
           } else if (paymentResult?.requires_action) {
             // Payment requires additional action (3D Secure, etc.)
             // Notify the agency owner
@@ -130,12 +130,16 @@ serve(async (req) => {
                 body: {
                   user_id: commission.workspace.owner_id,
                   title: 'Payment Action Required',
-                  message: `Your commission payment of $${(Number(commission.amount) + Number(commission.rake_amount)).toFixed(2)} requires additional verification. Please complete the payment to avoid account lock.`,
+                  message: `Your commission payment of $${(Number(commission.amount) + Number(commission.rake_amount)).toFixed(2)} requires additional verification. Please complete the payment manually to avoid account lock.`,
                   type: 'payment_action_required',
                   workspace_id: commission.workspace_id,
                 },
               });
             }
+          } else if (paymentResult?.error === 'card_declined') {
+            // Card was declined - notify owner
+            console.log(`Card declined for commission ${commission.id}`);
+            results.errors.push(`Card declined for ${commission.id}`);
           }
         } catch (chargeError: any) {
           console.error(`Error auto-charging commission ${commission.id}:`, chargeError);
