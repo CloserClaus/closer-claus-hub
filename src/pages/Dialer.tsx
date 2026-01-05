@@ -445,6 +445,7 @@ export default function Dialer() {
           {/* Check if user has access to power dialer (Beta or Alpha plan) */}
           {(() => {
             const hasPowerDialer = currentWorkspace?.subscription_tier === 'beta' || currentWorkspace?.subscription_tier === 'alpha';
+            const isOwner = currentWorkspace?.owner_id === user?.id;
             return (
               <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
                 <TabsList>
@@ -461,10 +462,12 @@ export default function Dialer() {
                     Power Dialer
                     {!hasPowerDialer && <Lock className="h-3 w-3 ml-1" />}
                   </TabsTrigger>
-                  <TabsTrigger value="purchase" className="flex items-center gap-2">
-                    <ShoppingCart className="h-4 w-4" />
-                    Purchase
-                  </TabsTrigger>
+                  {isOwner && (
+                    <TabsTrigger value="purchase" className="flex items-center gap-2">
+                      <ShoppingCart className="h-4 w-4" />
+                      Purchase
+                    </TabsTrigger>
+                  )}
                   <TabsTrigger value="scripts" className="flex items-center gap-2">
                     <FileText className="h-4 w-4" />
                     Scripts
@@ -509,7 +512,10 @@ export default function Dialer() {
                         <div>
                           <p className="font-medium text-warning">No Phone Numbers</p>
                           <p className="text-sm text-muted-foreground">
-                            You need to purchase a phone number to make calls. Go to the Purchase tab.
+                            {isOwner 
+                              ? "You need to purchase a phone number to make calls. Go to the Purchase tab."
+                              : "You do not have any assigned numbers. Request the agency you are working with to assign a number to start making calls."
+                            }
                           </p>
                         </div>
                       </CardContent>
@@ -563,15 +569,17 @@ export default function Dialer() {
                               <div className="w-full p-2 rounded-md border border-border bg-muted text-sm text-muted-foreground">
                                 No numbers available
                               </div>
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="w-full"
-                                onClick={() => setActiveTab("purchase")}
-                              >
-                                <ShoppingCart className="h-4 w-4 mr-2" />
-                                Get a Phone Number
-                              </Button>
+                              {isOwner && (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="w-full"
+                                  onClick={() => setActiveTab("purchase")}
+                                >
+                                  <ShoppingCart className="h-4 w-4 mr-2" />
+                                  Get a Phone Number
+                                </Button>
+                              )}
                             </div>
                           )}
                         </div>
