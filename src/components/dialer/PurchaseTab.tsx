@@ -723,11 +723,14 @@ export function PurchaseTab({ workspaceId, subscriptionTier, onCreditsUpdated }:
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="unassigned">Unassigned</SelectItem>
-                              {sdrMembers.map((sdr) => (
-                                <SelectItem key={sdr.user_id} value={sdr.user_id}>
-                                  {sdr.profiles?.full_name || sdr.profiles?.email || sdr.user_id}
-                                </SelectItem>
-                              ))}
+                              {sdrMembers.map((sdr) => {
+                                const displayName = sdr.profiles?.full_name || sdr.profiles?.email || 'Team Member';
+                                return (
+                                  <SelectItem key={sdr.user_id} value={sdr.user_id}>
+                                    {displayName}
+                                  </SelectItem>
+                                );
+                              })}
                             </SelectContent>
                           </Select>
                         </div>
