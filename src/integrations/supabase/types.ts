@@ -187,6 +187,99 @@ export type Database = {
           },
         ]
       }
+      contract_requests: {
+        Row: {
+          agency_notes: string | null
+          client_address: string | null
+          client_company: string | null
+          client_email: string
+          client_name: string
+          client_phone: string | null
+          client_title: string | null
+          contract_duration: string | null
+          created_at: string
+          deal_description: string
+          deal_id: string
+          deal_value: number
+          deliverables: string | null
+          id: string
+          payment_terms: string
+          requested_by: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          special_conditions: string | null
+          start_date: string | null
+          status: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          agency_notes?: string | null
+          client_address?: string | null
+          client_company?: string | null
+          client_email: string
+          client_name: string
+          client_phone?: string | null
+          client_title?: string | null
+          contract_duration?: string | null
+          created_at?: string
+          deal_description: string
+          deal_id: string
+          deal_value: number
+          deliverables?: string | null
+          id?: string
+          payment_terms: string
+          requested_by: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          special_conditions?: string | null
+          start_date?: string | null
+          status?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          agency_notes?: string | null
+          client_address?: string | null
+          client_company?: string | null
+          client_email?: string
+          client_name?: string
+          client_phone?: string | null
+          client_title?: string | null
+          contract_duration?: string | null
+          created_at?: string
+          deal_description?: string
+          deal_id?: string
+          deal_value?: number
+          deliverables?: string | null
+          id?: string
+          payment_terms?: string
+          requested_by?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          special_conditions?: string | null
+          start_date?: string | null
+          status?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_requests_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_requests_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contract_signatures: {
         Row: {
           contract_id: string
@@ -914,6 +1007,7 @@ export type Database = {
       }
       leads: {
         Row: {
+          assigned_to: string | null
           company: string | null
           created_at: string
           created_by: string
@@ -929,6 +1023,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          assigned_to?: string | null
           company?: string | null
           created_at?: string
           created_by: string
@@ -944,6 +1039,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          assigned_to?: string | null
           company?: string | null
           created_at?: string
           created_by?: string

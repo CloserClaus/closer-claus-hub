@@ -34,6 +34,7 @@ interface Lead {
   notes: string | null;
   last_contacted_at: string | null;
   created_at: string;
+  assigned_to?: string | null;
 }
 
 interface Activity {
