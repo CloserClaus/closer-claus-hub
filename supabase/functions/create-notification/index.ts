@@ -271,6 +271,40 @@ serve(async (req) => {
         );
       }
 
+      case 'sdr_leaving': {
+        const { workspace_id, target_user_id, sdr_user_id, reason, leave_at } = params;
+
+        const { data: sdrProfile } = await supabase
+          .from('profiles')
+          .select('full_name, email')
+          .eq('id', sdr_user_id)
+          .single();
+
+        const { data: workspace } = await supabase
+          .from('workspaces')
+          .select('name')
+          .eq('id', workspace_id)
+          .single();
+
+        // Notify the agency owner
+        await supabase
+          .from('notifications')
+          .insert({
+            user_id: target_user_id,
+            workspace_id,
+            type: 'sdr_leaving',
+            title: 'SDR Leaving Notice',
+            message: `${sdrProfile?.full_name || sdrProfile?.email || 'An SDR'} has submitted a 24-hour leave notice from ${workspace?.name || 'your agency'}.${reason ? ` Reason: ${reason}` : ''}`,
+            data: { sdr_user_id, leave_at, reason },
+          });
+        console.log('Created SDR leaving notification for agency owner');
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: 'Unknown action' }),
