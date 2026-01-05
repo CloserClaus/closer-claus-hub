@@ -288,7 +288,7 @@ export default function Conversations() {
       .single();
 
     if (convError) {
-      toast.error('Failed to create conversation');
+      toast.error(convError.message || 'Failed to create conversation');
       console.error(convError);
       return;
     }
