@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: "commission_created" | "commission_due" | "commission_overdue" | "account_locked";
+  type: "commission_created" | "commission_due" | "commission_overdue" | "account_locked" | "auto_charge_failed";
   to_email: string;
   to_name: string;
   workspace_name: string;
@@ -15,6 +15,8 @@ interface EmailRequest {
   deal_title?: string;
   sdr_name?: string;
   commission_count?: number;
+  error_reason?: string;
+  last4?: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -33,7 +35,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const { type, to_email, to_name, workspace_name, amount, days_overdue, commission_count, deal_title, sdr_name }: EmailRequest = await req.json();
+    const { type, to_email, to_name, workspace_name, amount, days_overdue, commission_count, deal_title, sdr_name, error_reason, last4 }: EmailRequest = await req.json();
 
     let subject = "";
     let html = "";
@@ -82,6 +84,20 @@ const handler = async (req: Request): Promise<Response> => {
           <p>Hi ${to_name},</p>
           <p>Your ${workspace_name} account has been locked due to <strong>${commission_count} overdue commission(s)</strong> totaling <strong>$${amount?.toFixed(2)}</strong>.</p>
           <p>Please contact support to resolve outstanding payments and unlock your account.</p>
+          <p>Best regards,<br>The Closer Claus Team</p>
+        `;
+        break;
+
+      case "auto_charge_failed":
+        subject = `Payment Failed - Action Required - ${workspace_name}`;
+        html = `
+          <h1>Automatic Payment Failed</h1>
+          <p>Hi ${to_name},</p>
+          <p>We attempted to automatically charge your payment method for a commission payment of <strong>$${amount?.toFixed(2)}</strong> for ${workspace_name}, but it was declined.</p>
+          ${last4 ? `<p><strong>Card ending in:</strong> ${last4}</p>` : ''}
+          ${error_reason ? `<p><strong>Reason:</strong> ${error_reason}</p>` : ''}
+          <p>Please update your payment method or complete the payment manually to avoid account restrictions.</p>
+          <p>You can update your payment method in Settings → Billing.</p>
           <p>Best regards,<br>The Closer Claus Team</p>
         `;
         break;
