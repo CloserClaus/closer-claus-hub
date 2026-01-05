@@ -186,28 +186,41 @@ export function PurchaseTab({ workspaceId, subscriptionTier, onCreditsUpdated }:
   }, [workspaceId]);
 
   const fetchSDRMembers = async () => {
-    const { data, error } = await supabase
+    // First fetch workspace members
+    const { data: members, error: membersError } = await supabase
       .from('workspace_members')
-      .select(`
-        id,
-        user_id,
-        profiles:user_id (
-          full_name,
-          email
-        )
-      `)
+      .select('id, user_id')
       .eq('workspace_id', workspaceId)
       .is('removed_at', null);
 
-    if (error) {
-      console.error('Error fetching SDR members:', error);
+    if (membersError) {
+      console.error('Error fetching workspace members:', membersError);
       return;
     }
 
-    // Transform data to handle the nested profiles structure
-    const transformedData = (data || []).map(member => ({
-      ...member,
-      profiles: Array.isArray(member.profiles) ? member.profiles[0] : member.profiles
+    if (!members || members.length === 0) {
+      setSDRMembers([]);
+      return;
+    }
+
+    // Then fetch profiles for those members
+    const userIds = members.map(m => m.user_id);
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, full_name, email')
+      .in('id', userIds);
+
+    if (profilesError) {
+      console.error('Error fetching profiles:', profilesError);
+      return;
+    }
+
+    // Combine the data
+    const profilesMap = new Map(profiles?.map(p => [p.id, p]) || []);
+    const transformedData = members.map(member => ({
+      id: member.id,
+      user_id: member.user_id,
+      profiles: profilesMap.get(member.user_id) || null
     }));
 
     setSDRMembers(transformedData as SDRMember[]);
