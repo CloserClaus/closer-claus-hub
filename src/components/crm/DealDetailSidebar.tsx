@@ -11,6 +11,8 @@ import {
   TrendingUp,
   FileText,
   AlertTriangle,
+  Mail,
+  Phone,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -54,6 +56,20 @@ interface Activity {
   user_name?: string;
 }
 
+interface LeadInfo {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  company: string | null;
+  title: string | null;
+  notes: string | null;
+  workspace_id: string;
+  created_at: string;
+  last_contacted_at: string | null;
+}
+
 interface DealDetailSidebarProps {
   deal: Deal | null;
   open: boolean;
@@ -61,6 +77,7 @@ interface DealDetailSidebarProps {
   onEdit: (deal: Deal) => void;
   onDelete: (dealId: string) => void;
   onDispute: (deal: Deal) => void;
+  onEditLead?: (lead: LeadInfo) => void;
   isAgencyOwner: boolean;
 }
 
@@ -81,10 +98,11 @@ export function DealDetailSidebar({
   onEdit,
   onDelete,
   onDispute,
+  onEditLead,
   isAgencyOwner,
 }: DealDetailSidebarProps) {
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [leadInfo, setLeadInfo] = useState<{ first_name: string; last_name: string; company: string | null } | null>(null);
+  const [leadInfo, setLeadInfo] = useState<LeadInfo | null>(null);
   const [assigneeName, setAssigneeName] = useState<string>('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -107,11 +125,11 @@ export function DealDetailSidebar({
 
     setActivities(activityData || []);
 
-    // Fetch lead info
+    // Fetch full lead info
     if (deal.lead_id) {
       const { data: lead } = await supabase
         .from('leads')
-        .select('first_name, last_name, company')
+        .select('*')
         .eq('id', deal.lead_id)
         .maybeSingle();
 
@@ -238,17 +256,47 @@ export function DealDetailSidebar({
                 {leadInfo && (
                   <>
                     <div className="space-y-3">
-                      <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                        Associated Lead
-                      </h3>
-                      <div className="p-3 rounded-lg bg-muted/50">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                          Associated Lead
+                        </h3>
+                        {onEditLead && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onEditLead(leadInfo)}
+                            className="h-7 px-2 text-xs"
+                          >
+                            <Edit className="h-3 w-3 mr-1" />
+                            Edit Lead
+                          </Button>
+                        )}
+                      </div>
+                      <div className="p-3 rounded-lg bg-muted/50 space-y-2">
                         <p className="text-sm font-medium">
                           {leadInfo.first_name} {leadInfo.last_name}
                         </p>
+                        {leadInfo.title && (
+                          <p className="text-xs text-muted-foreground">
+                            {leadInfo.title}
+                          </p>
+                        )}
                         {leadInfo.company && (
-                          <p className="text-xs text-muted-foreground mt-1">
+                          <p className="text-xs text-muted-foreground">
                             {leadInfo.company}
                           </p>
+                        )}
+                        {leadInfo.email && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Mail className="h-3 w-3" />
+                            <span>{leadInfo.email}</span>
+                          </div>
+                        )}
+                        {leadInfo.phone && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Phone className="h-3 w-3" />
+                            <span>{leadInfo.phone}</span>
+                          </div>
                         )}
                       </div>
                     </div>
