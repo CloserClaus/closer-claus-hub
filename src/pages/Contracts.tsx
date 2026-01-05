@@ -239,7 +239,18 @@ export default function Contracts() {
   };
 
   const handleSendContract = async (contract: Contract) => {
+    const leadEmail = contract.deals?.leads?.email;
+    const leadName = contract.deals?.leads 
+      ? `${contract.deals.leads.first_name} ${contract.deals.leads.last_name}` 
+      : 'Client';
+    
+    if (!leadEmail) {
+      toast.error("Cannot send contract: no email address associated with this deal's lead");
+      return;
+    }
+
     try {
+      // Update contract status
       const { error } = await supabase
         .from('contracts')
         .update({ status: 'sent', sent_at: new Date().toISOString() })
@@ -250,7 +261,29 @@ export default function Contracts() {
         return;
       }
 
-      toast.success("Contract sent! Share the signing link with your client.");
+      // Send email notification to lead
+      const signingUrl = `${window.location.origin}/sign/${contract.id}`;
+      
+      const emailResponse = await supabase.functions.invoke('send-contract-email', {
+        body: {
+          contractId: contract.id,
+          leadEmail,
+          leadName,
+          contractTitle: contract.title,
+          dealTitle: contract.deals?.title || 'Deal',
+          dealValue: contract.deals?.value || 0,
+          agencyName: currentWorkspace?.name || 'Agency',
+          signingUrl,
+        }
+      });
+
+      if (emailResponse.error) {
+        console.error('Email error:', emailResponse.error);
+        toast.success("Contract sent! Note: Email delivery failed, please share the link manually.");
+      } else {
+        toast.success("Contract sent! Email with signing link has been sent to the client.");
+      }
+      
       fetchContracts();
     } catch (error) {
       console.error('Error:', error);

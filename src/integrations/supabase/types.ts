@@ -225,6 +225,50 @@ export type Database = {
           },
         ]
       }
+      contract_signing_otps: {
+        Row: {
+          attempts: number | null
+          contract_id: string
+          created_at: string | null
+          email: string
+          expires_at: string
+          id: string
+          otp_code: string
+          session_token: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          attempts?: number | null
+          contract_id: string
+          created_at?: string | null
+          email: string
+          expires_at: string
+          id?: string
+          otp_code: string
+          session_token?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          attempts?: number | null
+          contract_id?: string
+          created_at?: string | null
+          email?: string
+          expires_at?: string
+          id?: string
+          otp_code?: string
+          session_token?: string | null
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_signing_otps_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contracts: {
         Row: {
           content: string

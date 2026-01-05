@@ -1,5 +1,6 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Resend } from "https://esm.sh/resend@2.0.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,27 +11,30 @@ const corsHeaders = {
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_SIGN_ATTEMPTS = 5; // Max 5 signing attempts per 10 minutes per IP
 const MAX_GET_ATTEMPTS = 20; // Max 20 get contract attempts per 10 minutes per IP
+const MAX_OTP_REQUESTS = 5; // Max 5 OTP requests per 10 minutes per email
+const MAX_OTP_VERIFY_ATTEMPTS = 3; // Max 3 OTP verify attempts per session
+const OTP_EXPIRY_MINUTES = 10;
 
 // Helper function to sanitize name input - allow only safe characters
 function sanitizeName(name: string): string {
-  // Remove any HTML tags
   let sanitized = name.replace(/<[^>]*>/g, '');
-  // Remove any script-like content
   sanitized = sanitized.replace(/javascript:/gi, '');
   sanitized = sanitized.replace(/on\w+=/gi, '');
-  // Trim and limit to allowed characters (letters, spaces, hyphens, apostrophes, periods)
   sanitized = sanitized.trim();
-  // Replace multiple spaces with single space
   sanitized = sanitized.replace(/\s+/g, ' ');
   return sanitized;
 }
 
 // Helper function to sanitize email
 function sanitizeEmail(email: string): string {
-  // Remove any HTML/script content and lowercase
   let sanitized = email.replace(/<[^>]*>/g, '').trim().toLowerCase();
   sanitized = sanitized.replace(/javascript:/gi, '');
   return sanitized;
+}
+
+// Generate 6-digit OTP
+function generateOTP(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 // Rate limiting helper function
@@ -41,14 +45,12 @@ async function checkRateLimit(
 ): Promise<{ allowed: boolean; remaining: number }> {
   const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
 
-  // Clean old entries for this key
   await supabase
     .from('rate_limits')
     .delete()
     .eq('key', key)
     .lt('timestamp', windowStart);
 
-  // Count recent requests
   const { count, error: countError } = await supabase
     .from('rate_limits')
     .select('*', { count: 'exact', head: true })
@@ -57,7 +59,6 @@ async function checkRateLimit(
 
   if (countError) {
     console.error('Rate limit check error:', countError);
-    // Fail open to not block legitimate requests on DB errors
     return { allowed: true, remaining: maxRequests };
   }
 
@@ -66,7 +67,6 @@ async function checkRateLimit(
   const remaining = Math.max(0, maxRequests - currentCount - 1);
 
   if (allowed) {
-    // Log this request
     await supabase.from('rate_limits').insert({
       key,
       timestamp: new Date().toISOString()
@@ -84,9 +84,9 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const resendApiKey = Deno.env.get('RESEND_API_KEY');
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get client IP for rate limiting
     const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
                      req.headers.get('x-real-ip') || 
                      'unknown';
@@ -105,7 +105,6 @@ serve(async (req) => {
           );
         }
 
-        // Validate contractId format (UUID)
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!uuidRegex.test(contractId)) {
           return new Response(
@@ -114,9 +113,8 @@ serve(async (req) => {
           );
         }
 
-        // Rate limit check for get_contract
         const rateLimitKey = `get_contract_${clientIp}`;
-        const { allowed, remaining } = await checkRateLimit(supabase, rateLimitKey, MAX_GET_ATTEMPTS);
+        const { allowed } = await checkRateLimit(supabase, rateLimitKey, MAX_GET_ATTEMPTS);
         
         if (!allowed) {
           console.log('Rate limit exceeded for get_contract:', { ip: clientIp });
@@ -133,7 +131,6 @@ serve(async (req) => {
           );
         }
 
-        // Get contract details for signing page
         const { data: contract, error } = await supabase
           .from('contracts')
           .select(`
@@ -176,17 +173,16 @@ serve(async (req) => {
         );
       }
 
-      case 'sign_contract': {
-        const { contractId, signerName, signerEmail, signatureData, agreed } = params;
+      case 'request_signing_otp': {
+        const { contractId, email } = params;
 
-        if (!contractId || !signerName || !signerEmail || !agreed) {
+        if (!contractId || !email) {
           return new Response(
-            JSON.stringify({ error: 'All fields are required' }),
+            JSON.stringify({ error: 'Contract ID and email are required' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
-        // Validate contractId format (UUID)
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!uuidRegex.test(contractId)) {
           return new Response(
@@ -195,46 +191,7 @@ serve(async (req) => {
           );
         }
 
-        // Rate limit check for sign_contract - more strict
-        const rateLimitKey = `sign_contract_${clientIp}`;
-        const { allowed, remaining } = await checkRateLimit(supabase, rateLimitKey, MAX_SIGN_ATTEMPTS);
-        
-        if (!allowed) {
-          console.log('Rate limit exceeded for sign_contract:', { ip: clientIp, contractId });
-          return new Response(
-            JSON.stringify({ error: 'Too many signing attempts. Please try again later.' }),
-            { 
-              status: 429, 
-              headers: { 
-                ...corsHeaders, 
-                'Content-Type': 'application/json',
-                'Retry-After': '600'
-              } 
-            }
-          );
-        }
-
-        // Validate input lengths to prevent abuse
-        if (signerName.length > 200 || signerEmail.length > 255) {
-          return new Response(
-            JSON.stringify({ error: 'Input exceeds maximum length' }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        // Sanitize inputs
-        const sanitizedName = sanitizeName(signerName);
-        const sanitizedEmail = sanitizeEmail(signerEmail);
-
-        // Validate sanitized name is not empty and has reasonable content
-        if (sanitizedName.length < 2 || sanitizedName.length > 200) {
-          return new Response(
-            JSON.stringify({ error: 'Invalid name provided' }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        // Validate email format
+        const sanitizedEmail = sanitizeEmail(email);
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(sanitizedEmail)) {
           return new Response(
@@ -243,11 +200,363 @@ serve(async (req) => {
           );
         }
 
-        // Get client IP and user agent
+        // Rate limit OTP requests
+        const rateLimitKey = `otp_request_${sanitizedEmail}_${contractId}`;
+        const { allowed } = await checkRateLimit(supabase, rateLimitKey, MAX_OTP_REQUESTS);
+        
+        if (!allowed) {
+          console.log('Rate limit exceeded for OTP request:', { email: sanitizedEmail, contractId });
+          return new Response(
+            JSON.stringify({ error: 'Too many verification code requests. Please try again later.' }),
+            { 
+              status: 429, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '600' } 
+            }
+          );
+        }
+
+        // Verify contract exists and is in 'sent' status, and get expected email
+        const { data: contract, error: contractError } = await supabase
+          .from('contracts')
+          .select(`
+            id, 
+            status, 
+            title,
+            deals (
+              title,
+              leads (
+                email,
+                first_name,
+                last_name
+              )
+            )
+          `)
+          .eq('id', contractId)
+          .single();
+
+        if (contractError || !contract) {
+          return new Response(
+            JSON.stringify({ error: 'Contract not found' }),
+            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (contract.status !== 'sent') {
+          return new Response(
+            JSON.stringify({ error: 'Contract is not available for signing', status: contract.status }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Validate email matches expected lead email
+        const expectedEmail = (contract.deals as any)?.leads?.email?.toLowerCase();
+        
+        if (!expectedEmail) {
+          console.log('No lead email found for contract:', contractId);
+          return new Response(
+            JSON.stringify({ error: 'No recipient email associated with this contract' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (expectedEmail !== sanitizedEmail) {
+          console.log('Email mismatch for OTP request:', { contractId, expectedEmail, providedEmail: sanitizedEmail });
+          return new Response(
+            JSON.stringify({ error: 'Email does not match contract recipient' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Invalidate any existing unused OTPs for this contract/email
+        await supabase
+          .from('contract_signing_otps')
+          .update({ expires_at: new Date().toISOString() })
+          .eq('contract_id', contractId)
+          .eq('email', sanitizedEmail)
+          .is('verified_at', null);
+
+        // Generate new OTP
+        const otpCode = generateOTP();
+        const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000).toISOString();
+
+        const { error: insertError } = await supabase
+          .from('contract_signing_otps')
+          .insert({
+            contract_id: contractId,
+            email: sanitizedEmail,
+            otp_code: otpCode,
+            expires_at: expiresAt,
+          });
+
+        if (insertError) {
+          console.error('Error creating OTP:', insertError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to generate verification code' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Send OTP via email
+        if (!resendApiKey) {
+          console.error('RESEND_API_KEY not configured');
+          return new Response(
+            JSON.stringify({ error: 'Email service not configured' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const resend = new Resend(resendApiKey);
+        const leadName = `${(contract.deals as any)?.leads?.first_name || ''} ${(contract.deals as any)?.leads?.last_name || ''}`.trim() || 'there';
+
+        try {
+          await resend.emails.send({
+            from: "Contracts <onboarding@resend.dev>",
+            to: [sanitizedEmail],
+            subject: `Your verification code: ${otpCode}`,
+            html: `
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              </head>
+              <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 500px; margin: 0 auto; padding: 20px;">
+                <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
+                  <h1 style="color: white; margin: 0; font-size: 20px;">Verification Code</h1>
+                </div>
+                
+                <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+                  <p style="margin-top: 0;">Hello ${leadName},</p>
+                  
+                  <p>Use this code to verify your identity and sign "${contract.title}":</p>
+                  
+                  <div style="background: white; border: 2px solid #6366f1; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
+                    <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #6366f1;">${otpCode}</span>
+                  </div>
+                  
+                  <p style="color: #6b7280; font-size: 14px;">
+                    This code expires in ${OTP_EXPIRY_MINUTES} minutes.
+                  </p>
+                  
+                  <p style="color: #9ca3af; font-size: 12px; margin-bottom: 0;">
+                    If you did not request this code, please ignore this email.
+                  </p>
+                </div>
+              </body>
+              </html>
+            `,
+          });
+          console.log('OTP email sent successfully to:', sanitizedEmail);
+        } catch (emailErr) {
+          console.error('Failed to send OTP email:', emailErr);
+          return new Response(
+            JSON.stringify({ error: 'Failed to send verification email' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: 'Verification code sent to your email',
+            expiresInMinutes: OTP_EXPIRY_MINUTES
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'verify_signing_otp': {
+        const { contractId, email, otpCode } = params;
+
+        if (!contractId || !email || !otpCode) {
+          return new Response(
+            JSON.stringify({ error: 'Contract ID, email, and verification code are required' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const sanitizedEmail = sanitizeEmail(email);
+        const sanitizedOtp = otpCode.toString().trim();
+
+        // Get the latest valid OTP for this contract/email
+        const { data: otpRecord, error: otpError } = await supabase
+          .from('contract_signing_otps')
+          .select('*')
+          .eq('contract_id', contractId)
+          .eq('email', sanitizedEmail)
+          .is('verified_at', null)
+          .gt('expires_at', new Date().toISOString())
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (otpError || !otpRecord) {
+          console.log('No valid OTP found:', { contractId, email: sanitizedEmail });
+          return new Response(
+            JSON.stringify({ error: 'No valid verification code found. Please request a new one.' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Check attempt limit
+        if (otpRecord.attempts >= MAX_OTP_VERIFY_ATTEMPTS) {
+          console.log('OTP attempt limit exceeded:', { contractId, email: sanitizedEmail });
+          return new Response(
+            JSON.stringify({ error: 'Too many incorrect attempts. Please request a new code.' }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Increment attempts
+        await supabase
+          .from('contract_signing_otps')
+          .update({ attempts: otpRecord.attempts + 1 })
+          .eq('id', otpRecord.id);
+
+        // Verify OTP
+        if (otpRecord.otp_code !== sanitizedOtp) {
+          const remainingAttempts = MAX_OTP_VERIFY_ATTEMPTS - otpRecord.attempts - 1;
+          console.log('Invalid OTP entered:', { contractId, email: sanitizedEmail, remainingAttempts });
+          return new Response(
+            JSON.stringify({ 
+              error: `Invalid verification code. ${remainingAttempts} attempt${remainingAttempts !== 1 ? 's' : ''} remaining.` 
+            }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Generate session token
+        const sessionToken = crypto.randomUUID();
+
+        // Mark OTP as verified
+        const { error: updateError } = await supabase
+          .from('contract_signing_otps')
+          .update({ 
+            verified_at: new Date().toISOString(),
+            session_token: sessionToken 
+          })
+          .eq('id', otpRecord.id);
+
+        if (updateError) {
+          console.error('Error updating OTP record:', updateError);
+          return new Response(
+            JSON.stringify({ error: 'Verification failed' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        console.log('OTP verified successfully:', { contractId, email: sanitizedEmail });
+
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            sessionToken,
+            message: 'Email verified successfully' 
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'sign_contract': {
+        const { contractId, signerName, signerEmail, signatureData, agreed, sessionToken } = params;
+
+        if (!contractId || !signerName || !signerEmail || !agreed) {
+          return new Response(
+            JSON.stringify({ error: 'All fields are required' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Require session token for verified signing
+        if (!sessionToken) {
+          return new Response(
+            JSON.stringify({ error: 'Email verification required before signing' }),
+            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(contractId)) {
+          return new Response(
+            JSON.stringify({ error: 'Invalid contract ID format' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Validate session token
+        const sanitizedEmail = sanitizeEmail(signerEmail);
+        const { data: otpRecord, error: otpError } = await supabase
+          .from('contract_signing_otps')
+          .select('*')
+          .eq('contract_id', contractId)
+          .eq('email', sanitizedEmail)
+          .eq('session_token', sessionToken)
+          .not('verified_at', 'is', null)
+          .single();
+
+        if (otpError || !otpRecord) {
+          console.log('Invalid or expired session token:', { contractId, email: sanitizedEmail });
+          return new Response(
+            JSON.stringify({ error: 'Invalid or expired verification session. Please verify your email again.' }),
+            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Check session token is still valid (within 30 minutes of verification)
+        const verifiedAt = new Date(otpRecord.verified_at);
+        const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+        if (verifiedAt < thirtyMinutesAgo) {
+          console.log('Session token expired:', { contractId, email: sanitizedEmail, verifiedAt });
+          return new Response(
+            JSON.stringify({ error: 'Verification session expired. Please verify your email again.' }),
+            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Rate limit check for sign_contract
+        const rateLimitKey = `sign_contract_${clientIp}`;
+        const { allowed } = await checkRateLimit(supabase, rateLimitKey, MAX_SIGN_ATTEMPTS);
+        
+        if (!allowed) {
+          console.log('Rate limit exceeded for sign_contract:', { ip: clientIp, contractId });
+          return new Response(
+            JSON.stringify({ error: 'Too many signing attempts. Please try again later.' }),
+            { 
+              status: 429, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '600' } 
+            }
+          );
+        }
+
+        // Validate input lengths
+        if (signerName.length > 200 || signerEmail.length > 255) {
+          return new Response(
+            JSON.stringify({ error: 'Input exceeds maximum length' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const sanitizedName = sanitizeName(signerName);
+
+        if (sanitizedName.length < 2 || sanitizedName.length > 200) {
+          return new Response(
+            JSON.stringify({ error: 'Invalid name provided' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(sanitizedEmail)) {
+          return new Response(
+            JSON.stringify({ error: 'Invalid email address' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         const ipAddress = clientIp;
         const userAgent = req.headers.get('user-agent') || 'unknown';
 
-        // Verify contract exists and is in 'sent' status, and get the associated lead email
+        // Verify contract exists and is in 'sent' status
         const { data: contract, error: contractError } = await supabase
           .from('contracts')
           .select(`
@@ -280,7 +589,7 @@ serve(async (req) => {
           );
         }
 
-        // Validate that signer email matches the expected lead email
+        // Validate signer email matches expected lead email
         const expectedEmail = (contract.deals as any)?.leads?.email?.toLowerCase();
         
         if (expectedEmail && expectedEmail !== sanitizedEmail) {
@@ -296,7 +605,7 @@ serve(async (req) => {
           );
         }
 
-        // Create signature record with sanitized inputs
+        // Create signature record
         const { error: signatureError } = await supabase
           .from('contract_signatures')
           .insert({
@@ -305,7 +614,7 @@ serve(async (req) => {
             signer_email: sanitizedEmail,
             signature_data: signatureData || null,
             ip_address: ipAddress,
-            user_agent: userAgent.substring(0, 500), // Limit user agent length
+            user_agent: userAgent.substring(0, 500),
           });
 
         if (signatureError) {
@@ -355,7 +664,7 @@ serve(async (req) => {
           .eq('id', contract.workspace_id)
           .single();
 
-        // Get commission percentage from the job (if SDR was hired through a job)
+        // Get commission percentage from the job
         const { data: membership } = await supabase
           .from('workspace_members')
           .select('user_id')
@@ -363,10 +672,8 @@ serve(async (req) => {
           .eq('user_id', deal?.assigned_to)
           .maybeSingle();
 
-        // Default to 10% commission if no job commission percentage set
         let commissionPercentage = 10;
 
-        // Try to find the job this SDR was hired for
         if (membership) {
           const { data: application } = await supabase
             .from('job_applications')
@@ -390,12 +697,10 @@ serve(async (req) => {
           }
         }
 
-        // Create commission record and send notification
+        // Create commission record and notifications
         if (deal && workspace) {
           const rakePercentage = workspace.rake_percentage || 2;
-          // Commission is the SDR's percentage of the deal value
           const commissionAmount = (deal.value * commissionPercentage) / 100;
-          // Rake is platform's percentage of the commission (not deal value)
           const rakeAmount = (commissionAmount * rakePercentage) / 100;
           const netCommission = commissionAmount - rakeAmount;
 
@@ -413,7 +718,6 @@ serve(async (req) => {
           if (commissionError) {
             console.error('Error creating commission:', commissionError);
           } else {
-            // Get details for notifications
             const { data: workspaceDetails } = await supabase
               .from('workspaces')
               .select('name, owner_id')
@@ -438,9 +742,8 @@ serve(async (req) => {
               .eq('id', contract.deal_id)
               .single();
 
-            const totalAmount = commissionAmount; // Total commission before rake
+            const totalAmount = commissionAmount;
 
-            // Create in-app notification for agency owner
             if (workspaceDetails?.owner_id) {
               const { error: notifError } = await supabase
                 .from('notifications')
@@ -457,10 +760,8 @@ serve(async (req) => {
                   },
                 });
               if (notifError) console.error('Error creating commission notification:', notifError);
-              else console.log('Created commission notification for owner');
             }
 
-            // Create notification for SDR about their commission
             const { error: sdrNotifError } = await supabase
               .from('notifications')
               .insert({
@@ -475,9 +776,7 @@ serve(async (req) => {
                 },
               });
             if (sdrNotifError) console.error('Error creating SDR commission notification:', sdrNotifError);
-            else console.log('Created commission notification for SDR');
 
-            // Send commission created email
             if (ownerProfile?.email) {
               try {
                 await fetch(`${supabaseUrl}/functions/v1/send-commission-email`, {
@@ -504,7 +803,7 @@ serve(async (req) => {
           }
         }
 
-        // Log deal activity with sanitized name
+        // Log deal activity
         if (deal) {
           await supabase
             .from('deal_activities')
