@@ -1596,6 +1596,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_conversation_participant: {
+        Args: { _conversation_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_first_user: { Args: never; Returns: boolean }
       is_workspace_member: {
         Args: { _user_id: string; _workspace_id: string }
