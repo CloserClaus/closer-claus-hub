@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.purchase-dialer-credits]
 verify_jwt = true
+
+[functions.provision-phone-number]
+verify_jwt = true
