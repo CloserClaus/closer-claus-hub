@@ -17,7 +17,7 @@ serve(async (req) => {
     const stripeSecretKey = Deno.env.get('STRIPE_API_KEY');
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { commission_id, payment_method } = await req.json();
+    const { commission_id } = await req.json();
 
     if (!commission_id) {
       return new Response(
@@ -52,170 +52,151 @@ serve(async (req) => {
       );
     }
 
-    const totalAmount = Number(commission.amount) + Number(commission.rake_amount);
+    // Total amount = SDR commission + agency rake
+    const totalAmount = Number(commission.amount) + Number(commission.agency_rake_amount || commission.rake_amount);
     console.log(`Processing payment of $${totalAmount} for commission ${commission_id}`);
 
     // Check if Stripe is configured
-    if (stripeSecretKey && payment_method === 'stripe') {
-      // Dynamic import of Stripe
-      const { default: Stripe } = await import('https://esm.sh/stripe@14.21.0?target=deno');
-      const stripe = new Stripe(stripeSecretKey, {
-        apiVersion: '2023-10-16',
-      });
+    if (!stripeSecretKey) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'stripe_not_configured',
+          message: 'Stripe is not configured. Please add STRIPE_API_KEY to enable payments.',
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-      // Check if workspace has a Stripe customer
-      let customerId = commission.workspace?.stripe_customer_id;
+    // Dynamic import of Stripe
+    const { default: Stripe } = await import('https://esm.sh/stripe@14.21.0?target=deno');
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: '2023-10-16',
+    });
 
-      if (!customerId) {
-        // Get workspace owner email
-        const { data: ownerProfile } = await supabase
-          .from('profiles')
-          .select('email, full_name')
-          .eq('id', commission.workspace?.owner_id)
-          .single();
+    // Check if workspace has a Stripe customer
+    let customerId = commission.workspace?.stripe_customer_id;
 
-        if (!ownerProfile) {
-          return new Response(
-            JSON.stringify({ error: 'Workspace owner not found' }),
-            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
+    if (!customerId) {
+      // Get workspace owner email
+      const { data: ownerProfile } = await supabase
+        .from('profiles')
+        .select('email, full_name')
+        .eq('id', commission.workspace?.owner_id)
+        .single();
 
-        // Create Stripe customer
-        const customer = await stripe.customers.create({
-          email: ownerProfile.email,
-          name: ownerProfile.full_name || commission.workspace?.name,
-          metadata: {
-            workspace_id: commission.workspace_id,
-            workspace_name: commission.workspace?.name,
-          },
-        });
-
-        customerId = customer.id;
-
-        // Save customer ID to workspace
-        await supabase
-          .from('workspaces')
-          .update({ stripe_customer_id: customerId })
-          .eq('id', commission.workspace_id);
-
-        console.log(`Created Stripe customer ${customerId} for workspace ${commission.workspace_id}`);
+      if (!ownerProfile) {
+        return new Response(
+          JSON.stringify({ error: 'Workspace owner not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
 
-      // Create payment intent
-      try {
-        const paymentIntent = await stripe.paymentIntents.create({
-          amount: Math.round(totalAmount * 100), // Convert to cents
-          currency: 'usd',
-          customer: customerId,
-          metadata: {
-            commission_id: commission.id,
-            workspace_id: commission.workspace_id,
-            deal_id: commission.deal_id,
-            deal_title: commission.deal?.title || 'Unknown Deal',
-          },
-          description: `Commission payment for deal: ${commission.deal?.title || commission.deal_id}`,
-        });
+      // Create Stripe customer
+      const customer = await stripe.customers.create({
+        email: ownerProfile.email,
+        name: ownerProfile.full_name || commission.workspace?.name,
+        metadata: {
+          workspace_id: commission.workspace_id,
+          workspace_name: commission.workspace?.name,
+        },
+      });
 
-        console.log(`Created payment intent ${paymentIntent.id} for $${totalAmount}`);
+      customerId = customer.id;
 
-        // If payment intent requires action (e.g., 3D Secure), return client secret
-        if (paymentIntent.status === 'requires_payment_method' || paymentIntent.status === 'requires_confirmation') {
-          return new Response(
-            JSON.stringify({
-              success: false,
-              requires_action: true,
-              client_secret: paymentIntent.client_secret,
-              payment_intent_id: paymentIntent.id,
-              amount: totalAmount,
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
+      // Save customer ID to workspace
+      await supabase
+        .from('workspaces')
+        .update({ stripe_customer_id: customerId })
+        .eq('id', commission.workspace_id);
 
-        // If payment succeeded immediately
-        if (paymentIntent.status === 'succeeded') {
-          // Update commission as paid
-          await supabase
-            .from('commissions')
-            .update({
-              status: 'paid',
-              paid_at: new Date().toISOString(),
-              stripe_payment_intent_id: paymentIntent.id,
-            })
-            .eq('id', commission_id);
+      console.log(`Created Stripe customer ${customerId} for workspace ${commission.workspace_id}`);
+    }
 
-          // Check if workspace should be unlocked
-          const { data: pendingCommissions } = await supabase
-            .from('commissions')
-            .select('id')
-            .eq('workspace_id', commission.workspace_id)
-            .eq('status', 'pending');
+    // Get the origin for redirect URLs
+    const origin = req.headers.get('origin') || 'https://closer-claus.lovable.app';
+    const isAgencyClosed = commission.amount === 0;
 
-          if (!pendingCommissions?.length && commission.workspace?.is_locked) {
-            await supabase
-              .from('workspaces')
-              .update({ is_locked: false })
-              .eq('id', commission.workspace_id);
-            console.log(`Unlocked workspace ${commission.workspace_id}`);
-          }
+    // Create a Stripe Checkout session
+    try {
+      const lineItems: any[] = [];
 
-          // Create notification for SDR
-          await supabase.functions.invoke('create-notification', {
-            body: {
-              user_id: commission.sdr_id,
-              title: 'Commission Paid',
-              message: `Your commission of $${commission.amount.toFixed(2)} for "${commission.deal?.title}" has been paid.`,
-              type: 'commission_paid',
-              workspace_id: commission.workspace_id,
+      // Add SDR commission line item if applicable
+      if (!isAgencyClosed && commission.amount > 0) {
+        lineItems.push({
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: `SDR Commission - ${commission.deal?.title || 'Deal'}`,
+              description: `Commission payment for SDR`,
             },
-          });
+            unit_amount: Math.round(Number(commission.amount) * 100),
+          },
+          quantity: 1,
+        });
+      }
 
-          return new Response(
-            JSON.stringify({
-              success: true,
-              payment_intent_id: paymentIntent.id,
-              amount_charged: totalAmount,
-              status: 'paid',
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
+      // Add agency rake (platform fee)
+      const agencyRake = Number(commission.agency_rake_amount || commission.rake_amount);
+      if (agencyRake > 0) {
+        lineItems.push({
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: 'Platform Fee',
+              description: `Closer Claus platform fee`,
+            },
+            unit_amount: Math.round(agencyRake * 100),
+          },
+          quantity: 1,
+        });
+      }
 
+      // If no line items, nothing to pay
+      if (lineItems.length === 0) {
         return new Response(
-          JSON.stringify({
-            success: false,
-            payment_intent_id: paymentIntent.id,
-            status: paymentIntent.status,
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-
-      } catch (stripeError: any) {
-        console.error('Stripe payment error:', stripeError);
-        return new Response(
-          JSON.stringify({ 
-            error: stripeError.message || 'Payment failed',
-            code: stripeError.code,
-          }),
+          JSON.stringify({ error: 'No amount to pay' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-    }
 
-    // Stripe not configured - return info for manual payment
-    console.log(`Stripe not configured. Manual payment required for $${totalAmount}`);
-    
-    return new Response(
-      JSON.stringify({
-        success: false,
-        message: 'Stripe integration not configured. Please add STRIPE_SECRET_KEY to enable automatic payments.',
-        commission_id,
-        amount: totalAmount,
-        stripe_enabled: false,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: lineItems,
+        success_url: `${origin}/commissions?payment=success&commission_id=${commission_id}`,
+        cancel_url: `${origin}/commissions?payment=cancelled`,
+        metadata: {
+          commission_id: commission.id,
+          workspace_id: commission.workspace_id,
+          deal_id: commission.deal_id,
+          type: 'commission_payment',
+        },
+      });
+
+      console.log(`Created Stripe Checkout session ${session.id} for $${totalAmount}`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          checkout_url: session.url,
+          session_id: session.id,
+          amount: totalAmount,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+
+    } catch (stripeError: any) {
+      console.error('Stripe payment error:', stripeError);
+      return new Response(
+        JSON.stringify({ 
+          error: stripeError.message || 'Payment failed',
+          code: stripeError.code,
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error in pay-commission:', error);
