@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, Zap, Crown, Rocket, ArrowUpRight, Calendar, CheckCircle, AlertCircle, Loader2, Download, ExternalLink, Clock, FileText } from 'lucide-react';
+import { CreditCard, Zap, Crown, Rocket, ArrowUpRight, Calendar, CheckCircle, AlertCircle, Loader2, Download, ExternalLink, Clock, FileText, RefreshCw, XCircle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { supabase } from '@/integrations/supabase/client';
@@ -64,6 +64,15 @@ interface UpcomingCharge {
   amount: number;
   auto_charge_date: string;
   sdr_name: string | null;
+  status: string;
+}
+
+interface FailedPayment {
+  id: string;
+  deal_title: string;
+  amount: number;
+  sdr_name: string | null;
+  created_at: string;
 }
 
 export default function Billing() {
@@ -80,6 +89,9 @@ export default function Billing() {
   const [invoicesLoading, setInvoicesLoading] = useState(false);
   const [upcomingCharges, setUpcomingCharges] = useState<UpcomingCharge[]>([]);
   const [upcomingLoading, setUpcomingLoading] = useState(false);
+  const [failedPayments, setFailedPayments] = useState<FailedPayment[]>([]);
+  const [failedLoading, setFailedLoading] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -97,6 +109,7 @@ export default function Billing() {
       fetchPaymentMethod();
       fetchInvoices();
       fetchUpcomingCharges();
+      fetchFailedPayments();
     }
   }, [currentWorkspace]);
 
@@ -156,6 +169,7 @@ export default function Billing() {
         amount: Number(c.amount) + Number(c.agency_rake_amount || c.rake_amount),
         auto_charge_date: addDays(new Date(c.created_at), 7).toISOString(),
         sdr_name: profileMap.get(c.sdr_id) || null,
+        status: 'pending',
       }));
 
       setUpcomingCharges(charges);
@@ -163,6 +177,141 @@ export default function Billing() {
       console.error('Error fetching upcoming charges:', error);
     } finally {
       setUpcomingLoading(false);
+    }
+  };
+
+  const fetchFailedPayments = async () => {
+    if (!currentWorkspace) return;
+    setFailedLoading(true);
+
+    try {
+      // Check notifications for payment_failed type to identify failed commissions
+      const { data: failedNotifications } = await supabase
+        .from('notifications')
+        .select('data')
+        .eq('workspace_id', currentWorkspace.id)
+        .eq('type', 'payment_failed')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      const failedCommissionIds = failedNotifications
+        ?.map(n => (n.data as any)?.commission_id)
+        .filter(Boolean) || [];
+
+      if (failedCommissionIds.length === 0) {
+        setFailedPayments([]);
+        setFailedLoading(false);
+        return;
+      }
+
+      // Fetch commission details for failed ones that are still unpaid
+      const { data: failedCommissions, error } = await supabase
+        .from('commissions')
+        .select(`
+          id,
+          amount,
+          rake_amount,
+          agency_rake_amount,
+          created_at,
+          status,
+          deal:deals(title),
+          sdr_id
+        `)
+        .in('id', failedCommissionIds)
+        .in('status', ['pending', 'overdue']);
+
+      if (error) throw error;
+
+      // Get SDR names
+      const sdrIds = [...new Set(failedCommissions?.map(c => c.sdr_id).filter(Boolean))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', sdrIds.length > 0 ? sdrIds : ['none']);
+
+      const profileMap = new Map(profiles?.map(p => [p.id, p.full_name]) || []);
+
+      const failed: FailedPayment[] = (failedCommissions || []).map(c => ({
+        id: c.id,
+        deal_title: c.deal?.title || 'Deal',
+        amount: Number(c.amount) + Number(c.agency_rake_amount || c.rake_amount),
+        sdr_name: profileMap.get(c.sdr_id) || null,
+        created_at: c.created_at,
+      }));
+
+      setFailedPayments(failed);
+    } catch (error) {
+      console.error('Error fetching failed payments:', error);
+    } finally {
+      setFailedLoading(false);
+    }
+  };
+
+  const handleRetryPayment = async (commissionId: string) => {
+    if (!paymentMethod) {
+      toast({
+        title: "No payment method",
+        description: "Please add a payment method first to retry the payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setRetryingId(commissionId);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('pay-commission', {
+        body: { commission_id: commissionId, auto_charge: true },
+      });
+
+      if (error) throw error;
+
+      if (data?.success && data?.auto_charged) {
+        toast({
+          title: "Payment successful",
+          description: `$${data.amount.toFixed(2)} was charged to your saved card.`,
+        });
+        // Refresh the lists
+        fetchUpcomingCharges();
+        fetchFailedPayments();
+        fetchInvoices();
+      } else if (data?.checkout_url) {
+        // Redirect to checkout if auto-charge wasn't possible
+        window.location.href = data.checkout_url;
+      } else if (data?.requires_action) {
+        toast({
+          title: "Additional authentication required",
+          description: "Your card requires 3D Secure. Redirecting to payment page...",
+        });
+        // Fall back to manual checkout
+        const { data: checkoutData } = await supabase.functions.invoke('pay-commission', {
+          body: { commission_id: commissionId },
+        });
+        if (checkoutData?.checkout_url) {
+          window.location.href = checkoutData.checkout_url;
+        }
+      } else if (data?.error === 'card_declined') {
+        toast({
+          title: "Card declined",
+          description: "Please update your payment method and try again.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Payment failed",
+          description: data?.message || "Please try again or use a different payment method.",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error('Retry payment error:', error);
+      toast({
+        title: "Payment failed",
+        description: error.message || "An error occurred. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setRetryingId(null);
     }
   };
 
@@ -399,6 +548,67 @@ export default function Billing() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Failed Payments */}
+        {failedPayments.length > 0 && (
+          <Card className="bg-card border-destructive/50">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <XCircle className="w-5 h-5 text-destructive" />
+                <CardTitle className="text-lg">Failed Payments</CardTitle>
+              </div>
+              <CardDescription>These payments failed and need to be retried</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {failedLoading ? (
+                <div className="flex items-center justify-center p-4">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {failedPayments.map((payment) => (
+                    <div
+                      key={payment.id}
+                      className="flex items-center justify-between py-3 border-b border-border last:border-0"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-destructive/20 flex items-center justify-center">
+                          <XCircle className="w-4 h-4 text-destructive" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{payment.deal_title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {payment.sdr_name && `${payment.sdr_name} • `}
+                            Failed on {format(new Date(payment.created_at), 'MMM d, yyyy')}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p className="text-sm font-semibold text-foreground">${payment.amount.toFixed(2)}</p>
+                          <Badge variant="destructive" className="text-xs">Failed</Badge>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => handleRetryPayment(payment.id)}
+                          disabled={retryingId === payment.id}
+                          className="gap-1"
+                        >
+                          {retryingId === payment.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="w-3 h-3" />
+                          )}
+                          Retry
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Upcoming Auto-Charges */}
         {upcomingCharges.length > 0 && (
