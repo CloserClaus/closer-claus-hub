@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
   X,
@@ -13,6 +14,7 @@ import {
   AlertTriangle,
   Mail,
   Phone,
+  PhoneCall,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -293,9 +295,26 @@ export function DealDetailSidebar({
                           </div>
                         )}
                         {leadInfo.phone && (
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Phone className="h-3 w-3" />
-                            <span>{leadInfo.phone}</span>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Phone className="h-3 w-3" />
+                              <span>{leadInfo.phone}</span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 text-xs text-primary hover:text-primary"
+                              onClick={() => {
+                                const params = new URLSearchParams({
+                                  phone: leadInfo.phone!,
+                                  leadId: leadInfo.id,
+                                });
+                                window.location.href = `/dialer?${params.toString()}`;
+                              }}
+                            >
+                              <PhoneCall className="h-3 w-3 mr-1" />
+                              Call
+                            </Button>
                           </div>
                         )}
                       </div>
