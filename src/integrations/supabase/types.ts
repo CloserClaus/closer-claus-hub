@@ -1259,6 +1259,47 @@ export type Database = {
         }
         Relationships: []
       }
+      video_rooms: {
+        Row: {
+          conversation_id: string
+          created_at: string
+          created_by: string
+          ended_at: string | null
+          id: string
+          room_name: string
+          started_at: string
+          updated_at: string
+        }
+        Insert: {
+          conversation_id: string
+          created_at?: string
+          created_by: string
+          ended_at?: string | null
+          id?: string
+          room_name: string
+          started_at?: string
+          updated_at?: string
+        }
+        Update: {
+          conversation_id?: string
+          created_at?: string
+          created_by?: string
+          ended_at?: string | null
+          id?: string
+          room_name?: string
+          started_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "video_rooms_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspace_credits: {
         Row: {
           created_at: string

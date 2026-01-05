@@ -14,6 +14,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useCreateNotification } from '@/hooks/useCreateNotification';
 import { supabase } from '@/integrations/supabase/client';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
@@ -95,7 +96,7 @@ export default function JobDetail() {
   const navigate = useNavigate();
   const { user, userRole } = useAuth();
   const { toast } = useToast();
-
+  const { createNotification } = useCreateNotification();
   const [job, setJob] = useState<Job | null>(null);
   const [applications, setApplications] = useState<Application[]>([]);
   const [userApplication, setUserApplication] = useState<Application | null>(null);
@@ -412,6 +413,14 @@ export default function JobDetail() {
           ]);
 
         if (partError) throw partError;
+
+        // Send notification to SDR about the new conversation
+        createNotification({
+          action: 'conversation_started',
+          workspace_id: job.workspace_id,
+          sdr_user_id: sdrUserId,
+          agency_owner_id: user.id,
+        });
 
         toast({
           title: 'Conversation started',

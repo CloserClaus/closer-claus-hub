@@ -210,6 +210,67 @@ serve(async (req) => {
         );
       }
 
+      case 'conversation_started': {
+        const { workspace_id, sdr_user_id, agency_owner_id } = params;
+
+        const { data: workspace } = await supabase
+          .from('workspaces')
+          .select('name')
+          .eq('id', workspace_id)
+          .single();
+
+        const { data: ownerProfile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', agency_owner_id)
+          .single();
+
+        // Notify SDR about the new conversation
+        await supabase
+          .from('notifications')
+          .insert({
+            user_id: sdr_user_id,
+            workspace_id,
+            type: 'conversation_started',
+            title: 'New Message',
+            message: `${ownerProfile?.full_name || 'An agency owner'} from ${workspace?.name || 'an agency'} started a conversation with you.`,
+            data: { agency_owner_id, workspace_id },
+          });
+        console.log('Created conversation started notification for SDR');
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'video_call_started': {
+        const { conversation_id, caller_id, callee_id, room_name } = params;
+
+        const { data: callerProfile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', caller_id)
+          .single();
+
+        // Notify the callee about the video call
+        await supabase
+          .from('notifications')
+          .insert({
+            user_id: callee_id,
+            type: 'video_call_started',
+            title: 'Incoming Video Call',
+            message: `${callerProfile?.full_name || 'Someone'} is calling you.`,
+            data: { conversation_id, caller_id, room_name },
+          });
+        console.log('Created video call notification');
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: 'Unknown action' }),

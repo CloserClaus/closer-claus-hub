@@ -15,6 +15,8 @@ import { toast } from "sonner";
 import { MessageSquare, Plus, Send, Users, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { VideoCallButton } from "@/components/conversations/VideoCallButton";
+import { VideoCallModal } from "@/components/conversations/VideoCallModal";
 
 interface Conversation {
   id: string;
@@ -62,6 +64,8 @@ export default function Conversations() {
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [conversationName, setConversationName] = useState("");
   const [isReadOnly, setIsReadOnly] = useState(false);
+  const [showVideoCall, setShowVideoCall] = useState(false);
+  const [videoRoomName, setVideoRoomName] = useState("");
 
   useEffect(() => {
     if (currentWorkspace) {
@@ -323,6 +327,47 @@ export default function Conversations() {
     return email.slice(0, 2).toUpperCase();
   };
 
+  const startVideoCall = async () => {
+    if (!selectedConversation || !user) return;
+
+    const roomName = `conv-${selectedConversation.id}-${Date.now()}`;
+
+    // Create video room record
+    const { error } = await supabase
+      .from('video_rooms')
+      .insert({
+        conversation_id: selectedConversation.id,
+        room_name: roomName,
+        created_by: user.id,
+      });
+
+    if (error) {
+      toast.error('Failed to start video call');
+      console.error(error);
+      return;
+    }
+
+    setVideoRoomName(roomName);
+    setShowVideoCall(true);
+  };
+
+  const joinVideoCall = (roomName: string) => {
+    setVideoRoomName(roomName);
+    setShowVideoCall(true);
+  };
+
+  const closeVideoCall = () => {
+    setShowVideoCall(false);
+    setVideoRoomName("");
+  };
+
+  const getParticipantNames = () => {
+    return participants.map((p) => ({
+      id: p.user_id,
+      name: p.profile?.full_name || p.profile?.email || 'Unknown',
+    }));
+  };
+
   return (
     <DashboardLayout>
       <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)]">
@@ -461,11 +506,18 @@ export default function Conversations() {
                     </p>
                   </div>
                 </div>
-                {isReadOnly && (
-                  <span className="text-xs bg-warning/20 text-warning px-2 py-1 rounded">
-                    Read-only
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  <VideoCallButton
+                    conversationId={selectedConversation.id}
+                    onStartCall={startVideoCall}
+                    onJoinCall={joinVideoCall}
+                  />
+                  {isReadOnly && (
+                    <span className="text-xs bg-warning/20 text-warning px-2 py-1 rounded">
+                      Read-only
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Messages */}
@@ -538,6 +590,17 @@ export default function Conversations() {
           )}
         </div>
       </div>
+
+      {/* Video Call Modal */}
+      {selectedConversation && (
+        <VideoCallModal
+          isOpen={showVideoCall}
+          onClose={closeVideoCall}
+          conversationId={selectedConversation.id}
+          roomName={videoRoomName}
+          participantNames={getParticipantNames()}
+        />
+      )}
     </DashboardLayout>
   );
 }

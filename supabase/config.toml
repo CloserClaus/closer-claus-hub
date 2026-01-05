@@ -62,3 +62,6 @@ verify_jwt = true
 
 [functions.release-phone-number]
 verify_jwt = true
+
+[functions.video-token]
+verify_jwt = true
