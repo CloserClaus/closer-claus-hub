@@ -75,7 +75,7 @@ export function VideoCallModal({
   useEffect(() => {
     const videoElement = localVideoRef.current;
     if (localVideoTrack && videoElement) {
-      // Detach first to avoid duplicate attachments
+      // Re-attach on toggles too (track object may stay the same)
       localVideoTrack.detach(videoElement);
       localVideoTrack.attach(videoElement);
     }
@@ -85,7 +85,7 @@ export function VideoCallModal({
         localVideoTrack.detach(videoElement);
       }
     };
-  }, [localVideoTrack]);
+  }, [localVideoTrack, isVideoOff, isScreenSharing]);
 
   useEffect(() => {
     // Attach any existing remote participants
@@ -140,15 +140,25 @@ export function VideoCallModal({
 
   const attachTrack = (track: RemoteTrack, trackName?: string) => {
     if (track.kind === 'video' && remoteVideoRef.current) {
-      (track as RemoteVideoTrack).attach(remoteVideoRef.current);
+      const videoTrack = track as RemoteVideoTrack;
+      videoTrack.attach(remoteVideoRef.current);
       setRemoteVideoAttached(true);
-      // Check if this is a screen share track
+
       if (trackName === 'screen-share') {
         setRemoteIsScreenSharing(true);
+      } else {
+        setRemoteVideoOff(!videoTrack.isEnabled);
+        videoTrack.on('disabled', () => setRemoteVideoOff(true));
+        videoTrack.on('enabled', () => setRemoteVideoOff(false));
       }
     } else if (track.kind === 'audio') {
-      const audioElement = (track as RemoteAudioTrack).attach();
+      const audioTrack = track as RemoteAudioTrack;
+      const audioElement = audioTrack.attach();
       document.body.appendChild(audioElement);
+
+      setRemoteIsMuted(!audioTrack.isEnabled);
+      audioTrack.on('disabled', () => setRemoteIsMuted(true));
+      audioTrack.on('enabled', () => setRemoteIsMuted(false));
     }
   };
 
@@ -158,9 +168,12 @@ export function VideoCallModal({
       setRemoteVideoAttached(false);
       if (trackName === 'screen-share') {
         setRemoteIsScreenSharing(false);
+      } else {
+        setRemoteVideoOff(true);
       }
     } else if (track.kind === 'audio') {
       (track as RemoteAudioTrack).detach().forEach((el) => el.remove());
+      setRemoteIsMuted(false);
     }
   };
 
