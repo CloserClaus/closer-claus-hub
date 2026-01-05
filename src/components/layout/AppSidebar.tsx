@@ -91,6 +91,7 @@ const agencyOwnerNav: NavItem[] = [
 const sdrNav: NavItem[] = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
   { title: 'Find Jobs', url: '/jobs', icon: Briefcase, tourId: 'nav-jobs' },
+  { title: 'My Team', url: '/team', icon: Users, tourId: 'nav-team' },
   { title: 'CRM', url: '/crm', icon: FileText, tourId: 'nav-crm' },
   { title: 'Dialer', url: '/dialer', icon: Phone, tourId: 'nav-dialer' },
   { title: 'Conversations', url: '/conversations', icon: MessageSquare },
