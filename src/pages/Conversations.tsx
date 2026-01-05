@@ -285,19 +285,25 @@ export default function Conversations() {
       },
     });
 
-    if (error) {
-      toast.error(error.message || 'Failed to create conversation');
-      console.error(error);
+    const responseData = data as { conversation?: Conversation; existing?: boolean; error?: string } | null;
+
+    if (error || responseData?.error) {
+      toast.error(error?.message || responseData?.error || 'Failed to create conversation');
+      console.error(error || responseData?.error);
       return;
     }
 
-    const conversation = (data as any)?.conversation as Conversation | undefined;
+    const conversation = responseData?.conversation;
     if (!conversation) {
       toast.error('Failed to create conversation');
       return;
     }
 
-    toast.success('Conversation created');
+    if (responseData?.existing) {
+      toast.info('Opened existing conversation');
+    } else {
+      toast.success('Conversation created');
+    }
     setShowNewConversation(false);
     setSelectedMembers([]);
     setConversationName("");

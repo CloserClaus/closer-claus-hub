@@ -102,6 +102,43 @@ serve(async (req) => {
       );
     }
 
+    // For 1:1 conversations, check if one already exists between these two users
+    if (!isGroup && memberIds.length === 1) {
+      const otherUserId = memberIds[0];
+      
+      // Find existing non-group conversations in this workspace where both users are participants
+      const { data: existingConvs } = await supabase
+        .from("conversations")
+        .select("id, name, is_group, created_at, updated_at, workspace_id")
+        .eq("workspace_id", workspaceId)
+        .eq("is_group", false);
+
+      if (existingConvs && existingConvs.length > 0) {
+        // Check each conversation to see if both users are participants
+        for (const conv of existingConvs) {
+          const { data: participants } = await supabase
+            .from("conversation_participants")
+            .select("user_id")
+            .eq("conversation_id", conv.id);
+
+          const participantIds = (participants || []).map((p) => p.user_id);
+          
+          // Check if this conversation has exactly these two users
+          if (
+            participantIds.length === 2 &&
+            participantIds.includes(user.id) &&
+            participantIds.includes(otherUserId)
+          ) {
+            // Return existing conversation
+            console.log("create-conversation: returning existing 1:1 conversation", conv.id);
+            return new Response(JSON.stringify({ conversation: conv, existing: true }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        }
+      }
+    }
+
     // Create conversation
     const { data: conv, error: convError } = await supabase
       .from("conversations")
