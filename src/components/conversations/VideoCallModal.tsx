@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { RemoteParticipant, RemoteTrack, RemoteVideoTrack, RemoteAudioTrack } from 'twilio-video';
-import { X, Mic, MicOff, Video, VideoOff, PhoneOff, Loader2, Monitor, MonitorOff } from 'lucide-react';
+import { X, Mic, MicOff, Video, VideoOff, PhoneOff, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useTwilioVideo } from '@/hooks/useTwilioVideo';
@@ -30,7 +30,6 @@ export function VideoCallModal({
   const remoteAudioTrackRef = useRef<RemoteAudioTrack | null>(null);
 
   const [remoteVideoAttached, setRemoteVideoAttached] = useState(false);
-  const [remoteIsScreenSharing, setRemoteIsScreenSharing] = useState(false);
   const [remoteIsMuted, setRemoteIsMuted] = useState(false);
   const [remoteVideoOff, setRemoteVideoOff] = useState(false);
 
@@ -42,12 +41,10 @@ export function VideoCallModal({
     remoteParticipants,
     isMuted,
     isVideoOff,
-    isScreenSharing,
     connectToRoom,
     disconnect,
     toggleMute,
     toggleVideo,
-    toggleScreenShare,
   } = useTwilioVideo({
     roomName,
     identity: user?.id || '',
@@ -58,7 +55,6 @@ export function VideoCallModal({
     onParticipantDisconnected: (participant) => {
       console.log('Participant left:', participant.identity);
       setRemoteVideoAttached(false);
-      setRemoteIsScreenSharing(false);
       setRemoteIsMuted(false);
       setRemoteVideoOff(false);
     },
@@ -89,7 +85,7 @@ export function VideoCallModal({
         localVideoTrack.detach(videoElement);
       }
     };
-  }, [localVideoTrack, isVideoOff, isScreenSharing]);
+  }, [localVideoTrack, isVideoOff]);
 
   useEffect(() => {
     // Attach any existing remote participants
@@ -107,7 +103,7 @@ export function VideoCallModal({
 
     const sync = () => {
       const audioPub = Array.from(participant.audioTracks.values())[0];
-      const videoPub = Array.from(participant.videoTracks.values()).find((p) => p.trackName !== 'screen-share');
+      const videoPub = Array.from(participant.videoTracks.values())[0];
 
       if (audioPub) setRemoteIsMuted(!audioPub.isTrackEnabled);
       if (videoPub) setRemoteVideoOff(!videoPub.isTrackEnabled);
@@ -121,23 +117,23 @@ export function VideoCallModal({
   const attachRemoteParticipant = (participant: RemoteParticipant) => {
     participant.tracks.forEach((publication) => {
       if (publication.isSubscribed && publication.track) {
-        attachTrack(publication.track, publication.trackName);
+        attachTrack(publication.track);
       }
       // Check initial mute/video state
       if (publication.kind === 'audio') {
         setRemoteIsMuted(!publication.isTrackEnabled);
       }
-      if (publication.kind === 'video' && publication.trackName !== 'screen-share') {
+      if (publication.kind === 'video') {
         setRemoteVideoOff(!publication.isTrackEnabled);
       }
     });
 
-    participant.on('trackSubscribed', (track, publication) => {
-      attachTrack(track, publication.trackName);
+    participant.on('trackSubscribed', (track) => {
+      attachTrack(track);
     });
 
-    participant.on('trackUnsubscribed', (track, publication) => {
-      detachTrack(track, publication.trackName);
+    participant.on('trackUnsubscribed', (track) => {
+      detachTrack(track);
     });
     
     // Listen for track enabled/disabled (mute state)
@@ -146,7 +142,7 @@ export function VideoCallModal({
       if (publication.kind === 'audio') {
         setRemoteIsMuted(true);
       }
-      if (publication.kind === 'video' && publication.trackName !== 'screen-share') {
+      if (publication.kind === 'video') {
         setRemoteVideoOff(true);
       }
     });
@@ -156,13 +152,13 @@ export function VideoCallModal({
       if (publication.kind === 'audio') {
         setRemoteIsMuted(false);
       }
-      if (publication.kind === 'video' && publication.trackName !== 'screen-share') {
+      if (publication.kind === 'video') {
         setRemoteVideoOff(false);
       }
     });
   };
 
-  const attachTrack = (track: RemoteTrack, trackName?: string) => {
+  const attachTrack = (track: RemoteTrack) => {
     if (track.kind === 'video' && remoteVideoRef.current) {
       const videoTrack = track as RemoteVideoTrack;
 
@@ -174,16 +170,9 @@ export function VideoCallModal({
       videoTrack.attach(remoteVideoRef.current);
       remoteVideoTrackRef.current = videoTrack;
       setRemoteVideoAttached(true);
-
-      if (trackName === 'screen-share') {
-        setRemoteIsScreenSharing(true);
-        setRemoteVideoOff(false);
-      } else {
-        setRemoteIsScreenSharing(false);
-        setRemoteVideoOff(!videoTrack.isEnabled);
-        videoTrack.on('disabled', () => setRemoteVideoOff(true));
-        videoTrack.on('enabled', () => setRemoteVideoOff(false));
-      }
+      setRemoteVideoOff(!videoTrack.isEnabled);
+      videoTrack.on('disabled', () => setRemoteVideoOff(true));
+      videoTrack.on('enabled', () => setRemoteVideoOff(false));
     } else if (track.kind === 'audio') {
       const audioTrack = track as RemoteAudioTrack;
 
@@ -199,7 +188,7 @@ export function VideoCallModal({
     }
   };
 
-  const detachTrack = (track: RemoteTrack, trackName?: string) => {
+  const detachTrack = (track: RemoteTrack) => {
     if (track.kind === 'video') {
       const videoTrack = track as RemoteVideoTrack;
 
@@ -215,11 +204,7 @@ export function VideoCallModal({
       }
 
       setRemoteVideoAttached(false);
-      if (trackName === 'screen-share') {
-        setRemoteIsScreenSharing(false);
-      } else {
-        setRemoteVideoOff(true);
-      }
+      setRemoteVideoOff(true);
     } else if (track.kind === 'audio') {
       const audioTrack = track as RemoteAudioTrack;
       audioTrack.detach().forEach((el) => el.remove());
@@ -255,19 +240,7 @@ export function VideoCallModal({
     <div className="fixed inset-0 z-50 bg-background flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">Video Call</h2>
-          {isScreenSharing && (
-            <span className="text-xs bg-primary/20 text-primary px-2 py-1 rounded-full">
-              Sharing Screen
-            </span>
-          )}
-          {remoteIsScreenSharing && (
-            <span className="text-xs bg-blue-500/20 text-blue-500 px-2 py-1 rounded-full">
-              Viewing Screen Share
-            </span>
-          )}
-        </div>
+        <h2 className="text-lg font-semibold">Video Call</h2>
         <Button variant="ghost" size="icon" onClick={handleEndCall}>
           <X className="h-5 w-5" />
         </Button>
@@ -303,7 +276,7 @@ export function VideoCallModal({
                     ref={remoteVideoRef}
                     autoPlay
                     playsInline
-                    className={`w-full h-full ${remoteIsScreenSharing ? 'object-contain' : 'object-cover'}`}
+                    className="w-full h-full object-cover"
                   />
                   {/* Remote mute indicator */}
                   {remoteIsMuted && (
@@ -339,7 +312,7 @@ export function VideoCallModal({
 
             {/* Local Video (Small, Picture-in-Picture) */}
             <div className="absolute bottom-24 right-4 w-48 h-36 bg-muted rounded-lg overflow-hidden border-2 border-border shadow-lg">
-              {isVideoOff && !isScreenSharing ? (
+              {isVideoOff ? (
                 <div className="w-full h-full flex items-center justify-center">
                   <Avatar className="h-16 w-16">
                     <AvatarFallback>You</AvatarFallback>
@@ -351,13 +324,8 @@ export function VideoCallModal({
                   autoPlay
                   muted
                   playsInline
-                  className={`w-full h-full ${isScreenSharing ? 'object-contain' : 'object-cover transform scale-x-[-1]'}`}
+                  className="w-full h-full object-cover transform scale-x-[-1]"
                 />
-              )}
-              {isScreenSharing && (
-                <div className="absolute top-1 left-1 bg-primary/80 text-primary-foreground text-xs px-1.5 py-0.5 rounded">
-                  Screen
-                </div>
               )}
             </div>
           </>
@@ -383,21 +351,10 @@ export function VideoCallModal({
             size="lg"
             className="rounded-full h-14 w-14"
             onClick={toggleVideo}
-            disabled={!isConnected || isScreenSharing}
+            disabled={!isConnected}
             title={isVideoOff ? 'Turn on camera' : 'Turn off camera'}
           >
             {isVideoOff ? <VideoOff className="h-6 w-6" /> : <Video className="h-6 w-6" />}
-          </Button>
-
-          <Button
-            variant={isScreenSharing ? 'default' : 'secondary'}
-            size="lg"
-            className="rounded-full h-14 w-14"
-            onClick={toggleScreenShare}
-            disabled={!isConnected}
-            title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
-          >
-            {isScreenSharing ? <MonitorOff className="h-6 w-6" /> : <Monitor className="h-6 w-6" />}
           </Button>
 
           <Button
