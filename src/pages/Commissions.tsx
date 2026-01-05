@@ -291,7 +291,7 @@ export default function Commissions() {
           </div>
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className={`grid grid-cols-1 ${isSDR ? 'md:grid-cols-4' : 'md:grid-cols-2'} gap-4`}>
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-3">
@@ -313,40 +313,44 @@ export default function Commissions() {
                     <CheckCircle className="h-5 w-5 text-success" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Paid Out</p>
+                    <p className="text-sm text-muted-foreground">{isSDR ? 'Paid Out' : 'All Paid'}</p>
                     <p className="text-2xl font-bold">${stats.totalPaid.toLocaleString()}</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-primary/10">
-                    <TrendingUp className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">{isSDR ? 'Platform Fees' : 'Agency Rake'}</p>
-                    <p className="text-2xl font-bold">${isSDR ? stats.totalPlatformCut.toLocaleString() : stats.totalRake.toLocaleString()}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {isSDR && (
+              <>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-primary/10">
+                        <TrendingUp className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Platform Fees</p>
+                        <p className="text-2xl font-bold">${stats.totalPlatformCut.toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-secondary/50">
-                    <Users className="h-5 w-5 text-secondary-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Commissions</p>
-                    <p className="text-2xl font-bold">{stats.count}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-secondary/50">
+                        <Users className="h-5 w-5 text-secondary-foreground" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Total Commissions</p>
+                        <p className="text-2xl font-bold">{stats.count}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </div>
 
           {/* Filter */}
@@ -425,17 +429,14 @@ export default function Commissions() {
                                 {isAgencyClosed ? (
                                   <Badge variant="outline" className="bg-muted">Agency Closed</Badge>
                                 ) : (
-                                  <>
+                                  <div>
                                     <p className="font-medium">
                                       {commission.sdr_profile?.full_name || 'Unknown SDR'}
                                     </p>
-                                    <div className="flex items-center gap-2 mt-1">
-                                      <SDRLevelBadge level={commission.sdr_profile?.sdr_level || 1} size="sm" />
-                                      <span className="text-xs text-muted-foreground">
-                                        {commission.sdr_profile?.email}
-                                      </span>
-                                    </div>
-                                  </>
+                                    <span className="text-xs text-muted-foreground">
+                                      {commission.sdr_profile?.email}
+                                    </span>
+                                  </div>
                                 )}
                               </div>
                             )}
