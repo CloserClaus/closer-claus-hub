@@ -198,6 +198,22 @@ serve(async (req) => {
           } else {
             console.log(`Commission ${commission_id} marked as paid`);
             
+            // Save the payment method for future auto-charges if available
+            if (session.payment_intent) {
+              try {
+                const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent);
+                if (paymentIntent.payment_method) {
+                  await supabase
+                    .from('workspaces')
+                    .update({ stripe_default_payment_method: paymentIntent.payment_method })
+                    .eq('id', commWorkspaceId);
+                  console.log(`Saved payment method from commission payment for workspace ${commWorkspaceId}`);
+                }
+              } catch (pmError) {
+                console.error('Error saving payment method:', pmError);
+              }
+            }
+            
             // Check if workspace should be unlocked
             const { data: pendingCommissions } = await supabase
               .from('commissions')
@@ -240,14 +256,21 @@ serve(async (req) => {
         if (workspace_id && tier) {
           const limits = TIER_LIMITS[tier as keyof typeof TIER_LIMITS];
 
-          // Get subscription details to determine anchor day
+          // Get subscription details to determine anchor day and save payment method
           let anchorDay = 1;
+          let defaultPaymentMethod = null;
           if (session.subscription) {
             try {
               const subscription = await stripe.subscriptions.retrieve(session.subscription);
               const anchorDate = new Date(subscription.current_period_end * 1000);
               anchorDay = Math.min(anchorDate.getDate(), 28); // Cap at 28 for all months
               console.log('Subscription anchor day:', anchorDay);
+              
+              // Retrieve the default payment method for future auto-charges
+              if (subscription.default_payment_method) {
+                defaultPaymentMethod = subscription.default_payment_method;
+                console.log('Saved default payment method:', defaultPaymentMethod);
+              }
             } catch (subError) {
               console.error('Error fetching subscription:', subError);
             }
@@ -270,6 +293,11 @@ serve(async (req) => {
             is_locked: false,
             updated_at: new Date().toISOString(),
           };
+
+          // Save the default payment method for automatic commission charging
+          if (defaultPaymentMethod) {
+            workspaceUpdate.stripe_default_payment_method = defaultPaymentMethod;
+          }
 
           // Set first_subscription_at if this is the first subscription
           if (is_first_subscription === 'true') {

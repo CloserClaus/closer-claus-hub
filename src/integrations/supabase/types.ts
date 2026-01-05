@@ -1525,6 +1525,7 @@ export type Database = {
           owner_id: string
           rake_percentage: number | null
           stripe_customer_id: string | null
+          stripe_default_payment_method: string | null
           stripe_subscription_id: string | null
           subscription_anchor_day: number | null
           subscription_status: string | null
@@ -1543,6 +1544,7 @@ export type Database = {
           owner_id: string
           rake_percentage?: number | null
           stripe_customer_id?: string | null
+          stripe_default_payment_method?: string | null
           stripe_subscription_id?: string | null
           subscription_anchor_day?: number | null
           subscription_status?: string | null
@@ -1561,6 +1563,7 @@ export type Database = {
           owner_id?: string
           rake_percentage?: number | null
           stripe_customer_id?: string | null
+          stripe_default_payment_method?: string | null
           stripe_subscription_id?: string | null
           subscription_anchor_day?: number | null
           subscription_status?: string | null
