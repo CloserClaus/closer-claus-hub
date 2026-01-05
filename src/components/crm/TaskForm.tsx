@@ -261,14 +261,14 @@ export function TaskForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Related Lead</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <Select onValueChange={(value) => field.onChange(value === "none" ? "" : value)} defaultValue={field.value || "none"}>
                   <FormControl>
                     <SelectTrigger className="bg-muted border-border">
                       <SelectValue placeholder="Select lead (optional)" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="">No lead</SelectItem>
+                    <SelectItem value="none">No lead</SelectItem>
                     {leads.map((lead) => (
                       <SelectItem key={lead.id} value={lead.id}>
                         {lead.first_name} {lead.last_name}
@@ -287,14 +287,14 @@ export function TaskForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Related Deal</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <Select onValueChange={(value) => field.onChange(value === "none" ? "" : value)} defaultValue={field.value || "none"}>
                   <FormControl>
                     <SelectTrigger className="bg-muted border-border">
                       <SelectValue placeholder="Select deal (optional)" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="">No deal</SelectItem>
+                    <SelectItem value="none">No deal</SelectItem>
                     {deals.map((deal) => (
                       <SelectItem key={deal.id} value={deal.id}>
                         {deal.title}
