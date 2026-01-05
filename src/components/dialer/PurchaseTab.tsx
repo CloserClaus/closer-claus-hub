@@ -26,7 +26,8 @@ import {
   MessageSquare,
   Zap,
   Search,
-  X
+  X,
+  Gift
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -77,6 +78,13 @@ interface TwilioAddon {
   icon: React.ReactNode;
 }
 
+// Free phone number limits per subscription tier
+const TIER_FREE_NUMBERS: Record<string, number> = {
+  omega: 1,
+  beta: 2,
+  alpha: 5,
+};
+
 // Twilio pricing with 20% margin
 // Twilio outbound: $0.014/min -> $0.017/min with margin
 // Packages rounded for simplicity
@@ -120,6 +128,7 @@ const twilioAddons: TwilioAddon[] = [
 
 interface PurchaseTabProps {
   workspaceId: string;
+  subscriptionTier?: string | null;
   onCreditsUpdated: () => void;
 }
 
@@ -144,7 +153,7 @@ const US_STATES = [
   { code: 'WI', name: 'Wisconsin' }, { code: 'WY', name: 'Wyoming' }, { code: 'DC', name: 'Washington D.C.' },
 ];
 
-export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps) {
+export function PurchaseTab({ workspaceId, subscriptionTier, onCreditsUpdated }: PurchaseTabProps) {
   const [availableNumbers, setAvailableNumbers] = useState<AvailableNumber[]>([]);
   const [purchasedNumbers, setPurchasedNumbers] = useState<PurchasedNumber[]>([]);
   const [sdrMembers, setSDRMembers] = useState<SDRMember[]>([]);
@@ -264,6 +273,13 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
     setPurchasedNumbers(data || []);
   };
 
+  // Calculate free number allowance
+  const tier = subscriptionTier || 'omega';
+  const freeLimit = TIER_FREE_NUMBERS[tier] || 1;
+  const currentCount = purchasedNumbers.filter(n => n.is_active).length;
+  const freeNumbersRemaining = Math.max(0, freeLimit - currentCount);
+  const isWithinFreeLimit = currentCount < freeLimit;
+
   const handlePurchaseNumber = async (number: AvailableNumber) => {
     setIsPurchasing(number.id);
     try {
@@ -273,7 +289,44 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
         return;
       }
 
-      // Use Stripe checkout for phone number purchase
+      // First, try to provision for free if within tier limit
+      if (isWithinFreeLimit) {
+        const freeResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/provision-phone-number`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              workspace_id: workspaceId,
+              phone_number: number.number,
+              country_code: number.country,
+              city: number.city,
+            }),
+          }
+        );
+
+        const freeData = await freeResponse.json();
+
+        if (freeResponse.ok && freeData.success) {
+          toast.success(`Phone number ${number.number} added for free!`);
+          fetchPurchasedNumbers();
+          onCreditsUpdated();
+          setIsPurchasing(null);
+          return;
+        }
+
+        // If 402, it means we need to pay (limit exceeded)
+        if (freeResponse.status !== 402) {
+          toast.error(freeData.error || "Failed to provision phone number");
+          setIsPurchasing(null);
+          return;
+        }
+      }
+
+      // If we're here, we need to use Stripe checkout for paid phone number
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/purchase-dialer-credits`,
         {
@@ -509,6 +562,29 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Free Number Allowance Banner */}
+            <div className={`p-3 rounded-lg border ${freeNumbersRemaining > 0 ? 'border-success/30 bg-success/5' : 'border-muted'}`}>
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-full ${freeNumbersRemaining > 0 ? 'bg-success/20' : 'bg-muted'}`}>
+                  <Gift className={`h-4 w-4 ${freeNumbersRemaining > 0 ? 'text-success' : 'text-muted-foreground'}`} />
+                </div>
+                <div className="flex-1">
+                  <p className={`text-sm font-medium ${freeNumbersRemaining > 0 ? 'text-success' : 'text-muted-foreground'}`}>
+                    {freeNumbersRemaining > 0 
+                      ? `${freeNumbersRemaining} Free Phone Number${freeNumbersRemaining > 1 ? 's' : ''} Remaining`
+                      : 'Free Phone Numbers Used'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Your {tier.charAt(0).toUpperCase() + tier.slice(1)} plan includes {freeLimit} free phone number{freeLimit > 1 ? 's' : ''}.
+                    {freeNumbersRemaining === 0 && ' Additional numbers are $1.40/mo each.'}
+                  </p>
+                </div>
+                <Badge variant={freeNumbersRemaining > 0 ? 'secondary' : 'outline'}>
+                  {currentCount}/{freeLimit} used
+                </Badge>
+              </div>
+            </div>
+
             {purchasedNumbers.length > 0 && (
               <>
                 <div>
@@ -659,15 +735,27 @@ export function PurchaseTab({ workspaceId, onCreditsUpdated }: PurchaseTabProps)
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm">${num.monthly_cost}/mo</span>
+                          {isWithinFreeLimit ? (
+                            <Badge variant="secondary" className="bg-success/10 text-success border-success/20">
+                              <Gift className="h-3 w-3 mr-1" />
+                              Free
+                            </Badge>
+                          ) : (
+                            <span className="text-sm">${num.monthly_cost}/mo</span>
+                          )}
                           <Button 
                             size="sm" 
-                            variant="outline"
+                            variant={isWithinFreeLimit ? "default" : "outline"}
                             onClick={() => handlePurchaseNumber(num)}
                             disabled={isPurchasing === num.id}
                           >
                             {isPurchasing === num.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : isWithinFreeLimit ? (
+                              <>
+                                <Plus className="h-4 w-4 mr-1" />
+                                Add Free
+                              </>
                             ) : (
                               'Buy'
                             )}

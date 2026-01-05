@@ -754,6 +754,7 @@ export default function Dialer() {
                 <TabsContent value="purchase">
                   <PurchaseTab 
                     workspaceId={currentWorkspace.id} 
+                    subscriptionTier={currentWorkspace.subscription_tier}
                     onCreditsUpdated={fetchCredits}
                   />
                 </TabsContent>
