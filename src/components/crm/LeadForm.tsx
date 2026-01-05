@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -57,6 +57,19 @@ export function LeadForm({ lead, workspaceId, onSuccess, onCancel }: LeadFormPro
       notes: lead?.notes || '',
     },
   });
+
+  // Reset form when lead prop changes (for editing)
+  useEffect(() => {
+    form.reset({
+      first_name: lead?.first_name || '',
+      last_name: lead?.last_name || '',
+      email: lead?.email || '',
+      phone: lead?.phone || '',
+      company: lead?.company || '',
+      title: lead?.title || '',
+      notes: lead?.notes || '',
+    });
+  }, [lead, form]);
 
   const onSubmit = async (data: LeadFormData) => {
     if (!user) return;
