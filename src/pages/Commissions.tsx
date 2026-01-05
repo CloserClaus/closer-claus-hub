@@ -410,7 +410,10 @@ export default function Commissions() {
                     {filteredCommissions.map((commission) => {
                       // Check if this was closed by the agency (amount is 0 means no SDR involved)
                       const isAgencyClosed = commission.amount === 0 || commission.sdr_id === commission.workspace?.owner_id;
-                      const totalAgencyDue = Number(commission.amount) + Number(commission.agency_rake_amount || commission.rake_amount);
+                      // For agency-closed deals, only platform fee is due. For SDR deals, it's SDR commission + platform fee
+                      const totalAgencyDue = isAgencyClosed 
+                        ? Number(commission.platform_cut_amount || commission.agency_rake_amount || 0)
+                        : Number(commission.amount) + Number(commission.platform_cut_amount || commission.agency_rake_amount || 0);
                       
                       return (
                         <TableRow key={commission.id}>
