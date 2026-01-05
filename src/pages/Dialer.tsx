@@ -66,6 +66,7 @@ interface PhoneNumber {
   id: string;
   phone_number: string;
   is_active: boolean;
+  assigned_to: string | null;
 }
 
 export default function Dialer() {
@@ -138,30 +139,48 @@ export default function Dialer() {
 
   const isCallActive = callStatus === 'connecting' || callStatus === 'ringing' || callStatus === 'in_progress';
 
-  // Fetch workspace phone numbers
+  // Fetch workspace phone numbers - filter by assigned_to for non-owners
   const fetchPhoneNumbers = async () => {
-    if (!currentWorkspace?.id) return;
+    if (!currentWorkspace?.id || !user?.id) return;
 
-    const { data, error } = await supabase
+    const isOwner = currentWorkspace.owner_id === user.id;
+
+    let query = supabase
       .from('workspace_phone_numbers')
-      .select('id, phone_number, is_active')
+      .select('id, phone_number, is_active, assigned_to')
       .eq('workspace_id', currentWorkspace.id)
       .eq('is_active', true);
+
+    // SDRs only see numbers assigned to them or unassigned numbers
+    if (!isOwner) {
+      query = query.or(`assigned_to.eq.${user.id},assigned_to.is.null`);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching phone numbers:', error);
       return;
     }
 
-    setWorkspacePhoneNumbers(data || []);
-    if (data && data.length > 0 && !selectedCallerId) {
-      setSelectedCallerId(data[0].phone_number);
+    // For SDRs, prioritize their assigned numbers
+    const sortedNumbers = isOwner 
+      ? data || []
+      : (data || []).sort((a, b) => {
+          if (a.assigned_to === user.id && b.assigned_to !== user.id) return -1;
+          if (b.assigned_to === user.id && a.assigned_to !== user.id) return 1;
+          return 0;
+        });
+
+    setWorkspacePhoneNumbers(sortedNumbers);
+    if (sortedNumbers.length > 0 && !selectedCallerId) {
+      setSelectedCallerId(sortedNumbers[0].phone_number);
     }
   };
 
   useEffect(() => {
     fetchPhoneNumbers();
-  }, [currentWorkspace?.id]);
+  }, [currentWorkspace?.id, user?.id]);
 
   // Fetch credits balance
   const fetchCredits = async () => {
@@ -535,6 +554,7 @@ export default function Dialer() {
                               {workspacePhoneNumbers.map((pn) => (
                                 <option key={pn.id} value={pn.phone_number}>
                                   {pn.phone_number}
+                                  {pn.assigned_to === user?.id && ' (Your Number)'}
                                 </option>
                               ))}
                             </select>

@@ -59,3 +59,6 @@ verify_jwt = true
 
 [functions.provision-phone-number]
 verify_jwt = true
+
+[functions.release-phone-number]
+verify_jwt = true
