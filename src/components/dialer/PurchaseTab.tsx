@@ -13,6 +13,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { 
   Phone, 
   Clock, 
@@ -27,7 +38,8 @@ import {
   Zap,
   Search,
   X,
-  Gift
+  Gift,
+  Trash2
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -161,6 +173,7 @@ export function PurchaseTab({ workspaceId, subscriptionTier, onCreditsUpdated }:
   const [isPurchasing, setIsPurchasing] = useState<string | null>(null);
   const [apiConfigured, setApiConfigured] = useState<boolean | null>(null);
   const [isAssigning, setIsAssigning] = useState<string | null>(null);
+  const [isReleasing, setIsReleasing] = useState<string | null>(null);
   const [citySearch, setCitySearch] = useState('');
   const [stateSearch, setStateSearch] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -393,6 +406,45 @@ export function PurchaseTab({ workspaceId, subscriptionTier, onCreditsUpdated }:
     }
   };
 
+  const handleReleaseNumber = async (numberId: string, phoneNumber: string) => {
+    setIsReleasing(numberId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("Please log in to release numbers");
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/release-phone-number`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ phone_number_id: numberId }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error(data.error || "Failed to release phone number");
+        return;
+      }
+
+      toast.success(`Phone number ${phoneNumber} released successfully`);
+      fetchPurchasedNumbers();
+      onCreditsUpdated();
+    } catch (error) {
+      console.error('Error releasing number:', error);
+      toast.error("Failed to release phone number");
+    } finally {
+      setIsReleasing(null);
+    }
+  };
+
   const handlePurchaseMinutes = async (pkg: MinutePackage) => {
     setIsPurchasing(pkg.id);
     try {
@@ -597,7 +649,40 @@ export function PurchaseTab({ workspaceId, subscriptionTier, onCreditsUpdated }:
                             <Check className="h-4 w-4 text-success" />
                             <span className="font-mono">{num.phone_number}</span>
                           </div>
-                          <Badge variant="outline">${num.monthly_cost}/mo</Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline">${num.monthly_cost}/mo</Badge>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <button 
+                                  className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                                  disabled={isReleasing === num.id}
+                                >
+                                  {isReleasing === num.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" />
+                                  )}
+                                </button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Release Phone Number?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to release {num.phone_number}? This will permanently remove the number from your account and it may not be available again.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleReleaseNumber(num.id, num.phone_number)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  >
+                                    Release Number
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
                         </div>
                         {num.city && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -614,7 +699,7 @@ export function PurchaseTab({ workspaceId, subscriptionTier, onCreditsUpdated }:
                             }
                             disabled={isAssigning === num.id}
                           >
-                            <SelectTrigger className="h-8 text-xs">
+                            <SelectTrigger className="h-8 text-xs flex-1">
                               <SelectValue placeholder="Assign to SDR">
                                 {isAssigning === num.id ? (
                                   <Loader2 className="h-3 w-3 animate-spin" />
