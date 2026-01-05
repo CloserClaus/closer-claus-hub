@@ -67,6 +67,16 @@ interface Lead {
   notes: string | null;
   last_contacted_at: string | null;
   created_at: string;
+  assigned_to?: string | null;
+}
+
+interface TeamMember {
+  id: string;
+  user_id: string;
+  profile: {
+    full_name: string | null;
+    email: string;
+  };
 }
 
 interface Deal {
@@ -114,6 +124,7 @@ export default function CRM() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showLeadForm, setShowLeadForm] = useState(false);
@@ -156,8 +167,42 @@ export default function CRM() {
   useEffect(() => {
     if (currentWorkspace) {
       fetchData();
+      if (isAgencyOwner) {
+        fetchTeamMembers();
+      }
     }
-  }, [currentWorkspace]);
+  }, [currentWorkspace, isAgencyOwner]);
+
+  const fetchTeamMembers = async () => {
+    if (!currentWorkspace) return;
+
+    const { data: members, error } = await supabase
+      .from('workspace_members')
+      .select('id, user_id')
+      .eq('workspace_id', currentWorkspace.id)
+      .is('removed_at', null);
+
+    if (error || !members || members.length === 0) {
+      setTeamMembers([]);
+      return;
+    }
+
+    const userIds = members.map(m => m.user_id);
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, full_name, email')
+      .in('id', userIds);
+
+    const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+
+    setTeamMembers(
+      members.map(m => ({
+        id: m.id,
+        user_id: m.user_id,
+        profile: profileMap.get(m.user_id) || { full_name: null, email: '' },
+      }))
+    );
+  };
 
   const fetchData = async () => {
     if (!currentWorkspace) return;
@@ -442,6 +487,36 @@ export default function CRM() {
         variant: 'destructive',
         title: 'Error',
         description: error.message || 'Failed to update deals',
+      });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  // Bulk assign leads
+  const handleBulkAssignLeads = async (userId: string | null) => {
+    if (selectedLeadIds.size === 0) return;
+    setIsBulkProcessing(true);
+
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .update({ assigned_to: userId })
+        .in('id', Array.from(selectedLeadIds));
+
+      if (error) throw error;
+
+      toast({ 
+        title: `Assigned ${selectedLeadIds.size} leads`,
+        description: userId ? 'Leads assigned to team member' : 'Leads returned to agency pool',
+      });
+      setSelectedLeadIds(new Set());
+      fetchData();
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to assign leads',
       });
     } finally {
       setIsBulkProcessing(false);
@@ -955,8 +1030,10 @@ export default function CRM() {
           type="leads"
           onClearSelection={() => setSelectedLeadIds(new Set())}
           onBulkDelete={() => setBulkDeleteLeadsConfirm(true)}
+          onBulkAssign={handleBulkAssignLeads}
           isAgencyOwner={isAgencyOwner}
           isProcessing={isBulkProcessing}
+          teamMembers={teamMembers}
         />
 
         <BulkActionsBar

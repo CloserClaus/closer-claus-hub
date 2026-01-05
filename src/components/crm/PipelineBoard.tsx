@@ -1,9 +1,11 @@
-import { DollarSign, User, Building2, ArrowRight } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { DollarSign, User, Building2, ArrowRight, Search } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 
@@ -30,6 +32,7 @@ interface Lead {
   title: string | null;
   notes: string | null;
   created_at: string;
+  assigned_to?: string | null;
 }
 
 interface Deal {
@@ -57,11 +60,31 @@ interface PipelineBoardProps {
 export function PipelineBoard({ deals, leads, onDealClick, onLeadClick, onConvertLead, onStageChange }: PipelineBoardProps) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Get leads that haven't been converted to deals yet
   const unconvertedLeads = leads.filter(lead => 
     !deals.some(deal => deal.lead_id === lead.id)
   );
+
+  // Filter leads and deals based on search query
+  const filteredLeads = useMemo(() => {
+    if (!searchQuery.trim()) return unconvertedLeads;
+    const query = searchQuery.toLowerCase();
+    return unconvertedLeads.filter(lead => 
+      `${lead.first_name} ${lead.last_name}`.toLowerCase().includes(query) ||
+      lead.company?.toLowerCase().includes(query) ||
+      lead.email?.toLowerCase().includes(query)
+    );
+  }, [unconvertedLeads, searchQuery]);
+
+  const filteredDeals = useMemo(() => {
+    if (!searchQuery.trim()) return deals;
+    const query = searchQuery.toLowerCase();
+    return deals.filter(deal => 
+      deal.title.toLowerCase().includes(query)
+    );
+  }, [deals, searchQuery]);
 
   const handleDragStart = (e: React.DragEvent, dealId: string) => {
     e.dataTransfer.setData('dealId', dealId);
@@ -188,72 +211,89 @@ export function PipelineBoard({ deals, leads, onDealClick, onLeadClick, onConver
     }
   };
 
-  const getStageDeals = (stage: string) => deals.filter(d => d.stage === stage);
+  const getStageDeals = (stage: string) => filteredDeals.filter(d => d.stage === stage);
   const getStageValue = (stage: string) =>
     getStageDeals(stage).reduce((sum, d) => sum + Number(d.value), 0);
 
   return (
-    <ScrollArea className="w-full">
-      <div className="flex gap-4 pb-4 min-w-max">
-        {/* Leads Column */}
-        <div className="w-72 shrink-0">
-          <Card className="bg-primary/10 border-border/50">
-            <CardHeader className="p-3 pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <User className="h-4 w-4" />
-                  Leads
-                </CardTitle>
-                <Badge variant="secondary" className="text-xs">
-                  {unconvertedLeads.length}
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Drag to pipeline to convert
-              </p>
-            </CardHeader>
-            <CardContent className="p-2 space-y-2 min-h-[200px]">
-              {unconvertedLeads.map(lead => (
-                <Card
-                  key={lead.id}
-                  className="cursor-grab active:cursor-grabbing bg-card hover:bg-card/80 transition-colors"
-                  draggable
-                  onDragStart={(e) => handleLeadDragStart(e, lead.id)}
-                  onClick={() => onLeadClick(lead)}
-                >
-                  <CardContent className="p-3">
-                    <p className="font-medium text-sm line-clamp-1">
-                      {lead.first_name} {lead.last_name}
-                    </p>
-                    {lead.company && (
-                      <div className="flex items-center gap-1 mt-1 text-muted-foreground text-xs">
-                        <Building2 className="h-3 w-3" />
-                        {lead.company}
-                      </div>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full mt-2 h-7 text-xs gap-1"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onConvertLead(lead);
-                      }}
-                    >
-                      Convert to Deal
-                      <ArrowRight className="h-3 w-3" />
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-              {unconvertedLeads.length === 0 && (
-                <div className="h-20 flex items-center justify-center text-xs text-muted-foreground border-2 border-dashed border-border/50 rounded-lg">
-                  All leads converted
+    <div className="space-y-4">
+      {/* Search Bar */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search pipeline by name, company, or deal title..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10 bg-muted border-border"
+        />
+        {searchQuery && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+            {filteredLeads.length + filteredDeals.length} results
+          </span>
+        )}
+      </div>
+
+      <ScrollArea className="w-full">
+        <div className="flex gap-4 pb-4 min-w-max">
+          {/* Leads Column */}
+          <div className="w-72 shrink-0">
+            <Card className="bg-primary/10 border-border/50">
+              <CardHeader className="p-3 pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    Leads
+                  </CardTitle>
+                  <Badge variant="secondary" className="text-xs">
+                    {filteredLeads.length}
+                  </Badge>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                <p className="text-xs text-muted-foreground">
+                  Drag to pipeline to convert
+                </p>
+              </CardHeader>
+              <CardContent className="p-2 space-y-2 min-h-[200px]">
+                {filteredLeads.map(lead => (
+                  <Card
+                    key={lead.id}
+                    className="cursor-grab active:cursor-grabbing bg-card hover:bg-card/80 transition-colors"
+                    draggable
+                    onDragStart={(e) => handleLeadDragStart(e, lead.id)}
+                    onClick={() => onLeadClick(lead)}
+                  >
+                    <CardContent className="p-3">
+                      <p className="font-medium text-sm line-clamp-1">
+                        {lead.first_name} {lead.last_name}
+                      </p>
+                      {lead.company && (
+                        <div className="flex items-center gap-1 mt-1 text-muted-foreground text-xs">
+                          <Building2 className="h-3 w-3" />
+                          {lead.company}
+                        </div>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full mt-2 h-7 text-xs gap-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onConvertLead(lead);
+                        }}
+                      >
+                        Convert to Deal
+                        <ArrowRight className="h-3 w-3" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+                {filteredLeads.length === 0 && (
+                  <div className="h-20 flex items-center justify-center text-xs text-muted-foreground border-2 border-dashed border-border/50 rounded-lg">
+                    {searchQuery ? 'No matching leads' : 'All leads converted'}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
 
         {/* Deal Stages */}
         {PIPELINE_STAGES.map(stage => (
@@ -295,15 +335,16 @@ export function PipelineBoard({ deals, leads, onDealClick, onLeadClick, onConver
                 ))}
                 {getStageDeals(stage.value).length === 0 && (
                   <div className="h-20 flex items-center justify-center text-xs text-muted-foreground border-2 border-dashed border-border/50 rounded-lg">
-                    Drop {stage.value === 'new' ? 'leads or deals' : 'deals'} here
+                    {searchQuery ? 'No matching deals' : `Drop ${stage.value === 'new' ? 'leads or deals' : 'deals'} here`}
                   </div>
                 )}
               </CardContent>
             </Card>
           </div>
         ))}
-      </div>
-      <ScrollBar orientation="horizontal" />
-    </ScrollArea>
+        </div>
+        <ScrollBar orientation="horizontal" />
+      </ScrollArea>
+    </div>
   );
 }
