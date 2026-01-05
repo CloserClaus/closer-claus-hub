@@ -25,6 +25,7 @@ interface Conversation {
   created_at: string;
   updated_at: string;
   workspace_id: string;
+  otherParticipantName?: string;
 }
 
 interface Message {
@@ -112,7 +113,7 @@ export default function Conversations() {
   }, [selectedConversation]);
 
   const fetchConversations = async () => {
-    if (!currentWorkspace) return;
+    if (!currentWorkspace || !user) return;
     
     setLoading(true);
     const { data, error } = await supabase
@@ -123,9 +124,44 @@ export default function Conversations() {
 
     if (error) {
       console.error('Error fetching conversations:', error);
-    } else {
-      setConversations(data || []);
+      setLoading(false);
+      return;
     }
+
+    // For non-group conversations, fetch the other participant's name
+    const conversationsWithNames = await Promise.all(
+      (data || []).map(async (conv) => {
+        if (conv.is_group || conv.name) {
+          return conv;
+        }
+
+        // Fetch participants for this conversation
+        const { data: participants } = await supabase
+          .from('conversation_participants')
+          .select('user_id')
+          .eq('conversation_id', conv.id);
+
+        // Find the other participant (not the current user)
+        const otherParticipantId = participants?.find(p => p.user_id !== user.id)?.user_id;
+
+        if (otherParticipantId) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', otherParticipantId)
+            .single();
+
+          return {
+            ...conv,
+            otherParticipantName: profile?.full_name || profile?.email || 'Unknown'
+          };
+        }
+
+        return conv;
+      })
+    );
+
+    setConversations(conversationsWithNames);
     setLoading(false);
   };
 
@@ -317,7 +353,7 @@ export default function Conversations() {
   const getConversationDisplayName = (conv: Conversation) => {
     if (conv.name) return conv.name;
     if (conv.is_group) return "Group Chat";
-    return "Direct Message";
+    return conv.otherParticipantName || "Direct Message";
   };
 
   const getInitials = (name: string | null | undefined, email: string) => {
