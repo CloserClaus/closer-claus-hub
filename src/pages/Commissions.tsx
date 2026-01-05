@@ -206,6 +206,8 @@ export default function Commissions() {
     }
   };
 
+  const isSDR = userRole === 'sdr';
+
   const filteredCommissions = commissions.filter(c => 
     statusFilter === 'all' || c.status === statusFilter
   );
@@ -267,8 +269,6 @@ export default function Commissions() {
       </DashboardLayout>
     );
   }
-
-  const isSDR = userRole === 'sdr';
 
   return (
     <DashboardLayout>
