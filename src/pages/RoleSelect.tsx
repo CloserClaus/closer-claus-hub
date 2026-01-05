@@ -69,14 +69,28 @@ export default function RoleSelect() {
             body: { requestedRole: signupRole },
           });
 
+          // Handle edge function errors - check both error object and data for error responses
           if (response.error) {
-            // If role already assigned (409), just continue
-            if (response.error.message?.includes('already has a role')) {
+            const errorMessage = response.error.message || '';
+            const dataError = (response.data as any)?.error || '';
+            
+            // If role already assigned (409), just continue to onboarding
+            if (errorMessage.includes('already has a role') || dataError.includes('already has a role')) {
               await refreshProfile();
               navigate('/onboarding');
               return;
             }
-            throw new Error(response.error.message || 'Failed to assign role');
+            throw new Error(errorMessage || dataError || 'Failed to assign role');
+          }
+          
+          // Also check if the response data itself indicates an error (edge function returned error in body)
+          if (response.data?.error) {
+            if (response.data.error.includes('already has a role')) {
+              await refreshProfile();
+              navigate('/onboarding');
+              return;
+            }
+            throw new Error(response.data.error);
           }
 
           await refreshProfile();
@@ -137,14 +151,28 @@ export default function RoleSelect() {
         body: { requestedRole: 'platform_admin' },
       });
 
+      // Handle edge function errors
       if (response.error) {
+        const errorMessage = response.error.message || '';
+        const dataError = (response.data as any)?.error || '';
+        
         // Check if first user was already assigned
-        if (response.error.message?.includes('already has a role')) {
+        if (errorMessage.includes('already has a role') || dataError.includes('already has a role')) {
           await refreshProfile();
           navigate('/onboarding');
           return;
         }
-        throw new Error(response.error.message || 'Failed to assign role');
+        throw new Error(errorMessage || dataError || 'Failed to assign role');
+      }
+      
+      // Also check if the response data itself indicates an error
+      if (response.data?.error) {
+        if (response.data.error.includes('already has a role')) {
+          await refreshProfile();
+          navigate('/onboarding');
+          return;
+        }
+        throw new Error(response.data.error);
       }
 
       await refreshProfile();
