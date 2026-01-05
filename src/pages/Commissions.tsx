@@ -291,67 +291,93 @@ export default function Commissions() {
           </div>
 
           {/* Stats Cards */}
-          <div className={`grid grid-cols-1 ${isSDR ? 'md:grid-cols-4' : 'md:grid-cols-2'} gap-4`}>
+          {isSDR ? (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-warning/10">
+                      <Clock className="h-5 w-5 text-warning" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Pending</p>
+                      <p className="text-2xl font-bold">${stats.totalPending.toLocaleString()}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-success/10">
+                      <CheckCircle className="h-5 w-5 text-success" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Paid Out</p>
+                      <p className="text-2xl font-bold">${stats.totalPaid.toLocaleString()}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <TrendingUp className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Platform Fees</p>
+                      <p className="text-2xl font-bold">${stats.totalPlatformCut.toLocaleString()}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-secondary/50">
+                      <Users className="h-5 w-5 text-secondary-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total Commissions</p>
+                      <p className="text-2xl font-bold">{stats.count}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-warning/10">
-                    <Clock className="h-5 w-5 text-warning" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Pending</p>
-                    <p className="text-2xl font-bold">${stats.totalPending.toLocaleString()}</p>
-                  </div>
+                  {stats.totalPending > 0 ? (
+                    <>
+                      <div className="p-2 rounded-lg bg-warning/10">
+                        <Clock className="h-5 w-5 text-warning" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Pending Payment</p>
+                        <p className="text-2xl font-bold">${stats.totalPending.toLocaleString()}</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="p-2 rounded-lg bg-success/10">
+                        <CheckCircle className="h-5 w-5 text-success" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Status</p>
+                        <p className="text-2xl font-bold">All Paid</p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-success/10">
-                    <CheckCircle className="h-5 w-5 text-success" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">{isSDR ? 'Paid Out' : 'All Paid'}</p>
-                    <p className="text-2xl font-bold">${stats.totalPaid.toLocaleString()}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {isSDR && (
-              <>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-primary/10">
-                        <TrendingUp className="h-5 w-5 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Platform Fees</p>
-                        <p className="text-2xl font-bold">${stats.totalPlatformCut.toLocaleString()}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-secondary/50">
-                        <Users className="h-5 w-5 text-secondary-foreground" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Total Commissions</p>
-                        <p className="text-2xl font-bold">{stats.count}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
-            )}
-          </div>
+          )}
 
           {/* Filter */}
           <div className="flex items-center gap-4">
