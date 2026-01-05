@@ -120,6 +120,7 @@ export type Database = {
       }
       commissions: {
         Row: {
+          agency_rake_amount: number | null
           amount: number
           created_at: string
           deal_id: string
@@ -136,6 +137,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          agency_rake_amount?: number | null
           amount?: number
           created_at?: string
           deal_id: string
@@ -152,6 +154,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          agency_rake_amount?: number | null
           amount?: number
           created_at?: string
           deal_id?: string
