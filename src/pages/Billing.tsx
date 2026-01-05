@@ -339,15 +339,9 @@ export default function Billing() {
                 <div className="w-10 h-6 rounded bg-muted-foreground/20 flex items-center justify-center text-xs text-muted-foreground">
                   ••••
                 </div>
-                <p className="text-sm text-muted-foreground">No payment method on file</p>
+                <p className="text-sm text-muted-foreground">Payment managed via Stripe</p>
               </div>
-              <Button variant="outline" size="sm" disabled>
-                Add Payment Method
-              </Button>
             </div>
-            <p className="text-xs text-muted-foreground mt-3">
-              Stripe integration coming soon. Currently in development mode.
-            </p>
           </CardContent>
         </Card>
         </div>
