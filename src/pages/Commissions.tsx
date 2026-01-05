@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -83,11 +84,24 @@ interface Commission {
 export default function Commissions() {
   const { currentWorkspace, isOwner, loading: workspaceLoading } = useWorkspace();
   const { user, userRole } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [commissions, setCommissions] = useState<Commission[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [payingId, setPayingId] = useState<string | null>(null);
   const [confirmPayCommission, setConfirmPayCommission] = useState<Commission | null>(null);
+
+  // Handle payment success/cancel from Stripe redirect
+  useEffect(() => {
+    const paymentStatus = searchParams.get('payment');
+    if (paymentStatus === 'success') {
+      toast.success("Payment successful! Commission has been paid.");
+      setSearchParams({});
+    } else if (paymentStatus === 'cancelled') {
+      toast.info("Payment cancelled.");
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     if (currentWorkspace?.id || userRole === 'sdr') {
@@ -161,26 +175,32 @@ export default function Commissions() {
     setIsLoading(false);
   };
 
-  const handleMarkAsPaid = async (commissionId: string) => {
-    setPayingId(commissionId);
+  const handlePayCommission = async (commission: Commission) => {
+    setPayingId(commission.id);
     setConfirmPayCommission(null);
     
     try {
-      const { error } = await supabase
-        .from('commissions')
-        .update({ 
-          status: 'paid', 
-          paid_at: new Date().toISOString() 
-        })
-        .eq('id', commissionId);
+      const { data, error } = await supabase.functions.invoke('pay-commission', {
+        body: { commission_id: commission.id },
+      });
 
       if (error) {
-        toast.error("Failed to mark commission as paid");
+        console.error('Pay commission error:', error);
+        toast.error("Failed to initiate payment");
         return;
       }
 
-      toast.success("Commission marked as paid");
-      fetchCommissions();
+      if (data.error === 'stripe_not_configured') {
+        toast.error("Stripe is not configured. Please contact support.");
+        return;
+      }
+
+      if (data.checkout_url) {
+        // Redirect to Stripe Checkout
+        window.location.href = data.checkout_url;
+      } else {
+        toast.error("Failed to create checkout session");
+      }
     } catch (error) {
       console.error('Error:', error);
       toast.error("An error occurred");
@@ -496,8 +516,8 @@ export default function Commissions() {
                                   <Loader2 className="h-4 w-4 animate-spin" />
                                 ) : (
                                   <>
-                                    <CheckCircle className="h-4 w-4 mr-2" />
-                                    Mark Paid
+                                    <DollarSign className="h-4 w-4 mr-2" />
+                                    Pay Now
                                   </>
                                 )}
                               </Button>
@@ -537,8 +557,8 @@ export default function Commissions() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => confirmPayCommission && handleMarkAsPaid(confirmPayCommission.id)}>
-                Confirm Payment
+              <AlertDialogAction onClick={() => confirmPayCommission && handlePayCommission(confirmPayCommission)}>
+                Pay Now
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

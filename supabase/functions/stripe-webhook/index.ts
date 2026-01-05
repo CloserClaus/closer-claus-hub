@@ -69,16 +69,16 @@ serve(async (req) => {
         
         // Check if this is a dialer purchase (one-time payment)
         if (session.mode === 'payment' && metadata.purchase_type) {
-          const { purchase_type, workspace_id, minutes_amount, phone_number, country_code, number_type, monthly_cost, user_id } = metadata;
+          const { purchase_type, workspace_id: dialerWorkspaceId, minutes_amount, phone_number, country_code, number_type, monthly_cost, user_id } = metadata;
           
-          console.log('Processing dialer purchase:', { purchase_type, workspace_id });
+          console.log('Processing dialer purchase:', { purchase_type, workspace_id: dialerWorkspaceId });
           
           if (purchase_type === 'call_minutes' && minutes_amount) {
             // Add minutes to workspace credits
             const { data: currentCredits } = await supabase
               .from('workspace_credits')
               .select('credits_balance')
-              .eq('workspace_id', workspace_id)
+              .eq('workspace_id', dialerWorkspaceId)
               .single();
             
             const newBalance = (currentCredits?.credits_balance || 0) + parseInt(minutes_amount);
@@ -86,28 +86,27 @@ serve(async (req) => {
             await supabase
               .from('workspace_credits')
               .upsert({
-                workspace_id,
+                workspace_id: dialerWorkspaceId,
                 credits_balance: newBalance,
                 last_purchased_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               }, { onConflict: 'workspace_id' });
             
-            // Log the purchase
             await supabase.from('credit_purchases').insert({
-              workspace_id,
+              workspace_id: dialerWorkspaceId,
               credits_amount: parseInt(minutes_amount),
               price_paid: session.amount_total / 100,
               purchased_by: user_id,
               stripe_session_id: session.id,
             });
             
-            console.log(`Added ${minutes_amount} minutes to workspace ${workspace_id}`);
+            console.log(`Added ${minutes_amount} minutes to workspace ${dialerWorkspaceId}`);
             
             // Send notification
             if (user_id) {
               await supabase.from('notifications').insert({
                 user_id,
-                workspace_id,
+                workspace_id: dialerWorkspaceId,
                 type: 'credits_purchased',
                 title: 'Credits Purchased',
                 message: `Successfully added ${minutes_amount} calling minutes to your account.`,
@@ -143,9 +142,8 @@ serve(async (req) => {
                 if (purchaseResponse.ok) {
                   const purchasedNumber = await purchaseResponse.json();
                   
-                  // Save to database
                   await supabase.from('workspace_phone_numbers').insert({
-                    workspace_id,
+                    workspace_id: dialerWorkspaceId,
                     phone_number: purchasedNumber.phone_number,
                     country_code: country_code || 'US',
                     twilio_phone_sid: purchasedNumber.sid,
@@ -155,11 +153,10 @@ serve(async (req) => {
                   
                   console.log(`Phone number ${phone_number} purchased and provisioned`);
                   
-                  // Send notification
                   if (user_id) {
                     await supabase.from('notifications').insert({
                       user_id,
-                      workspace_id,
+                      workspace_id: dialerWorkspaceId,
                       type: 'phone_number_purchased',
                       title: 'Phone Number Purchased',
                       message: `Your new phone number ${phone_number} is now active.`,
@@ -172,6 +169,65 @@ serve(async (req) => {
               } catch (twilioError) {
                 console.error('Twilio error:', twilioError);
               }
+            }
+          }
+          
+          break;
+        }
+
+        // Handle commission payment checkout
+        if (session.mode === 'payment' && metadata.type === 'commission_payment') {
+          const { commission_id, workspace_id: commWorkspaceId, deal_id } = metadata;
+          
+          console.log('Processing commission payment:', { commission_id, workspace_id: commWorkspaceId });
+          
+          // Update commission as paid
+          const { data: commission, error: updateError } = await supabase
+            .from('commissions')
+            .update({
+              status: 'paid',
+              paid_at: new Date().toISOString(),
+              stripe_payment_intent_id: session.payment_intent,
+            })
+            .eq('id', commission_id)
+            .select('*, deal:deals(title)')
+            .single();
+          
+          if (updateError) {
+            console.error('Error updating commission:', updateError);
+          } else {
+            console.log(`Commission ${commission_id} marked as paid`);
+            
+            // Check if workspace should be unlocked
+            const { data: pendingCommissions } = await supabase
+              .from('commissions')
+              .select('id')
+              .eq('workspace_id', commWorkspaceId)
+              .eq('status', 'pending');
+            
+            if (!pendingCommissions?.length) {
+              await supabase
+                .from('workspaces')
+                .update({ is_locked: false })
+                .eq('id', commWorkspaceId)
+                .eq('is_locked', true);
+              console.log(`Unlocked workspace ${commWorkspaceId}`);
+            }
+            
+            // Notify SDR if commission amount > 0 (meaning SDR was involved)
+            if (commission && commission.amount > 0 && commission.sdr_id) {
+              await supabase.from('notifications').insert({
+                user_id: commission.sdr_id,
+                workspace_id: commWorkspaceId,
+                type: 'commission_paid',
+                title: 'Commission Paid! 💰',
+                message: `Your commission of $${Number(commission.sdr_payout_amount || commission.amount).toFixed(2)} for "${commission.deal?.title}" has been paid.`,
+                data: { 
+                  commission_id, 
+                  amount: commission.sdr_payout_amount || commission.amount,
+                  deal_title: commission.deal?.title 
+                },
+              });
             }
           }
           
