@@ -78,10 +78,20 @@ interface SavedSequence {
   created_at: string;
 }
 
+interface PhoneNumber {
+  id: string;
+  phone_number: string;
+  is_active: boolean;
+  assigned_to: string | null;
+}
+
 interface PowerDialerProps {
   workspaceId: string;
   dialerAvailable: boolean | null;
   onCreditsUpdated: () => void;
+  phoneNumbers: PhoneNumber[];
+  selectedCallerId: string;
+  onCallerIdChange: (callerId: string) => void;
 }
 
 type DialerStatus = 'idle' | 'dialing' | 'in_call' | 'paused' | 'completed';
@@ -146,7 +156,7 @@ const getStageLabel = (stage: string): string => {
   return found ? found.label : stage;
 };
 
-export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: PowerDialerProps) {
+export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, phoneNumbers, selectedCallerId, onCallerIdChange }: PowerDialerProps) {
   const { user } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedLeads, setSelectedLeads] = useState<Lead[]>([]);
@@ -454,6 +464,11 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
       return;
     }
     
+    if (!selectedCallerId) {
+      toast.error("Please select a caller ID before starting");
+      return;
+    }
+    
     setSelectedLeads(selected);
     setCurrentIndex(0);
     setDialedLeads([]);
@@ -487,20 +502,15 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
 
       setIsLoading(true);
       
-      // Get workspace phone numbers for caller ID
-      const { data: phoneNumbers } = await supabase
-        .from('workspace_phone_numbers')
-        .select('phone_number')
-        .eq('workspace_id', workspaceId)
-        .eq('is_active', true)
-        .limit(1);
-
-      const fromNumber = phoneNumbers?.[0]?.phone_number;
-      if (!fromNumber) {
-        toast.error("No phone number configured. Please purchase a number first.");
+      // Use the selected caller ID
+      if (!selectedCallerId) {
+        toast.error("No phone number selected. Please select a caller ID first.");
         setDialerStatus('paused');
+        setIsLoading(false);
         return;
       }
+
+      const fromNumber = selectedCallerId;
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twilio`,
@@ -840,7 +850,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-primary/10">
             <Zap className="h-6 w-6 text-primary" />
@@ -850,15 +860,49 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated }: 
             <p className="text-sm text-muted-foreground">Automatically dial through your lead list</p>
           </div>
         </div>
-        {dialerStatus !== 'idle' && (
-          <Badge variant={dialerStatus === 'in_call' ? 'default' : 'secondary'} className="text-sm">
-            {dialerStatus === 'dialing' && 'Dialing...'}
-            {dialerStatus === 'in_call' && 'In Call'}
-            {dialerStatus === 'paused' && 'Paused'}
-            {dialerStatus === 'completed' && 'Completed'}
-          </Badge>
-        )}
+        <div className="flex items-center gap-3">
+          {/* Caller ID Selection */}
+          {phoneNumbers.length > 0 && dialerStatus === 'idle' && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium whitespace-nowrap">Caller ID:</label>
+              <Select value={selectedCallerId} onValueChange={onCallerIdChange}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select number" />
+                </SelectTrigger>
+                <SelectContent>
+                  {phoneNumbers.map((pn) => (
+                    <SelectItem key={pn.id} value={pn.phone_number}>
+                      {pn.phone_number}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {dialerStatus !== 'idle' && (
+            <Badge variant={dialerStatus === 'in_call' ? 'default' : 'secondary'} className="text-sm">
+              {dialerStatus === 'dialing' && 'Dialing...'}
+              {dialerStatus === 'in_call' && 'In Call'}
+              {dialerStatus === 'paused' && 'Paused'}
+              {dialerStatus === 'completed' && 'Completed'}
+            </Badge>
+          )}
+        </div>
       </div>
+
+      {phoneNumbers.length === 0 && (
+        <Card className="border-warning/50 bg-warning/5">
+          <CardContent className="flex items-center gap-3 py-4">
+            <AlertCircle className="h-5 w-5 text-warning" />
+            <div>
+              <p className="font-medium text-warning">No Phone Numbers</p>
+              <p className="text-sm text-muted-foreground">
+                You need to purchase a phone number to use the power dialer. Go to the Purchase tab.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {dialerStatus === 'idle' ? (
         <>

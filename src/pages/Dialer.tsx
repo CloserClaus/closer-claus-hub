@@ -751,6 +751,9 @@ export default function Dialer() {
                       workspaceId={currentWorkspace.id}
                       dialerAvailable={dialerAvailable}
                       onCreditsUpdated={fetchCredits}
+                      phoneNumbers={workspacePhoneNumbers}
+                      selectedCallerId={selectedCallerId}
+                      onCallerIdChange={setSelectedCallerId}
                     />
                   ) : (
                     <Card className="border-primary/20">
