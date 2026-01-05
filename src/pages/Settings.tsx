@@ -65,6 +65,14 @@ interface BillingEvent {
   status: 'completed' | 'pending' | 'failed';
 }
 
+interface PaymentMethod {
+  id: string;
+  brand: string;
+  last4: string;
+  exp_month?: number;
+  exp_year?: number;
+}
+
 export default function Settings() {
   const { user, profile, userRole, refreshProfile } = useAuth();
   const { currentWorkspace } = useWorkspace();
@@ -77,6 +85,9 @@ export default function Settings() {
   const [sdrCount, setSdrCount] = useState(0);
   const [changingPlan, setChangingPlan] = useState<string | null>(null);
   const [confirmPlanChange, setConfirmPlanChange] = useState<PlanInfo | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [paymentMethodLoading, setPaymentMethodLoading] = useState(false);
+  const [openingPortal, setOpeningPortal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -100,8 +111,57 @@ export default function Settings() {
   useEffect(() => {
     if (currentWorkspace && userRole === 'agency_owner') {
       fetchBillingData();
+      fetchPaymentMethod();
     }
   }, [currentWorkspace, userRole]);
+
+  const fetchPaymentMethod = async () => {
+    if (!currentWorkspace) return;
+    setPaymentMethodLoading(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('get-payment-method', {
+        body: { workspace_id: currentWorkspace.id },
+      });
+
+      if (error) throw error;
+      setPaymentMethod(data?.payment_method || null);
+    } catch (error) {
+      console.error('Error fetching payment method:', error);
+    } finally {
+      setPaymentMethodLoading(false);
+    }
+  };
+
+  const handleManagePaymentMethod = async () => {
+    if (!currentWorkspace) return;
+    setOpeningPortal(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('create-customer-portal', {
+        body: {
+          workspace_id: currentWorkspace.id,
+          return_url: window.location.href,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('No portal URL received');
+      }
+    } catch (error: any) {
+      console.error('Error opening customer portal:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Failed to open payment settings',
+        description: error.message || 'Please try again later.',
+      });
+      setOpeningPortal(false);
+    }
+  };
 
   const fetchBillingData = async () => {
     if (!currentWorkspace) return;
@@ -709,17 +769,69 @@ export default function Settings() {
                         <CreditCard className="w-5 h-5 text-muted-foreground" />
                         <CardTitle className="text-lg">Payment Method</CardTitle>
                       </div>
-                      <CardDescription>Manage your payment information</CardDescription>
+                      <CardDescription>Your saved payment method for automatic charges</CardDescription>
                     </CardHeader>
-                    <CardContent>
-                      <div className="flex items-center justify-between p-4 rounded-lg bg-muted">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-6 rounded bg-muted-foreground/20 flex items-center justify-center text-xs text-muted-foreground">
-                            ••••
-                          </div>
-                          <p className="text-sm text-muted-foreground">Payment managed via Stripe</p>
+                    <CardContent className="space-y-4">
+                      {paymentMethodLoading ? (
+                        <div className="flex items-center justify-center p-4">
+                          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                         </div>
-                      </div>
+                      ) : paymentMethod ? (
+                        <div className="flex items-center justify-between p-4 rounded-lg bg-muted">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-8 rounded bg-background flex items-center justify-center">
+                              <span className="text-xs font-medium uppercase text-foreground">
+                                {paymentMethod.brand}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-foreground">
+                                •••• •••• •••• {paymentMethod.last4}
+                              </p>
+                              {paymentMethod.exp_month && paymentMethod.exp_year && (
+                                <p className="text-xs text-muted-foreground">
+                                  Expires {paymentMethod.exp_month.toString().padStart(2, '0')}/{paymentMethod.exp_year.toString().slice(-2)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <Badge variant="secondary" className="bg-success/20 text-success border-0">
+                            Default
+                          </Badge>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between p-4 rounded-lg bg-muted">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-6 rounded bg-muted-foreground/20 flex items-center justify-center text-xs text-muted-foreground">
+                              ••••
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              No payment method saved. Complete a payment to save your card.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {currentWorkspace?.stripe_customer_id && (
+                        <Button
+                          variant="outline"
+                          onClick={handleManagePaymentMethod}
+                          disabled={openingPortal}
+                          className="w-full sm:w-auto"
+                        >
+                          {openingPortal ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Opening...
+                            </>
+                          ) : (
+                            <>
+                              <CreditCard className="w-4 h-4 mr-2" />
+                              Manage Payment Method
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
                 </div>
