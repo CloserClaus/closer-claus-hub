@@ -11,6 +11,7 @@ import {
   Users,
   Target,
   TrendingUp,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -360,6 +361,75 @@ export default function JobDetail() {
     }
   };
 
+  const startConversation = async (sdrUserId: string, sdrName: string) => {
+    if (!job || !user) return;
+
+    try {
+      // Check if a conversation already exists between these users in this workspace
+      const { data: existingConversations } = await supabase
+        .from('conversations')
+        .select(`
+          id,
+          conversation_participants!inner(user_id)
+        `)
+        .eq('workspace_id', job.workspace_id)
+        .eq('is_group', false);
+
+      // Find a conversation where both users are participants
+      let conversationId: string | null = null;
+      
+      if (existingConversations) {
+        for (const conv of existingConversations) {
+          const participantIds = (conv.conversation_participants as any[]).map((p: any) => p.user_id);
+          if (participantIds.includes(user.id) && participantIds.includes(sdrUserId)) {
+            conversationId = conv.id;
+            break;
+          }
+        }
+      }
+
+      // If no existing conversation, create a new one
+      if (!conversationId) {
+        const { data: newConv, error: convError } = await supabase
+          .from('conversations')
+          .insert({
+            workspace_id: job.workspace_id,
+            name: null,
+            is_group: false,
+          })
+          .select('id')
+          .single();
+
+        if (convError) throw convError;
+        conversationId = newConv.id;
+
+        // Add both participants
+        const { error: partError } = await supabase
+          .from('conversation_participants')
+          .insert([
+            { conversation_id: conversationId, user_id: user.id },
+            { conversation_id: conversationId, user_id: sdrUserId },
+          ]);
+
+        if (partError) throw partError;
+
+        toast({
+          title: 'Conversation started',
+          description: `You can now message ${sdrName}`,
+        });
+      }
+
+      // Navigate to conversations page
+      navigate('/conversations');
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to start conversation',
+      });
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -633,9 +703,20 @@ export default function JobDetail() {
                                   "{app.cover_letter}"
                                 </p>
                               )}
-                              <p className="text-xs text-muted-foreground mt-2">
-                                Applied {new Date(app.applied_at).toLocaleDateString()}
-                              </p>
+                              <div className="flex items-center gap-2 mt-2">
+                                <p className="text-xs text-muted-foreground">
+                                  Applied {new Date(app.applied_at).toLocaleDateString()}
+                                </p>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2"
+                                  onClick={() => startConversation(app.user_id, app.profile?.full_name || 'SDR')}
+                                >
+                                  <MessageSquare className="h-4 w-4 mr-1" />
+                                  Message
+                                </Button>
+                              </div>
                             </div>
                             <div className="flex flex-col items-end gap-2">
                               <Badge className={getStatusColor(app.status)}>
