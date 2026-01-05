@@ -25,6 +25,10 @@ export function VideoCallModal({
   const { user } = useAuth();
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+
+  const remoteVideoTrackRef = useRef<RemoteVideoTrack | null>(null);
+  const remoteAudioTrackRef = useRef<RemoteAudioTrack | null>(null);
+
   const [remoteVideoAttached, setRemoteVideoAttached] = useState(false);
   const [remoteIsScreenSharing, setRemoteIsScreenSharing] = useState(false);
   const [remoteIsMuted, setRemoteIsMuted] = useState(false);
@@ -94,6 +98,26 @@ export function VideoCallModal({
     });
   }, [remoteParticipants]);
 
+  // Fallback sync for mute/camera state (Twilio events can be flaky across browsers)
+  useEffect(() => {
+    if (!isConnected) return;
+    if (remoteParticipants.length === 0) return;
+
+    const participant = remoteParticipants[0];
+
+    const sync = () => {
+      const audioPub = Array.from(participant.audioTracks.values())[0];
+      const videoPub = Array.from(participant.videoTracks.values()).find((p) => p.trackName !== 'screen-share');
+
+      if (audioPub) setRemoteIsMuted(!audioPub.isTrackEnabled);
+      if (videoPub) setRemoteVideoOff(!videoPub.isTrackEnabled);
+    };
+
+    sync();
+    const id = window.setInterval(sync, 400);
+    return () => window.clearInterval(id);
+  }, [isConnected, remoteParticipants]);
+
   const attachRemoteParticipant = (participant: RemoteParticipant) => {
     participant.tracks.forEach((publication) => {
       if (publication.isSubscribed && publication.track) {
@@ -141,18 +165,31 @@ export function VideoCallModal({
   const attachTrack = (track: RemoteTrack, trackName?: string) => {
     if (track.kind === 'video' && remoteVideoRef.current) {
       const videoTrack = track as RemoteVideoTrack;
+
+      // Detach any previously attached remote video track from our managed element
+      if (remoteVideoTrackRef.current && remoteVideoTrackRef.current !== videoTrack) {
+        remoteVideoTrackRef.current.detach(remoteVideoRef.current);
+      }
+
       videoTrack.attach(remoteVideoRef.current);
+      remoteVideoTrackRef.current = videoTrack;
       setRemoteVideoAttached(true);
 
       if (trackName === 'screen-share') {
         setRemoteIsScreenSharing(true);
+        setRemoteVideoOff(false);
       } else {
+        setRemoteIsScreenSharing(false);
         setRemoteVideoOff(!videoTrack.isEnabled);
         videoTrack.on('disabled', () => setRemoteVideoOff(true));
         videoTrack.on('enabled', () => setRemoteVideoOff(false));
       }
     } else if (track.kind === 'audio') {
       const audioTrack = track as RemoteAudioTrack;
+
+      // Keep a ref for state + cleanup symmetry
+      remoteAudioTrackRef.current = audioTrack;
+
       const audioElement = audioTrack.attach();
       document.body.appendChild(audioElement);
 
@@ -164,7 +201,19 @@ export function VideoCallModal({
 
   const detachTrack = (track: RemoteTrack, trackName?: string) => {
     if (track.kind === 'video') {
-      (track as RemoteVideoTrack).detach().forEach((el) => el.remove());
+      const videoTrack = track as RemoteVideoTrack;
+
+      // IMPORTANT: don't remove the React-managed <video> element from the DOM.
+      if (remoteVideoRef.current) {
+        videoTrack.detach(remoteVideoRef.current);
+      } else {
+        videoTrack.detach();
+      }
+
+      if (remoteVideoTrackRef.current === videoTrack) {
+        remoteVideoTrackRef.current = null;
+      }
+
       setRemoteVideoAttached(false);
       if (trackName === 'screen-share') {
         setRemoteIsScreenSharing(false);
@@ -172,7 +221,13 @@ export function VideoCallModal({
         setRemoteVideoOff(true);
       }
     } else if (track.kind === 'audio') {
-      (track as RemoteAudioTrack).detach().forEach((el) => el.remove());
+      const audioTrack = track as RemoteAudioTrack;
+      audioTrack.detach().forEach((el) => el.remove());
+
+      if (remoteAudioTrackRef.current === audioTrack) {
+        remoteAudioTrackRef.current = null;
+      }
+
       setRemoteIsMuted(false);
     }
   };
