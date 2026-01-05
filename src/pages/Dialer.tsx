@@ -541,10 +541,10 @@ export default function Dialer() {
                           </div>
                         )}
 
-                        {/* Caller ID Selection */}
-                        {workspacePhoneNumbers.length > 0 && (
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium">Caller ID</label>
+                        {/* Caller ID Selection - Always visible */}
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Caller ID</label>
+                          {workspacePhoneNumbers.length > 0 ? (
                             <select
                               value={selectedCallerId}
                               onChange={(e) => setSelectedCallerId(e.target.value)}
@@ -558,8 +558,23 @@ export default function Dialer() {
                                 </option>
                               ))}
                             </select>
-                          </div>
-                        )}
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="w-full p-2 rounded-md border border-border bg-muted text-sm text-muted-foreground">
+                                No numbers available
+                              </div>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="w-full"
+                                onClick={() => setActiveTab("purchase")}
+                              >
+                                <ShoppingCart className="h-4 w-4 mr-2" />
+                                Get a Phone Number
+                              </Button>
+                            </div>
+                          )}
+                        </div>
 
                         <Input
                           type="tel"
