@@ -25,16 +25,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   DollarSign,
   Clock,
   CheckCircle,
@@ -89,7 +79,6 @@ export default function Commissions() {
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [payingId, setPayingId] = useState<string | null>(null);
-  const [confirmPayCommission, setConfirmPayCommission] = useState<Commission | null>(null);
 
   // Handle payment success/cancel from Stripe redirect
   useEffect(() => {
@@ -177,7 +166,6 @@ export default function Commissions() {
 
   const handlePayCommission = async (commission: Commission) => {
     setPayingId(commission.id);
-    setConfirmPayCommission(null);
     
     try {
       const { data, error } = await supabase.functions.invoke('pay-commission', {
@@ -207,10 +195,6 @@ export default function Commissions() {
     } finally {
       setPayingId(null);
     }
-  };
-
-  const handleConfirmPay = (commission: Commission) => {
-    setConfirmPayCommission(commission);
   };
 
   const getStatusBadge = (status: string) => {
@@ -509,7 +493,7 @@ export default function Commissions() {
                             {commission.status === 'pending' && (
                               <Button
                                 size="sm"
-                                onClick={() => handleConfirmPay(commission)}
+                                onClick={() => handlePayCommission(commission)}
                                 disabled={payingId === commission.id}
                               >
                                 {payingId === commission.id ? (
@@ -539,30 +523,6 @@ export default function Commissions() {
           )}
         </div>
 
-        {/* Confirmation Dialog */}
-        <AlertDialog open={!!confirmPayCommission} onOpenChange={(open) => !open && setConfirmPayCommission(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Confirm Commission Payment</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to mark this commission as paid?
-                {confirmPayCommission && (
-                  <div className="mt-4 p-3 rounded-lg bg-muted space-y-1">
-                    <p><strong>SDR:</strong> {confirmPayCommission.sdr_profile?.full_name || 'Unknown'}</p>
-                    <p><strong>Deal:</strong> {confirmPayCommission.deals?.title || 'Unknown'}</p>
-                    <p><strong>Amount:</strong> ${Number(confirmPayCommission.sdr_payout_amount || confirmPayCommission.amount).toLocaleString()}</p>
-                  </div>
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => confirmPayCommission && handlePayCommission(confirmPayCommission)}>
-                Pay Now
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </main>
     </DashboardLayout>
   );
