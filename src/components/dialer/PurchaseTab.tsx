@@ -725,9 +725,10 @@ export function PurchaseTab({ workspaceId, subscriptionTier, onCreditsUpdated }:
                               <SelectItem value="unassigned">Unassigned</SelectItem>
                               {sdrMembers.map((sdr) => {
                                 const displayName = sdr.profiles?.full_name || sdr.profiles?.email || 'Team Member';
+                                const assignedCount = purchasedNumbers.filter(n => n.assigned_to === sdr.user_id).length;
                                 return (
                                   <SelectItem key={sdr.user_id} value={sdr.user_id}>
-                                    {displayName}
+                                    {displayName} {assignedCount > 0 && <span className="text-muted-foreground">({assignedCount} number{assignedCount !== 1 ? 's' : ''})</span>}
                                   </SelectItem>
                                 );
                               })}
