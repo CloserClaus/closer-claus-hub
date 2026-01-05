@@ -15,7 +15,7 @@ const levelConfig = {
     icon: Star,
     className: "bg-amber-600/20 text-amber-400 border-amber-600/30",
     iconClassName: "text-amber-400",
-    platformCut: 15,
+    platformCut: 5,
     threshold: 0,
   },
   2: {
@@ -23,7 +23,7 @@ const levelConfig = {
     icon: Trophy,
     className: "bg-slate-400/20 text-slate-300 border-slate-400/30",
     iconClassName: "text-slate-300",
-    platformCut: 10,
+    platformCut: 4,
     threshold: 30000,
   },
   3: {
@@ -31,7 +31,7 @@ const levelConfig = {
     icon: Crown,
     className: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
     iconClassName: "text-yellow-400",
-    platformCut: 5,
+    platformCut: 2.5,
     threshold: 100000,
   },
 };

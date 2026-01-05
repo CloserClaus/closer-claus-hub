@@ -99,7 +99,7 @@ export function SDRLevelProgress({ compact = false, className }: SDRLevelProgres
           </>
         ) : (
           <>
-            <span>5% platform fee</span>
+            <span>2.5% platform fee</span>
             <span className="text-success">Max Level Achieved!</span>
           </>
         )}
