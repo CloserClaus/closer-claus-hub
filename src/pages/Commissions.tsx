@@ -472,7 +472,7 @@ export default function Commissions() {
                               <TableCell className="text-muted-foreground">
                                 ${Number(commission.amount).toLocaleString()}
                               </TableCell>
-                              <TableCell className="text-destructive">
+                              <TableCell className="text-muted-foreground">
                                 <div className="flex items-center gap-1">
                                   <Percent className="h-3 w-3" />
                                   {commission.platform_cut_percentage ?? 5}% (${Number(commission.platform_cut_amount || 0).toLocaleString()})
