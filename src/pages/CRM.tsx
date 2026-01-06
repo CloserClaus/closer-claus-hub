@@ -1209,6 +1209,7 @@ export default function CRM() {
             <LeadForm
               lead={editingLead}
               workspaceId={currentWorkspace.id}
+              defaultAssignee={userRole === 'sdr' ? user?.id : undefined}
               onSuccess={() => {
                 setShowLeadForm(false);
                 setEditingLead(null);
