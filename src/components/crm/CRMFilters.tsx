@@ -48,6 +48,16 @@ export interface FilterState {
   maxValue: string;
   hasEmail: string;
   hasPhone: string;
+  assignedTo: string;
+}
+
+interface TeamMember {
+  id: string;
+  user_id: string;
+  profile: {
+    full_name: string | null;
+    email: string;
+  };
 }
 
 export interface SavedView {
@@ -63,6 +73,7 @@ const DEFAULT_FILTERS: FilterState = {
   maxValue: '',
   hasEmail: '',
   hasPhone: '',
+  assignedTo: '',
 };
 
 const STORAGE_KEY = 'crm_saved_views';
@@ -71,9 +82,11 @@ interface CRMFiltersProps {
   type: 'leads' | 'deals';
   filters: FilterState;
   onFiltersChange: (filters: FilterState) => void;
+  teamMembers?: TeamMember[];
+  isAgencyOwner?: boolean;
 }
 
-export function CRMFilters({ type, filters, onFiltersChange }: CRMFiltersProps) {
+export function CRMFilters({ type, filters, onFiltersChange, teamMembers = [], isAgencyOwner = false }: CRMFiltersProps) {
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [viewName, setViewName] = useState('');
@@ -249,6 +262,30 @@ export function CRMFilters({ type, filters, onFiltersChange }: CRMFiltersProps) 
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Assignee filter for leads - agency owners only */}
+                {isAgencyOwner && teamMembers.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="text-sm text-muted-foreground">Assigned To</label>
+                    <Select
+                      value={filters.assignedTo || "any"}
+                      onValueChange={(value) => handleFilterChange('assignedTo', value === "any" ? "" : value)}
+                    >
+                      <SelectTrigger className="bg-muted border-border">
+                        <SelectValue placeholder="Any" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">Any</SelectItem>
+                        <SelectItem value="unassigned">Unassigned</SelectItem>
+                        {teamMembers.map(member => (
+                          <SelectItem key={member.user_id} value={member.user_id}>
+                            {member.profile.full_name || member.profile.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </>
             )}
 
@@ -321,6 +358,17 @@ export function CRMFilters({ type, filters, onFiltersChange }: CRMFiltersProps) 
           <X
             className="h-3 w-3 cursor-pointer"
             onClick={() => handleFilterChange('dateRange', '')}
+          />
+        </Badge>
+      )}
+      {filters.assignedTo && (
+        <Badge variant="secondary" className="gap-1">
+          {filters.assignedTo === 'unassigned' 
+            ? 'Unassigned' 
+            : `Assigned: ${teamMembers.find(m => m.user_id === filters.assignedTo)?.profile.full_name || teamMembers.find(m => m.user_id === filters.assignedTo)?.profile.email || 'SDR'}`}
+          <X
+            className="h-3 w-3 cursor-pointer"
+            onClick={() => handleFilterChange('assignedTo', '')}
           />
         </Badge>
       )}

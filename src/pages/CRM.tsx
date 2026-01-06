@@ -14,9 +14,9 @@ import {
   AlertTriangle,
   Upload,
   CheckSquare,
-  UserCircle,
+  Clock,
 } from 'lucide-react';
-import { startOfDay, startOfWeek, startOfMonth, startOfQuarter } from 'date-fns';
+import { startOfDay, startOfWeek, startOfMonth, startOfQuarter, formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { supabase } from '@/integrations/supabase/client';
@@ -113,6 +113,7 @@ const DEFAULT_FILTERS: FilterState = {
   maxValue: '',
   hasEmail: '',
   hasPhone: '',
+  assignedTo: '',
 };
 
 const ITEMS_PER_PAGE = 12;
@@ -302,6 +303,15 @@ export default function CRM() {
       result = result.filter(lead => lead.phone);
     } else if (leadFilters.hasPhone === 'no') {
       result = result.filter(lead => !lead.phone);
+    }
+
+    // Assignee filter (agency owners only)
+    if (leadFilters.assignedTo) {
+      if (leadFilters.assignedTo === 'unassigned') {
+        result = result.filter(lead => !lead.assigned_to);
+      } else {
+        result = result.filter(lead => lead.assigned_to === leadFilters.assignedTo);
+      }
     }
 
     return result;
@@ -749,6 +759,8 @@ export default function CRM() {
                   type="leads"
                   filters={leadFilters}
                   onFiltersChange={setLeadFilters}
+                  teamMembers={teamMembers}
+                  isAgencyOwner={isAgencyOwner}
                 />
               </div>
               <div className="text-sm text-muted-foreground">
@@ -875,6 +887,17 @@ export default function CRM() {
                             {lead.phone}
                           </div>
                         )}
+                        {/* Last contacted indicator */}
+                        <div className="flex items-center gap-2 text-sm">
+                          <Clock className="h-4 w-4 text-muted-foreground" />
+                          {lead.last_contacted_at ? (
+                            <span className="text-muted-foreground">
+                              Contacted {formatDistanceToNow(new Date(lead.last_contacted_at), { addSuffix: true })}
+                            </span>
+                          ) : (
+                            <span className="text-warning">Never contacted</span>
+                          )}
+                        </div>
                         {isAgencyOwner && (
                           <div className="pt-1" onClick={(e) => e.stopPropagation()}>
                             <LeadAssignmentDropdown
