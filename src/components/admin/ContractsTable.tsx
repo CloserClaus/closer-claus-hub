@@ -27,7 +27,20 @@ export function ContractsTable() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data || [];
+
+      // Get creator profiles
+      const creatorIds = data?.map(c => c.created_by) || [];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', creatorIds);
+
+      const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+
+      return data?.map(c => ({
+        ...c,
+        creator: profileMap.get(c.created_by),
+      })) || [];
     },
   });
 
@@ -63,6 +76,7 @@ export function ContractsTable() {
               <TableRow>
                 <TableHead>Title</TableHead>
                 <TableHead>Agency</TableHead>
+                <TableHead>Created By</TableHead>
                 <TableHead>Deal</TableHead>
                 <TableHead>Value</TableHead>
                 <TableHead>Status</TableHead>
@@ -77,6 +91,12 @@ export function ContractsTable() {
                     <div className="flex items-center gap-1">
                       <Building2 className="h-4 w-4 text-muted-foreground" />
                       {(contract.workspaces as any)?.name || 'Unknown'}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div>
+                      <p className="font-medium">{(contract as any).creator?.full_name || 'Unknown'}</p>
+                      <p className="text-xs text-muted-foreground">{(contract as any).creator?.email}</p>
                     </div>
                   </TableCell>
                   <TableCell>{(contract.deals as any)?.title || 'Unknown'}</TableCell>
