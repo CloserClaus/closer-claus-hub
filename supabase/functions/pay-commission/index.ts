@@ -1,10 +1,106 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Helper function to trigger SDR payout after commission is paid
+async function triggerSDRPayout(supabase: any, stripe: any, commission: any, commission_id: string) {
+  if (!commission.sdr_id || (commission.sdr_payout_amount || commission.amount) <= 0) {
+    return;
+  }
+
+  const sdrPayoutAmount = Number(commission.sdr_payout_amount || commission.amount);
+
+  // Get SDR's Connect account status
+  const { data: sdrProfile } = await supabase
+    .from('profiles')
+    .select('stripe_connect_account_id, stripe_connect_status')
+    .eq('id', commission.sdr_id)
+    .single();
+
+  if (sdrProfile?.stripe_connect_status === 'active' && sdrProfile?.stripe_connect_account_id) {
+    // Create transfer to SDR's Connect account
+    try {
+      const transfer = await stripe.transfers.create({
+        amount: Math.round(sdrPayoutAmount * 100),
+        currency: 'usd',
+        destination: sdrProfile.stripe_connect_account_id,
+        description: `Commission for ${commission.deal?.title || 'deal'}`,
+        metadata: {
+          commission_id,
+          sdr_id: commission.sdr_id,
+          workspace_id: commission.workspace_id,
+        },
+      });
+
+      console.log(`Created transfer ${transfer.id} to SDR ${commission.sdr_id} for $${sdrPayoutAmount}`);
+
+      // Update commission with transfer info
+      await supabase
+        .from('commissions')
+        .update({
+          sdr_payout_status: 'processing',
+          sdr_payout_stripe_transfer_id: transfer.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', commission_id);
+
+      // Notify SDR
+      await supabase.from('notifications').insert({
+        user_id: commission.sdr_id,
+        workspace_id: commission.workspace_id,
+        type: 'payout_processing',
+        title: 'Payout Processing 💸',
+        message: `Your commission of $${sdrPayoutAmount.toFixed(2)} for "${commission.deal?.title}" is being transferred to your bank.`,
+        data: { commission_id, amount: sdrPayoutAmount, transfer_id: transfer.id },
+      });
+
+    } catch (transferError: any) {
+      console.error('Transfer error:', transferError);
+      
+      await supabase
+        .from('commissions')
+        .update({
+          sdr_payout_status: 'failed',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', commission_id);
+
+      await supabase.from('notifications').insert({
+        user_id: commission.sdr_id,
+        workspace_id: commission.workspace_id,
+        type: 'payout_failed',
+        title: 'Payout Failed',
+        message: `There was an issue transferring your commission. Please check your bank account settings.`,
+        data: { commission_id, error: transferError.message },
+      });
+    }
+  } else {
+    // SDR doesn't have active Connect account - hold payout
+    await supabase
+      .from('commissions')
+      .update({
+        sdr_payout_status: 'held',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', commission_id);
+
+    await supabase.from('notifications').insert({
+      user_id: commission.sdr_id,
+      workspace_id: commission.workspace_id,
+      type: 'connect_bank_prompt',
+      title: 'Connect Bank to Receive $' + sdrPayoutAmount.toFixed(2),
+      message: `Your commission is waiting! Connect your bank account in Settings to receive payouts.`,
+      data: { commission_id, amount: sdrPayoutAmount },
+    });
+
+    console.log(`Payout held for SDR ${commission.sdr_id} - no active Connect account`);
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -160,6 +256,9 @@ serve(async (req) => {
 
           console.log(`Commission ${commission_id} auto-charged successfully`);
 
+          // Trigger SDR payout
+          await triggerSDRPayout(supabase, stripe, commission, commission_id);
+
           // Check if workspace should be unlocked
           const { data: pendingCommissions } = await supabase
             .from('commissions')
@@ -174,22 +273,6 @@ serve(async (req) => {
               .eq('id', commission.workspace_id)
               .eq('is_locked', true);
             console.log(`Unlocked workspace ${commission.workspace_id}`);
-          }
-
-          // Notify SDR
-          if (commission.sdr_id && commission.amount > 0) {
-            await supabase.from('notifications').insert({
-              user_id: commission.sdr_id,
-              workspace_id: commission.workspace_id,
-              type: 'commission_paid',
-              title: 'Commission Paid! 💰',
-              message: `Your commission of $${Number(commission.sdr_payout_amount || commission.amount).toFixed(2)} for "${commission.deal?.title}" has been paid.`,
-              data: { 
-                commission_id, 
-                amount: commission.sdr_payout_amount || commission.amount,
-                deal_title: commission.deal?.title 
-              },
-            });
           }
 
           return new Response(
