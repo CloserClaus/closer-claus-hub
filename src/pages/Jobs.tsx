@@ -149,6 +149,7 @@ export default function Jobs() {
   const filteredJobs = jobs.filter(job => {
     const matchesSearch =
       !searchQuery ||
+      job.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       job.workspace?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       job.company_description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       job.dream_outcome?.toLowerCase().includes(searchQuery.toLowerCase()) ||

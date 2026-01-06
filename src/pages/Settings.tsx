@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Bell, Shield, CreditCard, TrendingUp, Camera, Loader2, Zap, Crown, Rocket, ArrowUpRight, Calendar, CheckCircle, AlertCircle, ArrowUp, ArrowDown, Banknote } from 'lucide-react';
+import { User, Bell, Shield, CreditCard, TrendingUp, Camera, Loader2, Zap, Crown, Rocket, ArrowUpRight, Calendar, CheckCircle, AlertCircle, ArrowUp, ArrowDown } from 'lucide-react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -23,7 +23,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { format } from 'date-fns';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { StripeConnectSetup } from '@/components/settings/StripeConnectSetup';
+
 
 const profileSchema = z.object({
   fullName: z.string().min(2, 'Name must be at least 2 characters'),
@@ -427,12 +427,6 @@ export default function Settings() {
                 <User className="h-4 w-4" />
                 Profile
               </TabsTrigger>
-              {userRole === 'sdr' && (
-                <TabsTrigger value="payouts" className="gap-2">
-                  <Banknote className="h-4 w-4" />
-                  Payouts
-                </TabsTrigger>
-              )}
               <TabsTrigger value="notifications" className="gap-2">
                 <Bell className="h-4 w-4" />
                 Notifications
@@ -572,52 +566,6 @@ export default function Settings() {
               </div>
             </TabsContent>
 
-            {/* SDR Payouts Tab */}
-            {userRole === 'sdr' && (
-              <TabsContent value="payouts">
-                <div className="space-y-6">
-                  <StripeConnectSetup />
-                  
-                  {/* Payout Info Card */}
-                  <Card className="glass">
-                    <CardHeader>
-                      <CardTitle>How Payouts Work</CardTitle>
-                      <CardDescription>
-                        Understanding your commission payouts
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="p-4 rounded-lg bg-muted/50 space-y-2">
-                          <h4 className="font-medium text-sm">When do I get paid?</h4>
-                          <p className="text-sm text-muted-foreground">
-                            Your commission is transferred to your bank automatically after the agency pays the commission. This typically happens within 2-7 business days.
-                          </p>
-                        </div>
-                        <div className="p-4 rounded-lg bg-muted/50 space-y-2">
-                          <h4 className="font-medium text-sm">What fees apply?</h4>
-                          <p className="text-sm text-muted-foreground">
-                            Standard payment processing fees are deducted from your payout. You can view detailed fee breakdowns in your payout dashboard.
-                          </p>
-                        </div>
-                        <div className="p-4 rounded-lg bg-muted/50 space-y-2">
-                          <h4 className="font-medium text-sm">Can I update my bank?</h4>
-                          <p className="text-sm text-muted-foreground">
-                            Yes! Click "View Payout Dashboard" above to update your bank account details at any time.
-                          </p>
-                        </div>
-                        <div className="p-4 rounded-lg bg-muted/50 space-y-2">
-                          <h4 className="font-medium text-sm">Tax documents</h4>
-                          <p className="text-sm text-muted-foreground">
-                            1099 tax forms and other tax documents are available in your payout dashboard at the end of the year.
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
-            )}
 
             <TabsContent value="notifications">
               <Card className="glass">
