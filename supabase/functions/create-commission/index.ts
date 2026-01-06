@@ -93,17 +93,17 @@ serve(async (req) => {
 
     const sdrLevel = sdrProfile?.sdr_level || 1;
     
-    // Platform cut based on SDR level: Level 1 = 15%, Level 2 = 10%, Level 3 = 5%
+    // Platform cut based on SDR level: Level 1 = 5%, Level 2 = 4%, Level 3 = 2.5%
     let platformCutPercentage: number;
     switch (sdrLevel) {
       case 3:
-        platformCutPercentage = 5;
+        platformCutPercentage = 2.5;
         break;
       case 2:
-        platformCutPercentage = 10;
+        platformCutPercentage = 4;
         break;
       default:
-        platformCutPercentage = 15;
+        platformCutPercentage = 5;
     }
 
     // Calculate commission (workspace rake is separate from platform cut)
