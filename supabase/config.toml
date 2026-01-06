@@ -83,3 +83,6 @@ verify_jwt = true
 
 [functions.create-conversation]
 verify_jwt = false
+
+[functions.send-contract-request-email]
+verify_jwt = true

@@ -179,15 +179,28 @@ export function ContractRequestForm({ onSuccess, onCancel }: ContractRequestForm
 
       if (error) throw error;
 
-      // Send notification to agency owner
+      // Send notification and email to agency owner
       try {
         const { data: workspace } = await supabase
           .from('workspaces')
-          .select('owner_id')
+          .select('owner_id, name')
           .eq('id', currentWorkspace.id)
           .single();
 
+        const { data: ownerProfile } = await supabase
+          .from('profiles')
+          .select('email, full_name')
+          .eq('id', workspace?.owner_id)
+          .single();
+
+        const { data: sdrProfile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', user.id)
+          .single();
+
         if (workspace) {
+          // In-app notification
           await supabase.functions.invoke('create-notification', {
             body: {
               action: 'contract_request',
@@ -196,6 +209,21 @@ export function ContractRequestForm({ onSuccess, onCancel }: ContractRequestForm
               deal_id: data.deal_id,
             },
           });
+
+          // Email notification
+          if (ownerProfile?.email) {
+            await supabase.functions.invoke('send-contract-request-email', {
+              body: {
+                type: 'submitted',
+                recipientEmail: ownerProfile.email,
+                recipientName: ownerProfile.full_name || 'Agency Owner',
+                dealTitle: selectedDeal?.title || 'Unknown Deal',
+                dealValue: data.deal_value,
+                agencyName: workspace.name,
+                sdrName: sdrProfile?.full_name || 'An SDR',
+              },
+            });
+          }
         }
       } catch (notifError) {
         console.error('Failed to send notification:', notifError);

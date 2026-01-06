@@ -71,11 +71,68 @@ export function LeadForm({ lead, workspaceId, onSuccess, onCancel }: LeadFormPro
     });
   }, [lead, form]);
 
+  const checkForDuplicates = async (email: string | null, phone: string | null): Promise<{ isDuplicate: boolean; matchedField?: string; existingLead?: { first_name: string; last_name: string; company: string | null } }> => {
+    if (!email && !phone) return { isDuplicate: false };
+
+    // Build OR conditions for email and phone matches
+    let query = supabase
+      .from('leads')
+      .select('id, first_name, last_name, email, phone, company')
+      .eq('workspace_id', workspaceId);
+
+    if (lead) {
+      // Exclude the current lead when editing
+      query = query.neq('id', lead.id);
+    }
+
+    const conditions = [];
+    if (email) conditions.push(`email.eq.${email}`);
+    if (phone) conditions.push(`phone.eq.${phone}`);
+
+    if (conditions.length === 1) {
+      if (email) query = query.eq('email', email);
+      else if (phone) query = query.eq('phone', phone);
+    } else {
+      query = query.or(`email.eq.${email},phone.eq.${phone}`);
+    }
+
+    const { data: existingLeads } = await query.limit(1);
+
+    if (existingLeads && existingLeads.length > 0) {
+      const existing = existingLeads[0];
+      const matchedField = existing.email === email ? 'email' : 'phone';
+      return { 
+        isDuplicate: true, 
+        matchedField, 
+        existingLead: { first_name: existing.first_name, last_name: existing.last_name, company: existing.company } 
+      };
+    }
+
+    return { isDuplicate: false };
+  };
+
   const onSubmit = async (data: LeadFormData) => {
     if (!user) return;
     setSaving(true);
 
     try {
+      // Check for duplicates before creating/updating
+      const duplicateCheck = await checkForDuplicates(
+        data.email || null,
+        data.phone || null
+      );
+
+      if (duplicateCheck.isDuplicate && duplicateCheck.existingLead) {
+        const existingName = `${duplicateCheck.existingLead.first_name} ${duplicateCheck.existingLead.last_name}`;
+        toast({
+          variant: 'destructive',
+          title: 'Duplicate Lead Found',
+          description: `A lead with this ${duplicateCheck.matchedField} already exists: ${existingName}${duplicateCheck.existingLead.company ? ` (${duplicateCheck.existingLead.company})` : ''}`,
+        });
+        setSaving(false);
+        return;
+      }
+
       const leadData = {
         workspace_id: workspaceId,
         created_by: user.id,

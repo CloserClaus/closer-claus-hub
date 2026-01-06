@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { FileSignature, Clock, CheckCircle, XCircle, Eye } from 'lucide-react';
+import { FileSignature, Clock, CheckCircle, XCircle, Eye, Send, PenTool } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 
 interface ContractRequest {
   id: string;
@@ -33,6 +34,12 @@ interface ContractRequest {
     title: string;
     value: number;
   };
+  contract?: {
+    id: string;
+    status: string;
+    sent_at: string | null;
+    signed_at: string | null;
+  } | null;
 }
 
 interface ContractRequestsListProps {
@@ -70,7 +77,26 @@ export function ContractRequestsList({ refreshTrigger }: ContractRequestsListPro
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setRequests(data || []);
+
+      // Fetch associated contracts for approved requests
+      const dealIds = data?.filter(r => r.status === 'approved').map(r => r.deal_id) || [];
+      let contractMap = new Map();
+
+      if (dealIds.length > 0) {
+        const { data: contracts } = await supabase
+          .from('contracts')
+          .select('id, deal_id, status, sent_at, signed_at')
+          .in('deal_id', dealIds);
+
+        contracts?.forEach(c => {
+          contractMap.set(c.deal_id, c);
+        });
+      }
+
+      setRequests((data || []).map(r => ({
+        ...r,
+        contract: contractMap.get(r.deal_id) || null,
+      })));
     } catch (error) {
       console.error('Error fetching requests:', error);
     } finally {
@@ -98,6 +124,36 @@ export function ContractRequestsList({ refreshTrigger }: ContractRequestsListPro
       default:
         return <Clock className="h-4 w-4 text-warning" />;
     }
+  };
+
+  const getContractStatusBadge = (request: ContractRequest) => {
+    if (request.status !== 'approved' || !request.contract) return null;
+
+    if (request.contract.signed_at) {
+      return (
+        <Badge className="bg-success/10 text-success border-success/20 gap-1">
+          <PenTool className="h-3 w-3" />
+          Signed
+        </Badge>
+      );
+    }
+    if (request.contract.sent_at) {
+      return (
+        <Badge className="bg-primary/10 text-primary border-primary/20 gap-1">
+          <Send className="h-3 w-3" />
+          Sent
+        </Badge>
+      );
+    }
+    if (request.contract.status === 'draft') {
+      return (
+        <Badge className="bg-muted text-muted-foreground border-border gap-1">
+          <FileSignature className="h-3 w-3" />
+          Draft
+        </Badge>
+      );
+    }
+    return null;
   };
 
   const formatPaymentTerms = (terms: string) => {
@@ -163,9 +219,12 @@ export function ContractRequestsList({ refreshTrigger }: ContractRequestsListPro
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="text-right">
+                  <div className="text-right space-y-1">
                     <p className="font-medium text-success">${request.deal_value.toLocaleString()}</p>
-                    {getStatusBadge(request.status)}
+                    <div className="flex gap-1 justify-end flex-wrap">
+                      {getStatusBadge(request.status)}
+                      {getContractStatusBadge(request)}
+                    </div>
                   </div>
                   <Button
                     variant="ghost"
