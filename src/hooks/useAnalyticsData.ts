@@ -102,34 +102,52 @@ export function usePlatformAnalytics(period: Period) {
 }
 
 // Agency Owner Analytics
-export function useAgencyAnalytics(workspaceId: string | undefined, period: Period) {
+export function useAgencyAnalytics(workspaceId: string | undefined, period: Period, assigneeId?: string) {
   const days = getPeriodDays(period);
   const startDate = subDays(new Date(), days);
 
   return useQuery({
-    queryKey: ['agency-analytics', workspaceId, period],
+    queryKey: ['agency-analytics', workspaceId, period, assigneeId],
     enabled: !!workspaceId,
     queryFn: async () => {
-      // Get deals
-      const { data: deals } = await supabase
+      // Get deals - filter by assignee if provided
+      let dealsQuery = supabase
         .from('deals')
         .select('value, stage, closed_at, created_at, assigned_to')
         .eq('workspace_id', workspaceId!)
         .gte('created_at', startDate.toISOString());
+      
+      if (assigneeId) {
+        dealsQuery = dealsQuery.eq('assigned_to', assigneeId);
+      }
+      
+      const { data: deals } = await dealsQuery;
 
-      // Get commissions
-      const { data: commissions } = await supabase
+      // Get commissions - filter by SDR if assignee provided
+      let commissionsQuery = supabase
         .from('commissions')
         .select('amount, rake_amount, created_at, status, sdr_id')
         .eq('workspace_id', workspaceId!)
         .gte('created_at', startDate.toISOString());
+      
+      if (assigneeId) {
+        commissionsQuery = commissionsQuery.eq('sdr_id', assigneeId);
+      }
+      
+      const { data: commissions } = await commissionsQuery;
 
-      // Get call logs
-      const { data: calls } = await supabase
+      // Get call logs - filter by caller if assignee provided
+      let callsQuery = supabase
         .from('call_logs')
         .select('created_at, duration_seconds, caller_id, call_status')
         .eq('workspace_id', workspaceId!)
         .gte('created_at', startDate.toISOString());
+      
+      if (assigneeId) {
+        callsQuery = callsQuery.eq('caller_id', assigneeId);
+      }
+      
+      const { data: calls } = await callsQuery;
 
       // Get team members
       const { data: members } = await supabase

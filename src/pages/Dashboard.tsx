@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { AnalyticsChart } from '@/components/analytics/AnalyticsChart';
 import { PeriodSelector } from '@/components/analytics/PeriodSelector';
 import { CallPeriodSelector } from '@/components/analytics/CallPeriodSelector';
+import { AssigneeFilter } from '@/components/analytics/AssigneeFilter';
 import { ActivityFeed } from '@/components/analytics/ActivityFeed';
 import { toast } from 'sonner';
 
@@ -72,13 +73,18 @@ export default function Dashboard() {
   const [callPeriod, setCallPeriod] = useState<CallPeriod>('30d');
   const [customStartDate, setCustomStartDate] = useState<Date | undefined>();
   const [customEndDate, setCustomEndDate] = useState<Date | undefined>();
+  const [analyticsAssignee, setAnalyticsAssignee] = useState<string>('all');
 
   const { data: platformStats } = usePlatformAdminStats();
   const { data: agencyStats } = useAgencyOwnerStats();
   const { data: sdrStats } = useSDRStats();
 
   const { data: platformAnalytics } = usePlatformAnalytics(period);
-  const { data: agencyAnalytics } = useAgencyAnalytics(currentWorkspace?.id, period);
+  const { data: agencyAnalytics } = useAgencyAnalytics(
+    currentWorkspace?.id, 
+    period, 
+    analyticsAssignee === 'all' ? undefined : analyticsAssignee
+  );
   const { data: sdrAnalytics } = useSDRAnalytics(user?.id, currentWorkspace?.id, period);
   const { data: activities } = useRecentActivity(currentWorkspace?.id, user?.id, userRole);
 
@@ -222,9 +228,24 @@ export default function Dashboard() {
       </div>
 
       {/* Charts */}
-      <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2">
-        <AnalyticsChart title="Call Volume" description="Total vs Connected" data={agencyAnalytics?.callVolume || []} showSecondary primaryLabel="Total Calls" secondaryLabel="Connected" />
-        <AnalyticsChart title="Talk Time" description="Minutes per day" data={agencyAnalytics?.callDuration || []} color="hsl(var(--primary))" valueFormatter={(v) => `${v}m`} />
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h2 className="text-lg font-semibold">Performance Analytics</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            {currentWorkspace && (
+              <AssigneeFilter
+                workspaceId={currentWorkspace.id}
+                value={analyticsAssignee}
+                onChange={setAnalyticsAssignee}
+              />
+            )}
+            <PeriodSelector value={period} onChange={setPeriod} />
+          </div>
+        </div>
+        <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2">
+          <AnalyticsChart title="Call Volume" description="Total vs Connected" data={agencyAnalytics?.callVolume || []} showSecondary primaryLabel="Total Calls" secondaryLabel="Connected" />
+          <AnalyticsChart title="Talk Time" description="Minutes per day" data={agencyAnalytics?.callDuration || []} color="hsl(var(--primary))" valueFormatter={(v) => `${v}m`} />
+        </div>
       </div>
 
       <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2">
