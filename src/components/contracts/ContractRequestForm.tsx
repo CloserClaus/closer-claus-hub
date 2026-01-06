@@ -106,7 +106,7 @@ export function ContractRequestForm({ onSuccess, onCancel }: ContractRequestForm
     
     setLoading(true);
     try {
-      // SDRs can only see deals assigned to them
+      // SDRs can only see deals assigned to them that are in the proposal stage
       const { data, error } = await supabase
         .from('deals')
         .select(`
@@ -124,7 +124,7 @@ export function ContractRequestForm({ onSuccess, onCancel }: ContractRequestForm
         `)
         .eq('workspace_id', currentWorkspace.id)
         .eq('assigned_to', user.id)
-        .not('stage', 'in', '("closed_won","closed_lost")')
+        .eq('stage', 'proposal')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -274,7 +274,7 @@ export function ContractRequestForm({ onSuccess, onCancel }: ContractRequestForm
               <CardContent className="py-6 text-center text-sm text-muted-foreground">
                 <FileSignature className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 {deals.length === 0 
-                  ? 'No eligible deals found. You need active deals assigned to you to request contracts.'
+                  ? 'No deals in the Proposal stage. Move a deal to the Proposal stage in the CRM to request a contract.'
                   : 'No deals match your search.'}
               </CardContent>
             </Card>

@@ -181,8 +181,11 @@ export default function Contracts() {
   };
 
   const fetchDeals = async () => {
-    if (!currentWorkspace?.id) return;
+    if (!currentWorkspace?.id || !user?.id) return;
 
+    // Agencies can only create contracts for:
+    // 1. Deals in proposal stage that are assigned to themselves (not SDRs)
+    // 2. Deals from contract requests (handled separately)
     const { data, error } = await supabase
       .from('deals')
       .select(`
@@ -190,6 +193,7 @@ export default function Contracts() {
         title,
         value,
         stage,
+        assigned_to,
         leads (
           first_name,
           last_name,
@@ -198,7 +202,8 @@ export default function Contracts() {
         )
       `)
       .eq('workspace_id', currentWorkspace.id)
-      .not('stage', 'in', '("closed_won","closed_lost")')
+      .eq('stage', 'proposal')
+      .eq('assigned_to', user.id) // Only deals assigned to the agency owner
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -590,19 +595,30 @@ export default function Contracts() {
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Select Deal</label>
-                    <Select value={selectedDealId} onValueChange={handleDealSelect}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choose a deal..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {deals.map((deal) => (
-                          <SelectItem key={deal.id} value={deal.id}>
-                            {deal.title} - ${deal.value.toLocaleString()}
-                            {deal.leads && ` (${deal.leads.first_name} ${deal.leads.last_name})`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {deals.length === 0 ? (
+                      <Card className="border-dashed">
+                        <CardContent className="py-4 text-center text-sm text-muted-foreground">
+                          <p>No deals available.</p>
+                          <p className="mt-1 text-xs">
+                            You can only create contracts for deals in the Proposal stage that are assigned to you, or from SDR contract requests.
+                          </p>
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      <Select value={selectedDealId} onValueChange={handleDealSelect}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose a deal..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {deals.map((deal) => (
+                            <SelectItem key={deal.id} value={deal.id}>
+                              {deal.title} - ${deal.value.toLocaleString()}
+                              {deal.leads && ` (${deal.leads.first_name} ${deal.leads.last_name})`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
 
                   <div className="space-y-2">
