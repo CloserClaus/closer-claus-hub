@@ -23,6 +23,8 @@ interface LeadAssignmentDropdownProps {
   leadId: string;
   currentAssignee: string | null;
   teamMembers: TeamMember[];
+  workspaceId: string;
+  assignerId?: string;
   onAssignmentChange: () => void;
 }
 
@@ -30,6 +32,8 @@ export function LeadAssignmentDropdown({
   leadId,
   currentAssignee,
   teamMembers,
+  workspaceId,
+  assignerId,
   onAssignmentChange,
 }: LeadAssignmentDropdownProps) {
   const { toast } = useToast();
@@ -38,22 +42,38 @@ export function LeadAssignmentDropdown({
   const handleAssign = async (userId: string) => {
     if (userId === currentAssignee) return;
     
+    const actualUserId = userId === 'unassigned' ? null : userId;
+    
     setIsUpdating(true);
     try {
       const { error } = await supabase
         .from('leads')
-        .update({ 
-          assigned_to: userId === 'unassigned' ? null : userId 
-        })
+        .update({ assigned_to: actualUserId })
         .eq('id', leadId);
 
       if (error) throw error;
 
+      // Send email notification if assigning to someone (not unassigning)
+      if (actualUserId && workspaceId) {
+        try {
+          await supabase.functions.invoke('send-lead-assignment-email', {
+            body: {
+              sdrId: actualUserId,
+              leadIds: [leadId],
+              workspaceId: workspaceId,
+              assignedBy: assignerId,
+            },
+          });
+        } catch (emailError) {
+          console.error('Failed to send lead assignment email:', emailError);
+        }
+      }
+
       toast({
         title: 'Lead assigned',
-        description: userId === 'unassigned' 
-          ? 'Lead returned to agency pool' 
-          : 'Lead assigned to team member',
+        description: actualUserId 
+          ? 'Lead assigned to team member (notification sent)' 
+          : 'Lead returned to agency pool',
       });
       
       onAssignmentChange();

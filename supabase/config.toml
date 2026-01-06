@@ -101,3 +101,6 @@ verify_jwt = true
 
 [functions.process-pending-leaves]
 verify_jwt = false
+
+[functions.send-lead-assignment-email]
+verify_jwt = true
