@@ -36,11 +36,12 @@ interface Lead {
 interface LeadFormProps {
   lead: Lead | null;
   workspaceId: string;
+  defaultAssignee?: string;
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-export function LeadForm({ lead, workspaceId, onSuccess, onCancel }: LeadFormProps) {
+export function LeadForm({ lead, workspaceId, defaultAssignee, onSuccess, onCancel }: LeadFormProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
@@ -143,6 +144,8 @@ export function LeadForm({ lead, workspaceId, onSuccess, onCancel }: LeadFormPro
         company: data.company || null,
         title: data.title || null,
         notes: data.notes || null,
+        // Auto-assign to creator if defaultAssignee provided (for SDRs)
+        ...(defaultAssignee && !lead ? { assigned_to: defaultAssignee } : {}),
       };
 
       if (lead) {

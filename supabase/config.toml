@@ -98,3 +98,6 @@ verify_jwt = true
 
 [functions.send-payout-email]
 verify_jwt = true
+
+[functions.process-pending-leaves]
+verify_jwt = false

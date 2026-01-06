@@ -150,19 +150,21 @@ serve(async (req) => {
       .eq('id', workspace.owner_id)
       .maybeSingle();
 
-    const totalAmount = grossCommission + rakeAmount;
-
-    // Create notification for agency owner
+    // Create notification for agency owner with clear breakdown
+    // Agency pays: grossCommission (which is deal value - rake)
+    // They keep the rake amount for themselves
     if (workspace.owner_id) {
       await supabase.from('notifications').insert({
         user_id: workspace.owner_id,
         workspace_id: workspaceId,
         type: 'commission_created',
         title: 'New Commission Due',
-        message: `A $${totalAmount.toFixed(2)} commission is due for "${deal.title}" closed by ${sdrProfile?.full_name || 'SDR'}. Payment due within 7 days.`,
+        message: `Commission due for "${deal.title}" closed by ${sdrProfile?.full_name || 'SDR'}: $${grossCommission.toFixed(2)} (after your $${rakeAmount.toFixed(2)} agency fee). Payment due within 7 days.`,
         data: {
           deal_id: dealId,
-          commission_amount: totalAmount,
+          deal_value: deal.value,
+          rake_amount: rakeAmount,
+          commission_amount: grossCommission,
           sdr_name: sdrProfile?.full_name,
         },
       });

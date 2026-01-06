@@ -212,12 +212,14 @@ export function ContractRequestForm({ onSuccess, onCancel }: ContractRequestForm
 
           // Email notification
           if (ownerProfile?.email) {
+            // Find the selected deal for the title
+            const selectedDealForEmail = deals.find(d => d.id === data.deal_id);
             await supabase.functions.invoke('send-contract-request-email', {
               body: {
                 type: 'submitted',
                 recipientEmail: ownerProfile.email,
                 recipientName: ownerProfile.full_name || 'Agency Owner',
-                dealTitle: selectedDeal?.title || 'Unknown Deal',
+                dealTitle: selectedDealForEmail?.title || 'Unknown Deal',
                 dealValue: data.deal_value,
                 agencyName: workspace.name,
                 sdrName: sdrProfile?.full_name || 'An SDR',
