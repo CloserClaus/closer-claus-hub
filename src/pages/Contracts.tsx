@@ -124,7 +124,8 @@ export default function Contracts() {
   // View state
   const [viewContract, setViewContract] = useState<Contract | null>(null);
 
-  const isSDR = userRole === 'sdr';
+  // Check if user is acting as SDR in this workspace (not the owner)
+  const isSDR = !isOwner;
 
   useEffect(() => {
     if (currentWorkspace?.id) {
