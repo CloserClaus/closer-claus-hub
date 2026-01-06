@@ -212,11 +212,19 @@ export default function CRM() {
     setLoading(true);
 
     try {
-      const { data: leadsData, error: leadsError } = await supabase
+      // Build leads query - SDRs only see their assigned leads
+      let leadsQuery = supabase
         .from('leads')
         .select('*')
         .eq('workspace_id', currentWorkspace.id)
         .order('created_at', { ascending: false });
+      
+      // SDRs only see leads assigned to them
+      if (userRole === 'sdr' && user?.id) {
+        leadsQuery = leadsQuery.eq('assigned_to', user.id);
+      }
+
+      const { data: leadsData, error: leadsError } = await leadsQuery;
 
       if (leadsError) throw leadsError;
       setLeads(leadsData || []);

@@ -37,6 +37,8 @@ import {
   Wallet,
   RefreshCw,
   PauseCircle,
+  Banknote,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -80,12 +82,13 @@ interface Commission {
 
 export default function Commissions() {
   const { currentWorkspace, isOwner, loading: workspaceLoading } = useWorkspace();
-  const { user, userRole } = useAuth();
+  const { user, userRole, profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [commissions, setCommissions] = useState<Commission[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [payingId, setPayingId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("earnings");
 
   // Handle payment success/cancel from Stripe redirect
   useEffect(() => {
@@ -339,7 +342,7 @@ export default function Commissions() {
             </div>
 
             {/* Tabs for SDRs */}
-            <Tabs defaultValue="earnings" className="w-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList>
                 <TabsTrigger value="earnings" className="gap-2">
                   <DollarSign className="h-4 w-4" />
@@ -352,6 +355,31 @@ export default function Commissions() {
               </TabsList>
 
               <TabsContent value="earnings" className="mt-6">
+                {/* Bank Connection Prompt */}
+                {(profile as any)?.stripe_connect_status !== 'active' && stats.totalPending > 0 && (
+                  <Card className="mb-6 border-warning/30 bg-warning/5">
+                    <CardContent className="py-4">
+                      <div className="flex items-center justify-between flex-wrap gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-warning/10">
+                            <Banknote className="h-5 w-5 text-warning" />
+                          </div>
+                          <div>
+                            <p className="font-medium">Connect your bank to receive payouts</p>
+                            <p className="text-sm text-muted-foreground">
+                              You have ${stats.totalPending.toLocaleString()} in pending earnings
+                            </p>
+                          </div>
+                        </div>
+                        <Button onClick={() => setActiveTab('payouts')} variant="outline" className="gap-2">
+                          Set Up Payouts
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Stats Cards */}
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -124,8 +124,8 @@ export function PayoutsTab() {
     try {
       const { data, error } = await supabase.functions.invoke('get-connect-dashboard-link');
       if (error) throw error;
-      if (data?.url) {
-        window.open(data.url, '_blank');
+      if (data?.dashboard_url) {
+        window.open(data.dashboard_url, '_blank');
       }
     } catch (error) {
       console.error('Error getting dashboard link:', error);

@@ -109,10 +109,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           const ws = (data || []) as Workspace[];
           setWorkspaces(ws);
           
-          if (ws.length > 0 && !currentWorkspace) {
+          if (ws.length > 0) {
             // Try to restore saved workspace, otherwise use first
             const savedWorkspace = savedWorkspaceId ? ws.find(w => w.id === savedWorkspaceId) : null;
-            setCurrentWorkspaceState(savedWorkspace || ws[0]);
+            if (!currentWorkspace) {
+              setCurrentWorkspaceState(savedWorkspace || ws[0]);
+            } else {
+              // Update current workspace with fresh data
+              const updated = ws.find(w => w.id === currentWorkspace.id);
+              if (updated) setCurrentWorkspaceState(updated);
+            }
           }
         } else {
           setWorkspaces([]);
