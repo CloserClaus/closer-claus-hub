@@ -11,6 +11,8 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { EmailVerificationBanner } from '@/components/EmailVerificationBanner';
 import { SDRLevelProgress } from '@/components/SDRLevelProgress';
+import { SDROnboardingTips } from '@/components/dashboard/SDROnboardingTips';
+import { SDRContractStatus } from '@/components/dashboard/SDRContractStatus';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -239,6 +241,18 @@ export default function Dashboard() {
 
   const renderSDRDashboard = () => (
     <div className="space-y-4 md:space-y-6">
+      {/* Onboarding Tips for new SDRs */}
+      {sdrStats && (
+        <SDROnboardingTips
+          stats={{
+            workspaces: sdrStats.workspaces || 0,
+            totalEarnings: sdrStats.totalEarnings || 0,
+            closedDealsLast30Days: sdrStats.closedDealsLast30Days || 0,
+            callsToday: sdrStats.callsToday || 0,
+          }}
+        />
+      )}
+
       {/* SDR Level Progress Card */}
       <Card className="glass border-primary/20 bg-gradient-to-r from-primary/5 via-transparent to-transparent">
         <CardContent className="p-4 md:p-6">
@@ -300,7 +314,8 @@ export default function Dashboard() {
 
       <div className="grid gap-3 md:gap-4 grid-cols-1 lg:grid-cols-3">
         <AnalyticsChart title="Commission Status" data={sdrAnalytics?.commissionStatus || []} type="bar" />
-        <div className="lg:col-span-2"><ActivityFeed activities={activities || []} /></div>
+        <SDRContractStatus />
+        <ActivityFeed activities={activities || []} />
       </div>
     </div>
   );
