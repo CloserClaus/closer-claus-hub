@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      bug_reports: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          description: string
+          id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+          user_role: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          description: string
+          id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+          user_id: string
+          user_role: string
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+          user_role?: string
+        }
+        Relationships: []
+      }
       call_logs: {
         Row: {
           call_status: string
@@ -880,6 +922,77 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      feature_requests: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          description: string
+          id: string
+          status: string
+          target_audience: string
+          title: string
+          updated_at: string
+          upvotes_count: number
+          user_id: string
+          user_role: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          description: string
+          id?: string
+          status?: string
+          target_audience?: string
+          title: string
+          updated_at?: string
+          upvotes_count?: number
+          user_id: string
+          user_role: string
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          status?: string
+          target_audience?: string
+          title?: string
+          updated_at?: string
+          upvotes_count?: number
+          user_id?: string
+          user_role?: string
+        }
+        Relationships: []
+      }
+      feature_upvotes: {
+        Row: {
+          created_at: string
+          feature_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          feature_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          feature_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feature_upvotes_feature_id_fkey"
+            columns: ["feature_id"]
+            isOneToOne: false
+            referencedRelation: "feature_requests"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       job_applications: {
         Row: {
