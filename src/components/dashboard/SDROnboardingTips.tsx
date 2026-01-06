@@ -5,7 +5,6 @@ import {
   Phone, 
   FileSignature, 
   GraduationCap, 
-  Users, 
   DollarSign,
   X,
   Lightbulb,
