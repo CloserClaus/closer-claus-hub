@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 interface ContractRequestEmailPayload {
-  type: 'submitted' | 'approved' | 'rejected';
+  type: 'submitted' | 'approved' | 'rejected' | 'contract_sent' | 'deal_won';
   recipientEmail: string;
   recipientName: string;
   dealTitle: string;
@@ -15,6 +15,8 @@ interface ContractRequestEmailPayload {
   agencyName: string;
   sdrName?: string;
   rejectionReason?: string;
+  clientName?: string;
+  commissionAmount?: number;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -33,7 +35,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const payload: ContractRequestEmailPayload = await req.json();
-    const { type, recipientEmail, recipientName, dealTitle, dealValue, agencyName, sdrName, rejectionReason } = payload;
+    const { type, recipientEmail, recipientName, dealTitle, dealValue, agencyName, sdrName, rejectionReason, clientName, commissionAmount } = payload;
 
     console.log(`Sending contract request ${type} email to:`, recipientEmail);
 
@@ -87,6 +89,38 @@ const handler = async (req: Request): Promise<Response> => {
         `;
         break;
       
+      case 'contract_sent':
+        subject = `Contract Sent to Client: ${dealTitle}`;
+        content = `
+          <p>Hello <strong>${recipientName}</strong>,</p>
+          <p>Great news! The contract for your deal has been <strong style="color: #6366f1;">sent to the client</strong>.</p>
+          <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #6366f1;">Contract Details</h3>
+            <p><strong>Deal:</strong> ${dealTitle}</p>
+            <p><strong>Value:</strong> $${dealValue.toLocaleString()}</p>
+            <p><strong>Client:</strong> ${clientName || 'Client'}</p>
+            <p><strong>Agency:</strong> ${agencyName}</p>
+          </div>
+          <p>The client has received a signing link. You'll be notified once they sign!</p>
+        `;
+        break;
+      
+      case 'deal_won':
+        subject = `🎉 Deal Won! Contract Signed: ${dealTitle}`;
+        content = `
+          <p>Hello <strong>${recipientName}</strong>,</p>
+          <p><strong style="color: #10b981; font-size: 18px;">🎉 Congratulations!</strong></p>
+          <p>Your deal has been <strong style="color: #10b981;">closed and won</strong>! The client has signed the contract.</p>
+          <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 20px; border-radius: 8px; margin: 20px 0; color: white;">
+            <h3 style="margin-top: 0; color: white;">🏆 Deal Closed</h3>
+            <p style="margin: 8px 0;"><strong>Deal:</strong> ${dealTitle}</p>
+            <p style="margin: 8px 0;"><strong>Value:</strong> $${dealValue.toLocaleString()}</p>
+            ${commissionAmount ? `<p style="margin: 8px 0;"><strong>Your Commission:</strong> $${commissionAmount.toLocaleString()}</p>` : ''}
+          </div>
+          <p>Great work! Your commission is now pending and will be processed by the agency.</p>
+        `;
+        break;
+      
       default:
         return new Response(
           JSON.stringify({ error: "Invalid email type" }),
@@ -107,7 +141,7 @@ const handler = async (req: Request): Promise<Response> => {
         </head>
         <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 30px; border-radius: 12px 12px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">Contract Request Update</h1>
+            <h1 style="color: white; margin: 0; font-size: 24px;">Contract Update</h1>
           </div>
           <div style="background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
             ${content}
