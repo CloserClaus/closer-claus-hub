@@ -130,7 +130,10 @@ export type Database = {
           platform_cut_percentage: number | null
           rake_amount: number
           sdr_id: string
+          sdr_paid_at: string | null
           sdr_payout_amount: number | null
+          sdr_payout_status: string | null
+          sdr_payout_stripe_transfer_id: string | null
           status: string
           stripe_payment_intent_id: string | null
           updated_at: string
@@ -147,7 +150,10 @@ export type Database = {
           platform_cut_percentage?: number | null
           rake_amount?: number
           sdr_id: string
+          sdr_paid_at?: string | null
           sdr_payout_amount?: number | null
+          sdr_payout_status?: string | null
+          sdr_payout_stripe_transfer_id?: string | null
           status?: string
           stripe_payment_intent_id?: string | null
           updated_at?: string
@@ -164,7 +170,10 @@ export type Database = {
           platform_cut_percentage?: number | null
           rake_amount?: number
           sdr_id?: string
+          sdr_paid_at?: string | null
           sdr_payout_amount?: number | null
+          sdr_payout_status?: string | null
+          sdr_payout_stripe_transfer_id?: string | null
           status?: string
           stripe_payment_intent_id?: string | null
           updated_at?: string
@@ -1146,6 +1155,9 @@ export type Database = {
           onboarding_completed: boolean | null
           phone: string | null
           sdr_level: number | null
+          stripe_connect_account_id: string | null
+          stripe_connect_onboarded_at: string | null
+          stripe_connect_status: string | null
           total_deals_closed_value: number | null
           updated_at: string | null
         }
@@ -1159,6 +1171,9 @@ export type Database = {
           onboarding_completed?: boolean | null
           phone?: string | null
           sdr_level?: number | null
+          stripe_connect_account_id?: string | null
+          stripe_connect_onboarded_at?: string | null
+          stripe_connect_status?: string | null
           total_deals_closed_value?: number | null
           updated_at?: string | null
         }
@@ -1172,6 +1187,9 @@ export type Database = {
           onboarding_completed?: boolean | null
           phone?: string | null
           sdr_level?: number | null
+          stripe_connect_account_id?: string | null
+          stripe_connect_onboarded_at?: string | null
+          stripe_connect_status?: string | null
           total_deals_closed_value?: number | null
           updated_at?: string | null
         }
