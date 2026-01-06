@@ -19,7 +19,6 @@ import {
   UserCircle,
   Handshake,
   FileSignature,
-  Wallet,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -99,7 +98,6 @@ const sdrNav: NavItem[] = [
   { title: 'Trainings', url: '/trainings', icon: GraduationCap },
   { title: 'Contracts', url: '/contracts', icon: FileSignature, tourId: 'nav-contracts' },
   { title: 'My Earnings', url: '/commissions', icon: DollarSign, tourId: 'nav-earnings' },
-  { title: 'Payouts', url: '/payouts', icon: Wallet, tourId: 'nav-payouts' },
 ];
 
 export function AppSidebar() {
