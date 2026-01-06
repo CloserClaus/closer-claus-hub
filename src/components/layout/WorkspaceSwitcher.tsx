@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Building2, ChevronDown, Plus } from 'lucide-react';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { useAuth } from '@/hooks/useAuth';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +14,12 @@ import { Button } from '@/components/ui/button';
 export function WorkspaceSwitcher() {
   const navigate = useNavigate();
   const { currentWorkspace, workspaces, loading, setCurrentWorkspace } = useWorkspace();
+  const { userRole } = useAuth();
+
+  // Hide workspace switcher for agency owners - they only operate in their own workspace
+  if (userRole === 'agency_owner') {
+    return null;
+  }
 
   if (loading) {
     return (
