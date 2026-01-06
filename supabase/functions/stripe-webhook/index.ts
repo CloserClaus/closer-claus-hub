@@ -831,6 +831,71 @@ serve(async (req) => {
       }
 
       // Handle transfer events for SDR payouts
+      case 'transfer.paid': {
+        const transfer = event.data.object;
+        const { commission_id, sdr_id, workspace_id } = transfer.metadata || {};
+
+        if (commission_id && sdr_id) {
+          console.log(`Transfer ${transfer.id} paid for commission ${commission_id}`);
+
+          // Get commission details for email
+          const { data: paidCommission } = await supabase
+            .from('commissions')
+            .select('sdr_payout_amount, amount, deals(title)')
+            .eq('id', commission_id)
+            .single();
+
+          // Update commission status to paid
+          await supabase
+            .from('commissions')
+            .update({
+              sdr_payout_status: 'paid',
+              sdr_paid_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', commission_id);
+
+          // Send notification
+          const payoutAmount = paidCommission ? Number(paidCommission.sdr_payout_amount || paidCommission.amount) : transfer.amount / 100;
+          const dealTitle = (paidCommission?.deals as any)?.title || 'deal';
+
+          await supabase.from('notifications').insert({
+            user_id: sdr_id,
+            workspace_id: workspace_id || null,
+            type: 'payout_paid',
+            title: 'Payout Complete! 🎉',
+            message: `$${payoutAmount.toFixed(2)} has been deposited to your bank account for "${dealTitle}".`,
+            data: { commission_id, transfer_id: transfer.id, amount: payoutAmount },
+          });
+
+          // Send payout paid email
+          const { data: paidProfile } = await supabase
+            .from('profiles')
+            .select('email, full_name')
+            .eq('id', sdr_id)
+            .single();
+
+          if (paidProfile?.email) {
+            try {
+              await supabase.functions.invoke('send-payout-email', {
+                body: {
+                  type: 'paid',
+                  to_email: paidProfile.email,
+                  to_name: paidProfile.full_name || 'SDR',
+                  amount: payoutAmount,
+                  deal_title: dealTitle,
+                  transfer_id: transfer.id,
+                },
+              });
+              console.log(`Sent payout paid email to ${paidProfile.email}`);
+            } catch (emailError) {
+              console.error('Failed to send payout paid email:', emailError);
+            }
+          }
+        }
+        break;
+      }
+
       case 'transfer.created': {
         const transfer = event.data.object;
         const { commission_id, sdr_id } = transfer.metadata || {};

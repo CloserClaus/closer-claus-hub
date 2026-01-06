@@ -19,7 +19,7 @@ interface PayoutEmailRequest {
 }
 
 const getEmailContent = (data: PayoutEmailRequest) => {
-  const baseUrl = Deno.env.get('SUPABASE_URL')?.replace('.supabase.co', '.lovable.app') || 'https://closer-claus.lovable.app';
+  const baseUrl = 'https://closer-claus.lovable.app';
   
   switch (data.type) {
     case 'processing':
@@ -71,7 +71,7 @@ const getEmailContent = (data: PayoutEmailRequest) => {
     </p>
     
     <div style="text-align: center; margin-top: 30px;">
-      <a href="${baseUrl}/payouts" style="background: #10b981; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-block;">View Payout Details</a>
+      <a href="${baseUrl}/commissions" style="background: #10b981; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-block;">View Payout Details</a>
     </div>
     
     <p style="font-size: 12px; color: #9ca3af; margin-top: 30px; text-align: center;">
@@ -122,7 +122,7 @@ const getEmailContent = (data: PayoutEmailRequest) => {
     </div>
     
     <div style="text-align: center; margin-top: 30px;">
-      <a href="${baseUrl}/payouts" style="background: #10b981; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-block;">View All Payouts</a>
+      <a href="${baseUrl}/commissions" style="background: #10b981; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-block;">View All Payouts</a>
     </div>
     
     <p style="font-size: 12px; color: #9ca3af; margin-top: 30px; text-align: center;">
@@ -181,7 +181,7 @@ const getEmailContent = (data: PayoutEmailRequest) => {
     </div>
     
     <div style="text-align: center; margin-top: 30px;">
-      <a href="${baseUrl}/payouts" style="background: #ef4444; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-block;">Update Bank Details</a>
+      <a href="${baseUrl}/commissions" style="background: #ef4444; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-block;">Update Bank Details</a>
     </div>
     
     <p style="font-size: 12px; color: #9ca3af; margin-top: 30px; text-align: center;">
@@ -242,7 +242,7 @@ const getEmailContent = (data: PayoutEmailRequest) => {
     </p>
     
     <div style="text-align: center; margin-top: 30px;">
-      <a href="${baseUrl}/payouts" style="background: #f59e0b; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-block;">Connect Bank Account</a>
+      <a href="${baseUrl}/commissions" style="background: #f59e0b; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-block;">Connect Bank Account</a>
     </div>
     
     <p style="font-size: 12px; color: #9ca3af; margin-top: 30px; text-align: center;">
