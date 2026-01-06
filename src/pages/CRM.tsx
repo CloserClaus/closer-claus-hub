@@ -55,6 +55,7 @@ import { TaskForm } from '@/components/crm/TaskForm';
 import { TaskList } from '@/components/crm/TaskList';
 import { CRMPagination } from '@/components/crm/Pagination';
 import { DeleteConfirmDialog } from '@/components/crm/DeleteConfirmDialog';
+import { LeadAssignmentDropdown } from '@/components/crm/LeadAssignmentDropdown';
 
 interface Lead {
   id: string;
@@ -875,17 +876,13 @@ export default function CRM() {
                           </div>
                         )}
                         {isAgencyOwner && (
-                          <div className="flex items-center gap-2 text-sm pt-1">
-                            <UserCircle className="h-4 w-4 text-muted-foreground" />
-                            {lead.assigned_to ? (
-                              <span className="text-foreground">
-                                {teamMembers.find(m => m.user_id === lead.assigned_to)?.profile?.full_name || 
-                                 teamMembers.find(m => m.user_id === lead.assigned_to)?.profile?.email || 
-                                 'Assigned'}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground italic">Unassigned</span>
-                            )}
+                          <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+                            <LeadAssignmentDropdown
+                              leadId={lead.id}
+                              currentAssignee={lead.assigned_to || null}
+                              teamMembers={teamMembers}
+                              onAssignmentChange={fetchData}
+                            />
                           </div>
                         )}
                       </CardContent>
