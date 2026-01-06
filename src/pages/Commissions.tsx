@@ -292,7 +292,7 @@ export default function Commissions() {
 
           {/* Stats Cards */}
           {isSDR ? (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card>
                 <CardContent className="pt-6">
                   <div className="flex items-center gap-3">
@@ -314,22 +314,8 @@ export default function Commissions() {
                       <CheckCircle className="h-5 w-5 text-success" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Paid Out</p>
+                      <p className="text-sm text-muted-foreground">Received</p>
                       <p className="text-2xl font-bold">${stats.totalPaid.toLocaleString()}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10">
-                      <TrendingUp className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Platform Fees</p>
-                      <p className="text-2xl font-bold">${stats.totalPlatformCut.toLocaleString()}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -342,7 +328,7 @@ export default function Commissions() {
                       <Users className="h-5 w-5 text-secondary-foreground" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Total Commissions</p>
+                      <p className="text-sm text-muted-foreground">Total Deals</p>
                       <p className="text-2xl font-bold">{stats.count}</p>
                     </div>
                   </div>
