@@ -113,7 +113,7 @@ serve(async (req) => {
     const stripeSecretKey = Deno.env.get('STRIPE_API_KEY');
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { commission_id, auto_charge } = await req.json();
+    const { commission_id, auto_charge, retry_sdr_payout } = await req.json();
 
     if (!commission_id) {
       return new Response(
@@ -138,6 +138,33 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Commission not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Handle retry SDR payout for already paid commissions
+    if (retry_sdr_payout) {
+      if (commission.status !== 'paid') {
+        return new Response(
+          JSON.stringify({ error: 'Commission must be paid before SDR payout can be retried' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!stripeSecretKey) {
+        return new Response(
+          JSON.stringify({ error: 'stripe_not_configured' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const { default: Stripe } = await import('https://esm.sh/stripe@14.21.0?target=deno');
+      const stripe = new Stripe(stripeSecretKey, { apiVersion: '2023-10-16' });
+
+      await triggerSDRPayout(supabase, stripe, commission, commission_id);
+
+      return new Response(
+        JSON.stringify({ success: true, message: 'SDR payout retry initiated' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 

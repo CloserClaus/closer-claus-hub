@@ -33,6 +33,9 @@ import {
   Users,
   Loader2,
   Percent,
+  Wallet,
+  RefreshCw,
+  PauseCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -51,6 +54,8 @@ interface Commission {
   deal_id: string;
   sdr_id: string;
   workspace_id: string;
+  sdr_payout_status: string | null;
+  sdr_paid_at: string | null;
   deals?: {
     title: string;
     value: number;
@@ -207,6 +212,46 @@ export default function Commissions() {
         return <Badge className="bg-destructive/10 text-destructive border-destructive/20">Overdue</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const getPayoutStatusBadge = (status: string | null, paidAt: string | null) => {
+    switch (status) {
+      case 'paid':
+        return (
+          <Badge className="bg-success/10 text-success border-success/20">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            {paidAt ? `Paid ${format(new Date(paidAt), 'MMM d')}` : 'Paid'}
+          </Badge>
+        );
+      case 'processing':
+        return (
+          <Badge className="bg-primary/10 text-primary border-primary/20">
+            <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+            Processing
+          </Badge>
+        );
+      case 'held':
+        return (
+          <Badge className="bg-warning/10 text-warning border-warning/20">
+            <PauseCircle className="h-3 w-3 mr-1" />
+            Held - Connect Bank
+          </Badge>
+        );
+      case 'failed':
+        return (
+          <Badge className="bg-destructive/10 text-destructive border-destructive/20">
+            <AlertCircle className="h-3 w-3 mr-1" />
+            Failed
+          </Badge>
+        );
+      default:
+        return (
+          <Badge className="bg-muted text-muted-foreground border-muted">
+            <Clock className="h-3 w-3 mr-1" />
+            Awaiting Payment
+          </Badge>
+        );
     }
   };
 
@@ -418,6 +463,7 @@ export default function Commissions() {
                       {!isSDR && <TableHead>Platform Fee</TableHead>}
                       {!isSDR && <TableHead>Total Due</TableHead>}
                       <TableHead>Status</TableHead>
+                      {isSDR && <TableHead>Payout Status</TableHead>}
                       <TableHead>Date</TableHead>
                       {!isSDR && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
@@ -501,6 +547,11 @@ export default function Commissions() {
                             </>
                           )}
                         <TableCell>{getStatusBadge(commission.status)}</TableCell>
+                        {isSDR && (
+                          <TableCell>
+                            {getPayoutStatusBadge(commission.sdr_payout_status, commission.sdr_paid_at)}
+                          </TableCell>
+                        )}
                         <TableCell className="text-muted-foreground">
                           {format(new Date(commission.created_at), 'MMM d, yyyy')}
                         </TableCell>
