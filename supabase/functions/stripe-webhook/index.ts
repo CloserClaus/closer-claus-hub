@@ -589,6 +589,30 @@ serve(async (req) => {
                   data: { commission_id, amount: sdrPayoutAmount, transfer_id: transfer.id },
                 });
 
+                // Send payout processing email
+                const { data: sdrEmailProfile } = await supabase
+                  .from('profiles')
+                  .select('email, full_name')
+                  .eq('id', commission.sdr_id)
+                  .single();
+
+                if (sdrEmailProfile?.email) {
+                  try {
+                    await supabase.functions.invoke('send-payout-email', {
+                      body: {
+                        type: 'processing',
+                        to_email: sdrEmailProfile.email,
+                        to_name: sdrEmailProfile.full_name || 'SDR',
+                        amount: sdrPayoutAmount,
+                        deal_title: dealTitle,
+                        agency_name: (commission as any)?.workspace?.name,
+                      },
+                    });
+                  } catch (emailError) {
+                    console.error('Failed to send payout processing email:', emailError);
+                  }
+                }
+
               } catch (transferError: any) {
                 console.error('Transfer error:', transferError);
                 
@@ -610,6 +634,30 @@ serve(async (req) => {
                   message: `There was an issue transferring your commission. Please check your bank account settings.`,
                   data: { commission_id, error: transferError.message },
                 });
+
+                // Send payout failed email
+                const { data: failedEmailProfile } = await supabase
+                  .from('profiles')
+                  .select('email, full_name')
+                  .eq('id', commission.sdr_id)
+                  .single();
+
+                if (failedEmailProfile?.email) {
+                  try {
+                    await supabase.functions.invoke('send-payout-email', {
+                      body: {
+                        type: 'failed',
+                        to_email: failedEmailProfile.email,
+                        to_name: failedEmailProfile.full_name || 'SDR',
+                        amount: sdrPayoutAmount,
+                        deal_title: dealTitle,
+                        error_reason: transferError.message,
+                      },
+                    });
+                  } catch (emailError) {
+                    console.error('Failed to send payout failed email:', emailError);
+                  }
+                }
               }
             } else {
               // SDR doesn't have active Connect account - hold payout
@@ -630,6 +678,30 @@ serve(async (req) => {
                 message: `Your commission of $${sdrPayoutAmount.toFixed(2)} is waiting! Connect your bank account in Settings to receive payouts.`,
                 data: { commission_id, amount: sdrPayoutAmount },
               });
+
+              // Send payout held email
+              const { data: heldEmailProfile } = await supabase
+                .from('profiles')
+                .select('email, full_name')
+                .eq('id', commission.sdr_id)
+                .single();
+
+              if (heldEmailProfile?.email) {
+                try {
+                  await supabase.functions.invoke('send-payout-email', {
+                    body: {
+                      type: 'held',
+                      to_email: heldEmailProfile.email,
+                      to_name: heldEmailProfile.full_name || 'SDR',
+                      amount: sdrPayoutAmount,
+                      deal_title: dealTitle,
+                      agency_name: (commission as any)?.workspace?.name,
+                    },
+                  });
+                } catch (emailError) {
+                  console.error('Failed to send payout held email:', emailError);
+                }
+              }
 
               console.log(`Payout held for SDR ${commission.sdr_id} - no active Connect account`);
             }
@@ -776,6 +848,13 @@ serve(async (req) => {
         if (commission_id && sdr_id) {
           console.log(`Transfer ${transfer.id} failed for commission ${commission_id}`);
 
+          // Get commission details for email
+          const { data: failedCommission } = await supabase
+            .from('commissions')
+            .select('sdr_payout_amount, amount, deals(title)')
+            .eq('id', commission_id)
+            .single();
+
           await supabase
             .from('commissions')
             .update({
@@ -792,6 +871,33 @@ serve(async (req) => {
             message: 'There was an issue with your payout. Please check your bank account settings in the Payouts section.',
             data: { commission_id, transfer_id: transfer.id },
           });
+
+          // Send payout failed email
+          const { data: failedTransferProfile } = await supabase
+            .from('profiles')
+            .select('email, full_name')
+            .eq('id', sdr_id)
+            .single();
+
+          if (failedTransferProfile?.email && failedCommission) {
+            const payoutAmount = Number(failedCommission.sdr_payout_amount || failedCommission.amount);
+            const dealTitle = (failedCommission.deals as any)?.title || 'deal';
+            
+            try {
+              await supabase.functions.invoke('send-payout-email', {
+                body: {
+                  type: 'failed',
+                  to_email: failedTransferProfile.email,
+                  to_name: failedTransferProfile.full_name || 'SDR',
+                  amount: payoutAmount,
+                  deal_title: dealTitle,
+                  error_reason: 'Transfer to your bank account failed',
+                },
+              });
+            } catch (emailError) {
+              console.error('Failed to send transfer failed email:', emailError);
+            }
+          }
         }
         break;
       }

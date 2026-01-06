@@ -95,3 +95,6 @@ verify_jwt = true
 
 [functions.get-connect-dashboard-link]
 verify_jwt = true
+
+[functions.send-payout-email]
+verify_jwt = true

@@ -26,6 +26,7 @@ import Training from "./pages/Training";
 import Contracts from "./pages/Contracts";
 import SignContract from "./pages/SignContract";
 import Commissions from "./pages/Commissions";
+import Payouts from "./pages/Payouts";
 import Notifications from "./pages/Notifications";
 import TeamManagement from "./pages/TeamManagement";
 import VerifyEmail from "./pages/VerifyEmail";
@@ -62,6 +63,7 @@ const App = () => (
                 <Route path="/contracts" element={<Contracts />} />
                 <Route path="/sign/:contractId" element={<SignContract />} />
                 <Route path="/commissions" element={<Commissions />} />
+                <Route path="/payouts" element={<Payouts />} />
                 <Route path="/earnings" element={<Navigate to="/commissions" replace />} />
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/team" element={<TeamManagement />} />
