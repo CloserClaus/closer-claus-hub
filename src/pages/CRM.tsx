@@ -578,16 +578,35 @@ export default function CRM() {
     setIsBulkProcessing(true);
 
     try {
+      const leadIdsArray = Array.from(selectedLeadIds);
+      
       const { error } = await supabase
         .from('leads')
         .update({ assigned_to: userId })
-        .in('id', Array.from(selectedLeadIds));
+        .in('id', leadIdsArray);
 
       if (error) throw error;
 
+      // Send email notification to the assigned SDR (not for unassigning)
+      if (userId && currentWorkspace) {
+        try {
+          await supabase.functions.invoke('send-lead-assignment-email', {
+            body: {
+              sdrId: userId,
+              leadIds: leadIdsArray,
+              workspaceId: currentWorkspace.id,
+              assignedBy: user?.id,
+            },
+          });
+        } catch (emailError) {
+          console.error('Failed to send lead assignment email:', emailError);
+          // Don't fail the whole operation if email fails
+        }
+      }
+
       toast({ 
         title: `Assigned ${selectedLeadIds.size} leads`,
-        description: userId ? 'Leads assigned to team member' : 'Leads returned to agency pool',
+        description: userId ? 'Leads assigned to team member (email notification sent)' : 'Leads returned to agency pool',
       });
       setSelectedLeadIds(new Set());
       fetchData();
@@ -993,6 +1012,8 @@ export default function CRM() {
                               leadId={lead.id}
                               currentAssignee={lead.assigned_to || null}
                               teamMembers={teamMembers}
+                              workspaceId={currentWorkspace.id}
+                              assignerId={user?.id}
                               onAssignmentChange={fetchData}
                             />
                           </div>
