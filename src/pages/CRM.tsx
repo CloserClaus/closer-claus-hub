@@ -229,21 +229,34 @@ export default function CRM() {
       if (leadsError) throw leadsError;
       setLeads(leadsData || []);
 
-      const { data: dealsData, error: dealsError } = await supabase
+      // Build deals query - SDRs only see their assigned deals
+      let dealsQuery = supabase
         .from('deals')
         .select('*')
         .eq('workspace_id', currentWorkspace.id)
         .order('created_at', { ascending: false });
 
+      if (userRole === 'sdr' && user?.id) {
+        dealsQuery = dealsQuery.eq('assigned_to', user.id);
+      }
+
+      const { data: dealsData, error: dealsError } = await dealsQuery;
+
       if (dealsError) throw dealsError;
       setDeals(dealsData || []);
 
-      // Fetch tasks
-      const { data: tasksData, error: tasksError } = await supabase
+      // Build tasks query - SDRs only see tasks assigned to them
+      let tasksQuery = supabase
         .from('tasks')
         .select('*')
         .eq('workspace_id', currentWorkspace.id)
         .order('due_date', { ascending: true });
+
+      if (userRole === 'sdr' && user?.id) {
+        tasksQuery = tasksQuery.eq('assigned_to', user.id);
+      }
+
+      const { data: tasksData, error: tasksError } = await tasksQuery;
 
       if (tasksError) throw tasksError;
       setTasks(tasksData || []);

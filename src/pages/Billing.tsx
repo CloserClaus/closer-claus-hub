@@ -166,7 +166,7 @@ export default function Billing() {
       const charges: UpcomingCharge[] = (pendingCommissions || []).map(c => ({
         id: c.id,
         deal_title: c.deal?.title || 'Deal',
-        amount: Number(c.amount) + Number(c.agency_rake_amount || c.rake_amount),
+        amount: Number(c.amount) + Number(c.agency_rake_amount ?? c.rake_amount ?? 0),
         auto_charge_date: addDays(new Date(c.created_at), 7).toISOString(),
         sdr_name: profileMap.get(c.sdr_id) || null,
         status: 'pending',
@@ -234,7 +234,7 @@ export default function Billing() {
       const failed: FailedPayment[] = (failedCommissions || []).map(c => ({
         id: c.id,
         deal_title: c.deal?.title || 'Deal',
-        amount: Number(c.amount) + Number(c.agency_rake_amount || c.rake_amount),
+        amount: Number(c.amount) + Number(c.agency_rake_amount ?? c.rake_amount ?? 0),
         sdr_name: profileMap.get(c.sdr_id) || null,
         created_at: c.created_at,
       }));
