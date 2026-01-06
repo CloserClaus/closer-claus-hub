@@ -305,6 +305,90 @@ serve(async (req) => {
         );
       }
 
+      case 'contract_request': {
+        const { workspace_id, target_user_id, deal_id } = params;
+
+        const { data: deal } = await supabase
+          .from('deals')
+          .select('title')
+          .eq('id', deal_id)
+          .single();
+
+        // Notify agency owner about new contract request
+        await supabase
+          .from('notifications')
+          .insert({
+            user_id: target_user_id,
+            workspace_id,
+            type: 'contract_request',
+            title: 'New Contract Request',
+            message: `A contract request has been submitted for "${deal?.title || 'a deal'}". Please review and approve or reject.`,
+            data: { deal_id },
+          });
+        console.log('Created contract request notification for agency owner');
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'contract_request_approved': {
+        const { workspace_id, target_user_id, deal_id } = params;
+
+        const { data: deal } = await supabase
+          .from('deals')
+          .select('title')
+          .eq('id', deal_id)
+          .single();
+
+        // Notify SDR about approval
+        await supabase
+          .from('notifications')
+          .insert({
+            user_id: target_user_id,
+            workspace_id,
+            type: 'contract_request_approved',
+            title: 'Contract Request Approved',
+            message: `Your contract request for "${deal?.title || 'a deal'}" has been approved. The agency will prepare and send the contract.`,
+            data: { deal_id },
+          });
+        console.log('Created contract request approval notification for SDR');
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'contract_request_rejected': {
+        const { workspace_id, target_user_id, deal_id, reason } = params;
+
+        const { data: deal } = await supabase
+          .from('deals')
+          .select('title')
+          .eq('id', deal_id)
+          .single();
+
+        // Notify SDR about rejection
+        await supabase
+          .from('notifications')
+          .insert({
+            user_id: target_user_id,
+            workspace_id,
+            type: 'contract_request_rejected',
+            title: 'Contract Request Rejected',
+            message: `Your contract request for "${deal?.title || 'a deal'}" has been rejected.${reason ? ` Reason: ${reason.substring(0, 100)}` : ''}`,
+            data: { deal_id, reason },
+          });
+        console.log('Created contract request rejection notification for SDR');
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: 'Unknown action' }),

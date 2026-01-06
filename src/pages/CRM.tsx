@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Upload,
   CheckSquare,
+  UserCircle,
 } from 'lucide-react';
 import { startOfDay, startOfWeek, startOfMonth, startOfQuarter } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
@@ -871,6 +872,20 @@ export default function CRM() {
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Phone className="h-4 w-4" />
                             {lead.phone}
+                          </div>
+                        )}
+                        {isAgencyOwner && (
+                          <div className="flex items-center gap-2 text-sm pt-1">
+                            <UserCircle className="h-4 w-4 text-muted-foreground" />
+                            {lead.assigned_to ? (
+                              <span className="text-foreground">
+                                {teamMembers.find(m => m.user_id === lead.assigned_to)?.profile?.full_name || 
+                                 teamMembers.find(m => m.user_id === lead.assigned_to)?.profile?.email || 
+                                 'Assigned'}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground italic">Unassigned</span>
+                            )}
                           </div>
                         )}
                       </CardContent>

@@ -136,7 +136,7 @@ export function PendingRequestsTab({ onCreateContract }: PendingRequestsTabProps
 
       if (error) throw error;
 
-      // Notify SDR
+      // Notify SDR via in-app notification
       try {
         await supabase.functions.invoke('create-notification', {
           body: {
@@ -146,6 +146,26 @@ export function PendingRequestsTab({ onCreateContract }: PendingRequestsTabProps
             deal_id: request.deal_id,
           },
         });
+
+        // Send email notification to SDR
+        const { data: sdrProfile } = await supabase
+          .from('profiles')
+          .select('email, full_name')
+          .eq('id', request.requested_by)
+          .single();
+
+        if (sdrProfile?.email) {
+          await supabase.functions.invoke('send-contract-request-email', {
+            body: {
+              type: 'approved',
+              recipientEmail: sdrProfile.email,
+              recipientName: sdrProfile.full_name || 'SDR',
+              dealTitle: request.deals?.title || 'Unknown Deal',
+              dealValue: request.deal_value,
+              agencyName: currentWorkspace?.name || 'Agency',
+            },
+          });
+        }
       } catch (notifError) {
         console.error('Failed to send notification:', notifError);
       }
@@ -195,6 +215,27 @@ export function PendingRequestsTab({ onCreateContract }: PendingRequestsTabProps
             reason: rejectReason,
           },
         });
+
+        // Send email notification to SDR
+        const { data: sdrProfile } = await supabase
+          .from('profiles')
+          .select('email, full_name')
+          .eq('id', rejectRequest.requested_by)
+          .single();
+
+        if (sdrProfile?.email) {
+          await supabase.functions.invoke('send-contract-request-email', {
+            body: {
+              type: 'rejected',
+              recipientEmail: sdrProfile.email,
+              recipientName: sdrProfile.full_name || 'SDR',
+              dealTitle: rejectRequest.deals?.title || 'Unknown Deal',
+              dealValue: rejectRequest.deal_value,
+              agencyName: currentWorkspace?.name || 'Agency',
+              rejectionReason: rejectReason,
+            },
+          });
+        }
       } catch (notifError) {
         console.error('Failed to send notification:', notifError);
       }
