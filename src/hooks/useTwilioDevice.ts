@@ -43,6 +43,12 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
   const callStartTimeRef = useRef<number | null>(null);
   const tokenRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isInitializingRef = useRef<boolean>(false);
+  const workspaceIdRef = useRef<string | null>(workspaceId);
+
+  // Keep workspaceId ref in sync
+  useEffect(() => {
+    workspaceIdRef.current = workspaceId;
+  }, [workspaceId]);
 
   // Cleanup call state
   const cleanupCall = useCallback(() => {
@@ -405,38 +411,28 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
     }
   }, []);
 
-  // Refresh token (for manual or visibility-based refresh)
-  const refreshToken = useCallback(async () => {
-    if (!deviceRef.current || !workspaceId) return;
-    
-    try {
-      console.log('Refreshing token...');
-      const { data } = await supabase.functions.invoke('twilio', {
-        body: { action: 'get_access_token', workspace_id: workspaceId },
-      });
-      if (data?.token) {
-        deviceRef.current.updateToken(data.token);
-        console.log('Token refreshed successfully');
-      }
-    } catch (err) {
-      console.error('Token refresh failed, reinitializing...', err);
-      destroyDevice();
-      initializeDevice();
-    }
-  }, [workspaceId, destroyDevice, initializeDevice]);
-
   // Handle page visibility changes - refresh token when tab becomes visible
   useEffect(() => {
     const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible' && deviceRef.current && workspaceId) {
+      if (document.visibilityState === 'visible' && deviceRef.current && workspaceIdRef.current) {
         console.log('Tab became visible, refreshing token...');
-        await refreshToken();
+        try {
+          const { data } = await supabase.functions.invoke('twilio', {
+            body: { action: 'get_access_token', workspace_id: workspaceIdRef.current },
+          });
+          if (data?.token && deviceRef.current) {
+            deviceRef.current.updateToken(data.token);
+            console.log('Token refreshed on visibility change');
+          }
+        } catch (err) {
+          console.error('Token refresh on visibility failed:', err);
+        }
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [workspaceId, refreshToken]);
+  }, []);
 
   // Initialize on mount, cleanup on unmount
   useEffect(() => {
@@ -475,6 +471,5 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
     toggleMute,
     sendDigits,
     destroyDevice,
-    refreshToken,
   };
 }
