@@ -73,6 +73,7 @@ const platformAdminNav: NavItem[] = [
   { title: 'Disputes', url: '/admin?tab=disputes', icon: AlertTriangle, tourId: 'disputes' },
   { title: 'Payouts', url: '/admin?tab=payouts', icon: DollarSign },
   { title: 'Coupons', url: '/admin?tab=coupons', icon: Tag },
+  { title: 'Support', url: '/admin?tab=support', icon: MessageSquare },
   { title: 'Bug Reports', url: '/admin?tab=bugs', icon: Bug },
   { title: 'Features', url: '/admin?tab=features', icon: Lightbulb },
   { title: 'Conversations', url: '/conversations', icon: MessageSquare },

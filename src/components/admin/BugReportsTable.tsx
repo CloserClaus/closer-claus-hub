@@ -26,7 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, Eye } from "lucide-react";
+import { Loader2, Eye, Paperclip, Image, Film } from "lucide-react";
 
 interface BugReport {
   id: string;
@@ -36,6 +36,7 @@ interface BugReport {
   description: string;
   status: string;
   admin_notes: string | null;
+  attachment_urls: string[] | null;
   created_at: string;
   resolved_at: string | null;
   user_email?: string;
@@ -239,6 +240,41 @@ export function BugReportsTable() {
               <h4 className="text-sm font-medium text-muted-foreground mb-1">Description</h4>
               <p className="text-sm whitespace-pre-wrap">{selectedBug?.description}</p>
             </div>
+            
+            {selectedBug?.attachment_urls && selectedBug.attachment_urls.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                  <Paperclip className="h-4 w-4" />
+                  Attachments ({selectedBug.attachment_urls.length})
+                </h4>
+                <div className="flex gap-2 flex-wrap">
+                  {selectedBug.attachment_urls.map((url, index) => {
+                    const isVideo = url.match(/\.(mp4|webm|mov|avi)$/i);
+                    return (
+                      <a
+                        key={index}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="relative w-20 h-20 rounded-md overflow-hidden border bg-muted hover:opacity-80 transition-opacity"
+                      >
+                        {isVideo ? (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Film className="h-8 w-8 text-muted-foreground" />
+                          </div>
+                        ) : (
+                          <img
+                            src={url}
+                            alt={`Attachment ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        )}
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div>
               <h4 className="text-sm font-medium text-muted-foreground mb-1">Admin Notes</h4>
               <Textarea
