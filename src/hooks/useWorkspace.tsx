@@ -68,7 +68,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const savedWorkspaceId = getSavedWorkspaceId();
 
     try {
-      if (userRole === 'agency_owner') {
+      if (userRole === 'platform_admin') {
+        // Platform admins can see all workspaces but don't have a "current" one
+        // Just set loading to false - they use admin views instead
+        setWorkspaces([]);
+        setCurrentWorkspaceState(null);
+      } else if (userRole === 'agency_owner') {
         // Agency owners see workspaces they own
         const { data } = await supabase
           .from('workspaces')
