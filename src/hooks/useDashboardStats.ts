@@ -17,7 +17,7 @@ interface AgencyOwnerStats {
   pipelineValue: number;
   pendingCommissions: number;
   callsLast7Days: number;
-  meetingsThisWeek: number;
+  activeDeals: number;
   closeRate: number;
   // Call analytics
   totalCallMinutes: number;
@@ -92,7 +92,7 @@ export function useAgencyOwnerStats() {
       if (!currentWorkspace) {
         return { 
           teamSize: 0, pipelineValue: 0, pendingCommissions: 0, callsLast7Days: 0, 
-          meetingsThisWeek: 0, closeRate: 0, totalCallMinutes: 0, avgCallDuration: 0,
+          activeDeals: 0, closeRate: 0, totalCallMinutes: 0, avgCallDuration: 0,
           callsToday: 0, connectedCallRate: 0
         };
       }
@@ -111,6 +111,7 @@ export function useAgencyOwnerStats() {
         totalDealsResult,
         allCallsResult,
         callsTodayResult,
+        activeDealsResult,
       ] = await Promise.all([
         // Team size
         supabase.from('workspace_members').select('id', { count: 'exact', head: true })
@@ -146,6 +147,10 @@ export function useAgencyOwnerStats() {
         supabase.from('call_logs').select('id', { count: 'exact', head: true })
           .eq('workspace_id', currentWorkspace.id)
           .gte('created_at', todayStart.toISOString()),
+        // Active deals count (not closed)
+        supabase.from('deals').select('id', { count: 'exact', head: true })
+          .eq('workspace_id', currentWorkspace.id)
+          .not('stage', 'in', '("closed_won","closed_lost")'),
       ]);
 
       const pipelineValue = pipelineResult.data?.reduce((sum, d) => sum + (d.value || 0), 0) || 0;
@@ -167,7 +172,7 @@ export function useAgencyOwnerStats() {
         pipelineValue,
         pendingCommissions,
         callsLast7Days: callsLast7DaysResult.count || 0,
-        meetingsThisWeek: 0,
+        activeDeals: activeDealsResult.count || 0,
         closeRate,
         totalCallMinutes,
         avgCallDuration,

@@ -194,7 +194,7 @@ export default function Dashboard() {
         <StatCard title="Pipeline" description="Total deal value" value={formatCurrency(agencyStats?.pipelineValue || 0)} subtext="Active deals" icon={TrendingUp} variant="success" />
         <StatCard title="Commissions" description="Owed to SDRs" value={formatCurrency(agencyStats?.pendingCommissions || 0)} subtext="Pending payment" icon={DollarSign} variant="warning" />
         <StatCard title="Close Rate" description="Win percentage" value={`${agencyStats?.closeRate || 0}%`} subtext="Last 30 days" icon={TrendingUp} variant="success" />
-        <StatCard title="Meetings" description="Scheduled" value={String(agencyStats?.meetingsThisWeek || 0)} subtext="This week" icon={Building2} />
+        <StatCard title="Active Deals" description="In pipeline" value={String(agencyStats?.activeDeals || 0)} subtext="Not closed" icon={Briefcase} />
         <StatCard title="Calls Today" description="Team activity" value={String(agencyStats?.callsToday || 0)} subtext="Made today" icon={Phone} />
       </div>
 
