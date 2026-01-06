@@ -326,7 +326,7 @@ export default function Contracts() {
         return;
       }
 
-      // Send email notification to lead
+      // Send email notification to lead/client
       const signingUrl = `${window.location.origin}/sign/${contract.id}`;
       
       const emailResponse = await supabase.functions.invoke('send-contract-email', {
@@ -347,6 +347,40 @@ export default function Contracts() {
         toast.success("Contract sent! Note: Email delivery failed, please share the link manually.");
       } else {
         toast.success("Contract sent! Email with signing link has been sent to the client.");
+      }
+      
+      // Notify SDR that contract was sent (if deal is assigned to an SDR)
+      const deal = contract.deals;
+      if (deal && user) {
+        // Get deal details to check if it's assigned to an SDR
+        const { data: dealData } = await supabase
+          .from('deals')
+          .select('assigned_to')
+          .eq('id', contract.deal_id)
+          .single();
+
+        if (dealData && dealData.assigned_to !== user.id) {
+          // This deal was assigned to an SDR, notify them
+          const { data: sdrProfile } = await supabase
+            .from('profiles')
+            .select('email, full_name')
+            .eq('id', dealData.assigned_to)
+            .single();
+
+          if (sdrProfile?.email) {
+            await supabase.functions.invoke('send-contract-request-email', {
+              body: {
+                type: 'contract_sent',
+                recipientEmail: sdrProfile.email,
+                recipientName: sdrProfile.full_name || 'SDR',
+                dealTitle: contract.deals?.title || 'Deal',
+                dealValue: contract.deals?.value || 0,
+                agencyName: currentWorkspace?.name || 'Agency',
+                clientName: leadName,
+              },
+            });
+          }
+        }
       }
       
       fetchContracts();

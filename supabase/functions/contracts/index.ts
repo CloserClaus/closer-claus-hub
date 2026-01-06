@@ -860,6 +860,31 @@ serve(async (req) => {
                 });
               if (sdrNotifError) console.error('Error creating SDR commission notification:', sdrNotifError);
 
+              // Send deal won email to SDR
+              if (sdrProfile?.email) {
+                try {
+                  await fetch(`${supabaseUrl}/functions/v1/send-contract-request-email`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${supabaseKey}`,
+                    },
+                    body: JSON.stringify({
+                      type: 'deal_won',
+                      recipientEmail: sdrProfile.email,
+                      recipientName: sdrProfile.full_name || 'SDR',
+                      dealTitle: dealDetails?.title || 'Closed Deal',
+                      dealValue: deal.value,
+                      agencyName: workspaceDetails?.name || 'Agency',
+                      commissionAmount: sdrPayoutAmount,
+                    }),
+                  });
+                  console.log('Deal won email sent to SDR');
+                } catch (dealWonEmailErr) {
+                  console.error('Failed to send deal won email:', dealWonEmailErr);
+                }
+              }
+
               if (ownerProfile?.email) {
                 try {
                   await fetch(`${supabaseUrl}/functions/v1/send-commission-email`, {
