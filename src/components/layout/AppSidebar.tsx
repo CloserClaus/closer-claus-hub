@@ -96,6 +96,7 @@ const sdrNav: NavItem[] = [
   { title: 'Dialer', url: '/dialer', icon: Phone, tourId: 'nav-dialer' },
   { title: 'Conversations', url: '/conversations', icon: MessageSquare },
   { title: 'Trainings', url: '/trainings', icon: GraduationCap },
+  { title: 'Contracts', url: '/contracts', icon: FileSignature, tourId: 'nav-contracts' },
   { title: 'My Earnings', url: '/commissions', icon: DollarSign, tourId: 'nav-earnings' },
 ];
 
