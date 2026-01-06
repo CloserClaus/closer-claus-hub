@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowRight, Building2, User, Phone } from 'lucide-react';
+import { ArrowRight, Building2, User, Phone, Banknote, Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -116,6 +116,7 @@ export default function Onboarding() {
     setIsLoading(true);
 
     try {
+      // Update profile first
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
@@ -130,17 +131,39 @@ export default function Onboarding() {
 
       toast({
         title: 'Welcome to Closer Claus!',
-        description: 'Your profile has been set up. Start browsing jobs!',
+        description: 'Setting up your payout account...',
       });
 
-      navigate('/dashboard');
+      // Create Stripe Connect account and redirect to onboarding
+      try {
+        const { data: connectData, error: connectError } = await supabase.functions.invoke('create-connect-account', {
+          body: { return_url: `${window.location.origin}/dashboard?connect_success=true` },
+        });
+
+        if (connectError) {
+          console.error('Stripe Connect error:', connectError);
+          // Don't block onboarding if Connect fails, they can set it up later
+          navigate('/dashboard');
+          return;
+        }
+
+        if (connectData?.onboarding_url) {
+          // Redirect to Stripe onboarding
+          window.location.href = connectData.onboarding_url;
+        } else {
+          navigate('/dashboard');
+        }
+      } catch (connectErr) {
+        console.error('Error creating Connect account:', connectErr);
+        // Don't block onboarding, redirect to dashboard
+        navigate('/dashboard');
+      }
     } catch (error: any) {
       toast({
         variant: 'destructive',
         title: 'Error',
         description: error.message || 'Failed to complete onboarding.',
       });
-    } finally {
       setIsLoading(false);
     }
   };
@@ -307,7 +330,7 @@ export default function Onboarding() {
               </div>
               <CardTitle>SDR Profile</CardTitle>
               <CardDescription>
-                Complete your profile to start applying to jobs
+                Complete your profile and connect your bank to receive payouts
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -333,13 +356,34 @@ export default function Onboarding() {
                       </FormItem>
                     )}
                   />
+                  
+                  {/* Bank Connection Info */}
+                  <div className="p-4 rounded-lg bg-muted/50 border border-border space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Banknote className="w-4 h-4 text-primary" />
+                      Bank Account Setup
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      After completing your profile, you'll be guided through a secure bank account setup to receive commission payouts automatically.
+                    </p>
+                  </div>
+                  
                   <Button 
                     type="submit" 
                     disabled={isLoading}
                     className="w-full bg-primary hover:bg-primary/90"
                   >
-                    {isLoading ? 'Setting up...' : 'Complete Profile'}
-                    <ArrowRight className="w-4 h-4 ml-2" />
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Setting up...
+                      </>
+                    ) : (
+                      <>
+                        Complete Profile & Connect Bank
+                        <ArrowRight className="w-4 h-4 ml-2" />
+                      </>
+                    )}
                   </Button>
                 </form>
               </Form>

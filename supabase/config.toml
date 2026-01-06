@@ -86,3 +86,12 @@ verify_jwt = false
 
 [functions.send-contract-request-email]
 verify_jwt = true
+
+[functions.create-connect-account]
+verify_jwt = true
+
+[functions.create-connect-onboarding-link]
+verify_jwt = true
+
+[functions.get-connect-dashboard-link]
+verify_jwt = true
