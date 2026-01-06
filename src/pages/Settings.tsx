@@ -997,15 +997,15 @@ function SDRLevelCard() {
         <div className="grid grid-cols-3 gap-2 text-center text-sm">
           <div className={`p-2 rounded ${levelData.level >= 1 ? 'bg-amber-600/20 text-amber-400' : 'bg-muted text-muted-foreground'}`}>
             <p className="font-medium">Level 1</p>
-            <p className="text-xs">15% fee</p>
+            <p className="text-xs">5% fee</p>
           </div>
           <div className={`p-2 rounded ${levelData.level >= 2 ? 'bg-slate-400/20 text-slate-300' : 'bg-muted text-muted-foreground'}`}>
             <p className="font-medium">Level 2</p>
-            <p className="text-xs">10% fee • $30K+</p>
+            <p className="text-xs">4% fee • $30K+</p>
           </div>
           <div className={`p-2 rounded ${levelData.level >= 3 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-muted text-muted-foreground'}`}>
             <p className="font-medium">Level 3</p>
-            <p className="text-xs">5% fee • $100K+</p>
+            <p className="text-xs">2.5% fee • $100K+</p>
           </div>
         </div>
       </CardContent>

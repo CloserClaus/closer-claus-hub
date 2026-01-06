@@ -97,9 +97,9 @@ export function LevelUpCelebration({
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Platform Fee</span>
                   <span className="font-medium text-success">
-                    {newLevel === 3 ? '5%' : newLevel === 2 ? '10%' : '15%'} 
+                    {newLevel === 3 ? '2.5%' : newLevel === 2 ? '4%' : '5%'} 
                     <span className="text-muted-foreground ml-1">
-                      (was {oldLevel === 2 ? '10%' : '15%'})
+                      (was {oldLevel === 2 ? '4%' : '5%'})
                     </span>
                   </span>
                 </div>

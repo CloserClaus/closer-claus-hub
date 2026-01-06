@@ -151,7 +151,7 @@ export const sdrTourSteps: TourStep[] = [
     id: 'level',
     target: '[data-tour="sdr-level"]',
     title: 'Your SDR Level',
-    content: 'As you close deals, you\'ll level up! Higher levels mean lower platform fees. Level 1: 15%, Level 2: 10%, Level 3: 5%.',
+    content: 'As you close deals, you\'ll level up! Higher levels mean lower platform fees. Level 1: 5%, Level 2: 4%, Level 3: 2.5%.',
     placement: 'right',
     route: '/dashboard',
   },
