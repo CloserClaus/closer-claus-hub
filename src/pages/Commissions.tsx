@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SDRLevelBadge } from "@/components/ui/sdr-level-badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -39,6 +40,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { PayoutsTab } from "@/components/commissions/PayoutsTab";
 
 interface Commission {
   id: string;
@@ -319,6 +321,196 @@ export default function Commissions() {
     );
   }
 
+  if (isSDR) {
+    return (
+      <DashboardLayout>
+        <DashboardHeader title="My Earnings" />
+        <main className="flex-1 p-6">
+          <div className="space-y-6">
+            {/* Header */}
+            <div>
+              <h1 className="text-3xl font-bold flex items-center gap-3">
+                <DollarSign className="h-8 w-8" />
+                My Earnings
+              </h1>
+              <p className="text-muted-foreground">
+                Track your commissions, payouts, and bank account
+              </p>
+            </div>
+
+            {/* Tabs for SDRs */}
+            <Tabs defaultValue="earnings" className="w-full">
+              <TabsList>
+                <TabsTrigger value="earnings" className="gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Earnings
+                </TabsTrigger>
+                <TabsTrigger value="payouts" className="gap-2">
+                  <Wallet className="h-4 w-4" />
+                  Payouts
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="earnings" className="mt-6">
+                {/* Stats Cards */}
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-warning/10">
+                            <Clock className="h-5 w-5 text-warning" />
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Pending</p>
+                            <p className="text-2xl font-bold">${stats.totalPending.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-success/10">
+                            <CheckCircle className="h-5 w-5 text-success" />
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Received</p>
+                            <p className="text-2xl font-bold">${stats.totalPaid.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-secondary/50">
+                            <Users className="h-5 w-5 text-secondary-foreground" />
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Total Deals</p>
+                            <p className="text-2xl font-bold">{stats.count}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Filter */}
+                  <div className="flex items-center gap-4">
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Filter by status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Statuses</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="paid">Paid</SelectItem>
+                        <SelectItem value="overdue">Overdue</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Earnings Table */}
+                  {isLoading ? (
+                    <Card>
+                      <CardContent className="py-12">
+                        <div className="flex items-center justify-center">
+                          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : filteredCommissions.length === 0 ? (
+                    <Card className="py-12">
+                      <CardContent className="text-center">
+                        <DollarSign className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                        <h3 className="text-lg font-medium mb-2">No commissions yet</h3>
+                        <p className="text-muted-foreground">
+                          Commissions will appear here when deals are closed.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Commission History</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Agency</TableHead>
+                              <TableHead>Deal</TableHead>
+                              <TableHead>Deal Value</TableHead>
+                              <TableHead>Gross Commission</TableHead>
+                              <TableHead>Platform Fee</TableHead>
+                              <TableHead>Net Payout</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Payout Status</TableHead>
+                              <TableHead>Date</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredCommissions.map((commission) => (
+                              <TableRow key={commission.id}>
+                                <TableCell>
+                                  <p className="font-medium">{commission.workspace?.name || 'Agency'}</p>
+                                </TableCell>
+                                <TableCell>
+                                  <div>
+                                    <p className="font-medium">{commission.deals?.title || 'Unknown Deal'}</p>
+                                    {commission.deals?.leads && (
+                                      <p className="text-xs text-muted-foreground">
+                                        {commission.deals.leads.first_name} {commission.deals.leads.last_name}
+                                        {commission.deals.leads.company && ` • ${commission.deals.leads.company}`}
+                                      </p>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  ${commission.deals?.value?.toLocaleString() || '0'}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  ${Number(commission.amount).toLocaleString()}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  <div className="flex items-center gap-1">
+                                    <Percent className="h-3 w-3" />
+                                    {commission.platform_cut_percentage ?? 5}% (${Number(commission.platform_cut_amount || 0).toLocaleString()})
+                                  </div>
+                                </TableCell>
+                                <TableCell className="font-medium text-success">
+                                  ${Number(commission.sdr_payout_amount || commission.amount).toLocaleString()}
+                                </TableCell>
+                                <TableCell>{getStatusBadge(commission.status)}</TableCell>
+                                <TableCell>
+                                  {getPayoutStatusBadge(commission.sdr_payout_status, commission.sdr_paid_at)}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {format(new Date(commission.created_at), 'MMM d, yyyy')}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="payouts" className="mt-6">
+                <PayoutsTab />
+              </TabsContent>
+            </Tabs>
+          </div>
+        </main>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <DashboardHeader title="Commissions" />
@@ -328,87 +520,41 @@ export default function Commissions() {
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-3">
               <DollarSign className="h-8 w-8" />
-              {isSDR ? 'My Earnings' : 'Commissions'}
+              Commissions
             </h1>
             <p className="text-muted-foreground">
-              {isSDR ? 'Track your commissions and earnings' : 'Track and manage SDR commissions for closed deals'}
+              Track and manage SDR commissions for closed deals
             </p>
           </div>
 
-          {/* Stats Cards */}
-          {isSDR ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
+          {/* Stats Card */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                {stats.totalPending > 0 ? (
+                  <>
                     <div className="p-2 rounded-lg bg-warning/10">
                       <Clock className="h-5 w-5 text-warning" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Pending</p>
+                      <p className="text-sm text-muted-foreground">Pending Payment</p>
                       <p className="text-2xl font-bold">${stats.totalPending.toLocaleString()}</p>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
+                  </>
+                ) : (
+                  <>
                     <div className="p-2 rounded-lg bg-success/10">
                       <CheckCircle className="h-5 w-5 text-success" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Received</p>
-                      <p className="text-2xl font-bold">${stats.totalPaid.toLocaleString()}</p>
+                      <p className="text-sm text-muted-foreground">Status</p>
+                      <p className="text-2xl font-bold">All Paid</p>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-secondary/50">
-                      <Users className="h-5 w-5 text-secondary-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total Deals</p>
-                      <p className="text-2xl font-bold">{stats.count}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          ) : (
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  {stats.totalPending > 0 ? (
-                    <>
-                      <div className="p-2 rounded-lg bg-warning/10">
-                        <Clock className="h-5 w-5 text-warning" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Pending Payment</p>
-                        <p className="text-2xl font-bold">${stats.totalPending.toLocaleString()}</p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="p-2 rounded-lg bg-success/10">
-                        <CheckCircle className="h-5 w-5 text-success" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Status</p>
-                        <p className="text-2xl font-bold">All Paid</p>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                  </>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Filter */}
           <div className="flex items-center gap-4">
@@ -453,26 +599,20 @@ export default function Commissions() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{isSDR ? 'Agency' : 'Closed By'}</TableHead>
+                      <TableHead>Closed By</TableHead>
                       <TableHead>Deal</TableHead>
                       <TableHead>Deal Value</TableHead>
-                      {isSDR && <TableHead>Gross Commission</TableHead>}
-                      {isSDR && <TableHead>Platform Fee</TableHead>}
-                      {isSDR && <TableHead>Net Payout</TableHead>}
-                      {!isSDR && <TableHead>SDR Commission</TableHead>}
-                      {!isSDR && <TableHead>Platform Fee</TableHead>}
-                      {!isSDR && <TableHead>Total Due</TableHead>}
+                      <TableHead>SDR Commission</TableHead>
+                      <TableHead>Platform Fee</TableHead>
+                      <TableHead>Total Due</TableHead>
                       <TableHead>Status</TableHead>
-                      {isSDR && <TableHead>Payout Status</TableHead>}
                       <TableHead>Date</TableHead>
-                      {!isSDR && <TableHead className="text-right">Actions</TableHead>}
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredCommissions.map((commission) => {
-                      // Check if this was closed by the agency (amount is 0 means no SDR involved)
                       const isAgencyClosed = commission.amount === 0 || commission.sdr_id === commission.workspace?.owner_id;
-                      // For agency-closed deals, only platform fee is due. For SDR deals, it's SDR commission + platform fee
                       const totalAgencyDue = isAgencyClosed 
                         ? Number(commission.platform_cut_amount || commission.agency_rake_amount || 0)
                         : Number(commission.amount) + Number(commission.platform_cut_amount || commission.agency_rake_amount || 0);
@@ -480,22 +620,16 @@ export default function Commissions() {
                       return (
                         <TableRow key={commission.id}>
                           <TableCell>
-                            {isSDR ? (
-                              <p className="font-medium">{commission.workspace?.name || 'Agency'}</p>
+                            {isAgencyClosed ? (
+                              <Badge variant="outline" className="bg-muted">Agency Closed</Badge>
                             ) : (
                               <div>
-                                {isAgencyClosed ? (
-                                  <Badge variant="outline" className="bg-muted">Agency Closed</Badge>
-                                ) : (
-                                  <div>
-                                    <p className="font-medium">
-                                      {commission.sdr_profile?.full_name || 'Unknown SDR'}
-                                    </p>
-                                    <span className="text-xs text-muted-foreground">
-                                      {commission.sdr_profile?.email}
-                                    </span>
-                                  </div>
-                                )}
+                                <p className="font-medium">
+                                  {commission.sdr_profile?.full_name || 'Unknown SDR'}
+                                </p>
+                                <span className="text-xs text-muted-foreground">
+                                  {commission.sdr_profile?.email}
+                                </span>
                               </div>
                             )}
                           </TableCell>
@@ -513,49 +647,23 @@ export default function Commissions() {
                           <TableCell>
                             ${commission.deals?.value?.toLocaleString() || '0'}
                           </TableCell>
-                          {isSDR && (
-                            <>
-                              <TableCell className="text-muted-foreground">
-                                ${Number(commission.amount).toLocaleString()}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                <div className="flex items-center gap-1">
-                                  <Percent className="h-3 w-3" />
-                                  {commission.platform_cut_percentage ?? 5}% (${Number(commission.platform_cut_amount || 0).toLocaleString()})
-                                </div>
-                              </TableCell>
-                              <TableCell className="font-medium text-success">
-                                ${Number(commission.sdr_payout_amount || commission.amount).toLocaleString()}
-                              </TableCell>
-                            </>
-                          )}
-                          {!isSDR && (
-                            <>
-                              <TableCell className="text-muted-foreground">
-                                {isAgencyClosed ? (
-                                  <span className="text-muted-foreground">—</span>
-                                ) : (
-                                  `$${Number(commission.amount).toLocaleString()}`
-                                )}
-                              </TableCell>
-                              <TableCell className="text-muted-foreground">
-                                ${Number(commission.agency_rake_amount || commission.rake_amount).toLocaleString()}
-                              </TableCell>
-                              <TableCell className="font-medium">
-                                ${totalAgencyDue.toLocaleString()}
-                              </TableCell>
-                            </>
-                          )}
-                        <TableCell>{getStatusBadge(commission.status)}</TableCell>
-                        {isSDR && (
-                          <TableCell>
-                            {getPayoutStatusBadge(commission.sdr_payout_status, commission.sdr_paid_at)}
+                          <TableCell className="text-muted-foreground">
+                            {isAgencyClosed ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : (
+                              `$${Number(commission.amount).toLocaleString()}`
+                            )}
                           </TableCell>
-                        )}
-                        <TableCell className="text-muted-foreground">
-                          {format(new Date(commission.created_at), 'MMM d, yyyy')}
-                        </TableCell>
-                        {!isSDR && (
+                          <TableCell className="text-muted-foreground">
+                            ${Number(commission.agency_rake_amount || commission.rake_amount).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            ${totalAgencyDue.toLocaleString()}
+                          </TableCell>
+                          <TableCell>{getStatusBadge(commission.status)}</TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {format(new Date(commission.created_at), 'MMM d, yyyy')}
+                          </TableCell>
                           <TableCell className="text-right">
                             {commission.status === 'pending' && (
                               <Button
@@ -579,7 +687,6 @@ export default function Commissions() {
                               </span>
                             )}
                           </TableCell>
-                        )}
                         </TableRow>
                       );
                     })}
@@ -589,7 +696,6 @@ export default function Commissions() {
             </Card>
           )}
         </div>
-
       </main>
     </DashboardLayout>
   );
