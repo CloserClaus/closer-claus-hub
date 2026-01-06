@@ -413,12 +413,21 @@ export default function Dialer() {
   }
 
   if (!currentWorkspace) {
+    const isOwner = false; // Can't determine without workspace
     return (
       <DashboardLayout>
         <DashboardHeader title="Dialer" />
         <main className="flex-1 p-6">
-          <div className="flex items-center justify-center h-96">
-            <p className="text-muted-foreground">Please select a workspace to access the dialer.</p>
+          <div className="flex flex-col items-center justify-center h-96 text-center">
+            <Phone className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">No Workspace Selected</h3>
+            <p className="text-muted-foreground mb-4 max-w-md">
+              Join a company first to access the dialer. Browse jobs to find opportunities.
+            </p>
+            <Button onClick={() => window.location.href = '/jobs'}>
+              <Building2 className="h-4 w-4 mr-2" />
+              Browse Jobs
+            </Button>
           </div>
         </main>
       </DashboardLayout>
