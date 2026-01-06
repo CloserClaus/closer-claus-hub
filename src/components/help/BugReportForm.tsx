@@ -13,7 +13,7 @@ interface BugReportFormProps {
 }
 
 export function BugReportForm({ onClose, onBack }: BugReportFormProps) {
-  const { user, userRole } = useAuth();
+  const { user, userRole, profile } = useAuth();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,6 +32,18 @@ export function BugReportForm({ onClose, onBack }: BugReportFormProps) {
       });
 
       if (error) throw error;
+
+      // Notify admins
+      supabase.functions.invoke("notify-admin-feedback", {
+        body: {
+          type: "bug",
+          title,
+          description,
+          userName: profile?.full_name || "Unknown User",
+          userEmail: profile?.email || user.email,
+          userRole,
+        },
+      }).catch(console.error);
 
       toast.success("Bug report submitted! We'll look into it.");
       onClose();

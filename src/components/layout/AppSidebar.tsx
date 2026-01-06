@@ -21,6 +21,7 @@ import {
   FileSignature,
   Bug,
   Lightbulb,
+  Sparkles,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -89,6 +90,7 @@ const agencyOwnerNav: NavItem[] = [
   { title: 'Contracts', url: '/contracts', icon: FileText },
   { title: 'Commissions', url: '/commissions', icon: DollarSign, tourId: 'nav-commissions' },
   { title: 'Feature Board', url: '/feature-requests', icon: Lightbulb },
+  { title: 'Changelog', url: '/changelog', icon: Sparkles },
   { title: 'Subscription', url: '/subscription', icon: Tag },
   { title: 'Billing', url: '/billing', icon: CreditCard },
 ];
@@ -104,6 +106,7 @@ const sdrNav: NavItem[] = [
   { title: 'Contracts', url: '/contracts', icon: FileSignature, tourId: 'nav-contracts' },
   { title: 'My Earnings', url: '/commissions', icon: DollarSign, tourId: 'nav-earnings' },
   { title: 'Feature Board', url: '/feature-requests', icon: Lightbulb },
+  { title: 'Changelog', url: '/changelog', icon: Sparkles },
 ];
 
 export function AppSidebar() {

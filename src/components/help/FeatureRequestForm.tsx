@@ -20,7 +20,7 @@ interface FeatureRequestFormProps {
 }
 
 export function FeatureRequestForm({ onClose, onBack }: FeatureRequestFormProps) {
-  const { user, userRole } = useAuth();
+  const { user, userRole, profile } = useAuth();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [targetAudience, setTargetAudience] = useState<string>("all");
@@ -41,6 +41,19 @@ export function FeatureRequestForm({ onClose, onBack }: FeatureRequestFormProps)
       });
 
       if (error) throw error;
+
+      // Notify admins
+      supabase.functions.invoke("notify-admin-feedback", {
+        body: {
+          type: "feature",
+          title,
+          description,
+          userName: profile?.full_name || "Unknown User",
+          userEmail: profile?.email || user.email,
+          userRole,
+          targetAudience,
+        },
+      }).catch(console.error);
 
       toast.success("Feature request submitted! Thanks for your feedback.");
       onClose();
