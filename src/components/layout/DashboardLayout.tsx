@@ -29,28 +29,34 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   };
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (loading) return;
+
+    if (!user) {
       navigate('/auth');
       return;
     }
 
-    if (!loading && user && !userRole) {
-      navigate('/role-select');
+    // Wait for userRole to be fetched before redirecting
+    // userRole being null on first render is expected - the auth hook fetches it async
+    if (userRole === null) {
+      // Give auth hook time to fetch the role from DB before redirecting
       return;
     }
 
-    if (!loading && user && userRole && !profile?.onboarding_completed) {
+    if (!profile?.onboarding_completed) {
       navigate('/onboarding');
     }
   }, [user, userRole, profile, loading, navigate]);
 
-  if (loading) {
+  // Show loading while role is being fetched for authenticated users
+  if (loading || (user && userRole === null)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-pulse text-muted-foreground">Loading...</div>
       </div>
     );
   }
+
 
   return (
     <SidebarProvider open={sidebarOpen} onOpenChange={handleSidebarOpenChange}>
