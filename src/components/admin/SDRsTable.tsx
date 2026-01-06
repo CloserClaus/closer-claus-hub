@@ -65,11 +65,14 @@ export function SDRsTable() {
           earningsMap.set(c.sdr_id, { total: 0, pending: 0, platformCut: 0, payout: 0 });
         }
         const entry = earningsMap.get(c.sdr_id)!;
-        entry.total += Number(c.amount);
-        entry.payout += Number(c.sdr_payout_amount || c.amount);
-        entry.platformCut += Number(c.platform_cut_amount || 0);
+        entry.total += Number(c.amount ?? 0);
+        entry.payout += Number(c.sdr_payout_amount ?? c.amount ?? 0);
+        // Platform cut: use platform_cut_amount, or calculate from amount - sdr_payout if available
+        const platformCut = c.platform_cut_amount ?? 
+          (c.sdr_payout_amount ? Number(c.amount ?? 0) - Number(c.sdr_payout_amount) : 0);
+        entry.platformCut += Number(platformCut);
         if (c.status === 'pending') {
-          entry.pending += Number(c.sdr_payout_amount || c.amount);
+          entry.pending += Number(c.sdr_payout_amount ?? c.amount ?? 0);
         }
       });
 

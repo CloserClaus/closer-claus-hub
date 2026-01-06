@@ -63,7 +63,7 @@ export function AdminOverview() {
         supabase.from('workspaces').select('*', { count: 'exact', head: true }),
         supabase.from('user_roles').select('*', { count: 'exact', head: true }).eq('role', 'sdr'),
         supabase.from('disputes').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('commissions').select('rake_amount').eq('status', 'paid'),
+        supabase.from('commissions').select('platform_cut_amount, rake_amount').eq('status', 'paid'),
         supabase.from('deals').select('*', { count: 'exact', head: true }).eq('stage', 'closed_won'),
         supabase.from('jobs').select('*', { count: 'exact', head: true }),
         supabase.from('job_applications').select('*', { count: 'exact', head: true }),
@@ -73,7 +73,8 @@ export function AdminOverview() {
         supabase.from('call_logs').select('*', { count: 'exact', head: true }),
       ]);
 
-      const totalRake = commissions?.reduce((sum, c) => sum + Number(c.rake_amount), 0) || 0;
+      // Platform revenue = platform_cut_amount (fallback to 0 for old commissions without it)
+      const totalRake = commissions?.reduce((sum, c) => sum + Number(c.platform_cut_amount ?? 0), 0) || 0;
       
       return {
         agencies: agencyCount || 0,
@@ -96,9 +97,10 @@ export function AdminOverview() {
     queryFn: async () => {
       const { data } = await supabase
         .from('commissions')
-        .select('amount')
+        .select('sdr_payout_amount, amount')
         .eq('status', 'pending');
-      return data?.reduce((sum, c) => sum + Number(c.amount), 0) || 0;
+      // Use sdr_payout_amount if set, fallback to amount for older records
+      return data?.reduce((sum, c) => sum + Number(c.sdr_payout_amount ?? c.amount ?? 0), 0) || 0;
     },
   });
 

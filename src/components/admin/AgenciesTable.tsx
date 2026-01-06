@@ -224,7 +224,7 @@ export function AgenciesTable() {
                           {agency.memberCount} / {agency.max_sdrs}
                         </div>
                       </TableCell>
-                      <TableCell>{agency.rake_percentage}%</TableCell>
+                      <TableCell>{agency.rake_percentage ?? 0}%</TableCell>
                       <TableCell>
                         <Badge variant={agency.is_locked ? 'destructive' : hasActiveSubscription(agency) ? 'default' : 'secondary'}>
                           {agency.is_locked ? 'Locked' : hasActiveSubscription(agency) ? 'Active' : 'Inactive'}
