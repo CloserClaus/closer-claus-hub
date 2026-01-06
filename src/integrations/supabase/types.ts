@@ -17,6 +17,7 @@ export type Database = {
       bug_reports: {
         Row: {
           admin_notes: string | null
+          attachment_urls: string[] | null
           created_at: string
           description: string
           id: string
@@ -30,6 +31,7 @@ export type Database = {
         }
         Insert: {
           admin_notes?: string | null
+          attachment_urls?: string[] | null
           created_at?: string
           description: string
           id?: string
@@ -43,6 +45,7 @@ export type Database = {
         }
         Update: {
           admin_notes?: string | null
+          attachment_urls?: string[] | null
           created_at?: string
           description?: string
           id?: string
@@ -1382,6 +1385,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      support_tickets: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          description: string
+          id: string
+          status: string
+          title: string
+          updated_at: string
+          user_email: string
+          user_id: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          description: string
+          id?: string
+          status?: string
+          title: string
+          updated_at?: string
+          user_email: string
+          user_id: string
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          user_email?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       tasks: {
         Row: {

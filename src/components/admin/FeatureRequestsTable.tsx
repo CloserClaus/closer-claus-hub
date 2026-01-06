@@ -49,6 +49,7 @@ export function FeatureRequestsTable() {
   const [selectedFeature, setSelectedFeature] = useState<FeatureRequest | null>(null);
   const [adminNotes, setAdminNotes] = useState("");
   const [updating, setUpdating] = useState(false);
+  const [audienceFilter, setAudienceFilter] = useState<string>("all");
 
   useEffect(() => {
     fetchFeatureRequests();
@@ -86,6 +87,11 @@ export function FeatureRequestsTable() {
       setLoading(false);
     }
   };
+
+  const filteredRequests = featureRequests.filter((request) => {
+    if (audienceFilter === "all") return true;
+    return request.target_audience === audienceFilter;
+  });
 
   const updateStatus = async (id: string, status: string) => {
     try {
@@ -171,6 +177,31 @@ export function FeatureRequestsTable() {
 
   return (
     <>
+      {/* Audience Filter Tabs */}
+      <div className="flex gap-2 mb-4">
+        {[
+          { value: "all", label: "All" },
+          { value: "agency", label: "Agency" },
+          { value: "sdr", label: "SDR" },
+        ].map((tab) => (
+          <Button
+            key={tab.value}
+            variant={audienceFilter === tab.value ? "default" : "outline"}
+            size="sm"
+            onClick={() => setAudienceFilter(tab.value)}
+          >
+            {tab.label}
+            {tab.value !== "all" && (
+              <Badge variant="secondary" className="ml-2">
+                {featureRequests.filter((r) => 
+                  tab.value === "all" ? true : r.target_audience === tab.value
+                ).length}
+              </Badge>
+            )}
+          </Button>
+        ))}
+      </div>
+
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -185,19 +216,19 @@ export function FeatureRequestsTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {featureRequests.length === 0 ? (
+            {filteredRequests.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                  No feature requests yet
+                  No feature requests {audienceFilter !== "all" ? `for ${audienceFilter}` : ""} yet
                 </TableCell>
               </TableRow>
             ) : (
-              featureRequests.map((request) => (
+              filteredRequests.map((request) => (
                 <TableRow key={request.id}>
                   <TableCell>
-                    <div className="flex items-center gap-1">
-                      <ThumbsUp className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium">{request.upvotes_count}</span>
+                    <div className="flex items-center gap-1 font-bold text-lg">
+                      <ThumbsUp className="h-5 w-5 text-primary" />
+                      <span>{request.upvotes_count}</span>
                     </div>
                   </TableCell>
                   <TableCell className="font-medium">{request.title}</TableCell>
