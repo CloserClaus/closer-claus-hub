@@ -29,7 +29,9 @@ import Commissions from "./pages/Commissions";
 import Notifications from "./pages/Notifications";
 import TeamManagement from "./pages/TeamManagement";
 import VerifyEmail from "./pages/VerifyEmail";
+import FeatureRequests from "./pages/FeatureRequests";
 import NotFound from "./pages/NotFound";
+import { HelpWidget } from "@/components/help/HelpWidget";
 
 const queryClient = new QueryClient();
 
@@ -68,11 +70,13 @@ const App = () => (
                 <Route path="/team" element={<TeamManagement />} />
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
+                <Route path="/feature-requests" element={<FeatureRequests />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
               <TourOverlay />
               <TourTrigger />
+              <HelpWidget />
             </BrowserRouter>
           </TooltipProvider>
         </TourProvider>

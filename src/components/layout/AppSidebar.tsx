@@ -19,6 +19,8 @@ import {
   UserCircle,
   Handshake,
   FileSignature,
+  Bug,
+  Lightbulb,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -70,6 +72,8 @@ const platformAdminNav: NavItem[] = [
   { title: 'Disputes', url: '/admin?tab=disputes', icon: AlertTriangle, tourId: 'disputes' },
   { title: 'Payouts', url: '/admin?tab=payouts', icon: DollarSign },
   { title: 'Coupons', url: '/admin?tab=coupons', icon: Tag },
+  { title: 'Bug Reports', url: '/admin?tab=bugs', icon: Bug },
+  { title: 'Features', url: '/admin?tab=features', icon: Lightbulb },
   { title: 'Conversations', url: '/conversations', icon: MessageSquare },
   { title: 'Admin Controls', url: '/admin?tab=settings', icon: Shield, tourId: 'admin-controls' },
 ];
@@ -84,6 +88,7 @@ const agencyOwnerNav: NavItem[] = [
   { title: 'Trainings', url: '/trainings', icon: GraduationCap },
   { title: 'Contracts', url: '/contracts', icon: FileText },
   { title: 'Commissions', url: '/commissions', icon: DollarSign, tourId: 'nav-commissions' },
+  { title: 'Feature Board', url: '/feature-requests', icon: Lightbulb },
   { title: 'Subscription', url: '/subscription', icon: Tag },
   { title: 'Billing', url: '/billing', icon: CreditCard },
 ];
@@ -98,6 +103,7 @@ const sdrNav: NavItem[] = [
   { title: 'Trainings', url: '/trainings', icon: GraduationCap },
   { title: 'Contracts', url: '/contracts', icon: FileSignature, tourId: 'nav-contracts' },
   { title: 'My Earnings', url: '/commissions', icon: DollarSign, tourId: 'nav-earnings' },
+  { title: 'Feature Board', url: '/feature-requests', icon: Lightbulb },
 ];
 
 export function AppSidebar() {
