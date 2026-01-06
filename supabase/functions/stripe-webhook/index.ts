@@ -533,22 +533,106 @@ serve(async (req) => {
 
           console.log(`Commission ${commission_id} marked as paid via webhook`);
 
-          // Get commission details for notification
+          // Get commission details for SDR payout
           const { data: commission } = await supabase
             .from('commissions')
-            .select('sdr_id, amount, workspace_id, deal:deals(title)')
+            .select('sdr_id, amount, sdr_payout_amount, workspace_id, deals(title)')
             .eq('id', commission_id)
             .single();
+          
+          const dealTitle = (commission?.deals as any)?.title || 'deal';
 
-          if (commission?.sdr_id) {
-            await supabase.from('notifications').insert({
-              user_id: commission.sdr_id,
-              workspace_id: commission.workspace_id,
-              type: 'commission_paid',
-              title: 'Commission Paid',
-              message: `Your commission of $${Number(commission.amount).toFixed(2)} has been paid!`,
-              data: { commission_id, amount: commission.amount },
-            });
+          // Trigger SDR payout if applicable
+          if (commission?.sdr_id && (commission.sdr_payout_amount || commission.amount) > 0) {
+            // Get SDR's Connect account status
+            const { data: sdrProfile } = await supabase
+              .from('profiles')
+              .select('stripe_connect_account_id, stripe_connect_status')
+              .eq('id', commission.sdr_id)
+              .single();
+
+            const sdrPayoutAmount = Number(commission.sdr_payout_amount || commission.amount);
+
+            if (sdrProfile?.stripe_connect_status === 'active' && sdrProfile?.stripe_connect_account_id) {
+              // Create transfer to SDR's Connect account
+              try {
+                const transfer = await stripe.transfers.create({
+                  amount: Math.round(sdrPayoutAmount * 100), // Convert to cents
+                  currency: 'usd',
+                  destination: sdrProfile.stripe_connect_account_id,
+                  description: `Commission for ${dealTitle}`,
+                  metadata: {
+                    commission_id,
+                    sdr_id: commission.sdr_id,
+                    workspace_id: commission.workspace_id,
+                  },
+                });
+
+                console.log(`Created transfer ${transfer.id} to SDR ${commission.sdr_id} for $${sdrPayoutAmount}`);
+
+                // Update commission with transfer info
+                await supabase
+                  .from('commissions')
+                  .update({
+                    sdr_payout_status: 'processing',
+                    sdr_payout_stripe_transfer_id: transfer.id,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', commission_id);
+
+                await supabase.from('notifications').insert({
+                  user_id: commission.sdr_id,
+                  workspace_id: commission.workspace_id,
+                  type: 'payout_processing',
+                  title: 'Payout Processing 💸',
+                  message: `Your commission of $${sdrPayoutAmount.toFixed(2)} for "${dealTitle}" is being transferred to your bank.`,
+                  data: { commission_id, amount: sdrPayoutAmount, transfer_id: transfer.id },
+                });
+
+              } catch (transferError: any) {
+                console.error('Transfer error:', transferError);
+                
+                // Mark payout as failed
+                await supabase
+                  .from('commissions')
+                  .update({
+                    sdr_payout_status: 'failed',
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', commission_id);
+
+                // Notify SDR of failure
+                await supabase.from('notifications').insert({
+                  user_id: commission.sdr_id,
+                  workspace_id: commission.workspace_id,
+                  type: 'payout_failed',
+                  title: 'Payout Failed',
+                  message: `There was an issue transferring your commission. Please check your bank account settings.`,
+                  data: { commission_id, error: transferError.message },
+                });
+              }
+            } else {
+              // SDR doesn't have active Connect account - hold payout
+              await supabase
+                .from('commissions')
+                .update({
+                  sdr_payout_status: 'held',
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', commission_id);
+
+              // Notify SDR to connect bank
+              await supabase.from('notifications').insert({
+                user_id: commission.sdr_id,
+                workspace_id: commission.workspace_id,
+                type: 'connect_bank_prompt',
+                title: 'Connect Bank to Receive $' + sdrPayoutAmount.toFixed(2),
+                message: `Your commission of $${sdrPayoutAmount.toFixed(2)} is waiting! Connect your bank account in Settings to receive payouts.`,
+                data: { commission_id, amount: sdrPayoutAmount },
+              });
+
+              console.log(`Payout held for SDR ${commission.sdr_id} - no active Connect account`);
+            }
           }
 
           // Check if workspace should be unlocked
@@ -571,6 +655,152 @@ serve(async (req) => {
             console.log(`Unlocked workspace ${commission?.workspace_id}`);
           }
         }
+        break;
+      }
+
+      // Handle Stripe Connect account updates (SDR onboarding completion)
+      case 'account.updated': {
+        const account = event.data.object;
+        const userId = account.metadata?.user_id;
+
+        if (userId) {
+          console.log(`Connect account ${account.id} updated for user ${userId}`);
+
+          // Check if account is fully onboarded
+          const isActive = account.charges_enabled && account.payouts_enabled;
+          const newStatus = isActive ? 'active' : (account.details_submitted ? 'pending' : 'not_connected');
+
+          // Update user's Connect status
+          const updateData: any = {
+            stripe_connect_status: newStatus,
+          };
+
+          if (isActive) {
+            updateData.stripe_connect_onboarded_at = new Date().toISOString();
+          }
+
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update(updateData)
+            .eq('id', userId);
+
+          if (updateError) {
+            console.error('Error updating profile:', updateError);
+          } else {
+            console.log(`Updated Connect status to ${newStatus} for user ${userId}`);
+
+            // If account just became active, check for held payouts
+            if (isActive) {
+              // Get any held commissions for this SDR
+              const { data: heldCommissions } = await supabase
+                .from('commissions')
+                .select('id, sdr_payout_amount, amount, workspace_id, deals(title)')
+                .eq('sdr_id', userId)
+                .eq('status', 'paid')
+                .eq('sdr_payout_status', 'held');
+
+              if (heldCommissions && heldCommissions.length > 0) {
+                console.log(`Processing ${heldCommissions.length} held payouts for user ${userId}`);
+
+                for (const commission of heldCommissions) {
+                  const payoutAmount = Number(commission.sdr_payout_amount || commission.amount);
+                  const heldDealTitle = (commission.deals as any)?.title || 'deal';
+                  
+                  try {
+                    const transfer = await stripe.transfers.create({
+                      amount: Math.round(payoutAmount * 100),
+                      currency: 'usd',
+                      destination: account.id,
+                      description: `Commission for ${heldDealTitle}`,
+                      metadata: {
+                        commission_id: commission.id,
+                        sdr_id: userId,
+                        workspace_id: commission.workspace_id,
+                      },
+                    });
+
+                    await supabase
+                      .from('commissions')
+                      .update({
+                        sdr_payout_status: 'processing',
+                        sdr_payout_stripe_transfer_id: transfer.id,
+                        updated_at: new Date().toISOString(),
+                      })
+                      .eq('id', commission.id);
+
+                    console.log(`Processed held payout for commission ${commission.id}: $${payoutAmount}`);
+                  } catch (transferError: any) {
+                    console.error(`Failed to process held payout for commission ${commission.id}:`, transferError);
+                  }
+                }
+
+                // Notify SDR about processed payouts
+                const totalAmount = heldCommissions.reduce((sum, c) => sum + Number(c.sdr_payout_amount || c.amount), 0);
+                await supabase.from('notifications').insert({
+                  user_id: userId,
+                  type: 'payout_processing',
+                  title: 'Payouts Processing! 💸',
+                  message: `Your bank is connected! ${heldCommissions.length} held payout(s) totaling $${totalAmount.toFixed(2)} are now being transferred.`,
+                  data: { count: heldCommissions.length, total: totalAmount },
+                });
+              } else {
+                // Just notify about successful connection
+                await supabase.from('notifications').insert({
+                  user_id: userId,
+                  type: 'bank_connected',
+                  title: 'Bank Account Connected! ✓',
+                  message: 'Your bank account is now connected. You\'ll receive commission payouts automatically.',
+                });
+              }
+            }
+          }
+        }
+        break;
+      }
+
+      // Handle transfer events for SDR payouts
+      case 'transfer.created': {
+        const transfer = event.data.object;
+        const { commission_id, sdr_id } = transfer.metadata || {};
+
+        if (commission_id) {
+          console.log(`Transfer ${transfer.id} created for commission ${commission_id}`);
+        }
+        break;
+      }
+
+      case 'transfer.failed': {
+        const transfer = event.data.object;
+        const { commission_id, sdr_id, workspace_id } = transfer.metadata || {};
+
+        if (commission_id && sdr_id) {
+          console.log(`Transfer ${transfer.id} failed for commission ${commission_id}`);
+
+          await supabase
+            .from('commissions')
+            .update({
+              sdr_payout_status: 'failed',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', commission_id);
+
+          await supabase.from('notifications').insert({
+            user_id: sdr_id,
+            workspace_id: workspace_id || null,
+            type: 'payout_failed',
+            title: 'Payout Failed',
+            message: 'There was an issue with your payout. Please check your bank account settings in the Payouts section.',
+            data: { commission_id, transfer_id: transfer.id },
+          });
+        }
+        break;
+      }
+
+      case 'payout.paid': {
+        const payout = event.data.object;
+        // This is when money actually hits the SDR's bank account
+        // The payout object doesn't have our metadata, but we can log it
+        console.log(`Payout ${payout.id} of $${payout.amount / 100} completed to bank`);
         break;
       }
 
