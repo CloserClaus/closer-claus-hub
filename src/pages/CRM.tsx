@@ -15,6 +15,7 @@ import {
   Upload,
   CheckSquare,
   Clock,
+  UserPlus,
 } from 'lucide-react';
 import { startOfDay, startOfWeek, startOfMonth, startOfQuarter, formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
@@ -682,13 +683,35 @@ export default function CRM() {
       <DashboardHeader title="CRM" />
       <main className="flex-1 p-6 space-y-6">
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className={`grid gap-4 ${isAgencyOwner ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
           <Card className="glass">
             <CardHeader className="pb-2">
               <CardDescription>Total Leads</CardDescription>
               <CardTitle className="text-2xl">{leads.length}</CardTitle>
             </CardHeader>
           </Card>
+          {isAgencyOwner && (
+            <Card 
+              className={`glass cursor-pointer hover:border-primary/50 transition-colors ${leadFilters.assignedTo === 'unassigned' ? 'border-primary' : ''}`}
+              onClick={() => {
+                if (leadFilters.assignedTo === 'unassigned') {
+                  setLeadFilters({ ...leadFilters, assignedTo: '' });
+                } else {
+                  setLeadFilters({ ...leadFilters, assignedTo: 'unassigned' });
+                }
+              }}
+            >
+              <CardHeader className="pb-2">
+                <CardDescription className="flex items-center gap-1">
+                  <UserPlus className="h-3 w-3" />
+                  Unassigned
+                </CardDescription>
+                <CardTitle className={`text-2xl ${leads.filter(l => !l.assigned_to).length > 0 ? 'text-warning' : ''}`}>
+                  {leads.filter(l => !l.assigned_to).length}
+                </CardTitle>
+              </CardHeader>
+            </Card>
+          )}
           <Card className="glass">
             <CardHeader className="pb-2">
               <CardDescription>Active Deals</CardDescription>
