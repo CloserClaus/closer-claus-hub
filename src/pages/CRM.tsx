@@ -167,14 +167,59 @@ export default function CRM() {
 
   const isAgencyOwner = userRole === 'agency_owner';
 
+  // Fetch data and set up real-time subscriptions
   useEffect(() => {
     if (currentWorkspace) {
       fetchData();
       if (isAgencyOwner) {
         fetchTeamMembers();
       }
+
+      // Set up real-time subscription for deals
+      const dealsChannel = supabase
+        .channel('crm-deals-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'deals',
+            filter: `workspace_id=eq.${currentWorkspace.id}`,
+          },
+          (payload) => {
+            console.log('Deal change detected:', payload.eventType);
+            // Refresh deals on any change
+            fetchData();
+          }
+        )
+        .subscribe();
+
+      // Set up real-time subscription for tasks
+      const tasksChannel = supabase
+        .channel('crm-tasks-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'tasks',
+            filter: `workspace_id=eq.${currentWorkspace.id}`,
+          },
+          (payload) => {
+            console.log('Task change detected:', payload.eventType);
+            // Refresh tasks on any change
+            fetchData();
+          }
+        )
+        .subscribe();
+
+      // Cleanup subscriptions on unmount
+      return () => {
+        supabase.removeChannel(dealsChannel);
+        supabase.removeChannel(tasksChannel);
+      };
     }
-  }, [currentWorkspace, isAgencyOwner]);
+  }, [currentWorkspace, isAgencyOwner, userRole, user?.id]);
 
   const fetchTeamMembers = async () => {
     if (!currentWorkspace) return;
