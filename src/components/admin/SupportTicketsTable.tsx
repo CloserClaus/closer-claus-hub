@@ -25,8 +25,16 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
-import { Loader2, Eye, Mail } from "lucide-react";
+import { Loader2, Eye, Mail, Send, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
+
+interface TicketReply {
+  id: string;
+  admin_id: string;
+  message: string;
+  created_at: string;
+  admin_name?: string;
+}
 
 interface SupportTicket {
   id: string;
@@ -39,6 +47,7 @@ interface SupportTicket {
   created_at: string;
   updated_at: string;
   user_name?: string;
+  replies?: TicketReply[];
 }
 
 export function SupportTicketsTable() {
@@ -46,7 +55,9 @@ export function SupportTicketsTable() {
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
   const [adminNotes, setAdminNotes] = useState("");
+  const [replyMessage, setReplyMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [sendingReply, setSendingReply] = useState(false);
 
   useEffect(() => {
     fetchTickets();
@@ -82,6 +93,44 @@ export function SupportTicketsTable() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchReplies = async (ticketId: string) => {
+    try {
+      const { data: replies, error } = await supabase
+        .from("ticket_replies")
+        .select("*")
+        .eq("ticket_id", ticketId)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      // Fetch admin names
+      const adminIds = [...new Set((replies || []).map(r => r.admin_id))];
+      const { data: adminProfiles } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", adminIds);
+
+      const adminMap = new Map(adminProfiles?.map(p => [p.id, p.full_name]) || []);
+
+      return (replies || []).map(reply => ({
+        ...reply,
+        admin_name: adminMap.get(reply.admin_id) || "Admin",
+      }));
+    } catch (error) {
+      console.error("Error fetching replies:", error);
+      return [];
+    }
+  };
+
+  const openTicketDetails = async (ticket: SupportTicket) => {
+    setSelectedTicket(ticket);
+    setAdminNotes(ticket.admin_notes || "");
+    setReplyMessage("");
+    
+    const replies = await fetchReplies(ticket.id);
+    setSelectedTicket(prev => prev ? { ...prev, replies } : null);
   };
 
   const updateStatus = async (id: string, status: string) => {
@@ -126,6 +175,80 @@ export function SupportTicketsTable() {
       toast.error("Failed to save notes");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const sendReply = async () => {
+    if (!selectedTicket || !replyMessage.trim()) return;
+    setSendingReply(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Insert reply into database
+      const { data: newReply, error: insertError } = await supabase
+        .from("ticket_replies")
+        .insert({
+          ticket_id: selectedTicket.id,
+          admin_id: user.id,
+          message: replyMessage.trim(),
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      // Send email notification to user
+      const { error: emailError } = await supabase.functions.invoke("send-ticket-reply", {
+        body: {
+          userEmail: selectedTicket.user_email,
+          userName: selectedTicket.user_name,
+          ticketTitle: selectedTicket.title,
+          replyMessage: replyMessage.trim(),
+          ticketId: selectedTicket.id,
+        },
+      });
+
+      if (emailError) {
+        console.error("Failed to send email notification:", emailError);
+        toast.warning("Reply saved but email notification failed");
+      } else {
+        toast.success("Reply sent and user notified via email");
+      }
+
+      // Update local state
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user.id)
+        .single();
+
+      const replyWithName = {
+        ...newReply,
+        admin_name: profile?.full_name || "Admin",
+      };
+
+      setSelectedTicket(prev => 
+        prev ? { 
+          ...prev, 
+          replies: [...(prev.replies || []), replyWithName] 
+        } : null
+      );
+      setReplyMessage("");
+
+      // Update status to in_progress if it was open
+      if (selectedTicket.status === "open") {
+        await updateStatus(selectedTicket.id, "in_progress");
+        setSelectedTicket(prev => 
+          prev ? { ...prev, status: "in_progress" } : null
+        );
+      }
+    } catch (error) {
+      console.error("Error sending reply:", error);
+      toast.error("Failed to send reply");
+    } finally {
+      setSendingReply(false);
     }
   };
 
@@ -208,10 +331,7 @@ export function SupportTicketsTable() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      setSelectedTicket(ticket);
-                      setAdminNotes(ticket.admin_notes || "");
-                    }}
+                    onClick={() => openTicketDetails(ticket)}
                   >
                     <Eye className="h-4 w-4" />
                   </Button>
@@ -223,7 +343,7 @@ export function SupportTicketsTable() {
       </Table>
 
       <Dialog open={!!selectedTicket} onOpenChange={() => setSelectedTicket(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Support Ticket Details</DialogTitle>
           </DialogHeader>
@@ -265,18 +385,68 @@ export function SupportTicketsTable() {
                 </p>
               </div>
 
+              {/* Replies Section */}
               <div>
-                <p className="text-sm text-muted-foreground mb-1">Admin Notes</p>
+                <p className="text-sm text-muted-foreground mb-2 flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  Replies ({selectedTicket.replies?.length || 0})
+                </p>
+                {selectedTicket.replies && selectedTicket.replies.length > 0 ? (
+                  <div className="space-y-3 max-h-[200px] overflow-y-auto">
+                    {selectedTicket.replies.map((reply) => (
+                      <div key={reply.id} className="bg-primary/5 border-l-4 border-primary p-3 rounded-r-lg">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium">{reply.admin_name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {format(new Date(reply.created_at), "MMM d, yyyy 'at' h:mm a")}
+                          </span>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap">{reply.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">No replies yet</p>
+                )}
+              </div>
+
+              {/* Reply Form */}
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Send Reply to User</p>
+                <Textarea
+                  value={replyMessage}
+                  onChange={(e) => setReplyMessage(e.target.value)}
+                  placeholder="Type your reply... (This will be sent to the user via email)"
+                  rows={3}
+                />
+                <Button 
+                  onClick={sendReply} 
+                  disabled={sendingReply || !replyMessage.trim()} 
+                  className="mt-2"
+                >
+                  {sendingReply ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="mr-2 h-4 w-4" />
+                      Send Reply & Notify User
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Internal Admin Notes</p>
                 <Textarea
                   value={adminNotes}
                   onChange={(e) => setAdminNotes(e.target.value)}
-                  placeholder="Add internal notes..."
-                  rows={3}
+                  placeholder="Add internal notes (not visible to user)..."
+                  rows={2}
                 />
-              </div>
-
-              <div className="flex gap-2">
-                <Button onClick={saveNotes} disabled={saving}>
+                <Button onClick={saveNotes} disabled={saving} variant="outline" className="mt-2">
                   {saving ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -285,13 +455,6 @@ export function SupportTicketsTable() {
                   ) : (
                     "Save Notes"
                   )}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => window.open(`mailto:${selectedTicket.user_email}?subject=Re: ${selectedTicket.title}`)}
-                >
-                  <Mail className="mr-2 h-4 w-4" />
-                  Reply via Email
                 </Button>
               </div>
             </div>

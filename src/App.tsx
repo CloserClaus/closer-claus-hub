@@ -31,6 +31,7 @@ import TeamManagement from "./pages/TeamManagement";
 import VerifyEmail from "./pages/VerifyEmail";
 import FeatureRequests from "./pages/FeatureRequests";
 import Changelog from "./pages/Changelog";
+import Roadmap from "./pages/Roadmap";
 import NotFound from "./pages/NotFound";
 import { HelpWidget } from "@/components/help/HelpWidget";
 
@@ -73,6 +74,7 @@ const App = () => (
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/feature-requests" element={<FeatureRequests />} />
                 <Route path="/changelog" element={<Changelog />} />
+                <Route path="/roadmap" element={<Roadmap />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
