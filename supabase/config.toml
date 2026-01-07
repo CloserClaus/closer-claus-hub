@@ -107,3 +107,9 @@ verify_jwt = true
 
 [functions.notify-admin-feedback]
 verify_jwt = true
+
+[functions.send-support-email]
+verify_jwt = true
+
+[functions.send-ticket-reply]
+verify_jwt = true

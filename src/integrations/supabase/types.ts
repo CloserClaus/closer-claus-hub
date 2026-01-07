@@ -926,12 +926,42 @@ export type Database = {
         }
         Relationships: []
       }
+      feature_followers: {
+        Row: {
+          created_at: string
+          feature_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          feature_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          feature_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feature_followers_feature_id_fkey"
+            columns: ["feature_id"]
+            isOneToOne: false
+            referencedRelation: "feature_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feature_requests: {
         Row: {
           admin_notes: string | null
           created_at: string
           description: string
           id: string
+          progress_percentage: number | null
           status: string
           target_audience: string
           title: string
@@ -945,6 +975,7 @@ export type Database = {
           created_at?: string
           description: string
           id?: string
+          progress_percentage?: number | null
           status?: string
           target_audience?: string
           title: string
@@ -958,6 +989,7 @@ export type Database = {
           created_at?: string
           description?: string
           id?: string
+          progress_percentage?: number | null
           status?: string
           target_audience?: string
           title?: string
@@ -1494,6 +1526,38 @@ export type Database = {
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_replies: {
+        Row: {
+          admin_id: string
+          created_at: string
+          id: string
+          message: string
+          ticket_id: string
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string
+          id?: string
+          message: string
+          ticket_id: string
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string
+          id?: string
+          message?: string
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_replies_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
             referencedColumns: ["id"]
           },
         ]
