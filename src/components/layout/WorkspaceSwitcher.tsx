@@ -57,7 +57,7 @@ export function WorkspaceSwitcher() {
           <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
+      <DropdownMenuContent align="start" className="w-56 bg-popover border border-border z-50">
         {workspaces.map((workspace) => (
           <DropdownMenuItem
             key={workspace.id}
