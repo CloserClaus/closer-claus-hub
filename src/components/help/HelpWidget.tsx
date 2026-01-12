@@ -7,7 +7,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { BugReportForm } from "./BugReportForm";
-import { FeatureRequestForm } from "./FeatureRequestForm";
+import { FeatureHub } from "./FeatureHub";
 import { useAuth } from "@/hooks/useAuth";
 
 type ActivePanel = null | "bug" | "feature";
@@ -47,7 +47,7 @@ export function HelpWidget() {
         <PopoverContent
           side="top"
           align="end"
-          className="w-80 p-0 mb-2"
+          className="w-96 p-0 mb-2 bg-popover border border-border"
           sideOffset={8}
         >
           {activePanel === null ? (
@@ -90,8 +90,8 @@ export function HelpWidget() {
                   <Lightbulb className="h-5 w-5 text-amber-500" />
                 </div>
                 <div>
-                  <p className="font-medium">Request a Feature</p>
-                  <p className="text-sm text-muted-foreground">Share your ideas</p>
+                  <p className="font-medium">Features & Updates</p>
+                  <p className="text-sm text-muted-foreground">Vote, roadmap & changelog</p>
                 </div>
                 <ChevronUp className="h-4 w-4 ml-auto text-muted-foreground rotate-90" />
               </button>
@@ -99,7 +99,7 @@ export function HelpWidget() {
           ) : activePanel === "bug" ? (
             <BugReportForm onClose={handleClose} onBack={() => setActivePanel(null)} />
           ) : (
-            <FeatureRequestForm onClose={handleClose} onBack={() => setActivePanel(null)} />
+            <FeatureHub onClose={handleClose} onBack={() => setActivePanel(null)} />
           )}
         </PopoverContent>
       </Popover>
