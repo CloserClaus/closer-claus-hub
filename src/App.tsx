@@ -33,6 +33,7 @@ import FeatureRequests from "./pages/FeatureRequests";
 import Changelog from "./pages/Changelog";
 import Roadmap from "./pages/Roadmap";
 import NotFound from "./pages/NotFound";
+import Landing from "./pages/Landing";
 import { HelpWidget } from "@/components/help/HelpWidget";
 
 const queryClient = new QueryClient();
@@ -47,7 +48,7 @@ const App = () => (
             <Sonner />
             <BrowserRouter>
               <Routes>
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/" element={<Landing />} />
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/role-select" element={<RoleSelect />} />
                 <Route path="/onboarding" element={<Onboarding />} />
