@@ -19,6 +19,7 @@ import { AdminSettings } from '@/components/admin/AdminSettings';
 import { BugReportsTable } from '@/components/admin/BugReportsTable';
 import { FeatureRequestsTable } from '@/components/admin/FeatureRequestsTable';
 import { SupportTicketsTable } from '@/components/admin/SupportTicketsTable';
+import { SalaryPaymentsTable } from '@/components/admin/SalaryPaymentsTable';
 
 const tabTitles: Record<string, string> = {
   overview: 'Platform Overview',
@@ -33,6 +34,7 @@ const tabTitles: Record<string, string> = {
   trainings: 'Training Materials',
   disputes: 'Disputes',
   payouts: 'Payouts',
+  salaries: 'Salary Payments',
   coupons: 'Coupons',
   support: 'Support Tickets',
   bugs: 'Bug Reports',
@@ -83,6 +85,8 @@ export default function AdminDashboard() {
         return <DisputesTable />;
       case 'payouts':
         return <PayoutsTable />;
+      case 'salaries':
+        return <SalaryPaymentsTable />;
       case 'coupons':
         return <CouponsTable />;
       case 'support':
