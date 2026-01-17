@@ -323,6 +323,38 @@ export default function JobDetail() {
               .eq('user_id', application.user_id)
               .neq('workspace_id', job.workspace_id)
               .is('removed_at', null);
+
+            // Charge salary payment from agency
+            try {
+              const { data: salaryResult, error: salaryError } = await supabase.functions.invoke('charge-salary', {
+                body: {
+                  job_id: job.id,
+                  application_id: applicationId,
+                  sdr_user_id: application.user_id,
+                },
+              });
+
+              if (salaryError) {
+                console.error('Failed to process salary charge:', salaryError);
+                toast({
+                  variant: 'destructive',
+                  title: 'Salary Charge Issue',
+                  description: 'SDR was hired but salary payment could not be processed. Please check billing settings.',
+                });
+              } else if (salaryResult?.charged) {
+                toast({
+                  title: 'Salary Charged',
+                  description: `Salary of $${job.salary_amount?.toLocaleString()} charged. SDR payout scheduled for ${salaryResult.payout_date}.`,
+                });
+              } else if (salaryResult?.success) {
+                toast({
+                  title: 'Salary Payment Pending',
+                  description: 'Please add a payment method to complete the salary payment.',
+                });
+              }
+            } catch (salaryErr) {
+              console.error('Salary charge error:', salaryErr);
+            }
           }
 
           // Add to this workspace with is_salary_exclusive flag
