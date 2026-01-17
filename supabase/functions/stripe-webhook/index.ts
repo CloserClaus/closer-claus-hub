@@ -67,18 +67,69 @@ serve(async (req) => {
         const session = event.data.object;
         const metadata = session.metadata || {};
         
-        // Check if this is a dialer purchase (one-time payment)
+        // Check if this is a one-time payment purchase (dialer or leads)
         if (session.mode === 'payment' && metadata.purchase_type) {
-          const { purchase_type, workspace_id: dialerWorkspaceId, minutes_amount, phone_number, country_code, number_type, monthly_cost, user_id } = metadata;
+          const { purchase_type, workspace_id: purchaseWorkspaceId, minutes_amount, phone_number, country_code, number_type, monthly_cost, user_id, credits_amount, leads_amount, price_paid } = metadata;
           
-          console.log('Processing dialer purchase:', { purchase_type, workspace_id: dialerWorkspaceId });
+          console.log('Processing purchase:', { purchase_type, workspace_id: purchaseWorkspaceId });
+          
+          // Handle lead credits purchase
+          if (purchase_type === 'lead_credits' && credits_amount) {
+            const creditsToAdd = parseInt(credits_amount);
+            const leadsAmount = parseInt(leads_amount || '0');
+            const pricePaid = parseFloat(price_paid || '0');
+            
+            // Get current lead credits balance
+            const { data: currentCredits } = await supabase
+              .from('lead_credits')
+              .select('credits_balance')
+              .eq('workspace_id', purchaseWorkspaceId)
+              .single();
+            
+            const newBalance = (currentCredits?.credits_balance || 0) + creditsToAdd;
+            
+            // Upsert lead credits
+            await supabase
+              .from('lead_credits')
+              .upsert({
+                workspace_id: purchaseWorkspaceId,
+                credits_balance: newBalance,
+                last_purchased_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'workspace_id' });
+            
+            // Log the purchase
+            await supabase.from('lead_credit_purchases').insert({
+              workspace_id: purchaseWorkspaceId,
+              credits_amount: creditsToAdd,
+              price_paid: pricePaid || (session.amount_total / 100),
+              purchased_by: user_id,
+              stripe_session_id: session.id,
+            });
+            
+            console.log(`Added ${creditsToAdd} lead credits to workspace ${purchaseWorkspaceId}`);
+            
+            // Send notification
+            if (user_id) {
+              await supabase.from('notifications').insert({
+                user_id,
+                workspace_id: purchaseWorkspaceId,
+                type: 'lead_credits_purchased',
+                title: 'Lead Credits Purchased! 🎉',
+                message: `Successfully added ${creditsToAdd} credits. You can now enrich ${leadsAmount} leads.`,
+                data: { credits: creditsToAdd, leads: leadsAmount, amount: session.amount_total / 100 },
+              });
+            }
+            
+            break;
+          }
           
           if (purchase_type === 'call_minutes' && minutes_amount) {
             // Add minutes to workspace credits
             const { data: currentCredits } = await supabase
               .from('workspace_credits')
               .select('credits_balance')
-              .eq('workspace_id', dialerWorkspaceId)
+              .eq('workspace_id', purchaseWorkspaceId)
               .single();
             
             const newBalance = (currentCredits?.credits_balance || 0) + parseInt(minutes_amount);
@@ -86,27 +137,27 @@ serve(async (req) => {
             await supabase
               .from('workspace_credits')
               .upsert({
-                workspace_id: dialerWorkspaceId,
+                workspace_id: purchaseWorkspaceId,
                 credits_balance: newBalance,
                 last_purchased_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               }, { onConflict: 'workspace_id' });
             
             await supabase.from('credit_purchases').insert({
-              workspace_id: dialerWorkspaceId,
+              workspace_id: purchaseWorkspaceId,
               credits_amount: parseInt(minutes_amount),
               price_paid: session.amount_total / 100,
               purchased_by: user_id,
               stripe_session_id: session.id,
             });
             
-            console.log(`Added ${minutes_amount} minutes to workspace ${dialerWorkspaceId}`);
+            console.log(`Added ${minutes_amount} minutes to workspace ${purchaseWorkspaceId}`);
             
             // Send notification
             if (user_id) {
               await supabase.from('notifications').insert({
                 user_id,
-                workspace_id: dialerWorkspaceId,
+                workspace_id: purchaseWorkspaceId,
                 type: 'credits_purchased',
                 title: 'Credits Purchased',
                 message: `Successfully added ${minutes_amount} calling minutes to your account.`,
@@ -143,7 +194,7 @@ serve(async (req) => {
                   const purchasedNumber = await purchaseResponse.json();
                   
                   await supabase.from('workspace_phone_numbers').insert({
-                    workspace_id: dialerWorkspaceId,
+                    workspace_id: purchaseWorkspaceId,
                     phone_number: purchasedNumber.phone_number,
                     country_code: country_code || 'US',
                     twilio_phone_sid: purchasedNumber.sid,
@@ -156,7 +207,7 @@ serve(async (req) => {
                   if (user_id) {
                     await supabase.from('notifications').insert({
                       user_id,
-                      workspace_id: dialerWorkspaceId,
+                      workspace_id: purchaseWorkspaceId,
                       type: 'phone_number_purchased',
                       title: 'Phone Number Purchased',
                       message: `Your new phone number ${phone_number} is now active.`,
