@@ -1361,6 +1361,88 @@ export type Database = {
         }
         Relationships: []
       }
+      salary_payments: {
+        Row: {
+          agency_charge_status: string
+          agency_charged_at: string | null
+          application_id: string
+          created_at: string
+          hired_at: string
+          id: string
+          job_id: string
+          salary_amount: number
+          sdr_id: string
+          sdr_paid_at: string | null
+          sdr_payout_amount: number | null
+          sdr_payout_date: string
+          sdr_payout_status: string
+          sdr_stripe_transfer_id: string | null
+          stripe_payment_intent_id: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          agency_charge_status?: string
+          agency_charged_at?: string | null
+          application_id: string
+          created_at?: string
+          hired_at?: string
+          id?: string
+          job_id: string
+          salary_amount: number
+          sdr_id: string
+          sdr_paid_at?: string | null
+          sdr_payout_amount?: number | null
+          sdr_payout_date: string
+          sdr_payout_status?: string
+          sdr_stripe_transfer_id?: string | null
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          agency_charge_status?: string
+          agency_charged_at?: string | null
+          application_id?: string
+          created_at?: string
+          hired_at?: string
+          id?: string
+          job_id?: string
+          salary_amount?: number
+          sdr_id?: string
+          sdr_paid_at?: string | null
+          sdr_payout_amount?: number | null
+          sdr_payout_date?: string
+          sdr_payout_status?: string
+          sdr_stripe_transfer_id?: string | null
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_payments_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "job_applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salary_payments_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salary_payments_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scheduled_callbacks: {
         Row: {
           completed_at: string | null

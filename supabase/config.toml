@@ -113,3 +113,9 @@ verify_jwt = true
 
 [functions.send-ticket-reply]
 verify_jwt = true
+
+[functions.charge-salary]
+verify_jwt = true
+
+[functions.process-salary-payouts]
+verify_jwt = false
