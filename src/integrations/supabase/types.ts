@@ -14,6 +14,104 @@ export type Database = {
   }
   public: {
     Tables: {
+      apollo_leads: {
+        Row: {
+          apollo_id: string
+          city: string | null
+          company_domain: string | null
+          company_linkedin_url: string | null
+          company_name: string | null
+          country: string | null
+          created_at: string | null
+          credits_used: number | null
+          department: string | null
+          email: string | null
+          email_status: string | null
+          employee_count: string | null
+          enriched_at: string | null
+          enriched_by: string | null
+          enrichment_status: string
+          first_name: string | null
+          id: string
+          industry: string | null
+          last_name: string | null
+          linkedin_url: string | null
+          phone: string | null
+          phone_status: string | null
+          search_filters: Json | null
+          seniority: string | null
+          state: string | null
+          title: string | null
+          workspace_id: string
+        }
+        Insert: {
+          apollo_id: string
+          city?: string | null
+          company_domain?: string | null
+          company_linkedin_url?: string | null
+          company_name?: string | null
+          country?: string | null
+          created_at?: string | null
+          credits_used?: number | null
+          department?: string | null
+          email?: string | null
+          email_status?: string | null
+          employee_count?: string | null
+          enriched_at?: string | null
+          enriched_by?: string | null
+          enrichment_status?: string
+          first_name?: string | null
+          id?: string
+          industry?: string | null
+          last_name?: string | null
+          linkedin_url?: string | null
+          phone?: string | null
+          phone_status?: string | null
+          search_filters?: Json | null
+          seniority?: string | null
+          state?: string | null
+          title?: string | null
+          workspace_id: string
+        }
+        Update: {
+          apollo_id?: string
+          city?: string | null
+          company_domain?: string | null
+          company_linkedin_url?: string | null
+          company_name?: string | null
+          country?: string | null
+          created_at?: string | null
+          credits_used?: number | null
+          department?: string | null
+          email?: string | null
+          email_status?: string | null
+          employee_count?: string | null
+          enriched_at?: string | null
+          enriched_by?: string | null
+          enrichment_status?: string
+          first_name?: string | null
+          id?: string
+          industry?: string | null
+          last_name?: string | null
+          linkedin_url?: string | null
+          phone?: string | null
+          phone_status?: string | null
+          search_filters?: Json | null
+          seniority?: string | null
+          state?: string | null
+          title?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "apollo_leads_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bug_reports: {
         Row: {
           admin_notes: string | null
@@ -1162,56 +1260,246 @@ export type Database = {
           },
         ]
       }
+      lead_credit_purchases: {
+        Row: {
+          created_at: string | null
+          credits_amount: number
+          id: string
+          price_paid: number
+          purchased_by: string
+          stripe_session_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          credits_amount: number
+          id?: string
+          price_paid: number
+          purchased_by: string
+          stripe_session_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string | null
+          credits_amount?: number
+          id?: string
+          price_paid?: number
+          purchased_by?: string
+          stripe_session_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_credit_purchases_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_credits: {
+        Row: {
+          created_at: string | null
+          credits_balance: number
+          id: string
+          last_purchased_at: string | null
+          updated_at: string | null
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          credits_balance?: number
+          id?: string
+          last_purchased_at?: string | null
+          updated_at?: string | null
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string | null
+          credits_balance?: number
+          id?: string
+          last_purchased_at?: string | null
+          updated_at?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_credits_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_list_items: {
+        Row: {
+          added_at: string | null
+          apollo_lead_id: string
+          id: string
+          lead_list_id: string
+        }
+        Insert: {
+          added_at?: string | null
+          apollo_lead_id: string
+          id?: string
+          lead_list_id: string
+        }
+        Update: {
+          added_at?: string | null
+          apollo_lead_id?: string
+          id?: string
+          lead_list_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_list_items_apollo_lead_id_fkey"
+            columns: ["apollo_lead_id"]
+            isOneToOne: false
+            referencedRelation: "apollo_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_list_items_lead_list_id_fkey"
+            columns: ["lead_list_id"]
+            isOneToOne: false
+            referencedRelation: "lead_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_lists: {
+        Row: {
+          created_at: string | null
+          created_by: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string | null
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string | null
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_lists_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
+          apollo_lead_id: string | null
           assigned_to: string | null
+          city: string | null
           company: string | null
+          company_domain: string | null
+          company_linkedin_url: string | null
+          country: string | null
           created_at: string
           created_by: string
+          department: string | null
           email: string | null
+          employee_count: string | null
           first_name: string
           id: string
+          industry: string | null
           last_contacted_at: string | null
           last_name: string
+          linkedin_url: string | null
           notes: string | null
           phone: string | null
+          seniority: string | null
+          source: string | null
+          state: string | null
           title: string | null
           updated_at: string
           workspace_id: string
         }
         Insert: {
+          apollo_lead_id?: string | null
           assigned_to?: string | null
+          city?: string | null
           company?: string | null
+          company_domain?: string | null
+          company_linkedin_url?: string | null
+          country?: string | null
           created_at?: string
           created_by: string
+          department?: string | null
           email?: string | null
+          employee_count?: string | null
           first_name: string
           id?: string
+          industry?: string | null
           last_contacted_at?: string | null
           last_name: string
+          linkedin_url?: string | null
           notes?: string | null
           phone?: string | null
+          seniority?: string | null
+          source?: string | null
+          state?: string | null
           title?: string | null
           updated_at?: string
           workspace_id: string
         }
         Update: {
+          apollo_lead_id?: string | null
           assigned_to?: string | null
+          city?: string | null
           company?: string | null
+          company_domain?: string | null
+          company_linkedin_url?: string | null
+          country?: string | null
           created_at?: string
           created_by?: string
+          department?: string | null
           email?: string | null
+          employee_count?: string | null
           first_name?: string
           id?: string
+          industry?: string | null
           last_contacted_at?: string | null
           last_name?: string
+          linkedin_url?: string | null
           notes?: string | null
           phone?: string | null
+          seniority?: string | null
+          source?: string | null
+          state?: string | null
           title?: string | null
           updated_at?: string
           workspace_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "leads_apollo_lead_id_fkey"
+            columns: ["apollo_lead_id"]
+            isOneToOne: false
+            referencedRelation: "apollo_leads"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "leads_workspace_id_fkey"
             columns: ["workspace_id"]
