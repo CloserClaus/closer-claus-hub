@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ApolloSearchFilters } from './ApolloSearchFilters';
 import { ApolloSearchResults } from './ApolloSearchResults';
@@ -43,7 +43,20 @@ export function ApolloSearchTab() {
     search,
     enrichLeads,
     isEnriching,
+    enrichmentProgress,
+    resetEnrichmentProgress,
   } = useApolloSearch();
+
+  // Reset enrichment progress when selection changes
+  useEffect(() => {
+    if (enrichmentProgress.status === 'complete' || enrichmentProgress.status === 'error') {
+      // Small delay to let user see the result
+      const timer = setTimeout(() => {
+        resetEnrichmentProgress();
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [enrichmentProgress.status, resetEnrichmentProgress]);
 
   const handleSearch = () => {
     search(filters);
@@ -54,6 +67,14 @@ export function ApolloSearchTab() {
     const newFilters = { ...filters, page };
     setFilters(newFilters);
     search(newFilters);
+    setSelectedLeads([]);
+  };
+
+  const handlePerPageChange = (perPage: number) => {
+    const newFilters = { ...filters, per_page: perPage, page: 1 };
+    setFilters(newFilters);
+    search(newFilters);
+    setSelectedLeads([]);
   };
 
   const handleEnrichSelected = async (addToCRM: boolean) => {
@@ -64,7 +85,7 @@ export function ApolloSearchTab() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-      <Card className="h-fit">
+      <Card className="h-fit sticky top-4">
         <CardHeader>
           <CardTitle className="text-lg">Search Filters</CardTitle>
         </CardHeader>
@@ -83,10 +104,12 @@ export function ApolloSearchTab() {
         isLoading={isSearching}
         pagination={pagination}
         onPageChange={handlePageChange}
+        onPerPageChange={handlePerPageChange}
         selectedLeads={selectedLeads}
         onSelectionChange={setSelectedLeads}
         onEnrichSelected={handleEnrichSelected}
         isEnriching={isEnriching}
+        enrichmentProgress={enrichmentProgress}
       />
     </div>
   );
