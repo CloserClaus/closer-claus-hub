@@ -122,3 +122,6 @@ verify_jwt = false
 
 [functions.purchase-lead-credits]
 verify_jwt = false
+
+[functions.apollo-search]
+verify_jwt = false
