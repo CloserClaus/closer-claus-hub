@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -8,13 +8,16 @@ import {
   List,
   LayoutGrid,
   Table as TableIcon,
+  UserPlus,
 } from 'lucide-react';
 import { Tables } from '@/integrations/supabase/types';
 import { ResultsTable } from './ResultsTable';
 import { ResultsPagination } from './ResultsPagination';
 import { EnrichmentDialog } from './EnrichmentDialog';
 import { AddToListDialog } from './AddToListDialog';
+import { ImportToCRMDialog } from './ImportToCRMDialog';
 import { EnrichmentProgress } from '@/hooks/useApolloSearch';
+import { useImportToCRM } from '@/hooks/useImportToCRM';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { LeadCard } from './LeadCard';
 
@@ -55,14 +58,36 @@ export function ApolloSearchResults({
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [showEnrichDialog, setShowEnrichDialog] = useState(false);
   const [showAddToListDialog, setShowAddToListDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+
+  const { importLeads, isImporting, importProgress, resetImportProgress } = useImportToCRM();
 
   const unenrichedSelected = results
     .filter((lead) => selectedLeads.includes(lead.id) && lead.enrichment_status !== 'enriched')
     .length;
 
+  const enrichedSelected = results
+    .filter((lead) => selectedLeads.includes(lead.id) && lead.enrichment_status === 'enriched')
+    .length;
+
   const handleEnrich = async (addToCRM: boolean) => {
     await onEnrichSelected(addToCRM);
   };
+
+  const handleImport = async () => {
+    const enrichedLeadIds = results
+      .filter((lead) => selectedLeads.includes(lead.id) && lead.enrichment_status === 'enriched')
+      .map((lead) => lead.id);
+    await importLeads(enrichedLeadIds);
+  };
+
+  // Reset import progress when dialog closes
+  useEffect(() => {
+    if (!showImportDialog) {
+      const timer = setTimeout(resetImportProgress, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [showImportDialog, resetImportProgress]);
 
   if (isLoading) {
     return (
@@ -134,7 +159,7 @@ export function ApolloSearchResults({
           {selectedLeads.length > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm text-muted-foreground">
-                {selectedLeads.length} selected ({unenrichedSelected} to enrich)
+                {selectedLeads.length} selected
               </span>
               <Button
                 size="sm"
@@ -146,11 +171,20 @@ export function ApolloSearchResults({
               </Button>
               <Button
                 size="sm"
+                variant="outline"
+                onClick={() => setShowImportDialog(true)}
+                disabled={isImporting || enrichedSelected === 0}
+              >
+                <UserPlus className="h-4 w-4 mr-1" />
+                Import to CRM
+              </Button>
+              <Button
+                size="sm"
                 onClick={() => setShowEnrichDialog(true)}
                 disabled={isEnriching || unenrichedSelected === 0}
               >
                 <Sparkles className="h-4 w-4 mr-1" />
-                Enrich Selected
+                Enrich ({unenrichedSelected})
               </Button>
             </div>
           )}
@@ -206,6 +240,16 @@ export function ApolloSearchResults({
         open={showAddToListDialog}
         onOpenChange={setShowAddToListDialog}
         selectedLeadIds={selectedLeads}
+      />
+
+      <ImportToCRMDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        selectedCount={selectedLeads.length}
+        enrichedCount={enrichedSelected}
+        onImport={handleImport}
+        isImporting={isImporting}
+        importProgress={importProgress}
       />
     </>
   );

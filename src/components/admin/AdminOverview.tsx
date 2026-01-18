@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Building2, Users, AlertTriangle, DollarSign, Briefcase, TrendingUp, FileSignature, Phone, GraduationCap, FileCheck, UserCircle, Handshake } from 'lucide-react';
+import { Building2, Users, AlertTriangle, DollarSign, Briefcase, TrendingUp, FileSignature, Phone, GraduationCap, FileCheck, UserCircle, Handshake, Sparkles, Coins } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -59,6 +59,10 @@ export function AdminOverview() {
         { count: trainingCount },
         { count: leadCount },
         { count: callCount },
+        { count: apolloLeadCount },
+        { count: apolloEnrichedCount },
+        { data: apolloCreditsData },
+        { data: leadCreditsData },
       ] = await Promise.all([
         supabase.from('workspaces').select('*', { count: 'exact', head: true }),
         supabase.from('user_roles').select('*', { count: 'exact', head: true }).eq('role', 'sdr'),
@@ -71,10 +75,16 @@ export function AdminOverview() {
         supabase.from('training_materials').select('*', { count: 'exact', head: true }),
         supabase.from('leads').select('*', { count: 'exact', head: true }),
         supabase.from('call_logs').select('*', { count: 'exact', head: true }),
+        supabase.from('apollo_leads').select('*', { count: 'exact', head: true }),
+        supabase.from('apollo_leads').select('*', { count: 'exact', head: true }).eq('enrichment_status', 'enriched'),
+        supabase.from('apollo_leads').select('credits_used').eq('enrichment_status', 'enriched'),
+        supabase.from('lead_credits').select('credits_balance'),
       ]);
 
       // Platform revenue = platform_cut_amount (fallback to 0 for old commissions without it)
       const totalRake = commissions?.reduce((sum, c) => sum + Number(c.platform_cut_amount ?? 0), 0) || 0;
+      const totalCreditsUsed = apolloCreditsData?.reduce((sum, lead) => sum + (lead.credits_used || 0), 0) || 0;
+      const totalCreditsBalance = leadCreditsData?.reduce((sum, lc) => sum + (lc.credits_balance || 0), 0) || 0;
       
       return {
         agencies: agencyCount || 0,
@@ -88,6 +98,10 @@ export function AdminOverview() {
         trainings: trainingCount || 0,
         leads: leadCount || 0,
         calls: callCount || 0,
+        apolloLeads: apolloLeadCount || 0,
+        apolloEnriched: apolloEnrichedCount || 0,
+        apolloCreditsUsed: totalCreditsUsed,
+        totalCreditsBalance: totalCreditsBalance,
       };
     },
   });
@@ -159,6 +173,42 @@ export function AdminOverview() {
       </div>
 
       <div>
+        <h3 className="text-lg font-semibold mb-4">Apollo Lead Marketplace</h3>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            title="Apollo Searches"
+            description="Total leads found"
+            value={String(stats?.apolloLeads || 0)}
+            subtext="All searched leads"
+            icon={Sparkles}
+          />
+          <StatCard
+            title="Enriched Leads"
+            description="With contact data"
+            value={String(stats?.apolloEnriched || 0)}
+            subtext="Leads enriched"
+            icon={Sparkles}
+            variant="success"
+          />
+          <StatCard
+            title="Credits Used"
+            description="Total consumed"
+            value={String(stats?.apolloCreditsUsed || 0)}
+            subtext="Lead credits used"
+            icon={Coins}
+          />
+          <StatCard
+            title="Credits Balance"
+            description="Available platform-wide"
+            value={String(stats?.totalCreditsBalance || 0)}
+            subtext="Total remaining"
+            icon={Coins}
+            variant="success"
+          />
+        </div>
+      </div>
+
+      <div>
         <h3 className="text-lg font-semibold mb-4">Platform Activity</h3>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <StatCard
@@ -176,7 +226,7 @@ export function AdminOverview() {
             icon={FileCheck}
           />
           <StatCard
-            title="Leads"
+            title="CRM Leads"
             description="Total in CRM"
             value={String(stats?.leads || 0)}
             subtext="All leads"
