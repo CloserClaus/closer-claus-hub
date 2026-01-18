@@ -34,6 +34,7 @@ import Changelog from "./pages/Changelog";
 import Roadmap from "./pages/Roadmap";
 import NotFound from "./pages/NotFound";
 import Landing from "./pages/Landing";
+import Leads from "./pages/Leads";
 import { HelpWidget } from "@/components/help/HelpWidget";
 
 const queryClient = new QueryClient();
@@ -61,6 +62,7 @@ const App = () => (
                 <Route path="/jobs/:id" element={<JobDetail />} />
                 <Route path="/jobs/:id/edit" element={<JobForm />} />
                 <Route path="/crm" element={<CRM />} />
+                <Route path="/leads" element={<Leads />} />
                 <Route path="/conversations" element={<Conversations />} />
                 <Route path="/dialer" element={<Dialer />} />
                 <Route path="/trainings" element={<Training />} />
