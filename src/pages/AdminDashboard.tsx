@@ -20,6 +20,7 @@ import { BugReportsTable } from '@/components/admin/BugReportsTable';
 import { FeatureRequestsTable } from '@/components/admin/FeatureRequestsTable';
 import { SupportTicketsTable } from '@/components/admin/SupportTicketsTable';
 import { SalaryPaymentsTable } from '@/components/admin/SalaryPaymentsTable';
+import { ApolloLeadsTable } from '@/components/admin/ApolloLeadsTable';
 
 const tabTitles: Record<string, string> = {
   overview: 'Platform Overview',
@@ -27,7 +28,8 @@ const tabTitles: Record<string, string> = {
   sdrs: 'SDRs',
   jobs: 'Job Posts',
   applications: 'Job Applications',
-  leads: 'Leads',
+  leads: 'CRM Leads',
+  apollo: 'Apollo Leads',
   deals: 'Deals',
   contracts: 'Contracts',
   calls: 'Call Logs',
@@ -73,6 +75,8 @@ export default function AdminDashboard() {
         return <ApplicationsTable />;
       case 'leads':
         return <LeadsTable />;
+      case 'apollo':
+        return <ApolloLeadsTable />;
       case 'deals':
         return <DealsTable />;
       case 'contracts':
