@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -30,11 +30,31 @@ interface PaginationInfo {
   total_pages: number;
 }
 
+export interface EnrichmentProgress {
+  current: number;
+  total: number;
+  status: 'idle' | 'enriching' | 'complete' | 'error';
+  message?: string;
+}
+
 export function useApolloSearch() {
   const { currentWorkspace } = useWorkspace();
   const queryClient = useQueryClient();
   const [searchResults, setSearchResults] = useState<ApolloLead[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
+  const [enrichmentProgress, setEnrichmentProgress] = useState<EnrichmentProgress>({
+    current: 0,
+    total: 0,
+    status: 'idle',
+  });
+
+  const resetEnrichmentProgress = useCallback(() => {
+    setEnrichmentProgress({
+      current: 0,
+      total: 0,
+      status: 'idle',
+    });
+  }, []);
 
   const searchMutation = useMutation({
     mutationFn: async (filters: SearchFilters) => {
@@ -74,6 +94,13 @@ export function useApolloSearch() {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session) throw new Error('Not authenticated');
 
+      // Set initial progress
+      setEnrichmentProgress({
+        current: 0,
+        total: leadIds.length,
+        status: 'enriching',
+      });
+
       const response = await supabase.functions.invoke('apollo-enrich', {
         body: {
           workspace_id: currentWorkspace.id,
@@ -89,6 +116,14 @@ export function useApolloSearch() {
       return response.data;
     },
     onSuccess: (data) => {
+      // Update progress to complete
+      setEnrichmentProgress({
+        current: data.enriched_count || 0,
+        total: data.enriched_count || 0,
+        status: 'complete',
+        message: `Successfully enriched ${data.enriched_count} leads! ${data.credits_used} credits used, ${data.remaining_credits} remaining.`,
+      });
+
       toast.success(
         `Enriched ${data.enriched_count} leads (${data.credits_used} credits used). ${data.remaining_credits} credits remaining.`
       );
@@ -106,6 +141,11 @@ export function useApolloSearch() {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
     },
     onError: (error) => {
+      setEnrichmentProgress((prev) => ({
+        ...prev,
+        status: 'error',
+        message: error.message,
+      }));
       toast.error('Enrichment failed: ' + error.message);
     },
   });
@@ -125,5 +165,7 @@ export function useApolloSearch() {
     search,
     enrichLeads,
     isEnriching: enrichMutation.isPending,
+    enrichmentProgress,
+    resetEnrichmentProgress,
   };
 }
