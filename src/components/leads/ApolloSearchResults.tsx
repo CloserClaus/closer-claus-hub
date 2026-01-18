@@ -5,7 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Users as UsersIcon,
   Sparkles,
-  UserPlus,
+  List,
   LayoutGrid,
   Table as TableIcon,
 } from 'lucide-react';
@@ -13,6 +13,7 @@ import { Tables } from '@/integrations/supabase/types';
 import { ResultsTable } from './ResultsTable';
 import { ResultsPagination } from './ResultsPagination';
 import { EnrichmentDialog } from './EnrichmentDialog';
+import { AddToListDialog } from './AddToListDialog';
 import { EnrichmentProgress } from '@/hooks/useApolloSearch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { LeadCard } from './LeadCard';
@@ -53,6 +54,7 @@ export function ApolloSearchResults({
 }: ApolloSearchResultsProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [showEnrichDialog, setShowEnrichDialog] = useState(false);
+  const [showAddToListDialog, setShowAddToListDialog] = useState(false);
 
   const unenrichedSelected = results
     .filter((lead) => selectedLeads.includes(lead.id) && lead.enrichment_status !== 'enriched')
@@ -136,6 +138,14 @@ export function ApolloSearchResults({
               </span>
               <Button
                 size="sm"
+                variant="outline"
+                onClick={() => setShowAddToListDialog(true)}
+              >
+                <List className="h-4 w-4 mr-1" />
+                Add to List
+              </Button>
+              <Button
+                size="sm"
                 onClick={() => setShowEnrichDialog(true)}
                 disabled={isEnriching || unenrichedSelected === 0}
               >
@@ -190,6 +200,12 @@ export function ApolloSearchResults({
         onEnrich={handleEnrich}
         isEnriching={isEnriching}
         enrichmentProgress={enrichmentProgress}
+      />
+
+      <AddToListDialog
+        open={showAddToListDialog}
+        onOpenChange={setShowAddToListDialog}
+        selectedLeadIds={selectedLeads}
       />
     </>
   );
