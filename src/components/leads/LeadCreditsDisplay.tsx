@@ -194,7 +194,7 @@ function PurchaseDialogContent({ onPurchase, purchasingPackage, creditsBalance }
               <div className="flex flex-col items-start">
                 <span className="font-semibold">{pkg.leads} Leads</span>
                 <span className="text-xs text-muted-foreground">
-                  ${(pkg.price / pkg.leads).toFixed(2)} per lead
+                  Enrich {pkg.leads} leads
                 </span>
               </div>
               <div className="flex items-center gap-2">
