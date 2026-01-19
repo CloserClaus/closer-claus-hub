@@ -8,12 +8,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspace } from "@/hooks/useWorkspace";
 
-// Lead credit packages: $1 = 5 credits, 5 credits = 1 lead
+// Lead packages: 5 credits = 1 lead, priced at $1 per lead
 const CREDIT_PACKAGES = [
-  { credits: 100, price: 20, leads: 20, popular: false },
-  { credits: 250, price: 50, leads: 50, popular: false },
-  { credits: 500, price: 100, leads: 100, popular: true },
-  { credits: 1000, price: 200, leads: 200, popular: false },
+  { credits: 500, price: 100, leads: 100, popular: false },
+  { credits: 1250, price: 250, leads: 250, popular: false },
+  { credits: 2500, price: 500, leads: 500, popular: true },
+  { credits: 5000, price: 1000, leads: 1000, popular: false },
 ];
 
 interface LeadCreditsDisplayProps {
@@ -139,7 +139,7 @@ export function LeadCreditsDisplay({ compact = false }: LeadCreditsDisplayProps)
         <DialogTrigger asChild>
           <Button className="w-full gap-2">
             <Plus className="h-4 w-4" />
-            Buy More Credits
+            Buy Leads
           </Button>
         </DialogTrigger>
         <PurchaseDialogContent 
@@ -164,10 +164,10 @@ function PurchaseDialogContent({ onPurchase, purchasingPackage, creditsBalance }
       <DialogHeader>
         <DialogTitle className="flex items-center gap-2">
           <Coins className="h-5 w-5 text-primary" />
-          Buy Lead Credits
+          Buy Leads
         </DialogTitle>
         <DialogDescription>
-          Purchase credits to enrich leads with full contact data. 5 credits = 1 fully enriched lead (email + phone).
+          Purchase leads to get full contact data including email and phone number.
         </DialogDescription>
       </DialogHeader>
 
@@ -192,9 +192,9 @@ function PurchaseDialogContent({ onPurchase, purchasingPackage, creditsBalance }
                 </Badge>
               )}
               <div className="flex flex-col items-start">
-                <span className="font-semibold">{pkg.credits} credits</span>
+                <span className="font-semibold">{pkg.leads} Leads</span>
                 <span className="text-xs text-muted-foreground">
-                  Enrich {pkg.leads} leads
+                  ${(pkg.price / pkg.leads).toFixed(2)} per lead
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -209,7 +209,7 @@ function PurchaseDialogContent({ onPurchase, purchasingPackage, creditsBalance }
         </div>
 
         <p className="text-xs text-muted-foreground mt-4 text-center">
-          Pricing: $1 = 5 credits. Only fully enriched leads (with both email and phone) count toward your purchase.
+          Only fully enriched leads (with both email and phone) count toward your purchase.
         </p>
       </div>
     </DialogContent>

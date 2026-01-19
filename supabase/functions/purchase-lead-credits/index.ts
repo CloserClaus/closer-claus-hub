@@ -6,12 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Lead credit packages: $1 = 5 credits, 5 credits = 1 lead
+// Lead packages: 5 credits = 1 lead, $1 per lead
 const CREDIT_PACKAGES = [
-  { credits: 100, price: 20, leads: 20 },   // $20 for 100 credits (20 leads)
-  { credits: 250, price: 50, leads: 50 },   // $50 for 250 credits (50 leads)
-  { credits: 500, price: 100, leads: 100 }, // $100 for 500 credits (100 leads)
-  { credits: 1000, price: 200, leads: 200 }, // $200 for 1000 credits (200 leads)
+  { credits: 500, price: 100, leads: 100 },   // $100 for 100 leads
+  { credits: 1250, price: 250, leads: 250 },  // $250 for 250 leads
+  { credits: 2500, price: 500, leads: 500 },  // $500 for 500 leads
+  { credits: 5000, price: 1000, leads: 1000 }, // $1000 for 1000 leads
 ];
 
 serve(async (req) => {
@@ -78,8 +78,8 @@ serve(async (req) => {
     if (!selectedPackage) {
       return new Response(
         JSON.stringify({ 
-          error: 'Invalid credits amount. Available packages: 100, 250, 500, 1000 credits',
-          available_packages: CREDIT_PACKAGES 
+          error: 'Invalid package. Available lead packages: 100, 250, 500, 1000 leads',
+          available_packages: CREDIT_PACKAGES
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
