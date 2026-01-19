@@ -192,7 +192,7 @@ function PurchaseDialogContent({ onPurchase, purchasingPackage, creditsBalance }
                 </Badge>
               )}
               <div className="flex flex-col items-start">
-                <span className="font-semibold">{pkg.leads} Leads</span>
+                <span className="font-semibold">{pkg.credits} Credits</span>
                 <span className="text-xs text-muted-foreground">
                   Enrich {pkg.leads} leads
                 </span>
