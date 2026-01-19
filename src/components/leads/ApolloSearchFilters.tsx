@@ -319,30 +319,6 @@ export function ApolloSearchFilters({
             />
           </div>
 
-          <Separator className="my-3" />
-
-          {/* Contact Data Filters */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium">Contact Data Requirements</Label>
-            
-            <div className="flex items-center justify-between p-2 rounded-md bg-muted/30">
-              <Label htmlFor="has-email" className="text-sm cursor-pointer">Has Email</Label>
-              <Switch 
-                id="has-email"
-                checked={filters.has_email === true}
-                onCheckedChange={(checked) => updateFilter('has_email', checked ? true : null)}
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-2 rounded-md bg-muted/30">
-              <Label htmlFor="has-phone" className="text-sm cursor-pointer">Has Phone</Label>
-              <Switch 
-                id="has-phone"
-                checked={filters.has_phone === true}
-                onCheckedChange={(checked) => updateFilter('has_phone', checked ? true : null)}
-              />
-            </div>
-          </div>
         </CollapsibleContent>
       </Collapsible>
 
