@@ -415,13 +415,6 @@ export const TECHNOLOGY_OPTIONS: ComboboxOption[] = [
   { value: 'namely', label: 'Namely', group: 'HR' },
 ];
 
-// Email Status Options
-export const EMAIL_STATUS_OPTIONS: ComboboxOption[] = [
-  { value: 'verified', label: 'Verified' },
-  { value: 'guessed', label: 'Guessed' },
-  { value: 'unavailable', label: 'Unavailable' },
-];
-
 // Company Type Options
 export const COMPANY_TYPE_OPTIONS: ComboboxOption[] = [
   { value: 'public_company', label: 'Public Company' },
