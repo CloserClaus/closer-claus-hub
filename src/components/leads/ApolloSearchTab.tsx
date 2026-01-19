@@ -10,12 +10,17 @@ export interface SearchFilters {
   person_departments: string[];
   person_locations: string[];
   person_country: string[];
+  person_state: string[];
+  person_city: string[];
   organization_industry_tag_ids: string[];
   organization_num_employees_ranges: string[];
-  revenue_range_min?: number;
-  revenue_range_max?: number;
-  organization_founded_year_min?: number;
-  organization_founded_year_max?: number;
+  revenue_range: string[];
+  founding_year_range: string[];
+  technologies: string[];
+  contact_email_status: string[];
+  company_type: string[];
+  keywords: string[];
+  funding_stage: string[];
   page: number;
   per_page: number;
 }
@@ -26,8 +31,17 @@ const defaultFilters: SearchFilters = {
   person_departments: [],
   person_locations: [],
   person_country: [],
+  person_state: [],
+  person_city: [],
   organization_industry_tag_ids: [],
   organization_num_employees_ranges: [],
+  revenue_range: [],
+  founding_year_range: [],
+  technologies: [],
+  contact_email_status: [],
+  company_type: [],
+  keywords: [],
+  funding_stage: [],
   page: 1,
   per_page: 25,
 };
