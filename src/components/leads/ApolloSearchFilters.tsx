@@ -54,7 +54,6 @@ export function ApolloSearchFilters({
       person_country: [],
       organization_industry_tag_ids: [],
       organization_num_employees_ranges: [],
-      organization_locations: [],
       revenue_range: [],
       founding_year_range: [],
       technologies: [],
