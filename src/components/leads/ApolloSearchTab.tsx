@@ -143,7 +143,7 @@ export const DUMMY_RESULTS = [
 export function ApolloSearchTab() {
   const [filters, setFilters] = useState<SearchFilters>(defaultFilters);
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
-  const [showDemoResults, setShowDemoResults] = useState(false);
+  const [showDemoResults, setShowDemoResults] = useState(true); // Show demo results by default
   const [isDemoSearching, setIsDemoSearching] = useState(false);
   
   const { 
