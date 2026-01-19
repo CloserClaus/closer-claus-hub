@@ -1,11 +1,28 @@
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { X, Search, RotateCcw } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Search, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
 import { SearchFilters } from './ApolloSearchTab';
 import { useState } from 'react';
+import { MultiSelectCombobox } from '@/components/ui/multi-select-combobox';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  SENIORITY_OPTIONS,
+  DEPARTMENT_OPTIONS,
+  EMPLOYEE_RANGE_OPTIONS,
+  COUNTRY_OPTIONS,
+  US_STATE_OPTIONS,
+  US_CITY_OPTIONS,
+  INDUSTRY_OPTIONS,
+  REVENUE_OPTIONS,
+  FOUNDING_YEAR_OPTIONS,
+  TECHNOLOGY_OPTIONS,
+  EMAIL_STATUS_OPTIONS,
+  COMPANY_TYPE_OPTIONS,
+  KEYWORD_OPTIONS,
+  JOB_TITLE_SUGGESTIONS,
+  FUNDING_OPTIONS,
+} from './apolloFilterOptions';
 
 interface ApolloSearchFiltersProps {
   filters: SearchFilters;
@@ -14,142 +31,16 @@ interface ApolloSearchFiltersProps {
   isSearching: boolean;
 }
 
-const SENIORITY_OPTIONS = [
-  { value: 'owner', label: 'Owner' },
-  { value: 'founder', label: 'Founder' },
-  { value: 'c_suite', label: 'C-Suite' },
-  { value: 'partner', label: 'Partner' },
-  { value: 'vp', label: 'VP' },
-  { value: 'head', label: 'Head' },
-  { value: 'director', label: 'Director' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'senior', label: 'Senior' },
-  { value: 'entry', label: 'Entry' },
-  { value: 'intern', label: 'Intern' },
-];
-
-const DEPARTMENT_OPTIONS = [
-  { value: 'engineering', label: 'Engineering' },
-  { value: 'sales', label: 'Sales' },
-  { value: 'marketing', label: 'Marketing' },
-  { value: 'finance', label: 'Finance' },
-  { value: 'human_resources', label: 'Human Resources' },
-  { value: 'operations', label: 'Operations' },
-  { value: 'information_technology', label: 'IT' },
-  { value: 'legal', label: 'Legal' },
-  { value: 'consulting', label: 'Consulting' },
-  { value: 'product_management', label: 'Product' },
-  { value: 'customer_success', label: 'Customer Success' },
-];
-
-const EMPLOYEE_RANGE_OPTIONS = [
-  { value: '1,10', label: '1-10' },
-  { value: '11,20', label: '11-20' },
-  { value: '21,50', label: '21-50' },
-  { value: '51,100', label: '51-100' },
-  { value: '101,200', label: '101-200' },
-  { value: '201,500', label: '201-500' },
-  { value: '501,1000', label: '501-1,000' },
-  { value: '1001,2000', label: '1,001-2,000' },
-  { value: '2001,5000', label: '2,001-5,000' },
-  { value: '5001,10000', label: '5,001-10,000' },
-  { value: '10001,', label: '10,000+' },
-];
-
-const COUNTRY_OPTIONS = [
-  { value: 'United States', label: 'United States' },
-  { value: 'United Kingdom', label: 'United Kingdom' },
-  { value: 'Canada', label: 'Canada' },
-  { value: 'Australia', label: 'Australia' },
-  { value: 'Germany', label: 'Germany' },
-  { value: 'France', label: 'France' },
-  { value: 'Netherlands', label: 'Netherlands' },
-  { value: 'India', label: 'India' },
-  { value: 'Singapore', label: 'Singapore' },
-  { value: 'Brazil', label: 'Brazil' },
-];
-
 export function ApolloSearchFilters({
   filters,
   onFiltersChange,
   onSearch,
   isSearching,
 }: ApolloSearchFiltersProps) {
-  const [titleInput, setTitleInput] = useState('');
-  const [locationInput, setLocationInput] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
-  const addTitle = () => {
-    if (titleInput.trim() && !filters.person_titles.includes(titleInput.trim())) {
-      onFiltersChange({
-        ...filters,
-        person_titles: [...filters.person_titles, titleInput.trim()],
-      });
-      setTitleInput('');
-    }
-  };
-
-  const removeTitle = (title: string) => {
-    onFiltersChange({
-      ...filters,
-      person_titles: filters.person_titles.filter((t) => t !== title),
-    });
-  };
-
-  const addLocation = () => {
-    if (locationInput.trim() && !filters.person_locations.includes(locationInput.trim())) {
-      onFiltersChange({
-        ...filters,
-        person_locations: [...filters.person_locations, locationInput.trim()],
-      });
-      setLocationInput('');
-    }
-  };
-
-  const removeLocation = (location: string) => {
-    onFiltersChange({
-      ...filters,
-      person_locations: filters.person_locations.filter((l) => l !== location),
-    });
-  };
-
-  const toggleSeniority = (value: string) => {
-    const current = filters.person_seniorities;
-    onFiltersChange({
-      ...filters,
-      person_seniorities: current.includes(value)
-        ? current.filter((s) => s !== value)
-        : [...current, value],
-    });
-  };
-
-  const toggleDepartment = (value: string) => {
-    const current = filters.person_departments;
-    onFiltersChange({
-      ...filters,
-      person_departments: current.includes(value)
-        ? current.filter((d) => d !== value)
-        : [...current, value],
-    });
-  };
-
-  const toggleEmployeeRange = (value: string) => {
-    const current = filters.organization_num_employees_ranges;
-    onFiltersChange({
-      ...filters,
-      organization_num_employees_ranges: current.includes(value)
-        ? current.filter((r) => r !== value)
-        : [...current, value],
-    });
-  };
-
-  const toggleCountry = (value: string) => {
-    const current = filters.person_country;
-    onFiltersChange({
-      ...filters,
-      person_country: current.includes(value)
-        ? current.filter((c) => c !== value)
-        : [...current, value],
-    });
+  const updateFilter = <K extends keyof SearchFilters>(key: K, value: SearchFilters[K]) => {
+    onFiltersChange({ ...filters, [key]: value });
   };
 
   const resetFilters = () => {
@@ -158,151 +49,238 @@ export function ApolloSearchFilters({
       person_seniorities: [],
       person_departments: [],
       person_locations: [],
+      person_city: [],
+      person_state: [],
       person_country: [],
       organization_industry_tag_ids: [],
       organization_num_employees_ranges: [],
+      organization_locations: [],
+      revenue_range: [],
+      founding_year_range: [],
+      technologies: [],
+      contact_email_status: [],
+      company_type: [],
+      keywords: [],
+      funding_stage: [],
       page: 1,
       per_page: 25,
     });
-    setTitleInput('');
-    setLocationInput('');
   };
 
   const hasFilters =
-    filters.person_titles.length > 0 ||
-    filters.person_seniorities.length > 0 ||
-    filters.person_departments.length > 0 ||
-    filters.person_locations.length > 0 ||
-    filters.person_country.length > 0 ||
-    filters.organization_num_employees_ranges.length > 0;
+    (filters.person_titles?.length || 0) > 0 ||
+    (filters.person_seniorities?.length || 0) > 0 ||
+    (filters.person_departments?.length || 0) > 0 ||
+    (filters.person_locations?.length || 0) > 0 ||
+    (filters.person_city?.length || 0) > 0 ||
+    (filters.person_state?.length || 0) > 0 ||
+    (filters.person_country?.length || 0) > 0 ||
+    (filters.organization_industry_tag_ids?.length || 0) > 0 ||
+    (filters.organization_num_employees_ranges?.length || 0) > 0 ||
+    (filters.revenue_range?.length || 0) > 0 ||
+    (filters.founding_year_range?.length || 0) > 0 ||
+    (filters.technologies?.length || 0) > 0 ||
+    (filters.contact_email_status?.length || 0) > 0 ||
+    (filters.company_type?.length || 0) > 0 ||
+    (filters.keywords?.length || 0) > 0 ||
+    (filters.funding_stage?.length || 0) > 0;
 
   return (
-    <div className="space-y-5">
-      {/* Job Titles */}
-      <div className="space-y-2">
-        <Label>Job Titles</Label>
-        <div className="flex gap-2">
-          <Input
-            placeholder="e.g. CEO, Sales Director"
-            value={titleInput}
-            onChange={(e) => setTitleInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addTitle()}
+    <div className="space-y-4">
+      {/* Person Filters */}
+      <div className="space-y-3">
+        <h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">Person Filters</h3>
+        
+        <div className="space-y-2">
+          <Label>Job Titles</Label>
+          <MultiSelectCombobox
+            options={JOB_TITLE_SUGGESTIONS}
+            selected={filters.person_titles || []}
+            onSelectionChange={(val) => updateFilter('person_titles', val)}
+            placeholder="Search job titles..."
+            searchPlaceholder="Type to search or add custom..."
+            allowCustom
           />
-          <Button type="button" size="sm" onClick={addTitle}>
-            Add
-          </Button>
         </div>
-        {filters.person_titles.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {filters.person_titles.map((title) => (
-              <Badge key={title} variant="secondary" className="gap-1">
-                {title}
-                <X
-                  className="h-3 w-3 cursor-pointer"
-                  onClick={() => removeTitle(title)}
-                />
-              </Badge>
-            ))}
-          </div>
-        )}
-      </div>
 
-      {/* Seniority */}
-      <div className="space-y-2">
-        <Label>Seniority</Label>
-        <div className="flex flex-wrap gap-1">
-          {SENIORITY_OPTIONS.map((option) => (
-            <Badge
-              key={option.value}
-              variant={filters.person_seniorities.includes(option.value) ? 'default' : 'outline'}
-              className="cursor-pointer"
-              onClick={() => toggleSeniority(option.value)}
-            >
-              {option.label}
-            </Badge>
-          ))}
-        </div>
-      </div>
-
-      {/* Department */}
-      <div className="space-y-2">
-        <Label>Department</Label>
-        <div className="flex flex-wrap gap-1">
-          {DEPARTMENT_OPTIONS.map((option) => (
-            <Badge
-              key={option.value}
-              variant={filters.person_departments.includes(option.value) ? 'default' : 'outline'}
-              className="cursor-pointer"
-              onClick={() => toggleDepartment(option.value)}
-            >
-              {option.label}
-            </Badge>
-          ))}
-        </div>
-      </div>
-
-      {/* Location */}
-      <div className="space-y-2">
-        <Label>Location (City/State)</Label>
-        <div className="flex gap-2">
-          <Input
-            placeholder="e.g. San Francisco, California"
-            value={locationInput}
-            onChange={(e) => setLocationInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addLocation()}
+        <div className="space-y-2">
+          <Label>Seniority</Label>
+          <MultiSelectCombobox
+            options={SENIORITY_OPTIONS}
+            selected={filters.person_seniorities || []}
+            onSelectionChange={(val) => updateFilter('person_seniorities', val)}
+            placeholder="Select seniority levels..."
+            searchPlaceholder="Search seniority..."
           />
-          <Button type="button" size="sm" onClick={addLocation}>
-            Add
+        </div>
+
+        <div className="space-y-2">
+          <Label>Department</Label>
+          <MultiSelectCombobox
+            options={DEPARTMENT_OPTIONS}
+            selected={filters.person_departments || []}
+            onSelectionChange={(val) => updateFilter('person_departments', val)}
+            placeholder="Select departments..."
+            searchPlaceholder="Search departments..."
+          />
+        </div>
+      </div>
+
+      {/* Location Filters */}
+      <div className="space-y-3">
+        <h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">Location</h3>
+        
+        <div className="space-y-2">
+          <Label>Country</Label>
+          <MultiSelectCombobox
+            options={COUNTRY_OPTIONS}
+            selected={filters.person_country || []}
+            onSelectionChange={(val) => updateFilter('person_country', val)}
+            placeholder="Select countries..."
+            searchPlaceholder="Type to search countries..."
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>State / Region</Label>
+          <MultiSelectCombobox
+            options={US_STATE_OPTIONS}
+            selected={filters.person_state || []}
+            onSelectionChange={(val) => updateFilter('person_state', val)}
+            placeholder="Select states..."
+            searchPlaceholder="Type to search states..."
+            allowCustom
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>City</Label>
+          <MultiSelectCombobox
+            options={US_CITY_OPTIONS}
+            selected={filters.person_city || []}
+            onSelectionChange={(val) => updateFilter('person_city', val)}
+            placeholder="Select cities..."
+            searchPlaceholder="Type to search or add city..."
+            allowCustom
+          />
+        </div>
+      </div>
+
+      {/* Company Filters */}
+      <div className="space-y-3">
+        <h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">Company</h3>
+        
+        <div className="space-y-2">
+          <Label>Industry</Label>
+          <MultiSelectCombobox
+            options={INDUSTRY_OPTIONS}
+            selected={filters.organization_industry_tag_ids || []}
+            onSelectionChange={(val) => updateFilter('organization_industry_tag_ids', val)}
+            placeholder="Select industries..."
+            searchPlaceholder="Type to search industries..."
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Company Size</Label>
+          <MultiSelectCombobox
+            options={EMPLOYEE_RANGE_OPTIONS}
+            selected={filters.organization_num_employees_ranges || []}
+            onSelectionChange={(val) => updateFilter('organization_num_employees_ranges', val)}
+            placeholder="Select employee ranges..."
+            searchPlaceholder="Search company sizes..."
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Revenue</Label>
+          <MultiSelectCombobox
+            options={REVENUE_OPTIONS}
+            selected={filters.revenue_range || []}
+            onSelectionChange={(val) => updateFilter('revenue_range', val)}
+            placeholder="Select revenue ranges..."
+            searchPlaceholder="Search revenue..."
+          />
+        </div>
+      </div>
+
+      {/* Advanced Filters */}
+      <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" size="sm" className="w-full justify-between">
+            Advanced Filters
+            {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </Button>
-        </div>
-        {filters.person_locations.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {filters.person_locations.map((location) => (
-              <Badge key={location} variant="secondary" className="gap-1">
-                {location}
-                <X
-                  className="h-3 w-3 cursor-pointer"
-                  onClick={() => removeLocation(location)}
-                />
-              </Badge>
-            ))}
+        </CollapsibleTrigger>
+        <CollapsibleContent className="space-y-4 pt-3">
+          <div className="space-y-2">
+            <Label>Technologies Used</Label>
+            <MultiSelectCombobox
+              options={TECHNOLOGY_OPTIONS}
+              selected={filters.technologies || []}
+              onSelectionChange={(val) => updateFilter('technologies', val)}
+              placeholder="Select technologies..."
+              searchPlaceholder="Search tech stack..."
+            />
           </div>
-        )}
-      </div>
 
-      {/* Country */}
-      <div className="space-y-2">
-        <Label>Country</Label>
-        <div className="flex flex-wrap gap-1">
-          {COUNTRY_OPTIONS.map((option) => (
-            <Badge
-              key={option.value}
-              variant={filters.person_country.includes(option.value) ? 'default' : 'outline'}
-              className="cursor-pointer"
-              onClick={() => toggleCountry(option.value)}
-            >
-              {option.label}
-            </Badge>
-          ))}
-        </div>
-      </div>
+          <div className="space-y-2">
+            <Label>Company Type</Label>
+            <MultiSelectCombobox
+              options={COMPANY_TYPE_OPTIONS}
+              selected={filters.company_type || []}
+              onSelectionChange={(val) => updateFilter('company_type', val)}
+              placeholder="Select company types..."
+              searchPlaceholder="Search company types..."
+            />
+          </div>
 
-      {/* Company Size */}
-      <div className="space-y-2">
-        <Label>Company Size (Employees)</Label>
-        <div className="flex flex-wrap gap-1">
-          {EMPLOYEE_RANGE_OPTIONS.map((option) => (
-            <Badge
-              key={option.value}
-              variant={filters.organization_num_employees_ranges.includes(option.value) ? 'default' : 'outline'}
-              className="cursor-pointer"
-              onClick={() => toggleEmployeeRange(option.value)}
-            >
-              {option.label}
-            </Badge>
-          ))}
-        </div>
-      </div>
+          <div className="space-y-2">
+            <Label>Funding Stage</Label>
+            <MultiSelectCombobox
+              options={FUNDING_OPTIONS}
+              selected={filters.funding_stage || []}
+              onSelectionChange={(val) => updateFilter('funding_stage', val)}
+              placeholder="Select funding stages..."
+              searchPlaceholder="Search funding..."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Year Founded</Label>
+            <MultiSelectCombobox
+              options={FOUNDING_YEAR_OPTIONS}
+              selected={filters.founding_year_range || []}
+              onSelectionChange={(val) => updateFilter('founding_year_range', val)}
+              placeholder="Select founding year range..."
+              searchPlaceholder="Search years..."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Keywords</Label>
+            <MultiSelectCombobox
+              options={KEYWORD_OPTIONS}
+              selected={filters.keywords || []}
+              onSelectionChange={(val) => updateFilter('keywords', val)}
+              placeholder="Select keywords..."
+              searchPlaceholder="Search or add keywords..."
+              allowCustom
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Email Status</Label>
+            <MultiSelectCombobox
+              options={EMAIL_STATUS_OPTIONS}
+              selected={filters.contact_email_status || []}
+              onSelectionChange={(val) => updateFilter('contact_email_status', val)}
+              placeholder="Select email status..."
+              searchPlaceholder="Search..."
+            />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Actions */}
       <div className="flex gap-2 pt-4">
