@@ -91,7 +91,8 @@ const generateDummyLeads = (count: number) => {
     const companyIndex = getRandomNumber(0, companies.length - 1);
     const company = companies[companyIndex];
     const domain = companyDomains[companyIndex];
-    const isEnriched = Math.random() < 0.3; // 30% enriched
+    // All leads start as unenriched so users can see the full flow
+    const isEnriched = false;
     
     const linkedinHandle = `${firstName.toLowerCase()}-${lastName.toLowerCase()}-${getRandomNumber(10000, 99999)}`;
     const companyLinkedinHandle = company.toLowerCase().replace(/[^a-z0-9]/g, '');
