@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { useAuth } from '@/hooks/useAuth';
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { List, Plus, Search, Loader2 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { List, Plus, Search, Loader2, FolderPlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
 
@@ -36,9 +39,13 @@ export function AddToListDialog({
   onSuccess,
 }: AddToListDialogProps) {
   const { currentWorkspace } = useWorkspace();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [selectedLists, setSelectedLists] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newListName, setNewListName] = useState('');
+  const [newListDescription, setNewListDescription] = useState('');
 
   const { data: lists, isLoading } = useQuery({
     queryKey: ['lead-lists', currentWorkspace?.id],
@@ -54,6 +61,39 @@ export function AddToListDialog({
       return data;
     },
     enabled: open && !!currentWorkspace?.id,
+  });
+
+  const createListMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentWorkspace?.id || !user?.id || !newListName.trim()) {
+        throw new Error('Missing required data');
+      }
+
+      const { data, error } = await supabase
+        .from('lead_lists')
+        .insert({
+          name: newListName.trim(),
+          description: newListDescription.trim() || null,
+          workspace_id: currentWorkspace.id,
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (newList) => {
+      queryClient.invalidateQueries({ queryKey: ['lead-lists'] });
+      toast.success(`List "${newList.name}" created`);
+      setSelectedLists(prev => [...prev, newList.id]);
+      setNewListName('');
+      setNewListDescription('');
+      setShowCreateForm(false);
+    },
+    onError: (error) => {
+      toast.error('Failed to create list: ' + error.message);
+    },
   });
 
   const addToListsMutation = useMutation({
@@ -105,6 +145,11 @@ export function AddToListDialog({
     list.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleCreateList = () => {
+    if (!newListName.trim()) return;
+    createListMutation.mutate();
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -119,6 +164,73 @@ export function AddToListDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {/* Create New List Form */}
+          {showCreateForm ? (
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <FolderPlus className="h-4 w-4" />
+                  Create New List
+                </Label>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => {
+                    setShowCreateForm(false);
+                    setNewListName('');
+                    setNewListDescription('');
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="space-y-2">
+                <Input
+                  placeholder="List name *"
+                  value={newListName}
+                  onChange={(e) => setNewListName(e.target.value)}
+                  autoFocus
+                />
+                <Textarea
+                  placeholder="Description (optional)"
+                  value={newListDescription}
+                  onChange={(e) => setNewListDescription(e.target.value)}
+                  rows={2}
+                  className="resize-none"
+                />
+              </div>
+              <Button
+                size="sm"
+                onClick={handleCreateList}
+                disabled={!newListName.trim() || createListMutation.isPending}
+                className="w-full"
+              >
+                {createListMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create List
+                  </>
+                )}
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCreateForm(true)}
+              className="w-full"
+            >
+              <FolderPlus className="h-4 w-4 mr-2" />
+              Create New List
+            </Button>
+          )}
+
           {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -131,7 +243,7 @@ export function AddToListDialog({
           </div>
 
           {/* Lists */}
-          <ScrollArea className="h-[250px] rounded-md border">
+          <ScrollArea className="h-[200px] rounded-md border">
             {isLoading ? (
               <div className="p-4 space-y-3">
                 {[...Array(4)].map((_, i) => (
@@ -147,6 +259,16 @@ export function AddToListDialog({
                 <p className="text-sm">
                   {lists?.length === 0 ? 'No lists created yet' : 'No matching lists'}
                 </p>
+                {lists?.length === 0 && !showCreateForm && (
+                  <Button
+                    variant="link"
+                    size="sm"
+                    onClick={() => setShowCreateForm(true)}
+                    className="mt-2"
+                  >
+                    Create your first list
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="p-2 space-y-1">
