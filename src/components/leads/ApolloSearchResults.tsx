@@ -173,41 +173,61 @@ export function ApolloSearchResults({
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-col gap-4">
-          <div className="flex flex-row items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-4">
-              <CardTitle className="text-lg">
+        <CardHeader className="pb-3">
+          {/* Header Row */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <CardTitle className="text-lg flex items-center gap-2">
                 Search Results
-                <span className="text-muted-foreground font-normal ml-2">
-                  ({results.length.toLocaleString()} found)
+                <span className="text-sm font-normal text-muted-foreground">
+                  ({results.length.toLocaleString()})
                 </span>
               </CardTitle>
               <ToggleGroup 
                 type="single" 
                 value={viewMode} 
                 onValueChange={(v) => v && setViewMode(v as ViewMode)}
-                className="border rounded-md"
+                className="border rounded-md h-8"
               >
-                <ToggleGroupItem value="table" size="sm" aria-label="Table view">
-                  <TableIcon className="h-4 w-4" />
+                <ToggleGroupItem value="table" size="sm" aria-label="Table view" className="h-7 w-7 p-0">
+                  <TableIcon className="h-3.5 w-3.5" />
                 </ToggleGroupItem>
-                <ToggleGroupItem value="cards" size="sm" aria-label="Card view">
-                  <LayoutGrid className="h-4 w-4" />
+                <ToggleGroupItem value="cards" size="sm" aria-label="Card view" className="h-7 w-7 p-0">
+                  <LayoutGrid className="h-3.5 w-3.5" />
                 </ToggleGroupItem>
               </ToggleGroup>
             </div>
 
-            {selectedLeads.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm text-muted-foreground">
-                  {selectedLeads.length} selected
+            {/* Quick Stats */}
+            <div className="flex items-center gap-3 text-sm">
+              {enrichedLeads.length > 0 && (
+                <span className="flex items-center gap-1.5 text-emerald-500">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  {enrichedLeads.length} enriched
                 </span>
+              )}
+              {unenrichedLeads.length > 0 && (
+                <span className="text-muted-foreground">
+                  {unenrichedLeads.length} pending
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Selection Actions Bar */}
+          {selectedLeads.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap pt-3 border-t mt-3">
+              <span className="text-sm font-medium">
+                {selectedLeads.length} selected
+              </span>
+              <div className="flex items-center gap-2 ml-auto">
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => setShowAddToListDialog(true)}
+                  className="h-8"
                 >
-                  <List className="h-4 w-4 mr-1" />
+                  <List className="h-3.5 w-3.5 mr-1.5" />
                   Add to List
                 </Button>
                 <Button
@@ -215,50 +235,50 @@ export function ApolloSearchResults({
                   variant="outline"
                   onClick={() => setShowImportDialog(true)}
                   disabled={isImporting || enrichedSelected === 0}
+                  className="h-8"
                 >
-                  <UserPlus className="h-4 w-4 mr-1" />
-                  Import to CRM
+                  <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                  Import ({enrichedSelected})
                 </Button>
                 <Button
                   size="sm"
                   onClick={() => setShowEnrichDialog(true)}
                   disabled={isEnriching || unenrichedSelected === 0}
+                  className="h-8"
                 >
-                  <Sparkles className="h-4 w-4 mr-1" />
+                  <Sparkles className="h-3.5 w-3.5 mr-1.5" />
                   Enrich ({unenrichedSelected})
                 </Button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Enrich X leads input */}
-          <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
-            <span className="text-sm font-medium">Enrich</span>
-            <Input
-              type="number"
-              min="1"
-              max={unenrichedLeads.length}
-              value={enrichCount}
-              onChange={(e) => setEnrichCount(e.target.value)}
-              placeholder={`1-${unenrichedLeads.length}`}
-              className="w-24 h-8"
-            />
-            <span className="text-sm text-muted-foreground">
-              of {unenrichedLeads.length} unenriched leads
-            </span>
+          {/* Bulk Enrich Bar */}
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border mt-3">
+            <div className="flex items-center gap-2 flex-1">
+              <span className="text-sm font-medium whitespace-nowrap">Quick Enrich:</span>
+              <Input
+                type="number"
+                min="1"
+                max={unenrichedLeads.length}
+                value={enrichCount}
+                onChange={(e) => setEnrichCount(e.target.value)}
+                placeholder="Amount"
+                className="w-20 h-8 text-center"
+              />
+              <span className="text-sm text-muted-foreground whitespace-nowrap">
+                / {unenrichedLeads.length} available
+              </span>
+            </div>
             <Button
               size="sm"
               onClick={() => setShowEnrichDialog(true)}
               disabled={isEnriching || leadsToEnrich === 0}
+              className="h-8 shrink-0"
             >
-              <Sparkles className="h-4 w-4 mr-1" />
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
               Enrich {leadsToEnrich > 0 ? leadsToEnrich : ''}
             </Button>
-            {enrichedLeads.length > 0 && (
-              <span className="text-sm text-primary ml-auto font-medium">
-                ✓ {enrichedLeads.length} enriched
-              </span>
-            )}
           </div>
         </CardHeader>
 
