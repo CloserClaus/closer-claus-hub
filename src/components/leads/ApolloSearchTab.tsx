@@ -66,79 +66,39 @@ const defaultFilters: SearchFilters = {
   per_page: 25,
 };
 
-// Dummy data for demo purposes
-export const DUMMY_RESULTS = [
-  {
-    id: 'demo-1',
-    first_name: 'Sarah',
-    last_name: 'Johnson',
-    title: 'VP of Sales',
-    company: 'TechCorp Inc.',
-    industry: 'Computer Software',
-    city: 'San Francisco',
-    state: 'California',
+// Helper function to generate dummy leads
+const generateDummyLeads = (count: number) => {
+  const firstNames = ['Sarah', 'Michael', 'Emily', 'David', 'Jessica', 'James', 'Amanda', 'Robert', 'Jennifer', 'Christopher', 'Lisa', 'Daniel', 'Michelle', 'Matthew', 'Ashley', 'Andrew', 'Stephanie', 'Joshua', 'Nicole', 'Ryan', 'Elizabeth', 'Justin', 'Heather', 'Brandon', 'Megan', 'William', 'Rachel', 'Jonathan', 'Lauren', 'Kevin', 'Samantha', 'Brian', 'Brittany', 'Tyler', 'Kayla', 'Eric', 'Rebecca', 'Adam', 'Christina', 'Nicholas'];
+  const lastNames = ['Johnson', 'Chen', 'Rodriguez', 'Kim', 'Williams', 'Smith', 'Brown', 'Davis', 'Miller', 'Wilson', 'Moore', 'Taylor', 'Anderson', 'Thomas', 'Jackson', 'White', 'Harris', 'Martin', 'Thompson', 'Garcia', 'Martinez', 'Robinson', 'Clark', 'Lewis', 'Lee', 'Walker', 'Hall', 'Allen', 'Young', 'King', 'Wright', 'Scott', 'Green', 'Baker', 'Adams', 'Nelson', 'Hill', 'Ramirez', 'Campbell', 'Mitchell'];
+  const titles = ['VP of Sales', 'Director of Engineering', 'Chief Marketing Officer', 'Head of Product', 'Senior Account Executive', 'Sales Manager', 'CEO', 'CTO', 'CFO', 'COO', 'Director of Sales', 'VP of Marketing', 'Head of Growth', 'Business Development Manager', 'Enterprise Account Executive', 'Regional Sales Director', 'VP of Operations', 'Director of Customer Success', 'Head of Partnerships', 'Chief Revenue Officer'];
+  const companies = ['TechCorp Inc.', 'DataFlow Systems', 'GrowthLabs', 'InnovateTech', 'CloudSolutions Ltd', 'NextGen Software', 'Digital Dynamics', 'Apex Technologies', 'Summit Systems', 'Velocity Partners', 'Quantum Analytics', 'Pioneer Digital', 'Elevate Inc.', 'Synergy Solutions', 'Horizon Tech', 'Pulse Analytics', 'Momentum Labs', 'Catalyst Corp', 'Forge Digital', 'Spark Innovations'];
+  const industries = ['Computer Software', 'Information Technology', 'Marketing & Advertising', 'Financial Services', 'Healthcare', 'E-commerce', 'SaaS', 'Telecommunications', 'Manufacturing', 'Consulting', 'Real Estate', 'Education', 'Logistics', 'Media & Entertainment', 'Cybersecurity'];
+  const cities = ['San Francisco', 'New York', 'Austin', 'Seattle', 'Chicago', 'Boston', 'Denver', 'Los Angeles', 'Atlanta', 'Miami', 'Portland', 'Dallas', 'Phoenix', 'San Diego', 'Philadelphia'];
+  const states = ['California', 'New York', 'Texas', 'Washington', 'Illinois', 'Massachusetts', 'Colorado', 'Georgia', 'Florida', 'Oregon', 'Arizona', 'Pennsylvania'];
+  const employeeCounts = ['1-10', '11-50', '51-100', '101-200', '201-500', '501-1000', '1001-5000', '5000+'];
+  const seniorities = ['C-Suite', 'VP', 'Director', 'Head', 'Senior', 'Manager', 'Entry'];
+  const departments = ['Sales', 'Marketing', 'Engineering', 'Product Management', 'Operations', 'Finance', 'Customer Success', 'Business Development'];
+
+  const getRandomItem = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+
+  return Array.from({ length: count }, (_, i) => ({
+    id: `demo-${i + 1}`,
+    first_name: getRandomItem(firstNames),
+    last_name: getRandomItem(lastNames),
+    title: getRandomItem(titles),
+    company: getRandomItem(companies),
+    industry: getRandomItem(industries),
+    city: getRandomItem(cities),
+    state: getRandomItem(states),
     country: 'United States',
-    employee_count: '201-500',
-    seniority: 'VP',
-    department: 'Sales',
-  },
-  {
-    id: 'demo-2',
-    first_name: 'Michael',
-    last_name: 'Chen',
-    title: 'Director of Engineering',
-    company: 'DataFlow Systems',
-    industry: 'Information Technology',
-    city: 'New York',
-    state: 'New York',
-    country: 'United States',
-    employee_count: '51-100',
-    seniority: 'Director',
-    department: 'Engineering',
-  },
-  {
-    id: 'demo-3',
-    first_name: 'Emily',
-    last_name: 'Rodriguez',
-    title: 'Chief Marketing Officer',
-    company: 'GrowthLabs',
-    industry: 'Marketing & Advertising',
-    city: 'Austin',
-    state: 'Texas',
-    country: 'United States',
-    employee_count: '11-50',
-    seniority: 'C-Suite',
-    department: 'Marketing',
-  },
-  {
-    id: 'demo-4',
-    first_name: 'David',
-    last_name: 'Kim',
-    title: 'Head of Product',
-    company: 'InnovateTech',
-    industry: 'Computer Software',
-    city: 'Seattle',
-    state: 'Washington',
-    country: 'United States',
-    employee_count: '101-200',
-    seniority: 'Head',
-    department: 'Product Management',
-  },
-  {
-    id: 'demo-5',
-    first_name: 'Jessica',
-    last_name: 'Williams',
-    title: 'Senior Account Executive',
-    company: 'CloudSolutions Ltd',
-    industry: 'Information Technology',
-    city: 'Chicago',
-    state: 'Illinois',
-    country: 'United States',
-    employee_count: '501-1000',
-    seniority: 'Senior',
-    department: 'Sales',
-  },
-];
+    employee_count: getRandomItem(employeeCounts),
+    seniority: getRandomItem(seniorities),
+    department: getRandomItem(departments),
+  }));
+};
+
+// Generate 500 dummy leads
+export const DUMMY_RESULTS = generateDummyLeads(500);
 
 export function ApolloSearchTab() {
   const [filters, setFilters] = useState<SearchFilters>(defaultFilters);
