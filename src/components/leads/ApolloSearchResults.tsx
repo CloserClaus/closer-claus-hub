@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Users as UsersIcon,
@@ -42,6 +43,7 @@ interface ApolloSearchResultsProps {
 }
 
 type ViewMode = 'cards' | 'table';
+const ITEMS_PER_PAGE = 25;
 
 export function ApolloSearchResults({
   results,
@@ -59,19 +61,45 @@ export function ApolloSearchResults({
   const [showEnrichDialog, setShowEnrichDialog] = useState(false);
   const [showAddToListDialog, setShowAddToListDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [enrichCount, setEnrichCount] = useState<string>('');
 
   const { importLeads, isImporting, importProgress, resetImportProgress } = useImportToCRM();
 
-  const unenrichedSelected = results
-    .filter((lead) => selectedLeads.includes(lead.id) && lead.enrichment_status !== 'enriched')
-    .length;
+  // Calculate paginated results for client-side pagination
+  const totalPages = Math.ceil(results.length / ITEMS_PER_PAGE);
+  const paginatedResults = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return results.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [results, currentPage]);
 
-  const enrichedSelected = results
-    .filter((lead) => selectedLeads.includes(lead.id) && lead.enrichment_status === 'enriched')
-    .length;
+  // Reset to page 1 when results change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [results.length]);
+
+  const unenrichedLeads = results.filter((lead) => lead.enrichment_status !== 'enriched');
+  const enrichedLeads = results.filter((lead) => lead.enrichment_status === 'enriched');
+  
+  // How many leads will be enriched based on enrichCount input
+  const enrichCountNum = parseInt(enrichCount) || 0;
+  const leadsToEnrich = Math.min(enrichCountNum, unenrichedLeads.length);
+
+  const handleEnrichByCount = async (addToCRM: boolean) => {
+    if (leadsToEnrich === 0) return;
+    // Select the first N unenriched leads
+    const idsToEnrich = unenrichedLeads.slice(0, leadsToEnrich).map(l => l.id);
+    onSelectionChange(idsToEnrich);
+    await onEnrichSelected(addToCRM);
+    setEnrichCount('');
+  };
 
   const handleEnrich = async (addToCRM: boolean) => {
-    await onEnrichSelected(addToCRM);
+    if (enrichCount && leadsToEnrich > 0) {
+      await handleEnrichByCount(addToCRM);
+    } else {
+      await onEnrichSelected(addToCRM);
+    }
   };
 
   const handleImport = async () => {
@@ -81,6 +109,11 @@ export function ApolloSearchResults({
     await importLeads(enrichedLeadIds);
   };
 
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    onSelectionChange([]); // Clear selection when changing pages
+  };
+
   // Reset import progress when dialog closes
   useEffect(() => {
     if (!showImportDialog) {
@@ -88,6 +121,15 @@ export function ApolloSearchResults({
       return () => clearTimeout(timer);
     }
   }, [showImportDialog, resetImportProgress]);
+
+  // Calculate counts for selected leads on current page
+  const unenrichedSelected = paginatedResults
+    .filter((lead) => selectedLeads.includes(lead.id) && lead.enrichment_status !== 'enriched')
+    .length;
+
+  const enrichedSelected = paginatedResults
+    .filter((lead) => selectedLeads.includes(lead.id) && lead.enrichment_status === 'enriched')
+    .length;
 
   if (isLoading) {
     return (
@@ -131,75 +173,105 @@ export function ApolloSearchResults({
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-4">
-            <CardTitle className="text-lg">
-              Search Results
-              {pagination && (
+        <CardHeader className="flex flex-col gap-4">
+          <div className="flex flex-row items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-4">
+              <CardTitle className="text-lg">
+                Search Results
                 <span className="text-muted-foreground font-normal ml-2">
-                  ({pagination.total_entries.toLocaleString()} found)
+                  ({results.length.toLocaleString()} found)
                 </span>
-              )}
-            </CardTitle>
-            <ToggleGroup 
-              type="single" 
-              value={viewMode} 
-              onValueChange={(v) => v && setViewMode(v as ViewMode)}
-              className="border rounded-md"
-            >
-              <ToggleGroupItem value="table" size="sm" aria-label="Table view">
-                <TableIcon className="h-4 w-4" />
-              </ToggleGroupItem>
-              <ToggleGroupItem value="cards" size="sm" aria-label="Card view">
-                <LayoutGrid className="h-4 w-4" />
-              </ToggleGroupItem>
-            </ToggleGroup>
+              </CardTitle>
+              <ToggleGroup 
+                type="single" 
+                value={viewMode} 
+                onValueChange={(v) => v && setViewMode(v as ViewMode)}
+                className="border rounded-md"
+              >
+                <ToggleGroupItem value="table" size="sm" aria-label="Table view">
+                  <TableIcon className="h-4 w-4" />
+                </ToggleGroupItem>
+                <ToggleGroupItem value="cards" size="sm" aria-label="Card view">
+                  <LayoutGrid className="h-4 w-4" />
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+
+            {selectedLeads.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm text-muted-foreground">
+                  {selectedLeads.length} selected
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowAddToListDialog(true)}
+                >
+                  <List className="h-4 w-4 mr-1" />
+                  Add to List
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowImportDialog(true)}
+                  disabled={isImporting || enrichedSelected === 0}
+                >
+                  <UserPlus className="h-4 w-4 mr-1" />
+                  Import to CRM
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setShowEnrichDialog(true)}
+                  disabled={isEnriching || unenrichedSelected === 0}
+                >
+                  <Sparkles className="h-4 w-4 mr-1" />
+                  Enrich ({unenrichedSelected})
+                </Button>
+              </div>
+            )}
           </div>
 
-          {selectedLeads.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm text-muted-foreground">
-                {selectedLeads.length} selected
+          {/* Enrich X leads input */}
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border">
+            <span className="text-sm font-medium">Enrich</span>
+            <Input
+              type="number"
+              min="1"
+              max={unenrichedLeads.length}
+              value={enrichCount}
+              onChange={(e) => setEnrichCount(e.target.value)}
+              placeholder={`1-${unenrichedLeads.length}`}
+              className="w-24 h-8"
+            />
+            <span className="text-sm text-muted-foreground">
+              of {unenrichedLeads.length} unenriched leads
+            </span>
+            <Button
+              size="sm"
+              onClick={() => setShowEnrichDialog(true)}
+              disabled={isEnriching || leadsToEnrich === 0}
+            >
+              <Sparkles className="h-4 w-4 mr-1" />
+              Enrich {leadsToEnrich > 0 ? leadsToEnrich : ''}
+            </Button>
+            {enrichedLeads.length > 0 && (
+              <span className="text-sm text-primary ml-auto font-medium">
+                ✓ {enrichedLeads.length} enriched
               </span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowAddToListDialog(true)}
-              >
-                <List className="h-4 w-4 mr-1" />
-                Add to List
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowImportDialog(true)}
-                disabled={isImporting || enrichedSelected === 0}
-              >
-                <UserPlus className="h-4 w-4 mr-1" />
-                Import to CRM
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => setShowEnrichDialog(true)}
-                disabled={isEnriching || unenrichedSelected === 0}
-              >
-                <Sparkles className="h-4 w-4 mr-1" />
-                Enrich ({unenrichedSelected})
-              </Button>
-            </div>
-          )}
+            )}
+          </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
           {viewMode === 'table' ? (
             <ResultsTable
-              leads={results}
+              leads={paginatedResults}
               selectedLeads={selectedLeads}
               onSelectionChange={onSelectionChange}
             />
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-              {results.map((lead) => (
+              {paginatedResults.map((lead) => (
                 <LeadCard
                   key={lead.id}
                   lead={lead}
@@ -216,11 +288,16 @@ export function ApolloSearchResults({
             </div>
           )}
 
-          {pagination && pagination.total_pages > 1 && (
+          {/* Client-side pagination */}
+          {totalPages > 1 && (
             <ResultsPagination
-              pagination={pagination}
-              onPageChange={onPageChange}
-              onPerPageChange={onPerPageChange}
+              pagination={{
+                page: currentPage,
+                per_page: ITEMS_PER_PAGE,
+                total_entries: results.length,
+                total_pages: totalPages,
+              }}
+              onPageChange={handlePageChange}
             />
           )}
         </CardContent>
@@ -229,8 +306,8 @@ export function ApolloSearchResults({
       <EnrichmentDialog
         open={showEnrichDialog}
         onOpenChange={setShowEnrichDialog}
-        selectedCount={selectedLeads.length}
-        unenrichedCount={unenrichedSelected}
+        selectedCount={leadsToEnrich > 0 ? leadsToEnrich : selectedLeads.length}
+        unenrichedCount={leadsToEnrich > 0 ? leadsToEnrich : unenrichedSelected}
         onEnrich={handleEnrich}
         isEnriching={isEnriching}
         enrichmentProgress={enrichmentProgress}

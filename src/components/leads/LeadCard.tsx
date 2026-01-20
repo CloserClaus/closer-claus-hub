@@ -91,10 +91,39 @@ export function LeadCard({ lead, isSelected, onToggleSelect }: LeadCardProps) {
               )}
             </div>
 
-            {/* Contact Info (only if enriched) */}
+            {/* LinkedIn and Website are always visible */}
+            <div className="flex flex-wrap gap-2 pt-2 border-t">
+              {lead.linkedin_url && (
+                <a
+                  href={lead.linkedin_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <Linkedin className="h-3 w-3" />
+                  LinkedIn
+                  <ExternalLink className="h-2.5 w-2.5" />
+                </a>
+              )}
+              {lead.company_domain && (
+                <a
+                  href={`https://${lead.company_domain}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  {lead.company_domain}
+                </a>
+              )}
+            </div>
+            
+            {/* Email and Phone - only visible after enrichment */}
             {lead.enrichment_status === 'enriched' && (
-              <div className="flex flex-wrap gap-2 pt-2 border-t">
-                {lead.email && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {lead.email ? (
                   <a
                     href={`mailto:${lead.email}`}
                     onClick={(e) => e.stopPropagation()}
@@ -103,8 +132,13 @@ export function LeadCard({ lead, isSelected, onToggleSelect }: LeadCardProps) {
                     <Mail className="h-3 w-3" />
                     {lead.email}
                   </a>
+                ) : (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Mail className="h-3 w-3" />
+                    No email found
+                  </span>
                 )}
-                {lead.phone && (
+                {lead.phone ? (
                   <a
                     href={`tel:${lead.phone}`}
                     onClick={(e) => e.stopPropagation()}
@@ -113,19 +147,11 @@ export function LeadCard({ lead, isSelected, onToggleSelect }: LeadCardProps) {
                     <Phone className="h-3 w-3" />
                     {lead.phone}
                   </a>
-                )}
-                {lead.linkedin_url && (
-                  <a
-                    href={lead.linkedin_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="flex items-center gap-1 text-xs text-primary hover:underline"
-                  >
-                    <Linkedin className="h-3 w-3" />
-                    LinkedIn
-                    <ExternalLink className="h-2.5 w-2.5" />
-                  </a>
+                ) : (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Phone className="h-3 w-3" />
+                    No phone found
+                  </span>
                 )}
               </div>
             )}

@@ -227,44 +227,69 @@ export function ResultsTable({
                 )}
               </TableCell>
               <TableCell>
-                {lead.enrichment_status === 'enriched' ? (
-                  <div className="flex flex-col gap-1">
-                    {lead.email && (
-                      <a
-                        href={`mailto:${lead.email}`}
-                        className="flex items-center gap-1 text-xs text-primary hover:underline"
-                      >
-                        <Mail className="h-3 w-3" />
-                        {lead.email}
-                      </a>
-                    )}
-                    {lead.phone && (
-                      <a
-                        href={`tel:${lead.phone}`}
-                        className="flex items-center gap-1 text-xs text-primary hover:underline"
-                      >
-                        <Phone className="h-3 w-3" />
-                        {lead.phone}
-                      </a>
-                    )}
-                    {lead.linkedin_url && (
-                      <a
-                        href={lead.linkedin_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs text-primary hover:underline"
-                      >
-                        <Linkedin className="h-3 w-3" />
-                        Profile
-                        <ExternalLink className="h-2.5 w-2.5" />
-                      </a>
-                    )}
-                  </div>
-                ) : (
-                  <span className="text-xs text-muted-foreground italic">
-                    Enrich to reveal
-                  </span>
-                )}
+                <div className="flex flex-col gap-1">
+                  {/* LinkedIn and Website are always visible */}
+                  {lead.linkedin_url && (
+                    <a
+                      href={lead.linkedin_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <Linkedin className="h-3 w-3" />
+                      Profile
+                      <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
+                  )}
+                  {lead.company_domain && (
+                    <a
+                      href={`https://${lead.company_domain}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      {lead.company_domain}
+                    </a>
+                  )}
+                  {/* Email and Phone only visible after enrichment */}
+                  {lead.enrichment_status === 'enriched' ? (
+                    <>
+                      {lead.email ? (
+                        <a
+                          href={`mailto:${lead.email}`}
+                          className="flex items-center gap-1 text-xs text-primary hover:underline"
+                        >
+                          <Mail className="h-3 w-3" />
+                          {lead.email}
+                        </a>
+                      ) : (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Mail className="h-3 w-3" />
+                          No email found
+                        </span>
+                      )}
+                      {lead.phone ? (
+                        <a
+                          href={`tel:${lead.phone}`}
+                          className="flex items-center gap-1 text-xs text-primary hover:underline"
+                        >
+                          <Phone className="h-3 w-3" />
+                          {lead.phone}
+                        </a>
+                      ) : (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Phone className="h-3 w-3" />
+                          No phone found
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted-foreground italic">
+                      Enrich to reveal email & phone
+                    </span>
+                  )}
+                </div>
               </TableCell>
               <TableCell className="text-right">
                 {lead.enrichment_status === 'enriched' ? (
