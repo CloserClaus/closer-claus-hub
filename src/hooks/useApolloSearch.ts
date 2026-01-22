@@ -37,6 +37,7 @@ export interface EnrichmentProgress {
   message?: string;
   enrichedCount?: number;
   requestedCount?: number;
+  partialCount?: number;
   creditsUsed?: number;
   creditsSaved?: number;
   fromCache?: number;
@@ -125,21 +126,23 @@ export function useApolloSearch() {
     onSuccess: (data, variables) => {
       const requestedCount = variables.leadIds.length;
       const enrichedCount = data.enriched_count || 0;
+      const partialCount = data.partial_count || 0;
       const fromCache = data.from_cache || 0;
       const fromApi = data.from_api || 0;
       const creditsSaved = data.credits_saved || 0;
       const isPartial = enrichedCount < requestedCount;
       
-      // Update progress with detailed info including cache stats
+      // Update progress with detailed info including cache stats and partial leads
       setEnrichmentProgress({
         current: enrichedCount,
         total: requestedCount,
         status: isPartial ? 'partial' : 'complete',
-        message: isPartial 
+        message: data.message || (isPartial 
           ? `Only ${enrichedCount} of ${requestedCount} leads were fully enriched.`
-          : `Successfully enriched ${enrichedCount} leads!`,
+          : `Successfully enriched ${enrichedCount} leads!`),
         enrichedCount,
         requestedCount,
+        partialCount,
         creditsUsed: data.credits_used,
         creditsSaved,
         fromCache,

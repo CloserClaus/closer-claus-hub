@@ -178,15 +178,20 @@ serve(async (req) => {
     }
 
     const enrichedLeads: any[] = [];
+    const partialLeads: any[] = [];
     const createdCRMLeads: any[] = [];
     let creditsUsed = 0;
     let enrichedFromCache = 0;
     let enrichedFromApi = 0;
+    let partialCount = 0;
 
     // Step 2: Process cache hits (FREE - no API call, no credit deduction)
     for (const lead of cacheHits) {
       const cachedData = masterLeadsMap.get(lead.linkedin_url!);
       if (!cachedData) continue;
+
+      // Check if cached data is "fully enriched" (has both email AND phone)
+      const isFullyEnriched = !!(cachedData.email && cachedData.phone);
 
       const enrichedData = {
         email: cachedData.email || lead.email,
@@ -205,7 +210,7 @@ serve(async (req) => {
         city: cachedData.city || lead.city,
         state: cachedData.state || lead.state,
         country: cachedData.country || lead.country,
-        enrichment_status: "enriched",
+        enrichment_status: isFullyEnriched ? "enriched" : "partial",
         enriched_at: new Date().toISOString(),
         enriched_by: user.id,
         credits_used: 0, // No credits for cache hits
@@ -232,41 +237,46 @@ serve(async (req) => {
         })
         .eq("id", cachedData.id);
 
-      enrichedLeads.push(updatedLead);
-      enrichedFromCache++;
+      if (isFullyEnriched) {
+        enrichedLeads.push(updatedLead);
+        enrichedFromCache++;
 
-      // Optionally add to CRM
-      if (add_to_crm && updatedLead) {
-        const { data: crmLead, error: crmError } = await supabase
-          .from("leads")
-          .insert({
-            workspace_id: workspace_id,
-            created_by: user.id,
-            first_name: updatedLead.first_name || "Unknown",
-            last_name: updatedLead.last_name || "Unknown",
-            email: updatedLead.email,
-            phone: updatedLead.phone,
-            company: updatedLead.company_name,
-            title: updatedLead.title,
-            linkedin_url: updatedLead.linkedin_url,
-            company_domain: updatedLead.company_domain,
-            company_linkedin_url: updatedLead.company_linkedin_url,
-            industry: updatedLead.industry,
-            employee_count: updatedLead.employee_count,
-            seniority: updatedLead.seniority,
-            department: updatedLead.department,
-            city: updatedLead.city,
-            state: updatedLead.state,
-            country: updatedLead.country,
-            source: "apollo",
-            apollo_lead_id: updatedLead.id,
-          })
-          .select()
-          .single();
+        // Optionally add to CRM (only for fully enriched)
+        if (add_to_crm && updatedLead) {
+          const { data: crmLead, error: crmError } = await supabase
+            .from("leads")
+            .insert({
+              workspace_id: workspace_id,
+              created_by: user.id,
+              first_name: updatedLead.first_name || "Unknown",
+              last_name: updatedLead.last_name || "Unknown",
+              email: updatedLead.email,
+              phone: updatedLead.phone,
+              company: updatedLead.company_name,
+              title: updatedLead.title,
+              linkedin_url: updatedLead.linkedin_url,
+              company_domain: updatedLead.company_domain,
+              company_linkedin_url: updatedLead.company_linkedin_url,
+              industry: updatedLead.industry,
+              employee_count: updatedLead.employee_count,
+              seniority: updatedLead.seniority,
+              department: updatedLead.department,
+              city: updatedLead.city,
+              state: updatedLead.state,
+              country: updatedLead.country,
+              source: "apollo",
+              apollo_lead_id: updatedLead.id,
+            })
+            .select()
+            .single();
 
-        if (!crmError) {
-          createdCRMLeads.push(crmLead);
+          if (!crmError) {
+            createdCRMLeads.push(crmLead);
+          }
         }
+      } else {
+        partialLeads.push(updatedLead);
+        partialCount++;
       }
     }
 
@@ -302,10 +312,16 @@ serve(async (req) => {
         }
 
         // Build enriched data
+        const personEmail = person.email || lead.email;
+        const personPhone = person.phone_numbers?.[0]?.sanitized_number || person.organization?.phone || lead.phone;
+        
+        // Check if fully enriched (has BOTH email AND phone)
+        const isFullyEnriched = !!(personEmail && personPhone);
+
         const enrichedData = {
-          email: person.email || lead.email,
+          email: personEmail,
           email_status: person.email_status || lead.email_status,
-          phone: person.phone_numbers?.[0]?.sanitized_number || person.organization?.phone || lead.phone,
+          phone: personPhone,
           phone_status: person.phone_numbers?.[0]?.status || lead.phone_status,
           title: person.title || lead.title,
           seniority: person.seniority || lead.seniority,
@@ -319,10 +335,10 @@ serve(async (req) => {
           city: person.city || lead.city,
           state: person.state || lead.state,
           country: person.country || lead.country,
-          enrichment_status: "enriched",
+          enrichment_status: isFullyEnriched ? "enriched" : "partial",
           enriched_at: new Date().toISOString(),
           enriched_by: user.id,
-          credits_used: CREDITS_PER_LEAD,
+          credits_used: isFullyEnriched ? CREDITS_PER_LEAD : 0, // Only charge for fully enriched
         };
 
         // Update apollo_leads
@@ -375,44 +391,50 @@ serve(async (req) => {
           }
         }
 
-        enrichedLeads.push(updatedLead);
-        creditsUsed += CREDITS_PER_LEAD;
-        enrichedFromApi++;
+        if (isFullyEnriched) {
+          enrichedLeads.push(updatedLead);
+          creditsUsed += CREDITS_PER_LEAD;
+          enrichedFromApi++;
 
-        // Optionally add to CRM leads table
-        if (add_to_crm && updatedLead) {
-          const { data: crmLead, error: crmError } = await supabase
-            .from("leads")
-            .insert({
-              workspace_id: workspace_id,
-              created_by: user.id,
-              first_name: updatedLead.first_name || "Unknown",
-              last_name: updatedLead.last_name || "Unknown",
-              email: updatedLead.email,
-              phone: updatedLead.phone,
-              company: updatedLead.company_name,
-              title: updatedLead.title,
-              linkedin_url: updatedLead.linkedin_url,
-              company_domain: updatedLead.company_domain,
-              company_linkedin_url: updatedLead.company_linkedin_url,
-              industry: updatedLead.industry,
-              employee_count: updatedLead.employee_count,
-              seniority: updatedLead.seniority,
-              department: updatedLead.department,
-              city: updatedLead.city,
-              state: updatedLead.state,
-              country: updatedLead.country,
-              source: "apollo",
-              apollo_lead_id: updatedLead.id,
-            })
-            .select()
-            .single();
+          // Optionally add to CRM leads table (only for fully enriched)
+          if (add_to_crm && updatedLead) {
+            const { data: crmLead, error: crmError } = await supabase
+              .from("leads")
+              .insert({
+                workspace_id: workspace_id,
+                created_by: user.id,
+                first_name: updatedLead.first_name || "Unknown",
+                last_name: updatedLead.last_name || "Unknown",
+                email: updatedLead.email,
+                phone: updatedLead.phone,
+                company: updatedLead.company_name,
+                title: updatedLead.title,
+                linkedin_url: updatedLead.linkedin_url,
+                company_domain: updatedLead.company_domain,
+                company_linkedin_url: updatedLead.company_linkedin_url,
+                industry: updatedLead.industry,
+                employee_count: updatedLead.employee_count,
+                seniority: updatedLead.seniority,
+                department: updatedLead.department,
+                city: updatedLead.city,
+                state: updatedLead.state,
+                country: updatedLead.country,
+                source: "apollo",
+                apollo_lead_id: updatedLead.id,
+              })
+              .select()
+              .single();
 
-          if (crmError) {
-            console.error(`Error creating CRM lead:`, crmError);
-          } else {
-            createdCRMLeads.push(crmLead);
+            if (crmError) {
+              console.error(`Error creating CRM lead:`, crmError);
+            } else {
+              createdCRMLeads.push(crmLead);
+            }
           }
+        } else {
+          // Partial enrichment - no credits charged, not added to CRM
+          partialLeads.push(updatedLead);
+          partialCount++;
         }
       } catch (enrichError) {
         console.error(`Error enriching lead ${lead.id}:`, enrichError);
@@ -441,6 +463,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         enriched_count: enrichedLeads.length,
+        partial_count: partialCount,
         from_cache: enrichedFromCache,
         from_api: enrichedFromApi,
         credits_used: creditsUsed,
@@ -448,6 +471,9 @@ serve(async (req) => {
         enriched_leads: enrichedLeads,
         crm_leads_created: createdCRMLeads.length,
         remaining_credits: currentBalance - creditsUsed,
+        message: partialCount > 0 
+          ? `${partialCount} leads had incomplete data (missing email or phone) and were not charged.`
+          : undefined,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

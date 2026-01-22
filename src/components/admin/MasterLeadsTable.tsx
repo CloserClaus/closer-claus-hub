@@ -1,16 +1,19 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
-import { Search, Database, TrendingUp, Users, ExternalLink } from 'lucide-react';
-import { format } from 'date-fns';
+import { Search, Database, TrendingUp, Users, ExternalLink, RefreshCw, AlertTriangle } from 'lucide-react';
+import { format, subMonths, isAfter } from 'date-fns';
+import { toast } from 'sonner';
 
 const ITEMS_PER_PAGE = 25;
+const STALE_THRESHOLD_MONTHS = 12;
 
 interface MasterLead {
   id: string;
@@ -30,9 +33,17 @@ interface MasterLead {
   created_at: string;
 }
 
+function isLeadStale(lastUpdatedAt: string): boolean {
+  const lastUpdated = new Date(lastUpdatedAt);
+  const staleDate = subMonths(new Date(), STALE_THRESHOLD_MONTHS);
+  return !isAfter(lastUpdated, staleDate);
+}
+
 export function MasterLeadsTable() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [refreshingLeadId, setRefreshingLeadId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   // Fetch master leads with pagination
   const { data: leadsData, isLoading } = useQuery({
@@ -64,28 +75,67 @@ export function MasterLeadsTable() {
     queryFn: async () => {
       const { data, error, count } = await supabase
         .from('master_leads')
-        .select('enrichment_count', { count: 'exact' });
+        .select('enrichment_count, last_updated_at', { count: 'exact' });
 
       if (error) throw error;
 
       const totalLeads = count || 0;
       const totalEnrichments = data?.reduce((sum, lead) => sum + (lead.enrichment_count || 1), 0) || 0;
-      const creditsSaved = (totalEnrichments - totalLeads) * 5; // Each cache hit saves 5 credits
+      const creditsSaved = (totalEnrichments - totalLeads) * 5;
+      const staleLeads = data?.filter(lead => isLeadStale(lead.last_updated_at)).length || 0;
 
       return {
         totalLeads,
         totalEnrichments,
         creditsSaved: Math.max(0, creditsSaved),
+        staleLeads,
       };
     },
   });
 
   const totalPages = Math.ceil((leadsData?.totalCount || 0) / ITEMS_PER_PAGE);
 
+  const handleRefreshLead = async (leadId: string) => {
+    setRefreshingLeadId(leadId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Please log in to refresh leads');
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/refresh-master-lead`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ master_lead_id: leadId }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to refresh lead');
+      }
+
+      toast.success('Lead data refreshed successfully');
+      queryClient.invalidateQueries({ queryKey: ['master-leads'] });
+      queryClient.invalidateQueries({ queryKey: ['master-leads-stats'] });
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to refresh lead');
+    } finally {
+      setRefreshingLeadId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Master Leads</CardTitle>
@@ -124,6 +174,19 @@ export function MasterLeadsTable() {
             <p className="text-xs text-muted-foreground">From cache hits (5 credits each)</p>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Stale Leads</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+              {stats?.staleLeads?.toLocaleString() || 0}
+            </div>
+            <p className="text-xs text-muted-foreground">Not updated in 12+ months</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Search and Table */}
@@ -159,9 +222,9 @@ export function MasterLeadsTable() {
                   <TableHead>Company</TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead className="text-center">Uses</TableHead>
-                  <TableHead>First Enriched</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Last Updated</TableHead>
-                  <TableHead className="w-10"></TableHead>
+                  <TableHead className="w-20">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -173,9 +236,9 @@ export function MasterLeadsTable() {
                       <TableCell><Skeleton className="h-4 w-28" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-10 mx-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-6" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                     </TableRow>
                   ))
                 ) : leadsData?.leads?.length === 0 ? (
@@ -185,45 +248,71 @@ export function MasterLeadsTable() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  leadsData?.leads?.map((lead) => (
-                    <TableRow key={lead.id}>
-                      <TableCell className="font-medium">
-                        {lead.first_name} {lead.last_name}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm text-muted-foreground">
-                          {lead.email || '-'}
-                        </span>
-                      </TableCell>
-                      <TableCell>{lead.company_name || '-'}</TableCell>
-                      <TableCell className="max-w-[150px] truncate">
-                        {lead.title || '-'}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant={lead.enrichment_count > 1 ? 'default' : 'secondary'}>
-                          {lead.enrichment_count}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {format(new Date(lead.first_enriched_at), 'MMM d, yyyy')}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {format(new Date(lead.last_updated_at), 'MMM d, yyyy')}
-                      </TableCell>
-                      <TableCell>
-                        {lead.linkedin_url && (
-                          <a
-                            href={lead.linkedin_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:text-primary/80"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  leadsData?.leads?.map((lead) => {
+                    const stale = isLeadStale(lead.last_updated_at);
+                    return (
+                      <TableRow key={lead.id}>
+                        <TableCell className="font-medium">
+                          {lead.first_name} {lead.last_name}
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-muted-foreground">
+                            {lead.email || '-'}
+                          </span>
+                        </TableCell>
+                        <TableCell>{lead.company_name || '-'}</TableCell>
+                        <TableCell className="max-w-[150px] truncate">
+                          {lead.title || '-'}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={lead.enrichment_count > 1 ? 'default' : 'secondary'}>
+                            {lead.enrichment_count}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {stale ? (
+                            <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-700">
+                              <AlertTriangle className="h-3 w-3 mr-1" />
+                              Stale
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-emerald-600 border-emerald-300 bg-emerald-50 dark:bg-emerald-950 dark:border-emerald-700">
+                              Fresh
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {format(new Date(lead.last_updated_at), 'MMM d, yyyy')}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            {stale && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => handleRefreshLead(lead.id)}
+                                disabled={refreshingLeadId === lead.id}
+                                title="Refresh stale data"
+                              >
+                                <RefreshCw className={`h-4 w-4 ${refreshingLeadId === lead.id ? 'animate-spin' : ''}`} />
+                              </Button>
+                            )}
+                            {lead.linkedin_url && (
+                              <a
+                                href={lead.linkedin_url.startsWith('http') ? lead.linkedin_url : `https://${lead.linkedin_url}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:text-primary/80 p-2"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </a>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

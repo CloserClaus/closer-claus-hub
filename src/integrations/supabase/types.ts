@@ -269,6 +269,9 @@ export type Database = {
           deal_id: string
           id: string
           paid_at: string | null
+          payout_failure_reason: string | null
+          payout_last_retry_at: string | null
+          payout_retry_count: number | null
           platform_cut_amount: number | null
           platform_cut_percentage: number | null
           rake_amount: number
@@ -289,6 +292,9 @@ export type Database = {
           deal_id: string
           id?: string
           paid_at?: string | null
+          payout_failure_reason?: string | null
+          payout_last_retry_at?: string | null
+          payout_retry_count?: number | null
           platform_cut_amount?: number | null
           platform_cut_percentage?: number | null
           rake_amount?: number
@@ -309,6 +315,9 @@ export type Database = {
           deal_id?: string
           id?: string
           paid_at?: string | null
+          payout_failure_reason?: string | null
+          payout_last_retry_at?: string | null
+          payout_retry_count?: number | null
           platform_cut_amount?: number | null
           platform_cut_percentage?: number | null
           rake_amount?: number
@@ -326,7 +335,7 @@ export type Database = {
           {
             foreignKeyName: "commissions_deal_id_fkey"
             columns: ["deal_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "deals"
             referencedColumns: ["id"]
           },
@@ -855,6 +864,7 @@ export type Database = {
           title: string
           updated_at: string
           value: number
+          version: number | null
           workspace_id: string
         }
         Insert: {
@@ -869,6 +879,7 @@ export type Database = {
           title: string
           updated_at?: string
           value?: number
+          version?: number | null
           workspace_id: string
         }
         Update: {
@@ -883,6 +894,7 @@ export type Database = {
           title?: string
           updated_at?: string
           value?: number
+          version?: number | null
           workspace_id?: string
         }
         Relationships: [
@@ -939,6 +951,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      dialer_sessions: {
+        Row: {
+          created_at: string | null
+          current_call_sid: string | null
+          current_lead_id: string | null
+          ended_at: string | null
+          id: string
+          last_heartbeat_at: string
+          started_at: string
+          status: string
+          total_calls: number | null
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          current_call_sid?: string | null
+          current_lead_id?: string | null
+          ended_at?: string | null
+          id?: string
+          last_heartbeat_at?: string
+          started_at?: string
+          status?: string
+          total_calls?: number | null
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string | null
+          current_call_sid?: string | null
+          current_lead_id?: string | null
+          ended_at?: string | null
+          id?: string
+          last_heartbeat_at?: string
+          started_at?: string
+          status?: string
+          total_calls?: number | null
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: []
       }
       disputes: {
         Row: {
@@ -1736,9 +1790,12 @@ export type Database = {
           agency_charged_at: string | null
           application_id: string
           created_at: string
+          failure_reason: string | null
           hired_at: string
           id: string
           job_id: string
+          last_retry_at: string | null
+          retry_count: number | null
           salary_amount: number
           sdr_id: string
           sdr_paid_at: string | null
@@ -1755,9 +1812,12 @@ export type Database = {
           agency_charged_at?: string | null
           application_id: string
           created_at?: string
+          failure_reason?: string | null
           hired_at?: string
           id?: string
           job_id: string
+          last_retry_at?: string | null
+          retry_count?: number | null
           salary_amount: number
           sdr_id: string
           sdr_paid_at?: string | null
@@ -1774,9 +1834,12 @@ export type Database = {
           agency_charged_at?: string | null
           application_id?: string
           created_at?: string
+          failure_reason?: string | null
           hired_at?: string
           id?: string
           job_id?: string
+          last_retry_at?: string | null
+          retry_count?: number | null
           salary_amount?: number
           sdr_id?: string
           sdr_paid_at?: string | null
@@ -2369,6 +2432,10 @@ export type Database = {
         Returns: boolean
       }
       cleanup_old_rate_limits: { Args: never; Returns: undefined }
+      close_deal_atomic: {
+        Args: { p_deal_id: string; p_expected_version: number }
+        Returns: boolean
+      }
       get_conversation_workspace_id: {
         Args: { _conversation_id: string }
         Returns: string
@@ -2386,6 +2453,7 @@ export type Database = {
         Returns: boolean
       }
       is_first_user: { Args: never; Returns: boolean }
+      is_lead_stale: { Args: { last_updated: string }; Returns: boolean }
       is_workspace_member: {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
@@ -2394,6 +2462,7 @@ export type Database = {
         Args: { _user_id: string; _workspace_id: string }
         Returns: boolean
       }
+      normalize_linkedin_url: { Args: { url: string }; Returns: string }
       reset_free_minutes: { Args: never; Returns: undefined }
     }
     Enums: {
