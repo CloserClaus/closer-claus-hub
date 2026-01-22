@@ -14,6 +14,29 @@ interface EnrichRequest {
   add_to_crm?: boolean; // Whether to also add to main leads table
 }
 
+interface MasterLead {
+  id: string;
+  linkedin_url: string;
+  apollo_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  email_status: string;
+  phone: string;
+  phone_status: string;
+  company_name: string;
+  company_domain: string;
+  company_linkedin_url: string;
+  title: string;
+  seniority: string;
+  department: string;
+  city: string;
+  state: string;
+  country: string;
+  industry: string;
+  employee_count: string;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -73,25 +96,6 @@ serve(async (req) => {
       }
     }
 
-    // Calculate required credits
-    const creditsRequired = apollo_lead_ids.length * CREDITS_PER_LEAD;
-
-    // Check credit balance
-    const { data: creditData, error: creditError } = await supabase
-      .from("lead_credits")
-      .select("credits_balance")
-      .eq("workspace_id", workspace_id)
-      .single();
-
-    if (creditError && creditError.code !== "PGRST116") {
-      throw new Error("Error checking credit balance");
-    }
-
-    const currentBalance = creditData?.credits_balance || 0;
-    if (currentBalance < creditsRequired) {
-      throw new Error(`Insufficient credits. Need ${creditsRequired} credits but only have ${currentBalance}. Each lead costs ${CREDITS_PER_LEAD} credits.`);
-    }
-
     // Get apollo_leads to enrich
     const { data: apolloLeads, error: leadsError } = await supabase
       .from("apollo_leads")
@@ -112,25 +116,162 @@ serve(async (req) => {
           success: true,
           message: "All selected leads are already enriched",
           enriched_count: 0,
+          from_cache: 0,
+          from_api: 0,
           credits_used: 0,
+          credits_saved: 0,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const actualCreditsRequired = leadsToEnrich.length * CREDITS_PER_LEAD;
-    
-    // Re-check credits for actual leads to enrich
-    if (currentBalance < actualCreditsRequired) {
-      throw new Error(`Insufficient credits. Need ${actualCreditsRequired} credits for ${leadsToEnrich.length} unenriched leads.`);
+    // Step 1: Check master_leads for cached data using LinkedIn URLs
+    const linkedinUrls = leadsToEnrich
+      .map(lead => lead.linkedin_url)
+      .filter((url): url is string => !!url);
+
+    let cachedMasterLeads: MasterLead[] = [];
+    if (linkedinUrls.length > 0) {
+      const { data: masterLeads } = await supabase
+        .from("master_leads")
+        .select("*")
+        .in("linkedin_url", linkedinUrls);
+      
+      cachedMasterLeads = masterLeads || [];
+    }
+
+    // Create a map for quick lookup by LinkedIn URL
+    const masterLeadsMap = new Map<string, MasterLead>();
+    for (const ml of cachedMasterLeads) {
+      masterLeadsMap.set(ml.linkedin_url, ml);
+    }
+
+    // Separate leads into cache hits and API calls needed
+    const cacheHits: typeof leadsToEnrich = [];
+    const apiCalls: typeof leadsToEnrich = [];
+
+    for (const lead of leadsToEnrich) {
+      if (lead.linkedin_url && masterLeadsMap.has(lead.linkedin_url)) {
+        cacheHits.push(lead);
+      } else {
+        apiCalls.push(lead);
+      }
+    }
+
+    // Calculate credits needed (only for API calls)
+    const creditsRequired = apiCalls.length * CREDITS_PER_LEAD;
+
+    // Check credit balance
+    const { data: creditData, error: creditError } = await supabase
+      .from("lead_credits")
+      .select("credits_balance")
+      .eq("workspace_id", workspace_id)
+      .single();
+
+    if (creditError && creditError.code !== "PGRST116") {
+      throw new Error("Error checking credit balance");
+    }
+
+    const currentBalance = creditData?.credits_balance || 0;
+    if (currentBalance < creditsRequired) {
+      throw new Error(`Insufficient credits. Need ${creditsRequired} credits but only have ${currentBalance}. Each lead costs ${CREDITS_PER_LEAD} credits.`);
     }
 
     const enrichedLeads: any[] = [];
     const createdCRMLeads: any[] = [];
     let creditsUsed = 0;
+    let enrichedFromCache = 0;
+    let enrichedFromApi = 0;
 
-    // Enrich each lead via Apollo API
-    for (const lead of leadsToEnrich) {
+    // Step 2: Process cache hits (FREE - no API call, no credit deduction)
+    for (const lead of cacheHits) {
+      const cachedData = masterLeadsMap.get(lead.linkedin_url!);
+      if (!cachedData) continue;
+
+      const enrichedData = {
+        email: cachedData.email || lead.email,
+        email_status: cachedData.email_status || lead.email_status,
+        phone: cachedData.phone || lead.phone,
+        phone_status: cachedData.phone_status || lead.phone_status,
+        title: cachedData.title || lead.title,
+        seniority: cachedData.seniority || lead.seniority,
+        department: cachedData.department || lead.department,
+        linkedin_url: cachedData.linkedin_url || lead.linkedin_url,
+        company_name: cachedData.company_name || lead.company_name,
+        company_domain: cachedData.company_domain || lead.company_domain,
+        company_linkedin_url: cachedData.company_linkedin_url || lead.company_linkedin_url,
+        industry: cachedData.industry || lead.industry,
+        employee_count: cachedData.employee_count || lead.employee_count,
+        city: cachedData.city || lead.city,
+        state: cachedData.state || lead.state,
+        country: cachedData.country || lead.country,
+        enrichment_status: "enriched",
+        enriched_at: new Date().toISOString(),
+        enriched_by: user.id,
+        credits_used: 0, // No credits for cache hits
+      };
+
+      const { data: updatedLead, error: updateError } = await supabase
+        .from("apollo_leads")
+        .update(enrichedData)
+        .eq("id", lead.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error(`Error updating lead from cache ${lead.id}:`, updateError);
+        continue;
+      }
+
+      // Increment enrichment_count in master_leads
+      await supabase
+        .from("master_leads")
+        .update({
+          enrichment_count: (cachedData as any).enrichment_count + 1,
+          last_updated_at: new Date().toISOString(),
+        })
+        .eq("id", cachedData.id);
+
+      enrichedLeads.push(updatedLead);
+      enrichedFromCache++;
+
+      // Optionally add to CRM
+      if (add_to_crm && updatedLead) {
+        const { data: crmLead, error: crmError } = await supabase
+          .from("leads")
+          .insert({
+            workspace_id: workspace_id,
+            created_by: user.id,
+            first_name: updatedLead.first_name || "Unknown",
+            last_name: updatedLead.last_name || "Unknown",
+            email: updatedLead.email,
+            phone: updatedLead.phone,
+            company: updatedLead.company_name,
+            title: updatedLead.title,
+            linkedin_url: updatedLead.linkedin_url,
+            company_domain: updatedLead.company_domain,
+            company_linkedin_url: updatedLead.company_linkedin_url,
+            industry: updatedLead.industry,
+            employee_count: updatedLead.employee_count,
+            seniority: updatedLead.seniority,
+            department: updatedLead.department,
+            city: updatedLead.city,
+            state: updatedLead.state,
+            country: updatedLead.country,
+            source: "apollo",
+            apollo_lead_id: updatedLead.id,
+          })
+          .select()
+          .single();
+
+        if (!crmError) {
+          createdCRMLeads.push(crmLead);
+        }
+      }
+    }
+
+    // Step 3: Process API calls (costs credits)
+    for (const lead of apiCalls) {
       try {
         // Call Apollo People Enrichment API
         const enrichResponse = await fetch("https://api.apollo.io/v1/people/match", {
@@ -160,7 +301,7 @@ serve(async (req) => {
           continue;
         }
 
-        // Update apollo_leads with enriched data
+        // Build enriched data
         const enrichedData = {
           email: person.email || lead.email,
           email_status: person.email_status || lead.email_status,
@@ -184,6 +325,7 @@ serve(async (req) => {
           credits_used: CREDITS_PER_LEAD,
         };
 
+        // Update apollo_leads
         const { data: updatedLead, error: updateError } = await supabase
           .from("apollo_leads")
           .update(enrichedData)
@@ -196,8 +338,46 @@ serve(async (req) => {
           continue;
         }
 
+        // Save to master_leads for future cache (only if LinkedIn URL exists)
+        if (updatedLead.linkedin_url) {
+          const masterLeadData = {
+            linkedin_url: updatedLead.linkedin_url,
+            apollo_id: updatedLead.apollo_id,
+            first_name: updatedLead.first_name,
+            last_name: updatedLead.last_name,
+            email: updatedLead.email,
+            email_status: updatedLead.email_status,
+            phone: updatedLead.phone,
+            phone_status: updatedLead.phone_status,
+            company_name: updatedLead.company_name,
+            company_domain: updatedLead.company_domain,
+            company_linkedin_url: updatedLead.company_linkedin_url,
+            title: updatedLead.title,
+            seniority: updatedLead.seniority,
+            department: updatedLead.department,
+            city: updatedLead.city,
+            state: updatedLead.state,
+            country: updatedLead.country,
+            industry: updatedLead.industry,
+            employee_count: updatedLead.employee_count,
+          };
+
+          // Upsert to master_leads (insert or update on conflict)
+          const { error: masterError } = await supabase
+            .from("master_leads")
+            .upsert(masterLeadData, {
+              onConflict: "linkedin_url",
+              ignoreDuplicates: false,
+            });
+
+          if (masterError) {
+            console.error("Error saving to master_leads:", masterError);
+          }
+        }
+
         enrichedLeads.push(updatedLead);
         creditsUsed += CREDITS_PER_LEAD;
+        enrichedFromApi++;
 
         // Optionally add to CRM leads table
         if (add_to_crm && updatedLead) {
@@ -240,7 +420,7 @@ serve(async (req) => {
       }
     }
 
-    // Deduct credits
+    // Deduct credits (only for API calls)
     if (creditsUsed > 0) {
       const { error: deductError } = await supabase
         .from("lead_credits")
@@ -252,16 +432,19 @@ serve(async (req) => {
 
       if (deductError) {
         console.error("Error deducting credits:", deductError);
-        // Note: Credits weren't deducted but leads were enriched
-        // This is a known edge case that should be handled
       }
     }
+
+    const creditsSaved = enrichedFromCache * CREDITS_PER_LEAD;
 
     return new Response(
       JSON.stringify({
         success: true,
         enriched_count: enrichedLeads.length,
+        from_cache: enrichedFromCache,
+        from_api: enrichedFromApi,
         credits_used: creditsUsed,
+        credits_saved: creditsSaved,
         enriched_leads: enrichedLeads,
         crm_leads_created: createdCRMLeads.length,
         remaining_credits: currentBalance - creditsUsed,

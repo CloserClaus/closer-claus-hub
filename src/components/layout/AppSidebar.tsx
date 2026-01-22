@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, Users, Phone, MessageSquare, GraduationCap, FileText, DollarSign, Settings, Shield, Building2, LogOut, ChevronDown, CreditCard, AlertTriangle, Tag, UserCircle, Handshake, FileSignature, Bug, Lightbulb, Wallet, Search } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, Phone, MessageSquare, GraduationCap, FileText, DollarSign, Settings, Shield, Building2, LogOut, ChevronDown, CreditCard, AlertTriangle, Tag, UserCircle, Handshake, FileSignature, Bug, Lightbulb, Wallet, Search, Database } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
 import { WorkspaceSwitcher } from '@/components/layout/WorkspaceSwitcher';
@@ -45,6 +45,10 @@ const platformAdminNav: NavItem[] = [{
   title: 'Leads',
   url: '/admin?tab=leads',
   icon: UserCircle
+}, {
+  title: 'Master Leads',
+  url: '/admin?tab=master',
+  icon: Database
 }, {
   title: 'Deals',
   url: '/admin?tab=deals',

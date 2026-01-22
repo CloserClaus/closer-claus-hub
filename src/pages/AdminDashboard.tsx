@@ -21,6 +21,7 @@ import { FeatureRequestsTable } from '@/components/admin/FeatureRequestsTable';
 import { SupportTicketsTable } from '@/components/admin/SupportTicketsTable';
 import { SalaryPaymentsTable } from '@/components/admin/SalaryPaymentsTable';
 import { ApolloLeadsTable } from '@/components/admin/ApolloLeadsTable';
+import { MasterLeadsTable } from '@/components/admin/MasterLeadsTable';
 
 const tabTitles: Record<string, string> = {
   overview: 'Platform Overview',
@@ -30,6 +31,7 @@ const tabTitles: Record<string, string> = {
   applications: 'Job Applications',
   leads: 'CRM Leads',
   apollo: 'Apollo Leads',
+  master: 'Master Leads',
   deals: 'Deals',
   contracts: 'Contracts',
   calls: 'Call Logs',
@@ -77,6 +79,8 @@ export default function AdminDashboard() {
         return <LeadsTable />;
       case 'apollo':
         return <ApolloLeadsTable />;
+      case 'master':
+        return <MasterLeadsTable />;
       case 'deals':
         return <DealsTable />;
       case 'contracts':

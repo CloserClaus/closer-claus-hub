@@ -20,6 +20,8 @@ import {
   Coins,
   AlertTriangle,
   Filter,
+  Zap,
+  Database,
 } from 'lucide-react';
 import { useLeadCredits } from '@/hooks/useLeadCredits';
 
@@ -38,6 +40,9 @@ interface EnrichmentDialogProps {
     enrichedCount?: number;
     requestedCount?: number;
     creditsUsed?: number;
+    creditsSaved?: number;
+    fromCache?: number;
+    fromApi?: number;
     remainingCredits?: number;
   };
 }
@@ -201,6 +206,35 @@ export function EnrichmentDialog({
                 {progressPercent}% complete
               </p>
               
+              {/* Cache Savings Info (show when there were cache hits) */}
+              {(enrichmentProgress?.status === 'complete' || enrichmentProgress?.status === 'partial') && 
+               (enrichmentProgress?.fromCache ?? 0) > 0 && (
+                <div className="rounded-lg border border-green-200 bg-green-50 dark:border-green-900/50 dark:bg-green-950/30 p-4 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <Database className="h-4 w-4 text-green-600 dark:text-green-500 mt-0.5 flex-shrink-0" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                        Credits Saved from Cache!
+                      </p>
+                      <p className="text-xs text-green-700 dark:text-green-300">
+                        {enrichmentProgress.fromCache} leads enriched instantly from our database.
+                        You saved <span className="font-bold">{enrichmentProgress.creditsSaved} credits</span>!
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-green-200 dark:border-green-800">
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-green-700 dark:text-green-300">{enrichmentProgress.fromCache}</p>
+                      <p className="text-xs text-green-600 dark:text-green-400">From Cache (Free)</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-green-700 dark:text-green-300">{enrichmentProgress.fromApi}</p>
+                      <p className="text-xs text-green-600 dark:text-green-400">From API</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Partial Enrichment Details */}
               {enrichmentProgress?.status === 'partial' && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30 p-4 space-y-3">
@@ -228,12 +262,22 @@ export function EnrichmentDialog({
                       </p>
                     </div>
                   </div>
-                  
-                  {enrichmentProgress.remainingCredits !== undefined && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 pt-2 border-t border-amber-200 dark:border-amber-800">
-                      Remaining balance: {enrichmentProgress.remainingCredits} credits
-                    </p>
-                  )}
+                </div>
+              )}
+
+              {/* Credits summary */}
+              {(enrichmentProgress?.status === 'complete' || enrichmentProgress?.status === 'partial') && (
+                <div className="flex items-center justify-between text-sm border-t pt-3">
+                  <span className="text-muted-foreground">Credits used</span>
+                  <span className="font-medium">{enrichmentProgress.creditsUsed}</span>
+                </div>
+              )}
+              
+              {enrichmentProgress?.remainingCredits !== undefined && 
+               (enrichmentProgress?.status === 'complete' || enrichmentProgress?.status === 'partial') && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Remaining balance</span>
+                  <span className="font-medium">{enrichmentProgress.remainingCredits} credits</span>
                 </div>
               )}
             </div>
