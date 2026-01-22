@@ -187,7 +187,11 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
   const [showCallbackDialog, setShowCallbackDialog] = useState(false);
   const [pendingOutcome, setPendingOutcome] = useState<CallOutcome | null>(null);
   
+  // Session tracking state
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch leads with phone numbers and their associated deals
   useEffect(() => {
@@ -366,6 +370,55 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
     };
   }, [dialerStatus]);
 
+  // Session heartbeat mechanism - sends heartbeat every 30 seconds while dialer is active
+  useEffect(() => {
+    if (sessionId && dialerStatus !== 'idle' && dialerStatus !== 'completed') {
+      // Send heartbeat immediately and then every 30 seconds
+      const sendHeartbeat = async () => {
+        try {
+          await supabase
+            .from('dialer_sessions')
+            .update({ 
+              last_heartbeat_at: new Date().toISOString(),
+              current_lead_id: currentLead?.id || null,
+              current_call_sid: currentTwilioCallSid,
+              total_calls: dialedLeads.length,
+            })
+            .eq('id', sessionId);
+        } catch (error) {
+          console.error('Failed to send heartbeat:', error);
+        }
+      };
+
+      sendHeartbeat();
+      heartbeatRef.current = setInterval(sendHeartbeat, 30000);
+    } else if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+    }
+
+    return () => {
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+    };
+  }, [sessionId, dialerStatus, currentLead, currentTwilioCallSid, dialedLeads.length]);
+
+  // End session when dialer completes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (sessionId) {
+        // End the session on unmount
+        supabase
+          .from('dialer_sessions')
+          .update({ 
+            status: 'ended',
+            ended_at: new Date().toISOString(),
+            total_calls: dialedLeads.length,
+          })
+          .eq('id', sessionId)
+          .then(() => console.log('Dialer session ended'));
+      }
+    };
+  }, [sessionId, dialedLeads.length]);
+
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -457,7 +510,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
     toast.success("Sequence deleted");
   };
 
-  const startPowerDialer = () => {
+  const startPowerDialer = async () => {
     const selected = leads.filter(l => l.selected);
     if (selected.length === 0) {
       toast.error("Please select at least one lead to dial");
@@ -467,6 +520,29 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
     if (!selectedCallerId) {
       toast.error("Please select a caller ID before starting");
       return;
+    }
+
+    // Create dialer session for tracking
+    if (user) {
+      try {
+        const { data: session, error } = await supabase
+          .from('dialer_sessions')
+          .insert({
+            workspace_id: workspaceId,
+            user_id: user.id,
+            status: 'active',
+          })
+          .select()
+          .single();
+
+        if (!error && session) {
+          setSessionId(session.id);
+          console.log('Created dialer session:', session.id);
+        }
+      } catch (err) {
+        console.error('Failed to create dialer session:', err);
+        // Continue without session tracking
+      }
     }
     
     setSelectedLeads(selected);
@@ -756,7 +832,24 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
     dialNextLead(selectedLeads, currentIndex);
   };
 
-  const resetDialer = () => {
+  const resetDialer = async () => {
+    // End the current session if exists
+    if (sessionId) {
+      try {
+        await supabase
+          .from('dialer_sessions')
+          .update({ 
+            status: 'ended',
+            ended_at: new Date().toISOString(),
+            total_calls: dialedLeads.length,
+          })
+          .eq('id', sessionId);
+      } catch (err) {
+        console.error('Failed to end dialer session:', err);
+      }
+      setSessionId(null);
+    }
+
     setDialerStatus('idle');
     setCurrentIndex(0);
     setCurrentLead(null);

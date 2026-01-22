@@ -39,6 +39,7 @@ interface EnrichmentDialogProps {
     message?: string;
     enrichedCount?: number;
     requestedCount?: number;
+    partialCount?: number;
     creditsUsed?: number;
     creditsSaved?: number;
     fromCache?: number;
@@ -235,8 +236,38 @@ export function EnrichmentDialog({
                 </div>
               )}
 
-              {/* Partial Enrichment Details */}
-              {enrichmentProgress?.status === 'partial' && (
+              {/* Partial Enrichment Details (incomplete leads not charged) */}
+              {(enrichmentProgress?.partialCount ?? 0) > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30 p-4 space-y-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                        {enrichmentProgress?.partialCount} Leads Had Incomplete Data
+                      </p>
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        These leads were missing email or phone information. 
+                        <span className="font-medium"> You were not charged</span> for these leads.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start gap-2 pt-2 border-t border-amber-200 dark:border-amber-800">
+                    <Filter className="h-4 w-4 text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                        Want more complete results?
+                      </p>
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        Try searching for leads with verified contact information in Apollo.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* General partial enrichment warning (when fewer leads enriched than requested) */}
+              {enrichmentProgress?.status === 'partial' && (enrichmentProgress?.partialCount ?? 0) === 0 && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30 p-4 space-y-3">
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" />
@@ -247,18 +278,6 @@ export function EnrichmentDialog({
                       <p className="text-xs text-amber-700 dark:text-amber-300">
                         {enrichmentProgress.enrichedCount} of {enrichmentProgress.requestedCount} leads returned with full contact data. 
                         Only {enrichmentProgress.creditsUsed} credits were deducted.
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-start gap-2 pt-2 border-t border-amber-200 dark:border-amber-800">
-                    <Filter className="h-4 w-4 text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" />
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                        Want more results?
-                      </p>
-                      <p className="text-xs text-amber-700 dark:text-amber-300">
-                        Try broadening your search filters to find more leads with available contact data.
                       </p>
                     </div>
                   </div>

@@ -119,26 +119,48 @@ serve(async (req) => {
     console.log(`SDR Level: ${sdrLevel}, Platform Cut: ${platformCutPercentage}% ($${platformCutAmount}), SDR Payout: $${sdrPayoutAmount}`);
 
     // Create commission record with platform cut details
-    const { error: commissionError } = await supabase
-      .from('commissions')
-      .insert({
-        workspace_id: workspaceId,
-        deal_id: dealId,
-        sdr_id: deal.assigned_to,
-        amount: grossCommission,
-        rake_amount: rakeAmount,
-        platform_cut_percentage: platformCutPercentage,
-        platform_cut_amount: platformCutAmount,
-        sdr_payout_amount: sdrPayoutAmount,
-        status: 'pending',
-      });
+    // Use try-catch to handle unique constraint violation (race condition protection)
+    try {
+      const { error: commissionError } = await supabase
+        .from('commissions')
+        .insert({
+          workspace_id: workspaceId,
+          deal_id: dealId,
+          sdr_id: deal.assigned_to,
+          amount: grossCommission,
+          rake_amount: rakeAmount,
+          platform_cut_percentage: platformCutPercentage,
+          platform_cut_amount: platformCutAmount,
+          sdr_payout_amount: sdrPayoutAmount,
+          status: 'pending',
+        });
 
-    if (commissionError) {
-      console.error('Error creating commission:', commissionError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to create commission' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      if (commissionError) {
+        // Check for unique constraint violation (duplicate commission)
+        if (commissionError.code === '23505') {
+          console.log('Commission already exists for this deal (caught by unique constraint)');
+          return new Response(
+            JSON.stringify({ success: true, message: 'Commission already exists', existing: true }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        console.error('Error creating commission:', commissionError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to create commission' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    } catch (e: any) {
+      // Handle any unexpected constraint violations
+      if (e.code === '23505') {
+        console.log('Commission race condition caught');
+        return new Response(
+          JSON.stringify({ success: true, message: 'Commission already exists', existing: true }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      throw e;
     }
 
     console.log('Commission created successfully');

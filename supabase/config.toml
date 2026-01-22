@@ -128,3 +128,12 @@ verify_jwt = false
 
 [functions.apollo-enrich]
 verify_jwt = false
+
+[functions.refresh-master-lead]
+verify_jwt = true
+
+[functions.cleanup-dialer-sessions]
+verify_jwt = false
+
+[functions.apollo-enrich]
+verify_jwt = false
