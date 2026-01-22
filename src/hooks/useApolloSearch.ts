@@ -33,8 +33,12 @@ interface PaginationInfo {
 export interface EnrichmentProgress {
   current: number;
   total: number;
-  status: 'idle' | 'enriching' | 'complete' | 'error';
+  status: 'idle' | 'enriching' | 'complete' | 'partial' | 'error';
   message?: string;
+  enrichedCount?: number;
+  requestedCount?: number;
+  creditsUsed?: number;
+  remainingCredits?: number;
 }
 
 export function useApolloSearch() {
@@ -115,18 +119,34 @@ export function useApolloSearch() {
 
       return response.data;
     },
-    onSuccess: (data) => {
-      // Update progress to complete
+    onSuccess: (data, variables) => {
+      const requestedCount = variables.leadIds.length;
+      const enrichedCount = data.enriched_count || 0;
+      const isPartial = enrichedCount < requestedCount;
+      
+      // Update progress with detailed info
       setEnrichmentProgress({
-        current: data.enriched_count || 0,
-        total: data.enriched_count || 0,
-        status: 'complete',
-        message: `Successfully enriched ${data.enriched_count} leads! ${data.credits_used} credits used, ${data.remaining_credits} remaining.`,
+        current: enrichedCount,
+        total: requestedCount,
+        status: isPartial ? 'partial' : 'complete',
+        message: isPartial 
+          ? `Only ${enrichedCount} of ${requestedCount} leads were fully enriched. ${data.credits_used} credits used.`
+          : `Successfully enriched ${enrichedCount} leads! ${data.credits_used} credits used.`,
+        enrichedCount,
+        requestedCount,
+        creditsUsed: data.credits_used,
+        remainingCredits: data.remaining_credits,
       });
 
-      toast.success(
-        `Enriched ${data.enriched_count} leads (${data.credits_used} credits used). ${data.remaining_credits} credits remaining.`
-      );
+      if (isPartial) {
+        toast.warning(
+          `Only ${enrichedCount} of ${requestedCount} leads were fully enriched. Consider broadening your search filters.`
+        );
+      } else {
+        toast.success(
+          `Enriched ${enrichedCount} leads (${data.credits_used} credits used). ${data.remaining_credits} credits remaining.`
+        );
+      }
       
       // Update the local search results with enriched data
       setSearchResults((prev) =>

@@ -18,6 +18,8 @@ import {
   CheckCircle2,
   Loader2,
   Coins,
+  AlertTriangle,
+  Filter,
 } from 'lucide-react';
 import { useLeadCredits } from '@/hooks/useLeadCredits';
 
@@ -31,8 +33,12 @@ interface EnrichmentDialogProps {
   enrichmentProgress?: {
     current: number;
     total: number;
-    status: 'idle' | 'enriching' | 'complete' | 'error';
+    status: 'idle' | 'enriching' | 'complete' | 'partial' | 'error';
     message?: string;
+    enrichedCount?: number;
+    requestedCount?: number;
+    creditsUsed?: number;
+    remainingCredits?: number;
   };
 }
 
@@ -76,6 +82,8 @@ export function EnrichmentDialog({
         return <Loader2 className="h-5 w-5 animate-spin text-primary" />;
       case 'complete':
         return <CheckCircle2 className="h-5 w-5 text-green-500" />;
+      case 'partial':
+        return <AlertTriangle className="h-5 w-5 text-amber-500" />;
       case 'error':
         return <AlertCircle className="h-5 w-5 text-destructive" />;
       default:
@@ -91,6 +99,8 @@ export function EnrichmentDialog({
         return `Enriching lead ${enrichmentProgress.current} of ${enrichmentProgress.total}...`;
       case 'complete':
         return enrichmentProgress.message || 'Enrichment complete!';
+      case 'partial':
+        return enrichmentProgress.message || 'Partial enrichment complete';
       case 'error':
         return enrichmentProgress.message || 'Enrichment failed';
       default:
@@ -183,16 +193,55 @@ export function EnrichmentDialog({
                 {getStatusIcon()}
                 <span className="text-sm">{getStatusMessage()}</span>
               </div>
-              <Progress value={progressPercent} className="h-2" />
+              <Progress 
+                value={progressPercent} 
+                className={`h-2 ${enrichmentProgress?.status === 'partial' ? '[&>div]:bg-amber-500' : ''}`} 
+              />
               <p className="text-xs text-center text-muted-foreground">
                 {progressPercent}% complete
               </p>
+              
+              {/* Partial Enrichment Details */}
+              {enrichmentProgress?.status === 'partial' && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30 p-4 space-y-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                        Partial Enrichment
+                      </p>
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        {enrichmentProgress.enrichedCount} of {enrichmentProgress.requestedCount} leads returned with full contact data. 
+                        Only {enrichmentProgress.creditsUsed} credits were deducted.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start gap-2 pt-2 border-t border-amber-200 dark:border-amber-800">
+                    <Filter className="h-4 w-4 text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                        Want more results?
+                      </p>
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        Try broadening your search filters to find more leads with available contact data.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {enrichmentProgress.remainingCredits !== undefined && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 pt-2 border-t border-amber-200 dark:border-amber-800">
+                      Remaining balance: {enrichmentProgress.remainingCredits} credits
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
 
         <DialogFooter>
-          {enrichmentProgress?.status === 'complete' ? (
+          {enrichmentProgress?.status === 'complete' || enrichmentProgress?.status === 'partial' ? (
             <Button onClick={() => onOpenChange(false)}>
               Done
             </Button>
