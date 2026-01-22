@@ -1509,6 +1509,87 @@ export type Database = {
           },
         ]
       }
+      master_leads: {
+        Row: {
+          apollo_id: string | null
+          city: string | null
+          company_domain: string | null
+          company_linkedin_url: string | null
+          company_name: string | null
+          country: string | null
+          created_at: string | null
+          department: string | null
+          email: string | null
+          email_status: string | null
+          employee_count: string | null
+          enrichment_count: number | null
+          first_enriched_at: string | null
+          first_name: string | null
+          id: string
+          industry: string | null
+          last_name: string | null
+          last_updated_at: string | null
+          linkedin_url: string
+          phone: string | null
+          phone_status: string | null
+          seniority: string | null
+          state: string | null
+          title: string | null
+        }
+        Insert: {
+          apollo_id?: string | null
+          city?: string | null
+          company_domain?: string | null
+          company_linkedin_url?: string | null
+          company_name?: string | null
+          country?: string | null
+          created_at?: string | null
+          department?: string | null
+          email?: string | null
+          email_status?: string | null
+          employee_count?: string | null
+          enrichment_count?: number | null
+          first_enriched_at?: string | null
+          first_name?: string | null
+          id?: string
+          industry?: string | null
+          last_name?: string | null
+          last_updated_at?: string | null
+          linkedin_url: string
+          phone?: string | null
+          phone_status?: string | null
+          seniority?: string | null
+          state?: string | null
+          title?: string | null
+        }
+        Update: {
+          apollo_id?: string | null
+          city?: string | null
+          company_domain?: string | null
+          company_linkedin_url?: string | null
+          company_name?: string | null
+          country?: string | null
+          created_at?: string | null
+          department?: string | null
+          email?: string | null
+          email_status?: string | null
+          employee_count?: string | null
+          enrichment_count?: number | null
+          first_enriched_at?: string | null
+          first_name?: string | null
+          id?: string
+          industry?: string | null
+          last_name?: string | null
+          last_updated_at?: string | null
+          linkedin_url?: string
+          phone?: string | null
+          phone_status?: string | null
+          seniority?: string | null
+          state?: string | null
+          title?: string | null
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string

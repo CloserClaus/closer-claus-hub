@@ -38,6 +38,9 @@ export interface EnrichmentProgress {
   enrichedCount?: number;
   requestedCount?: number;
   creditsUsed?: number;
+  creditsSaved?: number;
+  fromCache?: number;
+  fromApi?: number;
   remainingCredits?: number;
 }
 
@@ -122,19 +125,25 @@ export function useApolloSearch() {
     onSuccess: (data, variables) => {
       const requestedCount = variables.leadIds.length;
       const enrichedCount = data.enriched_count || 0;
+      const fromCache = data.from_cache || 0;
+      const fromApi = data.from_api || 0;
+      const creditsSaved = data.credits_saved || 0;
       const isPartial = enrichedCount < requestedCount;
       
-      // Update progress with detailed info
+      // Update progress with detailed info including cache stats
       setEnrichmentProgress({
         current: enrichedCount,
         total: requestedCount,
         status: isPartial ? 'partial' : 'complete',
         message: isPartial 
-          ? `Only ${enrichedCount} of ${requestedCount} leads were fully enriched. ${data.credits_used} credits used.`
-          : `Successfully enriched ${enrichedCount} leads! ${data.credits_used} credits used.`,
+          ? `Only ${enrichedCount} of ${requestedCount} leads were fully enriched.`
+          : `Successfully enriched ${enrichedCount} leads!`,
         enrichedCount,
         requestedCount,
         creditsUsed: data.credits_used,
+        creditsSaved,
+        fromCache,
+        fromApi,
         remainingCredits: data.remaining_credits,
       });
 
@@ -143,8 +152,9 @@ export function useApolloSearch() {
           `Only ${enrichedCount} of ${requestedCount} leads were fully enriched. Consider broadening your search filters.`
         );
       } else {
+        const cacheMessage = fromCache > 0 ? ` (${fromCache} from cache, saved ${creditsSaved} credits!)` : '';
         toast.success(
-          `Enriched ${enrichedCount} leads (${data.credits_used} credits used). ${data.remaining_credits} credits remaining.`
+          `Enriched ${enrichedCount} leads${cacheMessage}. ${data.remaining_credits} credits remaining.`
         );
       }
       
