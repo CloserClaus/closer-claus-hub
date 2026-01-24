@@ -10,9 +10,9 @@ export type OfferType =
 export type ICPIndustry = 
   | 'local_services'
   | 'professional_services'
+  | 'b2b_service_agency'
   | 'dtc_ecommerce'
-  | 'saas_tech'
-  | 'other_b2b';
+  | 'saas_tech';
 
 export type ICPSize = 
   | 'solo_founder'
@@ -28,56 +28,69 @@ export type ICPMaturity =
   | 'mature'
   | 'enterprise';
 
-export type PricingModel = 
-  | 'retainer'
-  | 'hybrid'
+export type PricingStructure = 
+  | 'recurring'
+  | 'one_time'
   | 'performance_only'
-  | 'one_time_project'
   | 'usage_based';
 
-export type PriceTier = 
-  | 'under_1k'
-  | '1k_3k'
-  | '3k_10k'
-  | '10k_plus'
-  | 'performance_only';
+export type RecurringPriceTier = 
+  | 'under_150'
+  | '150_500'
+  | '500_2k'
+  | '2k_5k'
+  | '5k_plus';
 
-export type RiskStructure = 
-  | 'no_guarantee'
-  | 'conditional_guarantee'
-  | 'full_guarantee'
-  | 'pay_on_performance'
-  | 'pay_after_results';
+export type OneTimePriceTier = 
+  | 'under_3k'
+  | '3k_10k'
+  | '10k_plus';
+
+export type UsageOutputType = 
+  | 'lead_based'
+  | 'conversion_based'
+  | 'task_based';
+
+export type UsageVolumeTier = 
+  | 'low'
+  | 'mid'
+  | 'high';
 
 export type FulfillmentComplexity = 
   | 'hands_on_labor'
   | 'hands_off_strategy'
   | 'hybrid_labor_systems'
-  | 'software_automation'
-  | 'staffing_placement';
+  | 'software'
+  | 'automation';
 
 export interface DiagnosticFormData {
   offerType: OfferType | null;
   icpIndustry: ICPIndustry | null;
   icpSize: ICPSize | null;
   icpMaturity: ICPMaturity | null;
-  pricingModel: PricingModel | null;
-  priceTier: PriceTier | null;
-  riskStructure: RiskStructure | null;
+  pricingStructure: PricingStructure | null;
+  recurringPriceTier: RecurringPriceTier | null;
+  oneTimePriceTier: OneTimePriceTier | null;
+  usageOutputType: UsageOutputType | null;
+  usageVolumeTier: UsageVolumeTier | null;
   fulfillmentComplexity: FulfillmentComplexity | null;
 }
 
 export interface DimensionScores {
   painUrgency: number;
   buyingPower: number;
+  pricingFit: number;
   executionFeasibility: number;
-  pricingSanity: number;
   riskAlignment: number;
 }
 
+export type Grade = 'Weak' | 'Average' | 'Strong' | 'Excellent';
+
 export interface ScoringResult {
   hiddenScore: number;
-  visibleScore: number;
+  visibleScore100: number;
+  visibleScore10: number;
+  grade: Grade;
   dimensionScores: DimensionScores;
 }
 
