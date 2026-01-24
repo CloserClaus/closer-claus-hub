@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, Users, Phone, MessageSquare, GraduationCap, FileText, DollarSign, Settings, Shield, Building2, LogOut, ChevronDown, CreditCard, AlertTriangle, Tag, UserCircle, Handshake, FileSignature, Bug, Lightbulb, Wallet, Search, Database } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, Phone, MessageSquare, GraduationCap, FileText, DollarSign, Settings, Shield, Building2, LogOut, ChevronDown, CreditCard, AlertTriangle, Tag, UserCircle, Handshake, FileSignature, Bug, Lightbulb, Wallet, Search, Database, ClipboardCheck } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
 import { WorkspaceSwitcher } from '@/components/layout/WorkspaceSwitcher';
@@ -158,6 +158,10 @@ const agencyOwnerNav: NavItem[] = [{
   title: 'Billing',
   url: '/billing',
   icon: CreditCard
+}, {
+  title: 'Offer Diagnostic',
+  url: '/offer-diagnostic',
+  icon: ClipboardCheck
 }];
 const sdrNav: NavItem[] = [{
   title: 'Dashboard',
