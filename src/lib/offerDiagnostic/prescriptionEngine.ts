@@ -7,7 +7,7 @@ import type {
 
 // Priority order for tie-breaking weakest dimension
 const DIMENSION_PRIORITY: DimensionName[] = [
-  'pricingSanity',
+  'pricingFit',
   'buyingPower',
   'painUrgency',
   'riskAlignment',
@@ -18,7 +18,7 @@ const BUSINESS_IMPACT: Record<DimensionName, string> = {
   painUrgency: 'Outbound underperforms when the offer does not solve an urgent pain.',
   buyingPower: 'Low budget ICPs stall sales cycles and produce low close rates.',
   executionFeasibility: 'Complex fulfillment kills margins and increases churn.',
-  pricingSanity: 'Misaligned pricing causes sticker shock and slows sales velocity.',
+  pricingFit: 'Misaligned pricing causes sticker shock and slows sales velocity.',
   riskAlignment: 'Risk structure mismatches reduce trust and make deals harder to close.',
 };
 
@@ -26,22 +26,38 @@ const DIMENSION_LABELS: Record<DimensionName, string> = {
   painUrgency: 'Pain Urgency',
   buyingPower: 'Buying Power',
   executionFeasibility: 'Execution Feasibility',
-  pricingSanity: 'Pricing Sanity',
+  pricingFit: 'Pricing Fit',
   riskAlignment: 'Risk Alignment',
+};
+
+// Max scores for each dimension for percentage calculation
+const DIMENSION_MAX_SCORES: Record<DimensionName, number> = {
+  painUrgency: 25,
+  buyingPower: 20,
+  pricingFit: 20,
+  executionFeasibility: 20,
+  riskAlignment: 15,
 };
 
 export function getDimensionLabel(dimension: DimensionName): string {
   return DIMENSION_LABELS[dimension];
 }
 
+export function getDimensionMaxScore(dimension: DimensionName): number {
+  return DIMENSION_MAX_SCORES[dimension];
+}
+
 function findWeakestDimension(scores: DimensionScores): DimensionName {
-  let weakest: DimensionName = 'pricingSanity';
-  let lowestScore = Infinity;
+  let weakest: DimensionName = 'pricingFit';
+  let lowestPercentage = Infinity;
 
   for (const dimension of DIMENSION_PRIORITY) {
     const score = scores[dimension];
-    if (score < lowestScore) {
-      lowestScore = score;
+    const maxScore = DIMENSION_MAX_SCORES[dimension];
+    const percentage = score / maxScore;
+    
+    if (percentage < lowestPercentage) {
+      lowestPercentage = percentage;
       weakest = dimension;
     }
   }
@@ -50,91 +66,161 @@ function findWeakestDimension(scores: DimensionScores): DimensionName {
 }
 
 function getPainUrgencyRecommendations(formData: DiagnosticFormData): string[] {
+  const recs: string[] = [];
+  
+  if (formData.icpMaturity === 'pre_revenue') {
+    recs.push('Pre-Revenue ICPs rarely have urgent pain. Target Early Traction or Scaling instead.');
+  }
+  
   switch (formData.offerType) {
     case 'demand_creation':
-      return ['Reposition around pipeline pain.', 'Target SaaS/Agencies/DTC.'];
+      recs.push('Reposition around pipeline pain to increase urgency.');
+      break;
     case 'demand_capture':
-      return ['Shift to revenue recovery framing.', 'Target Local or DTC high-intent.'];
+      recs.push('Shift to revenue recovery framing for higher perceived urgency.');
+      break;
     case 'outbound_sales_enablement':
-      return ['Highlight founder dependency pain.', 'Target scaling ICPs.'];
+      recs.push('Highlight founder dependency pain to increase urgency.');
+      break;
     case 'retention_monetization':
-      return ['Tie offer to churn/LTV metrics.', 'Target DTC or SaaS.'];
+      recs.push('Tie offer to churn/LTV metrics for stronger pain positioning.');
+      break;
     case 'operational_enablement':
-      return ['Frame ops friction as revenue loss.', 'Target scaling ICPs.'];
-    default:
-      return ['Reassess your offer positioning.'];
+      recs.push('Frame ops friction as revenue loss to increase perceived urgency.');
+      break;
   }
+  
+  if (formData.icpMaturity !== 'scaling' && formData.icpMaturity !== 'early_traction') {
+    recs.push('Scaling and Early Traction ICPs have highest pain urgency.');
+  }
+  
+  return recs.slice(0, 3);
 }
 
 function getBuyingPowerRecommendations(formData: DiagnosticFormData): string[] {
-  const { icpSize, icpIndustry } = formData;
-
-  if (icpSize === 'solo_founder' || icpSize === '1_5_employees') {
-    return ['Shift to 6–20 employees.', 'Use hybrid pricing to reduce upfront burden.'];
+  const recs: string[] = [];
+  
+  if (formData.icpSize === 'solo_founder' || formData.icpSize === '1_5_employees') {
+    recs.push('Shift to 6–20 employees for better budget alignment.');
+    recs.push('Use hybrid or usage-based pricing to reduce upfront burden.');
   }
 
-  if (icpIndustry === 'local_services') {
-    return ['Shift to Pro Services or SaaS.', 'Reduce fulfillment cost or scope.'];
+  if (formData.icpIndustry === 'local_services') {
+    recs.push('Local Services have lowest budgets. Consider Professional Services or SaaS/Tech.');
   }
 
-  if (icpIndustry === 'other_b2b') {
-    return ['Narrow vertical to increase willingness-to-pay.', 'Add proof for pricing justification.'];
+  if (formData.icpIndustry === 'b2b_service_agency') {
+    recs.push('B2B Service Agencies have moderate budgets. Add proof for pricing justification.');
+  }
+  
+  if (recs.length === 0) {
+    recs.push('Consider targeting larger ICP sizes for higher budgets.');
+    recs.push('SaaS/Tech and Professional Services have highest buying power.');
   }
 
-  return ['Consider targeting higher-budget segments.', 'Adjust scope to match ICP budget.'];
+  return recs.slice(0, 3);
 }
 
 function getExecutionFeasibilityRecommendations(formData: DiagnosticFormData): string[] {
+  const recs: string[] = [];
+  
   switch (formData.fulfillmentComplexity) {
     case 'hands_on_labor':
-      return ['Add automation/templates.', 'Raise price or reduce scope.'];
-    case 'staffing_placement':
-      return ['Use hybrid pricing to protect margins.', 'Narrow ICP to reduce fulfillment load.'];
+      recs.push('Add automation/templates to reduce fulfillment load.');
+      recs.push('Raise price or reduce scope to protect margins.');
+      break;
+    case 'software':
+      recs.push('Software alone rarely justifies high pricing. Add strategy layer.');
+      break;
     case 'hybrid_labor_systems':
-      return ['Systemize onboarding.', 'Automate repetitive workflows.'];
+      recs.push('Systemize onboarding to improve scalability.');
+      recs.push('Automate repetitive workflows.');
+      break;
     default:
-      return ['Review fulfillment complexity.', 'Consider automation opportunities.'];
+      recs.push('Consider automation to improve execution efficiency.');
   }
+  
+  if (formData.pricingStructure === 'usage_based') {
+    if (formData.usageOutputType === 'task_based' && formData.icpIndustry === 'local_services') {
+      recs.push('Task-based pricing poorly aligns with Local Services. Consider lead or conversion-based.');
+    }
+    if (formData.usageOutputType === 'lead_based' && formData.icpIndustry === 'dtc_ecommerce') {
+      recs.push('Lead-based pricing poorly aligns with DTC. Consider conversion-based.');
+    }
+    if (formData.usageOutputType === 'conversion_based') {
+      recs.push('Conversion-based usage aligns well with DTC, B2B Agency, and SaaS.');
+    }
+  }
+
+  return recs.slice(0, 3);
 }
 
-function getPricingSanityRecommendations(formData: DiagnosticFormData): string[] {
-  const { pricingModel, priceTier, icpSize, icpMaturity, offerType } = formData;
-
-  if (pricingModel === 'retainer' && (icpSize === 'solo_founder' || icpSize === '1_5_employees')) {
-    return ['Use hybrid pricing.', 'Reduce upfront commitment.'];
+function getPricingFitRecommendations(formData: DiagnosticFormData): string[] {
+  const recs: string[] = [];
+  
+  if (formData.pricingStructure === 'performance_only') {
+    if (formData.icpMaturity === 'pre_revenue') {
+      recs.push('Performance-only rarely works for Pre-Revenue ICPs. Switch to one-time or recurring.');
+    } else if (formData.icpMaturity === 'early_traction') {
+      recs.push('Performance-only is risky for Early Traction. Consider conditional guarantee instead.');
+    }
+    if (formData.icpSize === 'solo_founder' || formData.icpSize === '1_5_employees') {
+      recs.push('Small ICPs cannot absorb performance risk. Use hybrid or one-time pricing.');
+    }
+  }
+  
+  if (formData.pricingStructure === 'recurring') {
+    if (formData.icpSize === 'solo_founder' || formData.icpSize === '1_5_employees') {
+      recs.push('Small ICPs prefer lower upfront commitment. Consider hybrid or one-time.');
+    }
+    if (formData.recurringPriceTier === 'under_150') {
+      recs.push('Pricing below $150/mo rarely supports quality fulfillment. Increase tier.');
+    }
+  }
+  
+  if (formData.pricingStructure === 'one_time' && formData.icpMaturity === 'scaling') {
+    recs.push('Scaling ICPs prefer recurring pricing; one-time projects add friction.');
+  }
+  
+  if (formData.fulfillmentComplexity === 'software' && formData.recurringPriceTier === '2k_5k') {
+    recs.push('Software priced above $2k/mo is rarely purchased by SMB. Consider repositioning as automation.');
   }
 
-  if (pricingModel === 'performance_only' && icpMaturity === 'pre_revenue') {
-    return ['Use conditional guarantee.', 'Avoid pure performance.'];
+  if (recs.length === 0) {
+    recs.push('Review pricing model alignment with ICP size.');
+    recs.push('Consider adjusting price tier to match market expectations.');
   }
 
-  if (priceTier === 'under_1k' && (offerType === 'outbound_sales_enablement' || offerType === 'retention_monetization')) {
-    return ['Increase to $1k–$3k to support fulfillment.'];
-  }
-
-  if (priceTier === '10k_plus' && formData.icpIndustry === 'local_services') {
-    return ['Reduce scope or change ICP.'];
-  }
-
-  return ['Review pricing model alignment.', 'Consider adjusting price tier.'];
+  return recs.slice(0, 3);
 }
 
 function getRiskAlignmentRecommendations(formData: DiagnosticFormData): string[] {
-  const { icpMaturity, riskStructure, icpSize } = formData;
-
-  if (riskStructure === 'full_guarantee' && (icpMaturity === 'pre_revenue' || icpMaturity === 'early_traction')) {
-    return ['Switch to conditional guarantee.', 'Filter tire-kickers with qualifiers.'];
+  const recs: string[] = [];
+  
+  if (formData.pricingStructure === 'performance_only') {
+    if (formData.icpMaturity === 'pre_revenue') {
+      recs.push('Pre-Revenue ICPs cannot support performance pricing. Switch to conditional or one-time.');
+    }
+    if (formData.icpMaturity === 'enterprise') {
+      recs.push('Enterprise procurement rarely accepts performance-only. Use retainer or usage-based.');
+    }
+    recs.push('Performance pricing requires mature ICPs with predictable revenue.');
+  }
+  
+  if (formData.pricingStructure === 'usage_based' && formData.icpMaturity === 'pre_revenue') {
+    recs.push('Usage-based pricing misaligns with Pre-Revenue. Try one-time project.');
+  }
+  
+  if (formData.pricingStructure === 'recurring' && formData.icpMaturity === 'pre_revenue') {
+    recs.push('Pre-Revenue ICPs struggle with recurring commitments. Consider one-time with upsell path.');
   }
 
-  if (riskStructure === 'pay_on_performance' && icpMaturity === 'enterprise') {
-    return ['Use retainer or usage-based.', 'Separate procurement from performance.'];
+  if (recs.length === 0) {
+    recs.push('Review pricing structure alignment with ICP maturity.');
+    recs.push('Consider trust-building mechanisms for your target market.');
   }
 
-  if (riskStructure === 'no_guarantee' && (icpSize === 'solo_founder' || icpSize === '1_5_employees')) {
-    return ['Add conditional guarantee to boost trust.'];
-  }
-
-  return ['Review risk structure alignment.', 'Consider trust-building mechanisms.'];
+  return recs.slice(0, 3);
 }
 
 export function generatePrescription(
@@ -157,8 +243,8 @@ export function generatePrescription(
     case 'executionFeasibility':
       recommendations = getExecutionFeasibilityRecommendations(formData);
       break;
-    case 'pricingSanity':
-      recommendations = getPricingSanityRecommendations(formData);
+    case 'pricingFit':
+      recommendations = getPricingFitRecommendations(formData);
       break;
     case 'riskAlignment':
       recommendations = getRiskAlignmentRecommendations(formData);

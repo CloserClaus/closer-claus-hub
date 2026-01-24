@@ -28,23 +28,28 @@ import type {
   ICPIndustry,
   ICPSize,
   ICPMaturity,
-  PricingModel,
-  PriceTier,
-  RiskStructure,
+  PricingStructure,
+  RecurringPriceTier,
+  OneTimePriceTier,
+  UsageOutputType,
+  UsageVolumeTier,
   FulfillmentComplexity,
   ScoringResult,
   Prescription,
+  Grade,
 } from '@/lib/offerDiagnostic/types';
 import { calculateScore } from '@/lib/offerDiagnostic/scoringEngine';
-import { generatePrescription, getDimensionLabel } from '@/lib/offerDiagnostic/prescriptionEngine';
+import { generatePrescription, getDimensionLabel, getDimensionMaxScore } from '@/lib/offerDiagnostic/prescriptionEngine';
 import {
   OFFER_TYPE_OPTIONS,
   ICP_INDUSTRY_OPTIONS,
   ICP_SIZE_OPTIONS,
   ICP_MATURITY_OPTIONS,
-  PRICING_MODEL_OPTIONS,
-  PRICE_TIER_OPTIONS,
-  RISK_STRUCTURE_OPTIONS,
+  PRICING_STRUCTURE_OPTIONS,
+  RECURRING_PRICE_TIER_OPTIONS,
+  ONE_TIME_PRICE_TIER_OPTIONS,
+  USAGE_OUTPUT_TYPE_OPTIONS,
+  USAGE_VOLUME_TIER_OPTIONS,
   FULFILLMENT_COMPLEXITY_OPTIONS,
 } from '@/lib/offerDiagnostic/dropdownOptions';
 
@@ -53,29 +58,46 @@ const initialFormData: DiagnosticFormData = {
   icpIndustry: null,
   icpSize: null,
   icpMaturity: null,
-  pricingModel: null,
-  priceTier: null,
-  riskStructure: null,
+  pricingStructure: null,
+  recurringPriceTier: null,
+  oneTimePriceTier: null,
+  usageOutputType: null,
+  usageVolumeTier: null,
   fulfillmentComplexity: null,
 };
 
-function ScoreDisplay({ score }: { score: number }) {
-  const getScoreColor = (score: number) => {
-    if (score >= 8) return 'text-green-500';
-    if (score >= 5) return 'text-yellow-500';
-    return 'text-red-500';
-  };
+function getGradeColor(grade: Grade) {
+  switch (grade) {
+    case 'Excellent': return 'text-green-500';
+    case 'Strong': return 'text-blue-500';
+    case 'Average': return 'text-yellow-500';
+    case 'Weak': return 'text-red-500';
+  }
+}
 
-  const getScoreBg = (score: number) => {
-    if (score >= 8) return 'bg-green-500/10 border-green-500/20';
-    if (score >= 5) return 'bg-yellow-500/10 border-yellow-500/20';
-    return 'bg-red-500/10 border-red-500/20';
-  };
+function getGradeBg(grade: Grade) {
+  switch (grade) {
+    case 'Excellent': return 'bg-green-500/10 border-green-500/30';
+    case 'Strong': return 'bg-blue-500/10 border-blue-500/30';
+    case 'Average': return 'bg-yellow-500/10 border-yellow-500/30';
+    case 'Weak': return 'bg-red-500/10 border-red-500/30';
+  }
+}
 
+function ScoreDisplay({ score100, score10, grade }: { score100: number; score10: number; grade: Grade }) {
   return (
-    <div className={`flex items-center justify-center w-24 h-24 rounded-full border-4 ${getScoreBg(score)}`}>
-      <span className={`text-4xl font-bold ${getScoreColor(score)}`}>{score}</span>
-      <span className="text-muted-foreground text-lg">/10</span>
+    <div className="flex flex-col items-center gap-3">
+      <div className="text-sm font-medium text-muted-foreground">Your Offer Diagnostic Score</div>
+      <div className={`flex flex-col items-center justify-center w-32 h-32 rounded-full border-4 ${getGradeBg(grade)}`}>
+        <span className={`text-4xl font-bold ${getGradeColor(grade)}`}>{score100}</span>
+        <span className="text-muted-foreground text-sm">/ 100</span>
+      </div>
+      <div className="text-center space-y-1">
+        <div className="text-sm text-muted-foreground">({score10} out of 10)</div>
+        <Badge variant="outline" className={`${getGradeBg(grade)} ${getGradeColor(grade)} border-current`}>
+          {grade}
+        </Badge>
+      </div>
     </div>
   );
 }
@@ -83,10 +105,10 @@ function ScoreDisplay({ score }: { score: number }) {
 function DimensionScoresTable({ scores }: { scores: ScoringResult['dimensionScores'] }) {
   const dimensions = [
     { key: 'painUrgency' as const, label: 'Pain Urgency', maxScore: 25 },
-    { key: 'buyingPower' as const, label: 'Buying Power', maxScore: 25 },
+    { key: 'buyingPower' as const, label: 'Buying Power', maxScore: 20 },
+    { key: 'pricingFit' as const, label: 'Pricing Fit', maxScore: 20 },
     { key: 'executionFeasibility' as const, label: 'Execution Feasibility', maxScore: 20 },
-    { key: 'pricingSanity' as const, label: 'Pricing Sanity', maxScore: 20 },
-    { key: 'riskAlignment' as const, label: 'Risk Alignment', maxScore: 10 },
+    { key: 'riskAlignment' as const, label: 'Risk Alignment', maxScore: 15 },
   ];
 
   return (
@@ -95,7 +117,6 @@ function DimensionScoresTable({ scores }: { scores: ScoringResult['dimensionScor
         <TableRow>
           <TableHead>Dimension</TableHead>
           <TableHead className="text-right">Score</TableHead>
-          <TableHead className="text-right">Max</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -107,10 +128,9 @@ function DimensionScoresTable({ scores }: { scores: ScoringResult['dimensionScor
               <TableCell className="font-medium">{label}</TableCell>
               <TableCell className="text-right">
                 <span className={percentage < 50 ? 'text-red-500 font-semibold' : ''}>
-                  {score}
+                  {score}/{maxScore}
                 </span>
               </TableCell>
-              <TableCell className="text-right text-muted-foreground">{maxScore}</TableCell>
             </TableRow>
           );
         })}
@@ -125,7 +145,7 @@ function PrescriptionDisplay({ prescription }: { prescription: Prescription }) {
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
           <Lightbulb className="h-5 w-5 text-primary" />
-          Recommendations
+          Top Recommendations
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -173,33 +193,60 @@ function PrescriptionDisplay({ prescription }: { prescription: Prescription }) {
 export default function OfferDiagnostic() {
   const [formData, setFormData] = useState<DiagnosticFormData>(initialFormData);
   const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
-  const [showPrescription, setShowPrescription] = useState(false);
 
   const isFormComplete = useMemo(() => {
-    return Object.values(formData).every((value) => value !== null);
+    const { offerType, icpIndustry, icpSize, icpMaturity, pricingStructure, fulfillmentComplexity } = formData;
+    
+    // Base required fields
+    if (!offerType || !icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !fulfillmentComplexity) {
+      return false;
+    }
+
+    // Conditional field validation
+    if (pricingStructure === 'recurring' && !formData.recurringPriceTier) {
+      return false;
+    }
+    if (pricingStructure === 'one_time' && !formData.oneTimePriceTier) {
+      return false;
+    }
+    if (pricingStructure === 'usage_based' && (!formData.usageOutputType || !formData.usageVolumeTier)) {
+      return false;
+    }
+
+    return true;
   }, [formData]);
 
   const handleFieldChange = <K extends keyof DiagnosticFormData>(
     field: K,
     value: DiagnosticFormData[K]
   ) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      const newData = { ...prev, [field]: value };
+      
+      // Clear conditional fields when pricing structure changes
+      if (field === 'pricingStructure') {
+        newData.recurringPriceTier = null;
+        newData.oneTimePriceTier = null;
+        newData.usageOutputType = null;
+        newData.usageVolumeTier = null;
+      }
+      
+      return newData;
+    });
     // Reset scoring when form changes
     setScoringResult(null);
-    setShowPrescription(false);
   };
 
   const handleSubmit = () => {
     const result = calculateScore(formData);
     if (result) {
       setScoringResult(result);
-      setShowPrescription(false);
     }
   };
 
   const prescription = useMemo(() => {
     if (!scoringResult) return null;
-    return generatePrescription(scoringResult.visibleScore, scoringResult.dimensionScores, formData);
+    return generatePrescription(scoringResult.visibleScore100, scoringResult.dimensionScores, formData);
   }, [scoringResult, formData]);
 
   const renderSelect = <T extends string>(
@@ -277,10 +324,28 @@ export default function OfferDiagnostic() {
               <CardTitle className="text-lg">Pricing</CardTitle>
               <CardDescription>Configure your pricing structure</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-3">
-              {renderSelect<PricingModel>('Pricing Model', 'pricingModel', PRICING_MODEL_OPTIONS, formData.pricingModel)}
-              {renderSelect<PriceTier>('Price Tier', 'priceTier', PRICE_TIER_OPTIONS, formData.priceTier)}
-              {renderSelect<RiskStructure>('Risk Structure', 'riskStructure', RISK_STRUCTURE_OPTIONS, formData.riskStructure)}
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                {renderSelect<PricingStructure>('Pricing Structure', 'pricingStructure', PRICING_STRUCTURE_OPTIONS, formData.pricingStructure)}
+                
+                {/* Conditional: Recurring Price Tier */}
+                {formData.pricingStructure === 'recurring' && (
+                  renderSelect<RecurringPriceTier>('Recurring Price Tier', 'recurringPriceTier', RECURRING_PRICE_TIER_OPTIONS, formData.recurringPriceTier)
+                )}
+                
+                {/* Conditional: One-Time Price Tier */}
+                {formData.pricingStructure === 'one_time' && (
+                  renderSelect<OneTimePriceTier>('One-Time Price Tier', 'oneTimePriceTier', ONE_TIME_PRICE_TIER_OPTIONS, formData.oneTimePriceTier)
+                )}
+              </div>
+              
+              {/* Conditional: Usage-Based fields */}
+              {formData.pricingStructure === 'usage_based' && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {renderSelect<UsageOutputType>('Usage Output Type', 'usageOutputType', USAGE_OUTPUT_TYPE_OPTIONS, formData.usageOutputType)}
+                  {renderSelect<UsageVolumeTier>('Usage Volume Tier', 'usageVolumeTier', USAGE_VOLUME_TIER_OPTIONS, formData.usageVolumeTier)}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -312,28 +377,18 @@ export default function OfferDiagnostic() {
                 <CardTitle>Diagnostic Results</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:gap-8">
-                  <div className="flex flex-col items-center gap-2">
-                    <span className="text-sm text-muted-foreground font-medium">Overall Score</span>
-                    <ScoreDisplay score={scoringResult.visibleScore} />
-                  </div>
+                <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:gap-8">
+                  <ScoreDisplay 
+                    score100={scoringResult.visibleScore100} 
+                    score10={scoringResult.visibleScore10}
+                    grade={scoringResult.grade}
+                  />
                   <div className="flex-1 w-full">
                     <DimensionScoresTable scores={scoringResult.dimensionScores} />
                   </div>
                 </div>
 
-                {!showPrescription && (
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowPrescription(true)}
-                    className="w-full"
-                  >
-                    <Lightbulb className="h-4 w-4 mr-2" />
-                    Show Recommendations
-                  </Button>
-                )}
-
-                {showPrescription && prescription && (
+                {prescription && (
                   <PrescriptionDisplay prescription={prescription} />
                 )}
               </CardContent>
