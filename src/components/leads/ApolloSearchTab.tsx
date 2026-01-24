@@ -122,14 +122,14 @@ const generateDummyLeads = (count: number) => {
   });
 };
 
-// Generate 500 dummy leads
-export const DUMMY_RESULTS = generateDummyLeads(500);
+// Remove global dummy results - they should only be generated per-session when user searches
 
 export function ApolloSearchTab() {
   const [filters, setFilters] = useState<SearchFilters>(defaultFilters);
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
-  const [showDemoResults, setShowDemoResults] = useState(true); // Show demo results by default
+  const [showDemoResults, setShowDemoResults] = useState(false); // Only show demo results after explicit search
   const [isDemoSearching, setIsDemoSearching] = useState(false);
+  const [demoLeads, setDemoLeads] = useState<ReturnType<typeof generateDummyLeads>>([]);
   
   const { 
     searchResults, 
@@ -154,12 +154,16 @@ export function ApolloSearchTab() {
   }, [enrichmentProgress.status, resetEnrichmentProgress]);
 
   const handleSearch = () => {
-    // If no real API configured, show demo results
     setIsDemoSearching(true);
     setSelectedLeads([]);
     
+    // Generate fresh demo leads for this search session only
+    // These are ephemeral and not shared across users/sessions
+    const sessionDemoLeads = generateDummyLeads(500);
+    
     // Simulate search delay for demo
     setTimeout(() => {
+      setDemoLeads(sessionDemoLeads);
       setShowDemoResults(true);
       setIsDemoSearching(false);
     }, 800);
@@ -188,8 +192,8 @@ export function ApolloSearchTab() {
     setSelectedLeads([]);
   };
 
-  // Use demo results if no real results and demo mode is active
-  const displayResults = searchResults.length > 0 ? searchResults : (showDemoResults ? DUMMY_RESULTS.map(d => ({
+  // Use demo results if no real results and demo mode is active (only after user searches)
+  const displayResults = searchResults.length > 0 ? searchResults : (showDemoResults && demoLeads.length > 0 ? demoLeads.map(d => ({
     ...d,
     apollo_id: d.id,
     workspace_id: '',
@@ -211,10 +215,10 @@ export function ApolloSearchTab() {
     created_at: new Date().toISOString(),
   })) : []);
 
-  const displayPagination = pagination || (showDemoResults ? {
+  const displayPagination = pagination || (showDemoResults && demoLeads.length > 0 ? {
     page: 1,
     per_page: 25,
-    total_entries: DUMMY_RESULTS.length,
+    total_entries: demoLeads.length,
     total_pages: 1,
   } : null);
 
