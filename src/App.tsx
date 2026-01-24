@@ -35,8 +35,8 @@ import Roadmap from "./pages/Roadmap";
 import NotFound from "./pages/NotFound";
 import Landing from "./pages/Landing";
 import Leads from "./pages/Leads";
+import OfferDiagnostic from "./pages/OfferDiagnostic";
 import { HelpWidget } from "@/components/help/HelpWidget";
-
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -78,6 +78,7 @@ const App = () => (
                 <Route path="/feature-requests" element={<FeatureRequests />} />
                 <Route path="/changelog" element={<Changelog />} />
                 <Route path="/roadmap" element={<Roadmap />} />
+                <Route path="/offer-diagnostic" element={<OfferDiagnostic />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
