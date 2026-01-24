@@ -84,6 +84,12 @@ export interface DimensionScores {
   riskAlignment: number;
 }
 
+export interface ExtendedScores extends DimensionScores {
+  alignmentScore: number; // 0-100 composite
+  powerScore: number; // 0-100 composite
+  switchingCost: number; // 0-20
+}
+
 export type Grade = 'Weak' | 'Average' | 'Strong' | 'Excellent';
 
 export interface ScoringResult {
@@ -92,6 +98,7 @@ export interface ScoringResult {
   visibleScore10: number;
   grade: Grade;
   dimensionScores: DimensionScores;
+  extendedScores: ExtendedScores;
 }
 
 export type DimensionName = keyof DimensionScores;
@@ -102,4 +109,44 @@ export interface Prescription {
   businessImpact: string;
   recommendations: string[];
   callToAction: string;
+}
+
+// ========== Fix Stack Types ==========
+
+export type ProblemCategory =
+  | 'icp_mismatch'
+  | 'low_buying_power'
+  | 'pricing_misfit'
+  | 'risk_misalignment'
+  | 'low_pain_urgency'
+  | 'offer_type_misfit'
+  | 'fulfillment_misalignment'
+  | 'low_switching_cost'
+  | 'low_mechanism_power';
+
+export type EffortLevel = 'Low' | 'Medium' | 'High';
+export type ImpactLevel = 'Low' | 'Medium' | 'High' | 'Very High';
+
+export interface FixArchetype {
+  whatToChange: string;
+  howToChangeIt: string;
+  whenToChooseThis: string;
+  targetCondition: string;
+  effort: EffortLevel;
+  impact: ImpactLevel;
+}
+
+export interface DetectedProblem {
+  category: ProblemCategory;
+  problem: string;
+  whyItMatters: string;
+  severity: number; // calculated from score deviation
+  fixes: FixArchetype[];
+}
+
+export interface FixStackResult {
+  finalScore: number;
+  alignmentScore: number;
+  powerScore: number;
+  problems: DetectedProblem[];
 }

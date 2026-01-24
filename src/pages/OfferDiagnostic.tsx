@@ -4,6 +4,8 @@ import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import {
   Select,
   SelectContent,
@@ -19,9 +21,22 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { AlertCircle, CheckCircle2, TrendingUp, Target, Lightbulb } from 'lucide-react';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
+import { 
+  AlertTriangle, 
+  CheckCircle2, 
+  TrendingUp, 
+  Target, 
+  Zap,
+  ArrowRight,
+  Gauge,
+  BarChart3
+} from 'lucide-react';
 import type {
   DiagnosticFormData,
   OfferType,
@@ -35,11 +50,13 @@ import type {
   UsageVolumeTier,
   FulfillmentComplexity,
   ScoringResult,
-  Prescription,
   Grade,
+  FixStackResult,
+  DetectedProblem,
+  FixArchetype,
 } from '@/lib/offerDiagnostic/types';
 import { calculateScore } from '@/lib/offerDiagnostic/scoringEngine';
-import { generatePrescription, getDimensionLabel, getDimensionMaxScore } from '@/lib/offerDiagnostic/prescriptionEngine';
+import { generateFixStack, PROBLEM_CATEGORY_LABELS } from '@/lib/offerDiagnostic/fixStackEngine';
 import {
   OFFER_TYPE_OPTIONS,
   ICP_INDUSTRY_OPTIONS,
@@ -84,19 +101,54 @@ function getGradeBg(grade: Grade) {
   }
 }
 
+function getImpactColor(impact: FixArchetype['impact']) {
+  switch (impact) {
+    case 'Very High': return 'bg-green-500/20 text-green-600 border-green-500/30';
+    case 'High': return 'bg-blue-500/20 text-blue-600 border-blue-500/30';
+    case 'Medium': return 'bg-yellow-500/20 text-yellow-600 border-yellow-500/30';
+    case 'Low': return 'bg-muted text-muted-foreground border-muted';
+  }
+}
+
+function getEffortColor(effort: FixArchetype['effort']) {
+  switch (effort) {
+    case 'Low': return 'bg-green-500/20 text-green-600 border-green-500/30';
+    case 'Medium': return 'bg-yellow-500/20 text-yellow-600 border-yellow-500/30';
+    case 'High': return 'bg-red-500/20 text-red-600 border-red-500/30';
+  }
+}
+
 function ScoreDisplay({ score100, score10, grade }: { score100: number; score10: number; grade: Grade }) {
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="text-sm font-medium text-muted-foreground">Your Offer Diagnostic Score</div>
-      <div className={`flex flex-col items-center justify-center w-32 h-32 rounded-full border-4 ${getGradeBg(grade)}`}>
-        <span className={`text-4xl font-bold ${getGradeColor(grade)}`}>{score100}</span>
-        <span className="text-muted-foreground text-sm">/ 100</span>
+      <div className="text-sm font-medium text-muted-foreground">Final Score</div>
+      <div className={`flex flex-col items-center justify-center w-28 h-28 rounded-full border-4 ${getGradeBg(grade)}`}>
+        <span className={`text-3xl font-bold ${getGradeColor(grade)}`}>{score100}</span>
+        <span className="text-muted-foreground text-xs">/ 100</span>
       </div>
       <div className="text-center space-y-1">
-        <div className="text-sm text-muted-foreground">({score10} out of 10)</div>
+        <div className="text-xs text-muted-foreground">({score10} out of 10)</div>
         <Badge variant="outline" className={`${getGradeBg(grade)} ${getGradeColor(grade)} border-current`}>
           {grade}
         </Badge>
+      </div>
+    </div>
+  );
+}
+
+function CompositeScoreCard({ label, score, icon: Icon }: { label: string; score: number; icon: React.ElementType }) {
+  const getScoreColor = (s: number) => {
+    if (s >= 70) return 'text-green-500';
+    if (s >= 50) return 'text-yellow-500';
+    return 'text-red-500';
+  };
+
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+      <Icon className="h-5 w-5 text-muted-foreground" />
+      <div className="flex-1">
+        <div className="text-sm font-medium">{label}</div>
+        <div className={`text-lg font-bold ${getScoreColor(score)}`}>{score}/100</div>
       </div>
     </div>
   );
@@ -139,52 +191,112 @@ function DimensionScoresTable({ scores }: { scores: ScoringResult['dimensionScor
   );
 }
 
-function PrescriptionDisplay({ prescription }: { prescription: Prescription }) {
+function FixArchetypeCard({ fix, index }: { fix: FixArchetype; index: number }) {
   return (
-    <Card className="border-primary/20 bg-primary/5">
+    <div className="rounded-lg border bg-card p-4 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-sm font-semibold">
+            {index + 1}
+          </span>
+          <span className="font-semibold">{fix.whatToChange}</span>
+        </div>
+        <div className="flex gap-2">
+          <Badge variant="outline" className={getEffortColor(fix.effort)}>
+            {fix.effort} Effort
+          </Badge>
+          <Badge variant="outline" className={getImpactColor(fix.impact)}>
+            {fix.impact} Impact
+          </Badge>
+        </div>
+      </div>
+      
+      <div className="space-y-2 text-sm">
+        <div className="flex items-start gap-2">
+          <ArrowRight className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+          <span>{fix.howToChangeIt}</span>
+        </div>
+        <div className="flex items-start gap-2 text-muted-foreground">
+          <Zap className="h-4 w-4 mt-0.5 shrink-0" />
+          <span><strong>When:</strong> {fix.whenToChooseThis}</span>
+        </div>
+        <div className="flex items-start gap-2 text-muted-foreground">
+          <Target className="h-4 w-4 mt-0.5 shrink-0" />
+          <span><strong>Target:</strong> {fix.targetCondition}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProblemCard({ problem, index }: { problem: DetectedProblem; index: number }) {
+  return (
+    <AccordionItem value={`problem-${index}`} className="border rounded-lg px-4">
+      <AccordionTrigger className="hover:no-underline">
+        <div className="flex items-center gap-3 text-left">
+          <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+          <div>
+            <div className="font-semibold">{PROBLEM_CATEGORY_LABELS[problem.category]}</div>
+            <div className="text-sm text-muted-foreground">{problem.problem}</div>
+          </div>
+        </div>
+      </AccordionTrigger>
+      <AccordionContent className="pt-2 pb-4 space-y-4">
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-sm">
+          <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+          <span>{problem.whyItMatters}</span>
+        </div>
+        
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <CheckCircle2 className="h-4 w-4 text-primary" />
+            <span>Recommended Fixes</span>
+          </div>
+          <div className="space-y-3">
+            {problem.fixes.map((fix, fixIndex) => (
+              <FixArchetypeCard key={fixIndex} fix={fix} index={fixIndex} />
+            ))}
+          </div>
+        </div>
+      </AccordionContent>
+    </AccordionItem>
+  );
+}
+
+function FixStackDisplay({ fixStack }: { fixStack: FixStackResult }) {
+  if (fixStack.problems.length === 0) {
+    return (
+      <Card className="border-green-500/30 bg-green-500/5">
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-3 text-green-600">
+            <CheckCircle2 className="h-6 w-6" />
+            <div>
+              <div className="font-semibold">No Critical Issues Detected</div>
+              <div className="text-sm text-muted-foreground">Your offer configuration is well-optimized.</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Lightbulb className="h-5 w-5 text-primary" />
-          Top Recommendations
+          <TrendingUp className="h-5 w-5 text-primary" />
+          Fix Stack: Top {fixStack.problems.length} Issues
         </CardTitle>
+        <CardDescription>
+          Prioritized by impact weight × severity. Address these to improve your score.
+        </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-destructive" />
-            <span className="font-medium text-sm">Weakest Dimension:</span>
-            <Badge variant="outline" className="border-destructive/50 text-destructive">
-              {getDimensionLabel(prescription.weakestDimension)}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground pl-6">
-            {prescription.businessImpact}
-          </p>
-        </div>
-
-        <Separator />
-
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Target className="h-4 w-4 text-primary" />
-            <span className="font-medium text-sm">Action Items:</span>
-          </div>
-          <ul className="space-y-1 pl-6">
-            {prescription.recommendations.map((rec, index) => (
-              <li key={index} className="flex items-start gap-2 text-sm">
-                <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                <span>{rec}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <Separator />
-
-        <div className="flex items-center gap-2 text-sm font-medium text-primary">
-          <TrendingUp className="h-4 w-4" />
-          {prescription.callToAction}
-        </div>
+      <CardContent>
+        <Accordion type="single" collapsible className="space-y-2">
+          {fixStack.problems.map((problem, index) => (
+            <ProblemCard key={index} problem={problem} index={index} />
+          ))}
+        </Accordion>
       </CardContent>
     </Card>
   );
@@ -197,12 +309,10 @@ export default function OfferDiagnostic() {
   const isFormComplete = useMemo(() => {
     const { offerType, icpIndustry, icpSize, icpMaturity, pricingStructure, fulfillmentComplexity } = formData;
     
-    // Base required fields
     if (!offerType || !icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !fulfillmentComplexity) {
       return false;
     }
 
-    // Conditional field validation
     if (pricingStructure === 'recurring' && !formData.recurringPriceTier) {
       return false;
     }
@@ -223,7 +333,6 @@ export default function OfferDiagnostic() {
     setFormData((prev) => {
       const newData = { ...prev, [field]: value };
       
-      // Clear conditional fields when pricing structure changes
       if (field === 'pricingStructure') {
         newData.recurringPriceTier = null;
         newData.oneTimePriceTier = null;
@@ -233,7 +342,6 @@ export default function OfferDiagnostic() {
       
       return newData;
     });
-    // Reset scoring when form changes
     setScoringResult(null);
   };
 
@@ -244,9 +352,9 @@ export default function OfferDiagnostic() {
     }
   };
 
-  const prescription = useMemo(() => {
+  const fixStack = useMemo(() => {
     if (!scoringResult) return null;
-    return generatePrescription(scoringResult.visibleScore100, scoringResult.dimensionScores, formData);
+    return generateFixStack(formData, scoringResult.extendedScores, scoringResult.visibleScore100);
   }, [scoringResult, formData]);
 
   const renderSelect = <T extends string>(
@@ -328,18 +436,15 @@ export default function OfferDiagnostic() {
               <div className="grid gap-4 sm:grid-cols-2">
                 {renderSelect<PricingStructure>('Pricing Structure', 'pricingStructure', PRICING_STRUCTURE_OPTIONS, formData.pricingStructure)}
                 
-                {/* Conditional: Recurring Price Tier */}
                 {formData.pricingStructure === 'recurring' && (
                   renderSelect<RecurringPriceTier>('Recurring Price Tier', 'recurringPriceTier', RECURRING_PRICE_TIER_OPTIONS, formData.recurringPriceTier)
                 )}
                 
-                {/* Conditional: One-Time Price Tier */}
                 {formData.pricingStructure === 'one_time' && (
                   renderSelect<OneTimePriceTier>('One-Time Price Tier', 'oneTimePriceTier', ONE_TIME_PRICE_TIER_OPTIONS, formData.oneTimePriceTier)
                 )}
               </div>
               
-              {/* Conditional: Usage-Based fields */}
               {formData.pricingStructure === 'usage_based' && (
                 <div className="grid gap-4 sm:grid-cols-2">
                   {renderSelect<UsageOutputType>('Usage Output Type', 'usageOutputType', USAGE_OUTPUT_TYPE_OPTIONS, formData.usageOutputType)}
@@ -372,27 +477,43 @@ export default function OfferDiagnostic() {
 
           {/* Results Section */}
           {scoringResult && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Diagnostic Results</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:gap-8">
-                  <ScoreDisplay 
-                    score100={scoringResult.visibleScore100} 
-                    score10={scoringResult.visibleScore10}
-                    grade={scoringResult.grade}
-                  />
-                  <div className="flex-1 w-full">
-                    <DimensionScoresTable scores={scoringResult.dimensionScores} />
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Diagnostic Results</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:gap-8">
+                    <ScoreDisplay 
+                      score100={scoringResult.visibleScore100} 
+                      score10={scoringResult.visibleScore10}
+                      grade={scoringResult.grade}
+                    />
+                    
+                    <div className="flex-1 w-full space-y-4">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <CompositeScoreCard 
+                          label="Alignment Score" 
+                          score={scoringResult.extendedScores.alignmentScore}
+                          icon={Gauge}
+                        />
+                        <CompositeScoreCard 
+                          label="Power Score" 
+                          score={scoringResult.extendedScores.powerScore}
+                          icon={BarChart3}
+                        />
+                      </div>
+                      
+                      <Separator />
+                      
+                      <DimensionScoresTable scores={scoringResult.dimensionScores} />
+                    </div>
                   </div>
-                </div>
+                </CardContent>
+              </Card>
 
-                {prescription && (
-                  <PrescriptionDisplay prescription={prescription} />
-                )}
-              </CardContent>
-            </Card>
+              {fixStack && <FixStackDisplay fixStack={fixStack} />}
+            </>
           )}
         </div>
       </div>

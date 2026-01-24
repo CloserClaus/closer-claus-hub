@@ -1,6 +1,7 @@
 import type {
   DiagnosticFormData,
   DimensionScores,
+  ExtendedScores,
   ScoringResult,
   Grade,
   OfferType,
@@ -186,6 +187,55 @@ function calculateRiskAlignment(
   return Math.max(0, Math.min(15, normalized));
 }
 
+// ========== SWITCHING COST (0-20) ==========
+const SWITCHING_COST_BASE: Record<PricingStructure, number> = {
+  recurring: 12,
+  one_time: 4,
+  performance_only: 6,
+  usage_based: 10,
+};
+
+const FULFILLMENT_SWITCHING_MODIFIER: Record<FulfillmentComplexity, number> = {
+  automation: 4,
+  hybrid_labor_systems: 3,
+  hands_off_strategy: 1,
+  hands_on_labor: 2,
+  software: 0,
+};
+
+function calculateSwitchingCost(
+  pricingStructure: PricingStructure,
+  fulfillmentComplexity: FulfillmentComplexity
+): number {
+  const base = SWITCHING_COST_BASE[pricingStructure];
+  const modifier = FULFILLMENT_SWITCHING_MODIFIER[fulfillmentComplexity];
+  return Math.min(base + modifier, 20);
+}
+
+// ========== ALIGNMENT SCORE (0-100) ==========
+// Composite of ICP alignment with offer and pricing
+function calculateAlignmentScore(
+  painUrgency: number,
+  buyingPower: number,
+  pricingFit: number
+): number {
+  // Weighted average normalized to 100
+  const weighted = (painUrgency / 25) * 40 + (buyingPower / 20) * 30 + (pricingFit / 20) * 30;
+  return Math.round(weighted);
+}
+
+// ========== POWER SCORE (0-100) ==========
+// Composite of execution and differentiation
+function calculatePowerScore(
+  executionFeasibility: number,
+  switchingCost: number,
+  riskAlignment: number
+): number {
+  // Weighted average normalized to 100
+  const weighted = (executionFeasibility / 20) * 40 + (switchingCost / 20) * 35 + (riskAlignment / 15) * 25;
+  return Math.round(weighted);
+}
+
 // ========== GRADE CALCULATION ==========
 function calculateGrade(score: number): Grade {
   if (score >= 85) return 'Excellent';
@@ -237,6 +287,17 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
     riskAlignment: calculateRiskAlignment(icpMaturity!, pricingStructure!),
   };
 
+  const switchingCost = calculateSwitchingCost(pricingStructure!, fulfillmentComplexity!);
+  const alignmentScore = calculateAlignmentScore(dimensionScores.painUrgency, dimensionScores.buyingPower, dimensionScores.pricingFit);
+  const powerScore = calculatePowerScore(dimensionScores.executionFeasibility, switchingCost, dimensionScores.riskAlignment);
+
+  const extendedScores: ExtendedScores = {
+    ...dimensionScores,
+    alignmentScore,
+    powerScore,
+    switchingCost,
+  };
+
   const hiddenScore = 
     dimensionScores.painUrgency + 
     dimensionScores.buyingPower + 
@@ -254,8 +315,9 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
     visibleScore10,
     grade,
     dimensionScores,
+    extendedScores,
   };
 }
 
-// Export matrices for use in prescription engine
+// Export matrices for use in other engines
 export { MATRIX_B, MATRIX_C, MATRIX_D };
