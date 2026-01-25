@@ -68,11 +68,11 @@ function calculateMaturity(icpMaturity: ICPMaturity): MaturityLevel {
 
 // ========== MODIFIER D: Fulfillment ==========
 const FULFILLMENT_MAP: Record<FulfillmentComplexity, FulfillmentType> = {
-  hands_on_labor: 'Labor',
-  hands_off_strategy: 'Hybrid',
-  hybrid_labor_systems: 'Hybrid',
-  software: 'Automation',
-  automation: 'Automation',
+  custom_dfy: 'Labor',
+  package_based: 'Hybrid',
+  coaching_advisory: 'Hybrid',
+  software_platform: 'Automation',
+  staffing_placement: 'Staffing',
 };
 
 function calculateFulfillment(fulfillmentComplexity: FulfillmentComplexity): FulfillmentType {

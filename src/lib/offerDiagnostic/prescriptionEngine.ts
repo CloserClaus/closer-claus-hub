@@ -125,14 +125,14 @@ function getExecutionFeasibilityRecommendations(formData: DiagnosticFormData): s
   const recs: string[] = [];
   
   switch (formData.fulfillmentComplexity) {
-    case 'hands_on_labor':
+    case 'custom_dfy':
       recs.push('Add automation/templates to reduce fulfillment load.');
       recs.push('Raise price or reduce scope to protect margins.');
       break;
-    case 'software':
+    case 'software_platform':
       recs.push('Software alone rarely justifies high pricing. Add strategy layer.');
       break;
-    case 'hybrid_labor_systems':
+    case 'package_based':
       recs.push('Systemize onboarding to improve scalability.');
       recs.push('Automate repetitive workflows.');
       break;
@@ -182,7 +182,7 @@ function getPricingFitRecommendations(formData: DiagnosticFormData): string[] {
     recs.push('Scaling ICPs prefer recurring pricing; one-time projects add friction.');
   }
   
-  if (formData.fulfillmentComplexity === 'software' && formData.recurringPriceTier === '2k_5k') {
+  if (formData.fulfillmentComplexity === 'software_platform' && formData.recurringPriceTier === '2k_5k') {
     recs.push('Software priced above $2k/mo is rarely purchased by SMB. Consider repositioning as automation.');
   }
 

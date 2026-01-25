@@ -57,11 +57,11 @@ export type UsageVolumeTier =
   | 'high';
 
 export type FulfillmentComplexity = 
-  | 'hands_on_labor'
-  | 'hands_off_strategy'
-  | 'hybrid_labor_systems'
-  | 'software'
-  | 'automation';
+  | 'custom_dfy'
+  | 'package_based'
+  | 'coaching_advisory'
+  | 'software_platform'
+  | 'staffing_placement';
 
 export type RiskModel =
   | 'no_guarantee'
