@@ -94,10 +94,10 @@ export interface DimensionScores {
 
 export interface ExtendedScores extends DimensionScores {
   alignmentScore: number; // 0-100 composite
-  powerScore: number; // 0-100 composite
   switchingCost: number; // 0-20
-  riskModifier: number; // -15 to +10 based on maturity x risk model
 }
+
+export type ReadinessLabel = 'Weak' | 'Moderate' | 'Strong' | 'High Potential';
 
 export type Grade = 'Weak' | 'Average' | 'Strong' | 'Excellent';
 
@@ -172,7 +172,6 @@ export interface DetectedProblem {
 export interface FixStackResult {
   finalScore: number;
   alignmentScore: number;
-  powerScore: number;
   problems: DetectedProblem[];
 }
 
@@ -233,7 +232,8 @@ export interface ContextAwareFix {
 export interface ContextAwareFixStackResult {
   finalScore: number;
   alignmentScore: number;
-  powerScore: number;
+  readinessScore: number;
+  readinessLabel: ReadinessLabel;
   contextModifiers: ContextModifiers;
   problems: DetectedProblem[];
   topFixes: ContextAwareFix[];

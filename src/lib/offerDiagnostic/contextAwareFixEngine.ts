@@ -669,14 +669,28 @@ const RISK_FIX_BY_MATURITY: Record<ICPMaturity, RiskRecommendation[]> = {
 };
 
 function shouldTriggerRiskFixLayer(
-  riskAlignment: number,
-  riskModifier: number
+  riskAlignment: number
 ): boolean {
-  return riskAlignment < 8 || riskModifier < 0;
+  return riskAlignment < 8;
 }
 
 function getRiskFixes(icpMaturity: ICPMaturity): RiskRecommendation[] {
   return RISK_FIX_BY_MATURITY[icpMaturity] || [];
+}
+
+// ========== Readiness Score Helpers ==========
+
+function calculateReadinessScore(alignmentScore: number): number {
+  return Math.round((alignmentScore / 10) * 10) / 10; // One decimal place
+}
+
+type ReadinessLabel = 'Weak' | 'Moderate' | 'Strong' | 'High Potential';
+
+function getReadinessLabel(readinessScore: number): ReadinessLabel {
+  if (readinessScore < 4.0) return 'Weak';
+  if (readinessScore < 6.0) return 'Moderate';
+  if (readinessScore < 8.0) return 'Strong';
+  return 'High Potential';
 }
 
 // ========== Main Export ==========
@@ -701,7 +715,7 @@ export function generateContextAwareFixStack(
   }>();
 
   // Check if Risk Fix Layer should trigger
-  const triggerRiskLayer = shouldTriggerRiskFixLayer(scores.riskAlignment, scores.riskModifier);
+  const triggerRiskLayer = shouldTriggerRiskFixLayer(scores.riskAlignment);
   
   if (triggerRiskLayer && formData.icpMaturity) {
     // Add risk fixes with HIGH priority (certainty = 12, higher than regular fixes)
@@ -777,11 +791,16 @@ export function generateContextAwareFixStack(
 
   // Take top 3
   const topFixes = contextAwareFixes.slice(0, 3);
+  
+  // Calculate readiness score and label
+  const readinessScore = calculateReadinessScore(scores.alignmentScore);
+  const readinessLabel = getReadinessLabel(readinessScore);
 
   return {
     finalScore,
     alignmentScore: scores.alignmentScore,
-    powerScore: scores.powerScore,
+    readinessScore,
+    readinessLabel,
     contextModifiers: modifiers,
     problems: baseFixStack.problems,
     topFixes,

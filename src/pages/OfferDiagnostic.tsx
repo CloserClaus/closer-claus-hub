@@ -35,12 +35,10 @@ import {
 import { 
   AlertTriangle, 
   CheckCircle2, 
-  TrendingUp, 
   Target, 
   Zap,
   ArrowRight,
   Gauge,
-  BarChart3,
   Settings2,
   ChevronDown,
   Lightbulb,
@@ -59,12 +57,10 @@ import type {
   RiskModel,
   FulfillmentComplexity,
   ScoringResult,
-  Grade,
   DetectedProblem,
   FixArchetype,
   ContextModifiers,
   ContextAwareFix,
-  ContextAwareFixStackResult,
 } from '@/lib/offerDiagnostic/types';
 import { calculateScore } from '@/lib/offerDiagnostic/scoringEngine';
 import { PROBLEM_CATEGORY_LABELS } from '@/lib/offerDiagnostic/fixStackEngine';
@@ -97,23 +93,6 @@ const initialFormData: DiagnosticFormData = {
   fulfillmentComplexity: null,
 };
 
-function getGradeColor(grade: Grade) {
-  switch (grade) {
-    case 'Excellent': return 'text-green-500';
-    case 'Strong': return 'text-blue-500';
-    case 'Average': return 'text-yellow-500';
-    case 'Weak': return 'text-red-500';
-  }
-}
-
-function getGradeBg(grade: Grade) {
-  switch (grade) {
-    case 'Excellent': return 'bg-green-500/10 border-green-500/30';
-    case 'Strong': return 'bg-blue-500/10 border-blue-500/30';
-    case 'Average': return 'bg-yellow-500/10 border-yellow-500/30';
-    case 'Weak': return 'bg-red-500/10 border-red-500/30';
-  }
-}
 
 function getImpactColor(impact: FixArchetype['impact']) {
   switch (impact) {
@@ -132,25 +111,49 @@ function getEffortColor(effort: FixArchetype['effort']) {
   }
 }
 
-function ScoreDisplay({ score100, score10, grade }: { score100: number; score10: number; grade: Grade }) {
+function getReadinessLabelColor(label: string) {
+  switch (label) {
+    case 'High Potential': return 'text-green-500';
+    case 'Strong': return 'text-blue-500';
+    case 'Moderate': return 'text-yellow-500';
+    case 'Weak': return 'text-red-500';
+    default: return 'text-muted-foreground';
+  }
+}
+
+function getReadinessLabelBg(label: string) {
+  switch (label) {
+    case 'High Potential': return 'bg-green-500/10 border-green-500/30';
+    case 'Strong': return 'bg-blue-500/10 border-blue-500/30';
+    case 'Moderate': return 'bg-yellow-500/10 border-yellow-500/30';
+    case 'Weak': return 'bg-red-500/10 border-red-500/30';
+    default: return 'bg-muted border-muted';
+  }
+}
+
+function ScoreDisplay({ alignmentScore, readinessScore, readinessLabel }: { 
+  alignmentScore: number; 
+  readinessScore: number; 
+  readinessLabel: string;
+}) {
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="text-sm font-medium text-muted-foreground">Final Score</div>
-      <div className={`flex flex-col items-center justify-center w-28 h-28 rounded-full border-4 ${getGradeBg(grade)}`}>
-        <span className={`text-3xl font-bold ${getGradeColor(grade)}`}>{score100}</span>
+      <div className="text-sm font-medium text-muted-foreground">Alignment Score</div>
+      <div className={`flex flex-col items-center justify-center w-28 h-28 rounded-full border-4 ${getReadinessLabelBg(readinessLabel)}`}>
+        <span className={`text-3xl font-bold ${getReadinessLabelColor(readinessLabel)}`}>{alignmentScore}</span>
         <span className="text-muted-foreground text-xs">/ 100</span>
       </div>
       <div className="text-center space-y-1">
-        <div className="text-xs text-muted-foreground">({score10} out of 10)</div>
-        <Badge variant="outline" className={`${getGradeBg(grade)} ${getGradeColor(grade)} border-current`}>
-          {grade}
+        <div className="text-sm font-medium">Readiness Score: <span className={getReadinessLabelColor(readinessLabel)}>{readinessScore}</span>/10</div>
+        <Badge variant="outline" className={`${getReadinessLabelBg(readinessLabel)} ${getReadinessLabelColor(readinessLabel)} border-current`}>
+          {readinessLabel}
         </Badge>
       </div>
     </div>
   );
 }
 
-function CompositeScoreCard({ label, score, icon: Icon }: { label: string; score: number; icon: React.ElementType }) {
+function AlignmentScoreCard({ score }: { score: number }) {
   const getScoreColor = (s: number) => {
     if (s >= 70) return 'text-green-500';
     if (s >= 50) return 'text-yellow-500';
@@ -159,9 +162,9 @@ function CompositeScoreCard({ label, score, icon: Icon }: { label: string; score
 
   return (
     <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-      <Icon className="h-5 w-5 text-muted-foreground" />
+      <Gauge className="h-5 w-5 text-muted-foreground" />
       <div className="flex-1">
-        <div className="text-sm font-medium">{label}</div>
+        <div className="text-sm font-medium">Alignment Score</div>
         <div className={`text-lg font-bold ${getScoreColor(score)}`}>{score}/100</div>
       </div>
     </div>
@@ -603,7 +606,7 @@ export default function OfferDiagnostic() {
           </Button>
 
           {/* Results Section */}
-          {scoringResult && (
+          {scoringResult && contextAwareFixStack && (
             <>
               <Card>
                 <CardHeader>
@@ -612,24 +615,13 @@ export default function OfferDiagnostic() {
                 <CardContent className="space-y-6">
                   <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:gap-8">
                     <ScoreDisplay 
-                      score100={scoringResult.visibleScore100} 
-                      score10={scoringResult.visibleScore10}
-                      grade={scoringResult.grade}
+                      alignmentScore={contextAwareFixStack.alignmentScore}
+                      readinessScore={contextAwareFixStack.readinessScore}
+                      readinessLabel={contextAwareFixStack.readinessLabel}
                     />
                     
                     <div className="flex-1 w-full space-y-4">
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <CompositeScoreCard 
-                          label="Alignment Score" 
-                          score={scoringResult.extendedScores.alignmentScore}
-                          icon={Gauge}
-                        />
-                        <CompositeScoreCard 
-                          label="Power Score" 
-                          score={scoringResult.extendedScores.powerScore}
-                          icon={BarChart3}
-                        />
-                      </div>
+                      <AlignmentScoreCard score={contextAwareFixStack.alignmentScore} />
                       
                       <Separator />
                       
@@ -639,13 +631,9 @@ export default function OfferDiagnostic() {
                 </CardContent>
               </Card>
 
-              {contextAwareFixStack && (
-                <>
-                  <ContextModifiersPanel modifiers={contextAwareFixStack.contextModifiers} />
-                  <DetectedProblemsDisplay problems={contextAwareFixStack.problems} />
-                  <TopFixesDisplay fixes={contextAwareFixStack.topFixes} />
-                </>
-              )}
+              <ContextModifiersPanel modifiers={contextAwareFixStack.contextModifiers} />
+              <DetectedProblemsDisplay problems={contextAwareFixStack.problems} />
+              <TopFixesDisplay fixes={contextAwareFixStack.topFixes} />
             </>
           )}
         </div>

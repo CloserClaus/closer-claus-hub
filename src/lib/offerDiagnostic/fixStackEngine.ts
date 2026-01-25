@@ -355,7 +355,8 @@ function detectLowSwitchingCost(scores: ExtendedScores): boolean {
 }
 
 function detectLowMechanismPower(scores: ExtendedScores): boolean {
-  return scores.powerScore < CATEGORY_THRESHOLDS.low_mechanism_power;
+  // Use alignment score as proxy - low mechanism power if alignment is below threshold
+  return scores.alignmentScore < CATEGORY_THRESHOLDS.low_mechanism_power;
 }
 
 // ========== Calculate Severity ==========
@@ -368,7 +369,7 @@ function calculateSeverity(category: ProblemCategory, scores: ExtendedScores, fo
     low_pain_urgency: { value: scores.painUrgency, max: 25 },
     fulfillment_misalignment: { value: scores.executionFeasibility, max: 20 },
     low_switching_cost: { value: scores.switchingCost, max: 20 },
-    low_mechanism_power: { value: scores.powerScore, max: 100 },
+    low_mechanism_power: { value: scores.alignmentScore, max: 100 },
   };
 
   const threshold = thresholds[category];
@@ -436,7 +437,6 @@ export function generateFixStack(
   return {
     finalScore,
     alignmentScore: scores.alignmentScore,
-    powerScore: scores.powerScore,
     problems: topProblems,
   };
 }
