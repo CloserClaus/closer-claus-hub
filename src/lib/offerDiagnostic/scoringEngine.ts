@@ -194,58 +194,12 @@ const RISK_ALIGNMENT_MATRIX: Record<ICPMaturity, Record<RiskModel, number>> = {
   },
 };
 
-// PowerScore modifier based on ICPMaturity × RiskModel (-10 to +10)
-const POWER_SCORE_RISK_MODIFIER: Record<ICPMaturity, Record<RiskModel, number>> = {
-  pre_revenue: {
-    performance_only: -10,
-    pay_after_results: -5,
-    full_guarantee: -15,
-    conditional_guarantee: 0,
-    no_guarantee: 0,
-  },
-  early_traction: {
-    performance_only: 0,
-    pay_after_results: 2,
-    full_guarantee: -8,
-    conditional_guarantee: 3,
-    no_guarantee: 0,
-  },
-  scaling: {
-    performance_only: 10,
-    pay_after_results: 8,
-    full_guarantee: 3,
-    conditional_guarantee: 0,
-    no_guarantee: -2,
-  },
-  mature: {
-    performance_only: -4,
-    pay_after_results: 0,
-    full_guarantee: 3,
-    conditional_guarantee: 0,
-    no_guarantee: 0,
-  },
-  enterprise: {
-    performance_only: -6,
-    pay_after_results: -2,
-    full_guarantee: 3,
-    conditional_guarantee: 0,
-    no_guarantee: 0,
-  },
-};
-
 function calculateRiskAlignment(
   icpMaturity: ICPMaturity,
   riskModel: RiskModel
 ): number {
   const riskScore = RISK_ALIGNMENT_MATRIX[icpMaturity][riskModel];
   return Math.max(0, Math.min(15, riskScore));
-}
-
-function getPowerScoreRiskModifier(
-  icpMaturity: ICPMaturity,
-  riskModel: RiskModel
-): number {
-  return POWER_SCORE_RISK_MODIFIER[icpMaturity][riskModel];
 }
 
 // ========== SWITCHING COST (0-20) ==========
@@ -274,44 +228,32 @@ function calculateSwitchingCost(
 }
 
 // ========== ALIGNMENT SCORE (0-100) ==========
-// Composite of ICP alignment with offer and pricing
-function calculateAlignmentScore(
-  painUrgency: number,
-  buyingPower: number,
-  pricingFit: number
-): number {
-  // Weighted average normalized to 100
-  const weighted = (painUrgency / 25) * 40 + (buyingPower / 20) * 30 + (pricingFit / 20) * 30;
-  return Math.round(weighted);
-}
-
-// Alignment score with RiskAlignment included
-function calculateAlignmentScoreWithRisk(
+// Composite of 5 dimensions: Pain Urgency, Buying Power, Pricing Fit, Execution Feasibility, Risk Alignment
+function calculateAlignmentScoreFromDimensions(
   painUrgency: number,
   buyingPower: number,
   pricingFit: number,
+  executionFeasibility: number,
   riskAlignment: number
 ): number {
-  // Original weighted components plus RiskAlignment contribution
-  // Reweight to accommodate RiskAlignment: Pain 35%, BuyingPower 25%, PricingFit 25%, RiskAlignment 15%
-  const weighted = 
-    (painUrgency / 25) * 35 + 
-    (buyingPower / 20) * 25 + 
-    (pricingFit / 20) * 25 + 
-    (riskAlignment / 15) * 15;
-  return Math.min(100, Math.round(weighted));
+  // Sum all dimensions and cap at 100
+  const total = painUrgency + buyingPower + pricingFit + executionFeasibility + riskAlignment;
+  return Math.min(100, total);
 }
 
-// ========== POWER SCORE (0-100) ==========
-// Composite of execution and differentiation
-function calculatePowerScore(
-  executionFeasibility: number,
-  switchingCost: number,
-  riskAlignment: number
-): number {
-  // Weighted average normalized to 100
-  const weighted = (executionFeasibility / 20) * 40 + (switchingCost / 20) * 35 + (riskAlignment / 15) * 25;
-  return Math.round(weighted);
+// ========== READINESS SCORE (0-10) ==========
+function calculateReadinessScore(alignmentScore: number): number {
+  return Math.round((alignmentScore / 10) * 10) / 10; // One decimal place
+}
+
+// ========== READINESS LABEL ==========
+type ReadinessLabel = 'Weak' | 'Moderate' | 'Strong' | 'High Potential';
+
+function getReadinessLabel(readinessScore: number): ReadinessLabel {
+  if (readinessScore < 4.0) return 'Weak';
+  if (readinessScore < 6.0) return 'Moderate';
+  if (readinessScore < 8.0) return 'Strong';
+  return 'High Potential';
 }
 
 // ========== GRADE CALCULATION ==========
@@ -367,40 +309,28 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
 
   const switchingCost = calculateSwitchingCost(pricingStructure!, fulfillmentComplexity!);
   
-  // Calculate base alignment score (with RiskAlignment added)
-  const alignmentScore = calculateAlignmentScoreWithRisk(
+  // Calculate alignment score from all 5 dimensions
+  const alignmentScore = calculateAlignmentScoreFromDimensions(
     dimensionScores.painUrgency, 
     dimensionScores.buyingPower, 
     dimensionScores.pricingFit,
+    dimensionScores.executionFeasibility,
     dimensionScores.riskAlignment
   );
-  
-  // Calculate power score with risk modifier
-  const basePowerScore = calculatePowerScore(dimensionScores.executionFeasibility, switchingCost, dimensionScores.riskAlignment);
-  const riskModifier = getPowerScoreRiskModifier(icpMaturity!, riskModel!);
-  const powerScore = Math.max(0, Math.min(100, basePowerScore + riskModifier));
 
   const extendedScores: ExtendedScores = {
     ...dimensionScores,
     alignmentScore,
-    powerScore,
     switchingCost,
-    riskModifier,
   };
 
-  const hiddenScore = 
-    dimensionScores.painUrgency + 
-    dimensionScores.buyingPower + 
-    dimensionScores.pricingFit + 
-    dimensionScores.executionFeasibility + 
-    dimensionScores.riskAlignment;
-
-  const visibleScore100 = Math.max(0, Math.min(100, hiddenScore));
-  const visibleScore10 = Math.round((hiddenScore / 10) * 10) / 10; // One decimal place
-  const grade = calculateGrade(hiddenScore);
+  // Use alignment score as the visible score
+  const visibleScore100 = alignmentScore;
+  const visibleScore10 = calculateReadinessScore(alignmentScore);
+  const grade = calculateGrade(alignmentScore);
 
   return {
-    hiddenScore,
+    hiddenScore: alignmentScore,
     visibleScore100,
     visibleScore10,
     grade,
@@ -410,4 +340,4 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
 }
 
 // Export matrices for use in other engines
-export { MATRIX_B, MATRIX_D, RISK_ALIGNMENT_MATRIX, POWER_SCORE_RISK_MODIFIER };
+export { MATRIX_B, MATRIX_D, RISK_ALIGNMENT_MATRIX };
