@@ -120,12 +120,13 @@ function calculatePricingFit(
 }
 
 // ========== DIMENSION 4: Execution Feasibility (0-20) ==========
+// FulfillmentFeasibility scores based on new fulfillment options
 const FULFILLMENT_FEASIBILITY: Record<FulfillmentComplexity, number> = {
-  automation: 10,
-  hybrid_labor_systems: 8,
-  hands_off_strategy: 7,
-  hands_on_labor: 5,
-  software: 4,
+  software_platform: 10,
+  package_based: 8,
+  coaching_advisory: 7,
+  custom_dfy: 5,
+  staffing_placement: 3,
 };
 
 // Matrix D: UsageOutputType × ICPIndustry (only if usage-based)
@@ -211,11 +212,11 @@ const SWITCHING_COST_BASE: Record<PricingStructure, number> = {
 };
 
 const FULFILLMENT_SWITCHING_MODIFIER: Record<FulfillmentComplexity, number> = {
-  automation: 4,
-  hybrid_labor_systems: 3,
-  hands_off_strategy: 1,
-  hands_on_labor: 2,
-  software: 0,
+  software_platform: 4,
+  package_based: 3,
+  coaching_advisory: 1,
+  custom_dfy: 2,
+  staffing_placement: 0,
 };
 
 function calculateSwitchingCost(

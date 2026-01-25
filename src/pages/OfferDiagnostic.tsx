@@ -42,7 +42,14 @@ import {
   Settings2,
   ChevronDown,
   Lightbulb,
+  Info,
 } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import type {
   DiagnosticFormData,
   OfferType,
@@ -591,7 +598,40 @@ export default function OfferDiagnostic() {
               <CardDescription>How you deliver your service</CardDescription>
             </CardHeader>
             <CardContent>
-              {renderSelect<FulfillmentComplexity>('Fulfillment Complexity', 'fulfillmentComplexity', FULFILLMENT_COMPLEXITY_OPTIONS, formData.fulfillmentComplexity)}
+              <div className="space-y-2">
+                <Label htmlFor="fulfillmentComplexity">Fulfillment Complexity</Label>
+                <Select
+                  value={formData.fulfillmentComplexity || 'none'}
+                  onValueChange={(value) => handleFieldChange('fulfillmentComplexity', value === 'none' ? null : value as FulfillmentComplexity)}
+                >
+                  <SelectTrigger id="fulfillmentComplexity" className="bg-background">
+                    <SelectValue placeholder="Select an option" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background z-50 max-w-[400px]">
+                    {FULFILLMENT_COMPLEXITY_OPTIONS.map((option) => (
+                      <TooltipProvider key={option.value} delayDuration={100}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <SelectItem value={option.value} className="cursor-pointer">
+                              <div className="flex items-center gap-2">
+                                <span>{option.label}</span>
+                                <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                              </div>
+                            </SelectItem>
+                          </TooltipTrigger>
+                          <TooltipContent 
+                            side="right" 
+                            sideOffset={8}
+                            className="max-w-[280px] bg-popover text-popover-foreground border shadow-md z-[9999]"
+                          >
+                            <p className="text-sm">{option.tooltip}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardContent>
           </Card>
 

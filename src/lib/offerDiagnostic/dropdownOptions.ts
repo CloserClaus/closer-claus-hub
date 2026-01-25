@@ -66,11 +66,31 @@ export const USAGE_VOLUME_TIER_OPTIONS = [
 ] as const;
 
 export const FULFILLMENT_COMPLEXITY_OPTIONS = [
-  { value: 'hands_on_labor', label: 'Hands-on labor (typically < $2k/mo or < $5k one-time)' },
-  { value: 'hands_off_strategy', label: 'Hands-off strategy (typically $2k–$10k/mo or $5k–$20k one-time)' },
-  { value: 'hybrid_labor_systems', label: 'Hybrid (labor + systems) (typically $2k–$7k/mo or $5k–$20k one-time)' },
-  { value: 'software', label: 'Software (typically < $500/mo or < $5k one-time)' },
-  { value: 'automation', label: 'Automation (operational enablement) (typically $2k–$5k/mo or $10k–$25k one-time)' },
+  { 
+    value: 'custom_dfy', 
+    label: 'Custom Done-For-You Services',
+    tooltip: 'Definition: Scope varies per client. Example: Custom PPC + landing pages.',
+  },
+  { 
+    value: 'package_based', 
+    label: 'Package-Based Services',
+    tooltip: 'Definition: Pre-defined packages with fixed deliverables. Example: Video editing packages.',
+  },
+  { 
+    value: 'coaching_advisory', 
+    label: 'Coaching / Advisory',
+    tooltip: 'Definition: Strategy only, client implements. Example: Sales coaching.',
+  },
+  { 
+    value: 'software_platform', 
+    label: 'Software / Platform Access',
+    tooltip: 'Definition: Client pays to use a platform. Example: CRM SaaS.',
+  },
+  { 
+    value: 'staffing_placement', 
+    label: 'Staffing / Placement',
+    tooltip: 'Definition: You recruit/place talent. Example: SDR placement.',
+  },
 ] as const;
 
 export const RISK_MODEL_OPTIONS = [

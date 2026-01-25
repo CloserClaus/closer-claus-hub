@@ -15,6 +15,9 @@ import type {
   PricingStructure,
   ICPMaturity,
   RiskModel,
+  FulfillmentComplexity,
+  ICPSize,
+  RecurringPriceTier,
 } from './types';
 import { generateContextModifiers } from './contextModifierEngine';
 import { generateFixStack, PROBLEM_CATEGORY_LABELS } from './fixStackEngine';
@@ -678,6 +681,105 @@ function getRiskFixes(icpMaturity: ICPMaturity): RiskRecommendation[] {
   return RISK_FIX_BY_MATURITY[icpMaturity] || [];
 }
 
+// ========== Fulfillment-Based Recommendations ==========
+interface FulfillmentRecommendation {
+  id: string;
+  whatToChange: string;
+  howToChangeIt: string;
+  targetCondition: string;
+  instruction: string;
+  effort: 'Low' | 'Medium' | 'High';
+  impact: 'Low' | 'Medium' | 'High' | 'Very High';
+  strategicImpact: number;
+  feasibility: number;
+}
+
+function getFulfillmentRecommendations(formData: DiagnosticFormData): FulfillmentRecommendation[] {
+  const recommendations: FulfillmentRecommendation[] = [];
+  const { fulfillmentComplexity, pricingStructure, icpSize, icpMaturity, recurringPriceTier } = formData;
+
+  // Determine if price is low (under $150–$500)
+  const isLowPrice = recurringPriceTier === 'under_150' || recurringPriceTier === '150_500';
+  const isHighPrice = recurringPriceTier === '2k_5k' || recurringPriceTier === '5k_plus';
+  
+  // Rule 1: Custom Done-For-You + Low Price
+  if (fulfillmentComplexity === 'custom_dfy' && isLowPrice) {
+    recommendations.push({
+      id: 'fulfill_custom_low_price',
+      whatToChange: 'Package Deliverables or Raise Price',
+      howToChangeIt: 'Custom delivery is labor intensive; convert to packages or increase to $1500+/mo',
+      targetCondition: 'Sustainable margins with appropriate pricing',
+      instruction: 'Custom delivery is labor intensive; consider packaging deliverables or raising price because custom DFY work at low price points creates unsustainable unit economics. To implement: document repeatable processes → create tiered packages → anchor pricing at $1500+/mo. End goal: profitable fulfillment with happy clients.',
+      effort: 'Medium',
+      impact: 'High',
+      strategicImpact: 8,
+      feasibility: 7,
+    });
+  }
+
+  // Rule 2: Package-Based + Small ICP
+  if (fulfillmentComplexity === 'package_based' && (icpSize === 'solo_founder' || icpSize === '1_5_employees')) {
+    recommendations.push({
+      id: 'fulfill_package_small_icp',
+      whatToChange: 'Tighten Scope or Raise Price',
+      howToChangeIt: 'Packages work, but micro agencies often price anchor low; tighten scope or raise price',
+      targetCondition: 'Clear boundaries with appropriate value exchange',
+      instruction: 'Packages work, but micro agencies often price anchor low; tighten scope or raise price because small ICPs expect discounts that erode profitability. To implement: reduce package scope → clearly define boundaries → anchor at higher price with value justification. End goal: profitable packages that set proper expectations.',
+      effort: 'Low',
+      impact: 'Medium',
+      strategicImpact: 6,
+      feasibility: 8,
+    });
+  }
+
+  // Rule 3: Software/Platform + High Price
+  if (fulfillmentComplexity === 'software_platform' && isHighPrice) {
+    recommendations.push({
+      id: 'fulfill_software_high_price',
+      whatToChange: 'Lower Price or Add Implementation Layer',
+      howToChangeIt: 'Software rarely converts at high-ticket without implementation layer; consider lowering price or adding onboarding',
+      targetCondition: 'Justified pricing with appropriate value delivery',
+      instruction: 'Software rarely converts at high-ticket without implementation layer; consider lowering price or adding onboarding because buyers expect white-glove service at $1500+/mo price points. To implement: add implementation services → include dedicated onboarding → bundle training sessions. End goal: justified high-ticket software offering.',
+      effort: 'Medium',
+      impact: 'High',
+      strategicImpact: 8,
+      feasibility: 6,
+    });
+  }
+
+  // Rule 4: Coaching/Advisory + Performance-Only
+  if (fulfillmentComplexity === 'coaching_advisory' && pricingStructure === 'performance_only') {
+    recommendations.push({
+      id: 'fulfill_coaching_performance',
+      whatToChange: 'Switch to Retainer or Hybrid Pricing',
+      howToChangeIt: 'Coaching cannot support performance-only; switch to retainer or hybrid',
+      targetCondition: 'Pricing model aligned with advisory fulfillment',
+      instruction: 'Coaching cannot support performance-only because advisory work requires time regardless of client outcomes. To implement: convert to monthly retainer → add milestone-based pricing → document engagement scope. End goal: sustainable coaching practice with aligned incentives.',
+      effort: 'Low',
+      impact: 'Very High',
+      strategicImpact: 9,
+      feasibility: 8,
+    });
+  }
+
+  // Rule 5: Staffing/Placement + Pre-revenue ICP
+  if (fulfillmentComplexity === 'staffing_placement' && icpMaturity === 'pre_revenue') {
+    recommendations.push({
+      id: 'fulfill_staffing_prerev',
+      whatToChange: 'Shift ICP or Offer Advisory First',
+      howToChangeIt: 'Pre-revenue clients cannot utilize staffing; shift ICP or offer advisory first',
+      targetCondition: 'ICP has capacity to utilize placed talent',
+      instruction: 'Pre-revenue clients cannot utilize staffing because they lack infrastructure to manage placed talent. To implement: shift ICP to early-traction or scaling → offer advisory to build processes first → qualify for placement capacity. End goal: successful placements with ready clients.',
+      effort: 'Medium',
+      impact: 'High',
+      strategicImpact: 8,
+      feasibility: 6,
+    });
+  }
+
+  return recommendations;
+}
+
 // ========== Readiness Score Helpers ==========
 
 function calculateReadinessScore(alignmentScore: number): number {
@@ -739,6 +841,27 @@ export function generateContextAwareFixStack(
       });
     });
   }
+
+  // Add fulfillment-based recommendations (with high priority, certainty = 11)
+  const fulfillmentFixes = getFulfillmentRecommendations(formData);
+  fulfillmentFixes.forEach((fulfillFix, index) => {
+    const certainty = 11 - index; // High certainty, just below risk fixes
+    allCandidateFixes.set(fulfillFix.id, {
+      certainty,
+      problemCategory: 'fulfillment_misalignment',
+      fix: {
+        id: fulfillFix.id as ContextFixId,
+        whatToChange: fulfillFix.whatToChange,
+        howToChangeIt: fulfillFix.howToChangeIt,
+        targetCondition: fulfillFix.targetCondition,
+        effort: fulfillFix.effort,
+        impact: fulfillFix.impact,
+        strategicImpact: fulfillFix.strategicImpact,
+        feasibility: fulfillFix.feasibility,
+        instruction: fulfillFix.instruction,
+      },
+    });
+  });
 
   // Add fixes from detected problems
   baseFixStack.problems.forEach((problem, index) => {
