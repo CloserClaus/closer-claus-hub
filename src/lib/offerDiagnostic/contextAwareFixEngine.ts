@@ -18,9 +18,11 @@ import type {
   FulfillmentComplexity,
   ICPSize,
   RecurringPriceTier,
+  Violation,
 } from './types';
 import { generateContextModifiers } from './contextModifierEngine';
 import { generateFixStack, PROBLEM_CATEGORY_LABELS } from './fixStackEngine';
+import { getTopViolations } from './violationEngine';
 
 // ========== Risk Fix Layer Types ==========
 interface RiskFix {
@@ -918,6 +920,9 @@ export function generateContextAwareFixStack(
   // Calculate readiness score and label
   const readinessScore = calculateReadinessScore(scores.alignmentScore);
   const readinessLabel = getReadinessLabel(readinessScore);
+  
+  // Get constraint-based violations (NEW: replaces bucket-based recommendations)
+  const violations = getTopViolations(formData, 3);
 
   return {
     finalScore,
@@ -927,6 +932,7 @@ export function generateContextAwareFixStack(
     contextModifiers: modifiers,
     problems: baseFixStack.problems,
     topFixes,
+    violations, // NEW: Constraint-based violations
   };
 }
 

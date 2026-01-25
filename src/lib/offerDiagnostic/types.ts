@@ -229,6 +229,17 @@ export interface ContextAwareFix {
   instruction: string;
 }
 
+// ========== Violation Types ==========
+
+export type ViolationSeverity = 'high' | 'medium' | 'low';
+
+export interface Violation {
+  id: string;
+  rule: string;
+  severity: ViolationSeverity;
+  recommendation: string;
+}
+
 export interface ContextAwareFixStackResult {
   finalScore: number;
   alignmentScore: number;
@@ -237,4 +248,5 @@ export interface ContextAwareFixStackResult {
   contextModifiers: ContextModifiers;
   problems: DetectedProblem[];
   topFixes: ContextAwareFix[];
+  violations: Violation[]; // NEW: Constraint-based violations
 }
