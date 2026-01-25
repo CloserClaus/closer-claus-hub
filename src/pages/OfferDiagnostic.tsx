@@ -68,6 +68,7 @@ import type {
   FixArchetype,
   ContextModifiers,
   ContextAwareFix,
+  Violation,
 } from '@/lib/offerDiagnostic/types';
 import { calculateScore } from '@/lib/offerDiagnostic/scoringEngine';
 import { PROBLEM_CATEGORY_LABELS } from '@/lib/offerDiagnostic/fixStackEngine';
@@ -360,9 +361,9 @@ function ContextAwareFixCard({ fix, index }: { fix: ContextAwareFix; index: numb
   );
 }
 
-// Top Fixes Display
-function TopFixesDisplay({ fixes }: { fixes: ContextAwareFix[] }) {
-  if (fixes.length === 0) {
+// Top Fixes Display - Now shows constraint-based violations
+function TopRecommendationsDisplay({ violations }: { violations: Violation[] }) {
+  if (violations.length === 0) {
     return (
       <Card className="border-primary/30 bg-primary/5">
         <CardContent className="pt-6">
@@ -370,7 +371,7 @@ function TopFixesDisplay({ fixes }: { fixes: ContextAwareFix[] }) {
             <CheckCircle2 className="h-6 w-6" />
             <div>
               <div className="font-semibold">Well Optimized</div>
-              <div className="text-sm text-muted-foreground">No major improvements needed at this time.</div>
+              <div className="text-sm text-muted-foreground">No major constraint violations detected at this time.</div>
             </div>
           </div>
         </CardContent>
@@ -378,20 +379,55 @@ function TopFixesDisplay({ fixes }: { fixes: ContextAwareFix[] }) {
     );
   }
 
+  const getSeverityColor = (severity: Violation['severity']) => {
+    switch (severity) {
+      case 'high': return 'bg-red-500/20 text-red-600 border-red-500/30';
+      case 'medium': return 'bg-yellow-500/20 text-yellow-600 border-yellow-500/30';
+      case 'low': return 'bg-blue-500/20 text-blue-600 border-blue-500/30';
+    }
+  };
+
+  const getSeverityLabel = (severity: Violation['severity']) => {
+    switch (severity) {
+      case 'high': return 'High Severity';
+      case 'medium': return 'Medium Severity';
+      case 'low': return 'Low Severity';
+    }
+  };
+
   return (
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
           <Lightbulb className="h-5 w-5 text-primary" />
-          Top {fixes.length} Recommended Fixes
+          Top Recommendations
         </CardTitle>
         <CardDescription>
-          Context-aware recommendations based on your specific configuration. Prioritized by strategic impact.
+          Constraint-based recommendations to improve your offer alignment.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {fixes.map((fix, index) => (
-          <ContextAwareFixCard key={fix.id} fix={fix} index={index} />
+        {violations.map((violation, index) => (
+          <Card key={violation.id} className="border-l-4 border-l-primary">
+            <CardContent className="pt-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-sm font-semibold">
+                    {index + 1}
+                  </span>
+                  <span className="font-semibold">{violation.rule}</span>
+                </div>
+                <Badge variant="outline" className={getSeverityColor(violation.severity)}>
+                  {getSeverityLabel(violation.severity)}
+                </Badge>
+              </div>
+              
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-primary/5 text-sm">
+                <Lightbulb className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                <span>{violation.recommendation}</span>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </CardContent>
     </Card>
@@ -673,7 +709,7 @@ export default function OfferDiagnostic() {
 
               <ContextModifiersPanel modifiers={contextAwareFixStack.contextModifiers} />
               <DetectedProblemsDisplay problems={contextAwareFixStack.problems} />
-              <TopFixesDisplay fixes={contextAwareFixStack.topFixes} />
+              <TopRecommendationsDisplay violations={contextAwareFixStack.violations} />
             </>
           )}
         </div>
