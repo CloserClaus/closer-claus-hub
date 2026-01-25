@@ -111,6 +111,22 @@ export interface Prescription {
   callToAction: string;
 }
 
+// ========== Context Modifier Types ==========
+
+export type CashFlowLevel = 'Low' | 'Moderate' | 'High';
+export type PainType = 'Revenue' | 'Brand' | 'Retention' | 'Efficiency';
+export type MaturityLevel = 'Pre' | 'Early' | 'Scaling' | 'Mature';
+export type FulfillmentType = 'Labor' | 'Hybrid' | 'Automation' | 'Staffing';
+export type MechanismStrength = 'Weak' | 'Medium' | 'Strong' | 'VeryStrong';
+
+export interface ContextModifiers {
+  cashFlow: CashFlowLevel;
+  painType: PainType;
+  maturity: MaturityLevel;
+  fulfillment: FulfillmentType;
+  mechanismStrength: MechanismStrength;
+}
+
 // ========== Fix Stack Types ==========
 
 export type ProblemCategory =
@@ -140,7 +156,7 @@ export interface DetectedProblem {
   category: ProblemCategory;
   problem: string;
   whyItMatters: string;
-  severity: number; // calculated from score deviation
+  severity: number;
   fixes: FixArchetype[];
 }
 
@@ -149,4 +165,67 @@ export interface FixStackResult {
   alignmentScore: number;
   powerScore: number;
   problems: DetectedProblem[];
+}
+
+// ========== Context-Aware Fix Types ==========
+
+export type ContextFixId =
+  | 'SwitchToPerformance'
+  | 'SwitchToHybrid'
+  | 'ReduceRisk'
+  | 'Retainer'
+  | 'ConditionalGuarantee'
+  | 'IncreaseRetainer'
+  | 'ShiftUpmarket'
+  | 'ShiftVertical'
+  | 'ImproveMechanism'
+  | 'Downmarket'
+  | 'DurationBrand'
+  | 'OperationalSimplify'
+  | 'IncreaseAOV'
+  | 'SimplifyOffer'
+  | 'PerformancePricing'
+  | 'RemoveGuarantee'
+  | 'SimplifyFulfillment'
+  | 'HybridPricing'
+  | 'AddConditionalGuarantee'
+  | 'IncreasePricing'
+  | 'AddGuarantee'
+  | 'RequireRetainers'
+  | 'EnterprisePackaging'
+  | 'LandAndExpand'
+  | 'Productize'
+  | 'Systemize'
+  | 'Hybridize'
+  | 'IncreasePrice'
+  | 'Upmarket'
+  | 'Guarantee'
+  | 'AddServices'
+  | 'UsageBasedPricing'
+  | 'AddRetainerComponent'
+  | 'IncreaseProof'
+  | 'ImproveProof'
+  | 'CaseStudies'
+  | 'Upsell'
+  | 'RaisePricing';
+
+export interface ContextAwareFix {
+  id: ContextFixId;
+  whatToChange: string;
+  howToChangeIt: string;
+  targetCondition: string;
+  effort: EffortLevel;
+  impact: ImpactLevel;
+  strategicImpact: number;
+  feasibility: number;
+  instruction: string;
+}
+
+export interface ContextAwareFixStackResult {
+  finalScore: number;
+  alignmentScore: number;
+  powerScore: number;
+  contextModifiers: ContextModifiers;
+  problems: DetectedProblem[];
+  topFixes: ContextAwareFix[];
 }

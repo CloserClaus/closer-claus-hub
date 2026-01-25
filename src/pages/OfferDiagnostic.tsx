@@ -27,6 +27,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { 
   AlertTriangle, 
   CheckCircle2, 
@@ -35,7 +40,10 @@ import {
   Zap,
   ArrowRight,
   Gauge,
-  BarChart3
+  BarChart3,
+  Settings2,
+  ChevronDown,
+  Lightbulb,
 } from 'lucide-react';
 import type {
   DiagnosticFormData,
@@ -51,12 +59,15 @@ import type {
   FulfillmentComplexity,
   ScoringResult,
   Grade,
-  FixStackResult,
   DetectedProblem,
   FixArchetype,
+  ContextModifiers,
+  ContextAwareFix,
+  ContextAwareFixStackResult,
 } from '@/lib/offerDiagnostic/types';
 import { calculateScore } from '@/lib/offerDiagnostic/scoringEngine';
-import { generateFixStack, PROBLEM_CATEGORY_LABELS } from '@/lib/offerDiagnostic/fixStackEngine';
+import { PROBLEM_CATEGORY_LABELS } from '@/lib/offerDiagnostic/fixStackEngine';
+import { generateContextAwareFixStack, MODIFIER_LABELS } from '@/lib/offerDiagnostic/contextAwareFixEngine';
 import {
   OFFER_TYPE_OPTIONS,
   ICP_INDUSTRY_OPTIONS,
@@ -263,16 +274,90 @@ function ProblemCard({ problem, index }: { problem: DetectedProblem; index: numb
   );
 }
 
-function FixStackDisplay({ fixStack }: { fixStack: FixStackResult }) {
-  if (fixStack.problems.length === 0) {
+// Context Modifiers Display
+function ContextModifiersPanel({ modifiers }: { modifiers: ContextModifiers }) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const modifierEntries = Object.entries(modifiers) as [keyof ContextModifiers, string][];
+  
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Card className="border-muted">
+        <CollapsibleTrigger className="w-full">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Settings2 className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Context Modifiers</CardTitle>
+              </div>
+              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </div>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-0">
+            <div className="grid gap-2 sm:grid-cols-5">
+              {modifierEntries.map(([key, value]) => (
+                <div key={key} className="rounded-lg bg-muted/50 p-2 text-center">
+                  <div className="text-xs text-muted-foreground">{MODIFIER_LABELS[key]}</div>
+                  <div className="font-medium text-sm">{value}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+// Context-Aware Fix Card
+function ContextAwareFixCard({ fix, index }: { fix: ContextAwareFix; index: number }) {
+  return (
+    <Card className="border-l-4 border-l-primary">
+      <CardContent className="pt-4 space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-sm font-semibold">
+              {index + 1}
+            </span>
+            <span className="font-semibold">{fix.whatToChange}</span>
+          </div>
+          <div className="flex gap-2">
+            <Badge variant="outline" className={getEffortColor(fix.effort)}>
+              {fix.effort} Effort
+            </Badge>
+            <Badge variant="outline" className={getImpactColor(fix.impact)}>
+              {fix.impact} Impact
+            </Badge>
+          </div>
+        </div>
+        
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-primary/5 text-sm">
+          <Lightbulb className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+          <span>{fix.instruction}</span>
+        </div>
+        
+        <div className="flex items-start gap-2 text-sm text-muted-foreground">
+          <Target className="h-4 w-4 mt-0.5 shrink-0" />
+          <span><strong>Target:</strong> {fix.targetCondition}</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Top Fixes Display
+function TopFixesDisplay({ fixes }: { fixes: ContextAwareFix[] }) {
+  if (fixes.length === 0) {
     return (
-      <Card className="border-green-500/30 bg-green-500/5">
+      <Card className="border-primary/30 bg-primary/5">
         <CardContent className="pt-6">
-          <div className="flex items-center gap-3 text-green-600">
+          <div className="flex items-center gap-3 text-primary">
             <CheckCircle2 className="h-6 w-6" />
             <div>
-              <div className="font-semibold">No Critical Issues Detected</div>
-              <div className="text-sm text-muted-foreground">Your offer configuration is well-optimized.</div>
+              <div className="font-semibold">Well Optimized</div>
+              <div className="text-sm text-muted-foreground">No major improvements needed at this time.</div>
             </div>
           </div>
         </CardContent>
@@ -284,19 +369,46 @@ function FixStackDisplay({ fixStack }: { fixStack: FixStackResult }) {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <TrendingUp className="h-5 w-5 text-primary" />
-          Fix Stack: Top {fixStack.problems.length} Issues
+          <Lightbulb className="h-5 w-5 text-primary" />
+          Top {fixes.length} Recommended Fixes
         </CardTitle>
         <CardDescription>
-          Prioritized by impact weight × severity. Address these to improve your score.
+          Context-aware recommendations based on your specific configuration. Prioritized by strategic impact.
         </CardDescription>
       </CardHeader>
+      <CardContent className="space-y-3">
+        {fixes.map((fix, index) => (
+          <ContextAwareFixCard key={fix.id} fix={fix} index={index} />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Detected Problems Display (simplified, no fix archetypes here)
+function DetectedProblemsDisplay({ problems }: { problems: DetectedProblem[] }) {
+  if (problems.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <AlertTriangle className="h-5 w-5 text-destructive" />
+          Detected Issues ({problems.length})
+        </CardTitle>
+      </CardHeader>
       <CardContent>
-        <Accordion type="single" collapsible className="space-y-2">
-          {fixStack.problems.map((problem, index) => (
-            <ProblemCard key={index} problem={problem} index={index} />
+        <div className="space-y-2">
+          {problems.map((problem, index) => (
+            <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-destructive/5 border border-destructive/20">
+              <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <div className="font-medium text-sm">{PROBLEM_CATEGORY_LABELS[problem.category]}</div>
+                <div className="text-sm text-muted-foreground">{problem.whyItMatters}</div>
+              </div>
+            </div>
           ))}
-        </Accordion>
+        </div>
       </CardContent>
     </Card>
   );
@@ -352,9 +464,9 @@ export default function OfferDiagnostic() {
     }
   };
 
-  const fixStack = useMemo(() => {
+  const contextAwareFixStack = useMemo(() => {
     if (!scoringResult) return null;
-    return generateFixStack(formData, scoringResult.extendedScores, scoringResult.visibleScore100);
+    return generateContextAwareFixStack(formData, scoringResult.extendedScores, scoringResult.visibleScore100);
   }, [scoringResult, formData]);
 
   const renderSelect = <T extends string>(
@@ -512,7 +624,13 @@ export default function OfferDiagnostic() {
                 </CardContent>
               </Card>
 
-              {fixStack && <FixStackDisplay fixStack={fixStack} />}
+              {contextAwareFixStack && (
+                <>
+                  <ContextModifiersPanel modifiers={contextAwareFixStack.contextModifiers} />
+                  <DetectedProblemsDisplay problems={contextAwareFixStack.problems} />
+                  <TopFixesDisplay fixes={contextAwareFixStack.topFixes} />
+                </>
+              )}
             </>
           )}
         </div>
