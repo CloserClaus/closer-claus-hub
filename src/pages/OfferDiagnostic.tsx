@@ -56,6 +56,7 @@ import type {
   OneTimePriceTier,
   UsageOutputType,
   UsageVolumeTier,
+  RiskModel,
   FulfillmentComplexity,
   ScoringResult,
   Grade,
@@ -78,6 +79,7 @@ import {
   ONE_TIME_PRICE_TIER_OPTIONS,
   USAGE_OUTPUT_TYPE_OPTIONS,
   USAGE_VOLUME_TIER_OPTIONS,
+  RISK_MODEL_OPTIONS,
   FULFILLMENT_COMPLEXITY_OPTIONS,
 } from '@/lib/offerDiagnostic/dropdownOptions';
 
@@ -91,6 +93,7 @@ const initialFormData: DiagnosticFormData = {
   oneTimePriceTier: null,
   usageOutputType: null,
   usageVolumeTier: null,
+  riskModel: null,
   fulfillmentComplexity: null,
 };
 
@@ -419,9 +422,10 @@ export default function OfferDiagnostic() {
   const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
 
   const isFormComplete = useMemo(() => {
-    const { offerType, icpIndustry, icpSize, icpMaturity, pricingStructure, fulfillmentComplexity } = formData;
+    const { offerType, icpIndustry, icpSize, icpMaturity, pricingStructure, riskModel, fulfillmentComplexity } = formData;
     
-    if (!offerType || !icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !fulfillmentComplexity) {
+    // Base required fields including riskModel
+    if (!offerType || !icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !riskModel || !fulfillmentComplexity) {
       return false;
     }
 
@@ -563,6 +567,17 @@ export default function OfferDiagnostic() {
                   {renderSelect<UsageVolumeTier>('Usage Volume Tier', 'usageVolumeTier', USAGE_VOLUME_TIER_OPTIONS, formData.usageVolumeTier)}
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Section: Risk Model */}
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg">Risk Model</CardTitle>
+              <CardDescription>Define your guarantee and risk structure</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {renderSelect<RiskModel>('Risk Model', 'riskModel', RISK_MODEL_OPTIONS, formData.riskModel)}
             </CardContent>
           </Card>
 

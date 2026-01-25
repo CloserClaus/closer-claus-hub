@@ -14,6 +14,7 @@ import type {
   UsageVolumeTier,
   UsageOutputType,
   FulfillmentComplexity,
+  RiskModel,
 } from './types';
 
 // ========== DIMENSION 1: Pain Urgency (0-25) ==========
@@ -154,37 +155,97 @@ function calculateExecutionFeasibility(
 }
 
 // ========== DIMENSION 5: Risk Alignment (0-15) ==========
-// Matrix C: ICPMaturity × PricingStructure
-const MATRIX_C: Record<ICPMaturity, Record<PricingStructure, number>> = {
-  pre_revenue: { recurring: -1, one_time: 2, performance_only: -5, usage_based: -3 },
-  early_traction: { recurring: 2, one_time: 4, performance_only: -2, usage_based: 1 },
-  scaling: { recurring: 3, one_time: 3, performance_only: 2, usage_based: 4 },
-  mature: { recurring: 4, one_time: 2, performance_only: 1, usage_based: 3 },
-  enterprise: { recurring: 5, one_time: 1, performance_only: 1, usage_based: 2 },
+// Matrix: ICPMaturity × RiskModel with values 0-15
+const RISK_ALIGNMENT_MATRIX: Record<ICPMaturity, Record<RiskModel, number>> = {
+  pre_revenue: {
+    no_guarantee: 3,
+    conditional_guarantee: 6,
+    full_guarantee: 0,
+    performance_only: 4,
+    pay_after_results: 5,
+  },
+  early_traction: {
+    no_guarantee: 4,
+    conditional_guarantee: 7,
+    full_guarantee: 2,
+    performance_only: 6,
+    pay_after_results: 7,
+  },
+  scaling: {
+    no_guarantee: 5,
+    conditional_guarantee: 9,
+    full_guarantee: 7,
+    performance_only: 10,
+    pay_after_results: 9,
+  },
+  mature: {
+    no_guarantee: 7,
+    conditional_guarantee: 8,
+    full_guarantee: 6,
+    performance_only: 4,
+    pay_after_results: 7,
+  },
+  enterprise: {
+    no_guarantee: 6,
+    conditional_guarantee: 7,
+    full_guarantee: 5,
+    performance_only: 3,
+    pay_after_results: 6,
+  },
 };
 
-const PERFORMANCE_ADJUSTMENT: Record<ICPMaturity, number> = {
-  pre_revenue: -5,
-  early_traction: -2,
-  scaling: 2,
-  mature: 1,
-  enterprise: 0,
+// PowerScore modifier based on ICPMaturity × RiskModel (-10 to +10)
+const POWER_SCORE_RISK_MODIFIER: Record<ICPMaturity, Record<RiskModel, number>> = {
+  pre_revenue: {
+    performance_only: -10,
+    pay_after_results: -5,
+    full_guarantee: -15,
+    conditional_guarantee: 0,
+    no_guarantee: 0,
+  },
+  early_traction: {
+    performance_only: 0,
+    pay_after_results: 2,
+    full_guarantee: -8,
+    conditional_guarantee: 3,
+    no_guarantee: 0,
+  },
+  scaling: {
+    performance_only: 10,
+    pay_after_results: 8,
+    full_guarantee: 3,
+    conditional_guarantee: 0,
+    no_guarantee: -2,
+  },
+  mature: {
+    performance_only: -4,
+    pay_after_results: 0,
+    full_guarantee: 3,
+    conditional_guarantee: 0,
+    no_guarantee: 0,
+  },
+  enterprise: {
+    performance_only: -6,
+    pay_after_results: -2,
+    full_guarantee: 3,
+    conditional_guarantee: 0,
+    no_guarantee: 0,
+  },
 };
 
 function calculateRiskAlignment(
   icpMaturity: ICPMaturity,
-  pricingStructure: PricingStructure
+  riskModel: RiskModel
 ): number {
-  const matrixCScore = MATRIX_C[icpMaturity][pricingStructure];
-  // Normalize from -5 to +5 range to 0-15
-  let normalized = Math.max(0, Math.min(15, matrixCScore + 10));
+  const riskScore = RISK_ALIGNMENT_MATRIX[icpMaturity][riskModel];
+  return Math.max(0, Math.min(15, riskScore));
+}
 
-  // Add performance adjustment only if performance-only
-  if (pricingStructure === 'performance_only') {
-    normalized += PERFORMANCE_ADJUSTMENT[icpMaturity];
-  }
-
-  return Math.max(0, Math.min(15, normalized));
+function getPowerScoreRiskModifier(
+  icpMaturity: ICPMaturity,
+  riskModel: RiskModel
+): number {
+  return POWER_SCORE_RISK_MODIFIER[icpMaturity][riskModel];
 }
 
 // ========== SWITCHING COST (0-20) ==========
@@ -224,6 +285,23 @@ function calculateAlignmentScore(
   return Math.round(weighted);
 }
 
+// Alignment score with RiskAlignment included
+function calculateAlignmentScoreWithRisk(
+  painUrgency: number,
+  buyingPower: number,
+  pricingFit: number,
+  riskAlignment: number
+): number {
+  // Original weighted components plus RiskAlignment contribution
+  // Reweight to accommodate RiskAlignment: Pain 35%, BuyingPower 25%, PricingFit 25%, RiskAlignment 15%
+  const weighted = 
+    (painUrgency / 25) * 35 + 
+    (buyingPower / 20) * 25 + 
+    (pricingFit / 20) * 25 + 
+    (riskAlignment / 15) * 15;
+  return Math.min(100, Math.round(weighted));
+}
+
 // ========== POWER SCORE (0-100) ==========
 // Composite of execution and differentiation
 function calculatePowerScore(
@@ -246,10 +324,10 @@ function calculateGrade(score: number): Grade {
 
 // ========== FORM VALIDATION ==========
 function isFormComplete(formData: DiagnosticFormData): boolean {
-  const { offerType, icpIndustry, icpSize, icpMaturity, pricingStructure, fulfillmentComplexity } = formData;
+  const { offerType, icpIndustry, icpSize, icpMaturity, pricingStructure, riskModel, fulfillmentComplexity } = formData;
   
-  // Base required fields
-  if (!offerType || !icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !fulfillmentComplexity) {
+  // Base required fields (including riskModel)
+  if (!offerType || !icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !riskModel || !fulfillmentComplexity) {
     return false;
   }
 
@@ -276,7 +354,7 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
   const { 
     offerType, icpIndustry, icpSize, icpMaturity, 
     pricingStructure, recurringPriceTier, oneTimePriceTier,
-    usageOutputType, usageVolumeTier, fulfillmentComplexity 
+    usageOutputType, usageVolumeTier, riskModel, fulfillmentComplexity 
   } = formData;
 
   const dimensionScores: DimensionScores = {
@@ -284,18 +362,30 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
     buyingPower: calculateBuyingPower(icpSize!, icpIndustry!),
     pricingFit: calculatePricingFit(icpSize!, pricingStructure!, recurringPriceTier, oneTimePriceTier, usageVolumeTier),
     executionFeasibility: calculateExecutionFeasibility(fulfillmentComplexity!, pricingStructure!, usageOutputType, icpIndustry!),
-    riskAlignment: calculateRiskAlignment(icpMaturity!, pricingStructure!),
+    riskAlignment: calculateRiskAlignment(icpMaturity!, riskModel!),
   };
 
   const switchingCost = calculateSwitchingCost(pricingStructure!, fulfillmentComplexity!);
-  const alignmentScore = calculateAlignmentScore(dimensionScores.painUrgency, dimensionScores.buyingPower, dimensionScores.pricingFit);
-  const powerScore = calculatePowerScore(dimensionScores.executionFeasibility, switchingCost, dimensionScores.riskAlignment);
+  
+  // Calculate base alignment score (with RiskAlignment added)
+  const alignmentScore = calculateAlignmentScoreWithRisk(
+    dimensionScores.painUrgency, 
+    dimensionScores.buyingPower, 
+    dimensionScores.pricingFit,
+    dimensionScores.riskAlignment
+  );
+  
+  // Calculate power score with risk modifier
+  const basePowerScore = calculatePowerScore(dimensionScores.executionFeasibility, switchingCost, dimensionScores.riskAlignment);
+  const riskModifier = getPowerScoreRiskModifier(icpMaturity!, riskModel!);
+  const powerScore = Math.max(0, Math.min(100, basePowerScore + riskModifier));
 
   const extendedScores: ExtendedScores = {
     ...dimensionScores,
     alignmentScore,
     powerScore,
     switchingCost,
+    riskModifier,
   };
 
   const hiddenScore = 
@@ -320,4 +410,4 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
 }
 
 // Export matrices for use in other engines
-export { MATRIX_B, MATRIX_C, MATRIX_D };
+export { MATRIX_B, MATRIX_D, RISK_ALIGNMENT_MATRIX, POWER_SCORE_RISK_MODIFIER };

@@ -13,9 +13,22 @@ import type {
   FulfillmentType,
   MechanismStrength,
   PricingStructure,
+  ICPMaturity,
+  RiskModel,
 } from './types';
 import { generateContextModifiers } from './contextModifierEngine';
 import { generateFixStack, PROBLEM_CATEGORY_LABELS } from './fixStackEngine';
+
+// ========== Risk Fix Layer Types ==========
+interface RiskFix {
+  whatToChange: string;
+  howToChangeIt: string;
+  targetCondition: string;
+  effort: 'Low' | 'Medium' | 'High';
+  impact: 'Low' | 'Medium' | 'High' | 'Very High';
+  strategicImpact: number;
+  feasibility: number;
+}
 
 // ========== Fix Definitions ==========
 interface FixDefinition {
@@ -517,6 +530,155 @@ function generateInstruction(
   return `${def.whatToChange} because ${maturityContext} with ${cashFlowContext} focused on ${painContext} respond better to this approach. To implement: ${def.howToChangeIt}. End goal: ${def.targetCondition}.`;
 }
 
+// ========== Risk Fix Layer ==========
+// Triggered when RiskAlignment < 8 OR PowerScore modifier < 0
+
+interface RiskRecommendation {
+  id: string;
+  whatToChange: string;
+  howToChangeIt: string;
+  targetCondition: string;
+  instruction: string;
+  effort: 'Low' | 'Medium' | 'High';
+  impact: 'Low' | 'Medium' | 'High' | 'Very High';
+  strategicImpact: number;
+  feasibility: number;
+}
+
+const RISK_FIX_BY_MATURITY: Record<ICPMaturity, RiskRecommendation[]> = {
+  pre_revenue: [
+    {
+      id: 'risk_pre_1',
+      whatToChange: 'Switch to Conditional or Pay-After-Results Model',
+      howToChangeIt: 'Move from full guarantee or performance-only to conditional guarantee or pay-after-results',
+      targetCondition: 'Reduced risk exposure while maintaining buyer trust',
+      instruction: 'Switch to Conditional guarantee or Pay after results because pre-revenue companies respond better to low-risk, results-based pricing. To implement: remove upfront guarantees → add milestone-based payments → introduce conditional refund terms. End goal: de-risk your offer while maintaining conversion.',
+      effort: 'Low',
+      impact: 'High',
+      strategicImpact: 9,
+      feasibility: 8,
+    },
+    {
+      id: 'risk_pre_2',
+      whatToChange: 'Avoid Full Guarantee and Performance-Only Models',
+      howToChangeIt: 'Remove performance-only or full guarantee structures until traction improves',
+      targetCondition: 'Sustainable risk profile for early-stage ICP',
+      instruction: 'Avoid Full guarantee and Performance only until traction improves because pre-revenue buyers lack the stability to honor long-term commitments. To implement: restructure contracts → add exit clauses → tier pricing by milestone. End goal: protect margins while serving pre-revenue buyers.',
+      effort: 'Low',
+      impact: 'Medium',
+      strategicImpact: 7,
+      feasibility: 9,
+    },
+  ],
+  early_traction: [
+    {
+      id: 'risk_early_1',
+      whatToChange: 'Use Conditional Guarantee or Pay-After-Results',
+      howToChangeIt: 'Implement conditional guarantee tied to specific milestones',
+      targetCondition: 'Reduced friction with accountability on both sides',
+      instruction: 'Use Conditional guarantee or Pay after results to reduce friction because early traction companies need trust signals without excessive upfront commitment. To implement: define clear milestones → add conditional refund terms → document success criteria. End goal: faster closes with aligned incentives.',
+      effort: 'Low',
+      impact: 'High',
+      strategicImpact: 8,
+      feasibility: 8,
+    },
+    {
+      id: 'risk_early_2',
+      whatToChange: 'Avoid Full Guarantee Unless Capacity is Proven',
+      howToChangeIt: 'Only offer full guarantees if you have proven fulfillment capacity',
+      targetCondition: 'Protected margins with appropriate risk levels',
+      instruction: 'Avoid Full guarantee unless fulfillment capacity is proven because early-stage buyers may trigger refunds you cannot absorb. To implement: audit current capacity → set guardrails on guarantee scope → add performance conditions. End goal: sustainable guarantees that close deals.',
+      effort: 'Medium',
+      impact: 'Medium',
+      strategicImpact: 6,
+      feasibility: 7,
+    },
+  ],
+  scaling: [
+    {
+      id: 'risk_scaling_1',
+      whatToChange: 'Consider Performance-Only Pricing',
+      howToChangeIt: 'Move to performance-only to accelerate deal velocity',
+      targetCondition: 'Faster closes with aligned incentives for scaling buyers',
+      instruction: 'Consider Performance only for acceleration because scaling companies respond well to results-based pricing when they see clear ROI. To implement: calculate break-even metrics → set performance thresholds → document success fees. End goal: higher deal velocity with scaling ICPs.',
+      effort: 'Low',
+      impact: 'Very High',
+      strategicImpact: 10,
+      feasibility: 7,
+    },
+    {
+      id: 'risk_scaling_2',
+      whatToChange: 'Add Hybrid Guarantees for Outbound',
+      howToChangeIt: 'Combine conditional guarantees with retainer pricing for outbound',
+      targetCondition: 'Improved close rates in competitive outbound situations',
+      instruction: 'Hybrid guarantees improve close rates in outbound because scaling companies expect risk-sharing on new vendor relationships. To implement: bundle retainer + conditional guarantee → document success metrics → add performance bonus tiers. End goal: competitive advantage in outbound sales.',
+      effort: 'Medium',
+      impact: 'High',
+      strategicImpact: 8,
+      feasibility: 6,
+    },
+  ],
+  mature: [
+    {
+      id: 'risk_mature_1',
+      whatToChange: 'Consider Full Guarantee or Hybrid Models',
+      howToChangeIt: 'Add full or hybrid guarantees to improve enterprise procurement success',
+      targetCondition: 'Procurement-friendly risk structure',
+      instruction: 'Full guarantee or Hybrid models improve enterprise procurement because mature companies expect vendor accountability in formal procurement processes. To implement: build guarantee into MSA → add SLA terms → document escalation paths. End goal: win more enterprise deals.',
+      effort: 'Medium',
+      impact: 'Very High',
+      strategicImpact: 9,
+      feasibility: 6,
+    },
+    {
+      id: 'risk_mature_2',
+      whatToChange: 'Avoid Performance-Only Unless Margins Support It',
+      howToChangeIt: 'Only use performance-only if fulfillment margins are high',
+      targetCondition: 'Sustainable pricing with appropriate risk levels',
+      instruction: 'Avoid Performance only unless fulfillment margins are high because mature buyers may expect performance models at scale that erode profitability. To implement: calculate true fulfillment costs → set minimum thresholds → add volume caps. End goal: profitable performance deals.',
+      effort: 'Low',
+      impact: 'Medium',
+      strategicImpact: 6,
+      feasibility: 8,
+    },
+  ],
+  enterprise: [
+    {
+      id: 'risk_enterprise_1',
+      whatToChange: 'Implement Full Guarantee or Hybrid Structure',
+      howToChangeIt: 'Add comprehensive guarantees to satisfy enterprise procurement requirements',
+      targetCondition: 'Enterprise-grade risk structure for procurement approval',
+      instruction: 'Full guarantee or Hybrid models improve enterprise procurement because enterprise buyers require formal risk mitigation in vendor agreements. To implement: develop enterprise MSA → add comprehensive SLAs → include audit rights. End goal: enterprise procurement approval.',
+      effort: 'Medium',
+      impact: 'Very High',
+      strategicImpact: 9,
+      feasibility: 5,
+    },
+    {
+      id: 'risk_enterprise_2',
+      whatToChange: 'Avoid Performance-Only for Enterprise',
+      howToChangeIt: 'Replace performance-only with hybrid or guarantee structures',
+      targetCondition: 'Procurement-compliant pricing model',
+      instruction: 'Avoid Performance only unless fulfillment margins are high because enterprise procurement rarely approves pure performance models without guarantees. To implement: bundle retainer + guarantee → add enterprise terms → document ROI methodology. End goal: enterprise-ready offer structure.',
+      effort: 'Medium',
+      impact: 'Medium',
+      strategicImpact: 7,
+      feasibility: 7,
+    },
+  ],
+};
+
+function shouldTriggerRiskFixLayer(
+  riskAlignment: number,
+  riskModifier: number
+): boolean {
+  return riskAlignment < 8 || riskModifier < 0;
+}
+
+function getRiskFixes(icpMaturity: ICPMaturity): RiskRecommendation[] {
+  return RISK_FIX_BY_MATURITY[icpMaturity] || [];
+}
+
 // ========== Main Export ==========
 
 export function generateContextAwareFixStack(
@@ -532,39 +694,81 @@ export function generateContextAwareFixStack(
   const baseFixStack = generateFixStack(formData, scores, finalScore);
 
   // Collect all candidate fixes from detected problems
-  const allCandidateFixes = new Map<ContextFixId, { certainty: number; problemCategory: ProblemCategory }>();
+  const allCandidateFixes = new Map<ContextFixId | string, { 
+    certainty: number; 
+    problemCategory: ProblemCategory | 'risk';
+    fix: Omit<ContextAwareFix, 'id'> & { id: ContextFixId | string };
+  }>();
 
+  // Check if Risk Fix Layer should trigger
+  const triggerRiskLayer = shouldTriggerRiskFixLayer(scores.riskAlignment, scores.riskModifier);
+  
+  if (triggerRiskLayer && formData.icpMaturity) {
+    // Add risk fixes with HIGH priority (certainty = 12, higher than regular fixes)
+    const riskFixes = getRiskFixes(formData.icpMaturity);
+    riskFixes.forEach((riskFix, index) => {
+      const certainty = 12 - index; // High certainty for risk fixes
+      allCandidateFixes.set(riskFix.id, {
+        certainty,
+        problemCategory: 'risk',
+        fix: {
+          id: riskFix.id as ContextFixId,
+          whatToChange: riskFix.whatToChange,
+          howToChangeIt: riskFix.howToChangeIt,
+          targetCondition: riskFix.targetCondition,
+          effort: riskFix.effort,
+          impact: riskFix.impact,
+          strategicImpact: riskFix.strategicImpact,
+          feasibility: riskFix.feasibility,
+          instruction: riskFix.instruction,
+        },
+      });
+    });
+  }
+
+  // Add fixes from detected problems
   baseFixStack.problems.forEach((problem, index) => {
     const routedFixes = getRoutedFixes(problem.category, modifiers);
     const validatedFixes = validateFixes(routedFixes, formData, modifiers);
     
-    // Add fixes with certainty based on problem priority
-    const certainty = 10 - index * 2; // Higher certainty for higher-priority problems
+    // Add fixes with certainty based on problem priority (lower than risk fixes)
+    const certainty = 10 - index * 2;
     validatedFixes.forEach((fixId) => {
       if (!allCandidateFixes.has(fixId) || allCandidateFixes.get(fixId)!.certainty < certainty) {
-        allCandidateFixes.set(fixId, { certainty, problemCategory: problem.category });
+        const def = FIX_DEFINITIONS[fixId];
+        allCandidateFixes.set(fixId, { 
+          certainty, 
+          problemCategory: problem.category,
+          fix: {
+            id: fixId,
+            whatToChange: def.whatToChange,
+            howToChangeIt: def.howToChangeIt,
+            targetCondition: def.targetCondition,
+            effort: def.effort,
+            impact: def.impact,
+            strategicImpact: def.strategicImpact,
+            feasibility: def.feasibility,
+            instruction: generateInstruction(fixId, modifiers, formData),
+          },
+        });
       }
     });
   });
 
   // Convert to ContextAwareFix objects and sort
-  const contextAwareFixes: ContextAwareFix[] = Array.from(allCandidateFixes.entries()).map(([fixId, { certainty }]) => {
-    const def = FIX_DEFINITIONS[fixId];
-    return {
-      id: fixId,
-      whatToChange: def.whatToChange,
-      howToChangeIt: def.howToChangeIt,
-      targetCondition: def.targetCondition,
-      effort: def.effort,
-      impact: def.impact,
-      strategicImpact: def.strategicImpact,
-      feasibility: def.feasibility,
-      instruction: generateInstruction(fixId, modifiers, formData),
-    };
-  });
+  const contextAwareFixes: ContextAwareFix[] = Array.from(allCandidateFixes.values()).map(({ fix }) => fix as ContextAwareFix);
 
-  // Sort by strategicImpact, then feasibility
+  // Sort by strategicImpact, then feasibility, then certainty
   contextAwareFixes.sort((a, b) => {
+    const aData = allCandidateFixes.get(a.id);
+    const bData = allCandidateFixes.get(b.id);
+    
+    // First sort by certainty (higher certainty = risk fixes come first)
+    if (aData && bData && aData.certainty !== bData.certainty) {
+      return bData.certainty - aData.certainty;
+    }
+    
+    // Then by strategicImpact
     if (b.strategicImpact !== a.strategicImpact) {
       return b.strategicImpact - a.strategicImpact;
     }

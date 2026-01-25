@@ -72,3 +72,11 @@ export const FULFILLMENT_COMPLEXITY_OPTIONS = [
   { value: 'software', label: 'Software (typically < $500/mo or < $5k one-time)' },
   { value: 'automation', label: 'Automation (operational enablement) (typically $2k–$5k/mo or $10k–$25k one-time)' },
 ] as const;
+
+export const RISK_MODEL_OPTIONS = [
+  { value: 'no_guarantee', label: 'No guarantee' },
+  { value: 'conditional_guarantee', label: 'Conditional guarantee' },
+  { value: 'full_guarantee', label: 'Full guarantee' },
+  { value: 'performance_only', label: 'Performance only' },
+  { value: 'pay_after_results', label: 'Pay after results' },
+] as const;

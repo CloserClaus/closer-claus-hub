@@ -63,6 +63,13 @@ export type FulfillmentComplexity =
   | 'software'
   | 'automation';
 
+export type RiskModel =
+  | 'no_guarantee'
+  | 'conditional_guarantee'
+  | 'full_guarantee'
+  | 'performance_only'
+  | 'pay_after_results';
+
 export interface DiagnosticFormData {
   offerType: OfferType | null;
   icpIndustry: ICPIndustry | null;
@@ -73,6 +80,7 @@ export interface DiagnosticFormData {
   oneTimePriceTier: OneTimePriceTier | null;
   usageOutputType: UsageOutputType | null;
   usageVolumeTier: UsageVolumeTier | null;
+  riskModel: RiskModel | null;
   fulfillmentComplexity: FulfillmentComplexity | null;
 }
 
@@ -88,6 +96,7 @@ export interface ExtendedScores extends DimensionScores {
   alignmentScore: number; // 0-100 composite
   powerScore: number; // 0-100 composite
   switchingCost: number; // 0-20
+  riskModifier: number; // -15 to +10 based on maturity x risk model
 }
 
 export type Grade = 'Weak' | 'Average' | 'Strong' | 'Excellent';
