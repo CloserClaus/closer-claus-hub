@@ -7,8 +7,17 @@ import type {
   PricingStructure,
   RecurringPriceTier,
   Promise,
+  ScoringSegment,
+  ProofLevel,
+  RiskModel,
 } from './types';
-import { getPromiseMaturityFit, getPromiseFulfillmentFit } from './scoringEngine';
+import { 
+  getPromiseMaturityFit, 
+  getPromiseFulfillmentFit, 
+  SEGMENT_BUDGET_TIER, 
+  PROOF_LEVEL_SCORE, 
+  RECURRING_PRICE_TO_TIER 
+} from './scoringEngine';
 
 // ========== VIOLATION TYPES ==========
 
@@ -40,14 +49,14 @@ function deriveBuyingPowerConstraint(
   icpIndustry: ICPIndustry
 ): 'low' | 'moderate' | 'high' {
   const lowSizes: ICPSize[] = ['solo_founder', '1_5_employees'];
-  const lowIndustries: ICPIndustry[] = ['local_services'];
+  const lowIndustries: ICPIndustry[] = ['local_services', 'information_coaching'];
   
   if (lowSizes.includes(icpSize) || lowIndustries.includes(icpIndustry)) {
     return 'low';
   }
   
   const highSizes: ICPSize[] = ['21_100_employees', '100_plus_employees'];
-  const highIndustries: ICPIndustry[] = ['saas_tech', 'professional_services'];
+  const highIndustries: ICPIndustry[] = ['saas_tech', 'professional_services', 'healthcare', 'real_estate'];
   
   if (highSizes.includes(icpSize) && highIndustries.includes(icpIndustry)) {
     return 'high';
@@ -366,6 +375,46 @@ export function detectViolations(formData: DiagnosticFormData): Violation[] {
       recommendation: 'Recurring custom work in churn-heavy industries burns margin. Productize scope or switch to project-based.',
       fixCategory: 'pricing_shift',
     });
+  }
+  
+  // ========== NEW VERTICAL/PROOF VIOLATIONS ==========
+  
+  const { scoringSegment, proofLevel, riskModel } = formData;
+  
+  // RULE 9 — Vertical Pricing Mismatch
+  // Trigger: PriceTier > SegmentBudgetRange
+  if (scoringSegment && recurringPriceTier && pricingStructure === 'recurring') {
+    const segmentBudget = SEGMENT_BUDGET_TIER[scoringSegment];
+    const priceTier = RECURRING_PRICE_TO_TIER[recurringPriceTier];
+    
+    if (priceTier > segmentBudget + 1) {
+      violations.push({
+        id: 'vertical_pricing_mismatch',
+        rule: 'Vertical Pricing Mismatch',
+        severity: 'high',
+        recommendation: 'Your vertical typically cannot support this pricing level. Reduce retainer, switch to hybrid model, or move upmarket to a richer vertical.',
+        fixCategory: 'pricing_shift',
+      });
+    }
+  }
+  
+  // RULE 10 — Proof Risk Mismatch
+  // Trigger: RiskModel requires more proof than available
+  if (proofLevel && riskModel) {
+    const proofScore = PROOF_LEVEL_SCORE[proofLevel];
+    const highRiskModels: RiskModel[] = ['full_guarantee', 'pay_after_results', 'performance_only'];
+    const needsHighProof = highRiskModels.includes(riskModel);
+    
+    // If using high-risk model but proof is weak/none
+    if (needsHighProof && proofScore <= 5) {
+      violations.push({
+        id: 'proof_risk_mismatch',
+        rule: 'Proof Risk Mismatch',
+        severity: 'high',
+        recommendation: 'Your risk model requires more proof to convert predictably. Add conditional guarantee instead, switch to pay-after-results only after wins, or collect case studies before scaling price.',
+        fixCategory: 'risk_shift',
+      });
+    }
   }
   
   return violations;

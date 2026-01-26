@@ -110,6 +110,10 @@ const VIOLATION_TO_CATEGORIES: Record<string, FixCategory[]> = {
   
   // Coaching/Advisory issues
   'coaching_misfit': ['icp_shift', 'fulfillment_shift'],
+  
+  // New Vertical/Proof violations
+  'vertical_pricing_mismatch': ['pricing_shift', 'icp_shift'],
+  'proof_risk_mismatch': ['risk_shift', 'pricing_shift'],
 };
 
 // ========== CONTEXTUAL FILTERS ==========

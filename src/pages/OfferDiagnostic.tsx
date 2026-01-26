@@ -93,14 +93,19 @@ import {
   USAGE_VOLUME_TIER_OPTIONS,
   RISK_MODEL_OPTIONS,
   FULFILLMENT_COMPLEXITY_OPTIONS,
+  VERTICAL_SEGMENTS_BY_INDUSTRY,
+  getScoringSegmentFromVertical,
+  PROOF_LEVEL_OPTIONS,
 } from '@/lib/offerDiagnostic/dropdownOptions';
-import type { PromiseBucket, PromiseOutcome } from '@/lib/offerDiagnostic/types';
+import type { PromiseBucket, PromiseOutcome, VerticalSegment, ScoringSegment, ProofLevel } from '@/lib/offerDiagnostic/types';
 
 const initialFormData: DiagnosticFormData = {
   offerType: null,
   promiseOutcome: null,
   promise: null,
   icpIndustry: null,
+  verticalSegment: null,
+  scoringSegment: null,
   icpSize: null,
   icpMaturity: null,
   pricingStructure: null,
@@ -110,6 +115,7 @@ const initialFormData: DiagnosticFormData = {
   usageVolumeTier: null,
   riskModel: null,
   fulfillmentComplexity: null,
+  proofLevel: null,
 };
 
 function getImpactColor(impact: FixArchetype['impact']) {
@@ -191,8 +197,9 @@ function DimensionScoresTable({ scores }: { scores: ScoringResult['dimensionScor
   const dimensions = [
     { key: 'painUrgency' as const, label: 'Pain & Urgency', maxScore: 25 },
     { key: 'buyingPower' as const, label: 'Buying Power', maxScore: 25 },
-    { key: 'executionFeasibility' as const, label: 'Execution Feasibility', maxScore: 20 },
+    { key: 'executionFeasibility' as const, label: 'Execution Feasibility', maxScore: 15 },
     { key: 'pricingFit' as const, label: 'Pricing Fit', maxScore: 20 },
+    { key: 'riskAlignment' as const, label: 'Risk Alignment', maxScore: 15 },
     { key: 'riskAlignment' as const, label: 'Risk Alignment', maxScore: 10 },
   ];
 
@@ -559,10 +566,10 @@ export default function OfferDiagnostic() {
   const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
 
   const isFormComplete = useMemo(() => {
-    const { offerType, promiseOutcome, promise, icpIndustry, icpSize, icpMaturity, pricingStructure, riskModel, fulfillmentComplexity } = formData;
+    const { offerType, promiseOutcome, promise, icpIndustry, verticalSegment, scoringSegment, icpSize, icpMaturity, pricingStructure, riskModel, fulfillmentComplexity, proofLevel } = formData;
     
-    // Base required fields including promiseOutcome (which auto-maps to promise)
-    if (!offerType || !promiseOutcome || !promise || !icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !riskModel || !fulfillmentComplexity) {
+    // Base required fields including new fields
+    if (!offerType || !promiseOutcome || !promise || !icpIndustry || !verticalSegment || !scoringSegment || !icpSize || !icpMaturity || !pricingStructure || !riskModel || !fulfillmentComplexity || !proofLevel) {
       return false;
     }
 
@@ -584,6 +591,31 @@ export default function OfferDiagnostic() {
     if (!formData.offerType) return [];
     return OUTCOMES_BY_OFFER_TYPE[formData.offerType] || [];
   }, [formData.offerType]);
+
+  // Get available vertical segments based on selected industry
+  const availableVerticalSegments = useMemo(() => {
+    if (!formData.icpIndustry) return [];
+    return VERTICAL_SEGMENTS_BY_INDUSTRY[formData.icpIndustry] || [];
+  }, [formData.icpIndustry]);
+
+  // Handle vertical segment selection with auto-mapping to scoring segment
+  const handleVerticalSegmentChange = (verticalValue: string) => {
+    if (verticalValue === 'none') {
+      setFormData(prev => ({
+        ...prev,
+        verticalSegment: null,
+        scoringSegment: null,
+      }));
+    } else {
+      const scoringSegment = getScoringSegmentFromVertical(verticalValue);
+      setFormData(prev => ({
+        ...prev,
+        verticalSegment: verticalValue as VerticalSegment,
+        scoringSegment: scoringSegment as ScoringSegment,
+      }));
+    }
+    setScoringResult(null);
+  };
 
   // Handle outcome selection with auto-mapping to bucket
   const handleOutcomeChange = (outcomeValue: string) => {
@@ -622,6 +654,12 @@ export default function OfferDiagnostic() {
       if (field === 'offerType') {
         newData.promiseOutcome = null;
         newData.promise = null;
+      }
+      
+      // Reset vertical segment when industry changes
+      if (field === 'icpIndustry') {
+        newData.verticalSegment = null;
+        newData.scoringSegment = null;
       }
       
       return newData;
@@ -739,10 +777,38 @@ export default function OfferDiagnostic() {
               <CardTitle className="text-lg">ICP (Ideal Customer Profile)</CardTitle>
               <CardDescription>Define your target customer characteristics</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-3">
-              {renderSelect<ICPIndustry>('Industry', 'icpIndustry', ICP_INDUSTRY_OPTIONS, formData.icpIndustry)}
-              {renderSelect<ICPSize>('Company Size', 'icpSize', ICP_SIZE_OPTIONS, formData.icpSize)}
-              {renderSelect<ICPMaturity>('Business Maturity', 'icpMaturity', ICP_MATURITY_OPTIONS, formData.icpMaturity)}
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                {renderSelect<ICPIndustry>('Industry', 'icpIndustry', ICP_INDUSTRY_OPTIONS, formData.icpIndustry)}
+                
+                {/* Vertical Segment - conditional on Industry */}
+                <div className="space-y-2">
+                  <Label htmlFor="verticalSegment">Vertical Segment</Label>
+                  <Select
+                    value={formData.verticalSegment || 'none'}
+                    onValueChange={handleVerticalSegmentChange}
+                    disabled={!formData.icpIndustry}
+                  >
+                    <SelectTrigger id="verticalSegment" className="bg-background">
+                      <SelectValue placeholder="Select your vertical" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background z-50">
+                      {availableVerticalSegments.map((segment) => (
+                        <SelectItem key={segment.value} value={segment.value}>
+                          {segment.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!formData.icpIndustry && (
+                    <p className="text-xs text-muted-foreground">Select an Industry first</p>
+                  )}
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {renderSelect<ICPSize>('Company Size', 'icpSize', ICP_SIZE_OPTIONS, formData.icpSize)}
+                {renderSelect<ICPMaturity>('Business Maturity', 'icpMaturity', ICP_MATURITY_OPTIONS, formData.icpMaturity)}
+              </div>
             </CardContent>
           </Card>
 
@@ -755,7 +821,10 @@ export default function OfferDiagnostic() {
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 {renderSelect<PricingStructure>('Pricing Structure', 'pricingStructure', PRICING_STRUCTURE_OPTIONS, formData.pricingStructure)}
-                
+                {renderSelect<ProofLevel>('Market Proof', 'proofLevel', PROOF_LEVEL_OPTIONS, formData.proofLevel)}
+              </div>
+              
+              <div className="grid gap-4 sm:grid-cols-2">
                 {formData.pricingStructure === 'recurring' && (
                   renderSelect<RecurringPriceTier>('Recurring Price Tier', 'recurringPriceTier', RECURRING_PRICE_TIER_OPTIONS, formData.recurringPriceTier)
                 )}
@@ -764,6 +833,13 @@ export default function OfferDiagnostic() {
                   renderSelect<OneTimePriceTier>('One-Time Price Tier', 'oneTimePriceTier', ONE_TIME_PRICE_TIER_OPTIONS, formData.oneTimePriceTier)
                 )}
               </div>
+                
+              {formData.pricingStructure === 'usage_based' && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {renderSelect<UsageOutputType>('Usage Output Type', 'usageOutputType', USAGE_OUTPUT_TYPE_OPTIONS, formData.usageOutputType)}
+                  {renderSelect<UsageVolumeTier>('Usage Volume Tier', 'usageVolumeTier', USAGE_VOLUME_TIER_OPTIONS, formData.usageVolumeTier)}
+                </div>
+              )}
               
               {formData.pricingStructure === 'usage_based' && (
                 <div className="grid gap-4 sm:grid-cols-2">
