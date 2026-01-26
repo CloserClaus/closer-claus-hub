@@ -16,7 +16,11 @@ import {
   getPromiseFulfillmentFit, 
   SEGMENT_BUDGET_TIER, 
   PROOF_LEVEL_SCORE, 
-  RECURRING_PRICE_TO_TIER 
+  RECURRING_PRICE_TO_TIER,
+  PROOF_FIT_SCORE,
+  PROMISE_FIT_SCORE,
+  VERTICAL_FIT_SCORE,
+  calculateOutboundFit,
 } from './scoringEngine';
 
 // ========== VIOLATION TYPES ==========
@@ -412,6 +416,41 @@ export function detectViolations(formData: DiagnosticFormData): Violation[] {
         rule: 'Proof Risk Mismatch',
         severity: 'high',
         recommendation: 'Your risk model requires more proof to convert predictably. Add conditional guarantee instead, switch to pay-after-results only after wins, or collect case studies before scaling price.',
+        fixCategory: 'risk_shift',
+      });
+    }
+  }
+  
+  // ========== NEW OUTBOUND-RELATED VIOLATIONS ==========
+  
+  // RULE 11 — Low Outbound Fit
+  // Trigger: OutboundFit < 10
+  if (scoringSegment && proofLevel && promise) {
+    const outboundFit = calculateOutboundFit(scoringSegment, proofLevel, promise);
+    
+    if (outboundFit < 10) {
+      violations.push({
+        id: 'low_outbound_fit',
+        rule: 'Low Outbound Fit',
+        severity: 'high',
+        recommendation: 'Cold outbound will struggle here. This ICP needs education before cold calls. Consider switching to solution-aware verticals like SaaS, adjust your promise to meetings instead of revenue, or use content/partnership channels before outbound.',
+        fixCategory: 'icp_shift',
+      });
+    }
+  }
+  
+  // RULE 12 — Proof Promise Mismatch
+  // Trigger: ProofFit <= 1 AND PromiseFit >= 5
+  if (proofLevel && promise) {
+    const proofFit = PROOF_FIT_SCORE[proofLevel];
+    const promiseFit = PROMISE_FIT_SCORE[promise];
+    
+    if (proofFit <= 1 && promiseFit >= 5) {
+      violations.push({
+        id: 'proof_promise_mismatch',
+        rule: 'Proof Promise Mismatch',
+        severity: 'high',
+        recommendation: 'High-trust promise without proof. You\'re making a big promise but have no track record to back it up. Run pilot deals to build case studies, add a conditional guarantee instead of full guarantee, or lower your promise from revenue to booked meetings.',
         fixCategory: 'risk_shift',
       });
     }

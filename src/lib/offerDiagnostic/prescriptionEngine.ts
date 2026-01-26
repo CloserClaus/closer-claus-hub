@@ -12,6 +12,7 @@ const DIMENSION_PRIORITY: DimensionName[] = [
   'painUrgency',
   'riskAlignment',
   'executionFeasibility',
+  'outboundFit',
 ];
 
 const BUSINESS_IMPACT: Record<DimensionName, string> = {
@@ -20,6 +21,7 @@ const BUSINESS_IMPACT: Record<DimensionName, string> = {
   executionFeasibility: 'Complex fulfillment kills margins and increases churn.',
   pricingFit: 'Misaligned pricing causes sticker shock and slows sales velocity.',
   riskAlignment: 'Risk structure mismatches reduce trust and make deals harder to close.',
+  outboundFit: 'Cold outbound struggles when the ICP isn\'t ready for outreach.',
 };
 
 const DIMENSION_LABELS: Record<DimensionName, string> = {
@@ -28,15 +30,17 @@ const DIMENSION_LABELS: Record<DimensionName, string> = {
   executionFeasibility: 'Execution Feasibility',
   pricingFit: 'Pricing Fit',
   riskAlignment: 'Risk Alignment',
+  outboundFit: 'Outbound Fit',
 };
 
 // Max scores for each dimension for percentage calculation
 const DIMENSION_MAX_SCORES: Record<DimensionName, number> = {
-  painUrgency: 25,
+  painUrgency: 20,
   buyingPower: 20,
-  pricingFit: 20,
-  executionFeasibility: 20,
-  riskAlignment: 15,
+  pricingFit: 15,
+  executionFeasibility: 15,
+  riskAlignment: 10,
+  outboundFit: 20,
 };
 
 export function getDimensionLabel(dimension: DimensionName): string {

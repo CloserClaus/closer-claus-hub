@@ -40,6 +40,8 @@ const FIX_POOLS: Record<FixCategory, string[]> = {
     'Target founders with 3–10 clients instead of pre-revenue',
     'Target buyers with existing lead flow',
     'Prioritize industries with budget (B2B services, SaaS)',
+    'Switch to solution-aware verticals (e.g. SaaS instead of local SMB)',
+    'Change vertical to higher budget segment',
   ],
   promise_shift: [
     'Switch promise to revenue if ICP has pipeline',
@@ -68,6 +70,10 @@ const FIX_POOLS: Record<FixCategory, string[]> = {
     'Remove full guarantee if hurting economics',
     'Add phased engagement (entry offer + rollout)',
     'Offer pilot program to build trust',
+    'Run pilot deals to build case studies first',
+    'Lower promise from revenue to booked meetings until you have proof',
+    'Switch from full guarantee to performance hybrid',
+    'Use milestone-based billing',
   ],
   positioning_shift: [
     'Clarify who it\'s for in all messaging',
@@ -114,6 +120,10 @@ const VIOLATION_TO_CATEGORIES: Record<string, FixCategory[]> = {
   // New Vertical/Proof violations
   'vertical_pricing_mismatch': ['pricing_shift', 'icp_shift'],
   'proof_risk_mismatch': ['risk_shift', 'pricing_shift'],
+  
+  // New Outbound-related violations
+  'low_outbound_fit': ['icp_shift', 'promise_shift', 'positioning_shift'],
+  'proof_promise_mismatch': ['risk_shift', 'promise_shift', 'founder_psychology_check'],
 };
 
 // ========== CONTEXTUAL FILTERS ==========
