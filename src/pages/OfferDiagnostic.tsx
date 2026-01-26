@@ -81,8 +81,8 @@ import { generateContextAwareFixStack, MODIFIER_LABELS } from '@/lib/offerDiagno
 import { CATEGORY_LABELS } from '@/lib/offerDiagnostic/recommendationEngine';
 import {
   OFFER_TYPE_OPTIONS,
-  PROMISE_OPTIONS,
-  PROMISE_BY_OFFER_TYPE,
+  OUTCOMES_BY_OFFER_TYPE,
+  getPromiseBucketFromOutcome,
   ICP_INDUSTRY_OPTIONS,
   ICP_SIZE_OPTIONS,
   ICP_MATURITY_OPTIONS,
@@ -94,9 +94,11 @@ import {
   RISK_MODEL_OPTIONS,
   FULFILLMENT_COMPLEXITY_OPTIONS,
 } from '@/lib/offerDiagnostic/dropdownOptions';
+import type { PromiseBucket, PromiseOutcome } from '@/lib/offerDiagnostic/types';
 
 const initialFormData: DiagnosticFormData = {
   offerType: null,
+  promiseOutcome: null,
   promise: null,
   icpIndustry: null,
   icpSize: null,
@@ -109,7 +111,6 @@ const initialFormData: DiagnosticFormData = {
   riskModel: null,
   fulfillmentComplexity: null,
 };
-
 
 function getImpactColor(impact: FixArchetype['impact']) {
   switch (impact) {
@@ -558,10 +559,10 @@ export default function OfferDiagnostic() {
   const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
 
   const isFormComplete = useMemo(() => {
-    const { offerType, promise, icpIndustry, icpSize, icpMaturity, pricingStructure, riskModel, fulfillmentComplexity } = formData;
+    const { offerType, promiseOutcome, promise, icpIndustry, icpSize, icpMaturity, pricingStructure, riskModel, fulfillmentComplexity } = formData;
     
-    // Base required fields including promise
-    if (!offerType || !promise || !icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !riskModel || !fulfillmentComplexity) {
+    // Base required fields including promiseOutcome (which auto-maps to promise)
+    if (!offerType || !promiseOutcome || !promise || !icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !riskModel || !fulfillmentComplexity) {
       return false;
     }
 
@@ -578,15 +579,30 @@ export default function OfferDiagnostic() {
     return true;
   }, [formData]);
 
-  // Get available promise options based on selected offer type
-  const availablePromiseOptions = useMemo(() => {
+  // Get available outcome groups based on selected offer type
+  const availableOutcomeGroups = useMemo(() => {
     if (!formData.offerType) return [];
-    const allowedPromises = PROMISE_BY_OFFER_TYPE[formData.offerType] || [];
-    return PROMISE_OPTIONS.map(option => ({
-      ...option,
-      disabled: !allowedPromises.includes(option.value),
-    }));
+    return OUTCOMES_BY_OFFER_TYPE[formData.offerType] || [];
   }, [formData.offerType]);
+
+  // Handle outcome selection with auto-mapping to bucket
+  const handleOutcomeChange = (outcomeValue: string) => {
+    if (outcomeValue === 'none') {
+      setFormData(prev => ({
+        ...prev,
+        promiseOutcome: null,
+        promise: null,
+      }));
+    } else {
+      const bucket = getPromiseBucketFromOutcome(outcomeValue);
+      setFormData(prev => ({
+        ...prev,
+        promiseOutcome: outcomeValue as PromiseOutcome,
+        promise: bucket as PromiseBucket,
+      }));
+    }
+    setScoringResult(null);
+  };
 
   const handleFieldChange = <K extends keyof DiagnosticFormData>(
     field: K,
@@ -602,8 +618,9 @@ export default function OfferDiagnostic() {
         newData.usageVolumeTier = null;
       }
       
-      // Reset promise when offer type changes
+      // Reset promise outcome when offer type changes
       if (field === 'offerType') {
+        newData.promiseOutcome = null;
         newData.promise = null;
       }
       
@@ -678,46 +695,34 @@ export default function OfferDiagnostic() {
             <CardContent className="space-y-4">
               {renderSelect<OfferType>('Offer Type', 'offerType', OFFER_TYPE_OPTIONS, formData.offerType)}
               
-              {/* Promise Dropdown with filtering and tooltips */}
+              {/* Promise Outcome Dropdown - shows concrete outcomes grouped by category */}
               <div className="space-y-2">
-                <Label htmlFor="promise">Promise</Label>
+                <Label htmlFor="promiseOutcome">What outcome does your offer promise?</Label>
                 <Select
-                  value={formData.promise || 'none'}
-                  onValueChange={(value) => handleFieldChange('promise', value === 'none' ? null : value as Promise)}
+                  value={formData.promiseOutcome || 'none'}
+                  onValueChange={handleOutcomeChange}
                   disabled={!formData.offerType}
                 >
-                  <SelectTrigger id="promise" className="bg-background">
-                    <SelectValue placeholder="Select what outcome your offer promises" />
+                  <SelectTrigger id="promiseOutcome" className="bg-background">
+                    <SelectValue placeholder="Select the specific outcome you deliver" />
                   </SelectTrigger>
-                  <SelectContent className="bg-background z-50 max-w-[400px]">
-                    {availablePromiseOptions.map((option) => (
-                      <TooltipProvider key={option.value} delayDuration={100}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <SelectItem 
-                              value={option.value} 
-                              disabled={option.disabled}
-                              className={`cursor-pointer ${option.disabled ? 'opacity-50' : ''}`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <span>{option.label}</span>
-                                <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                              </div>
-                            </SelectItem>
-                          </TooltipTrigger>
-                          <TooltipContent 
-                            side="right" 
-                            sideOffset={8}
-                            className="max-w-[280px] bg-popover text-popover-foreground border shadow-md z-[9999]"
+                  <SelectContent className="bg-background z-50 max-w-[420px] max-h-[400px]">
+                    {availableOutcomeGroups.map((group, groupIndex) => (
+                      <div key={groupIndex}>
+                        {groupIndex > 0 && <Separator className="my-1" />}
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          {group.groupLabel}
+                        </div>
+                        {group.outcomes.map((outcome) => (
+                          <SelectItem 
+                            key={outcome.value} 
+                            value={outcome.value}
+                            className="cursor-pointer"
                           >
-                            <p className="text-sm">
-                              {option.disabled 
-                                ? 'Not relevant for selected offer type' 
-                                : option.tooltip}
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                            {outcome.label}
+                          </SelectItem>
+                        ))}
+                      </div>
                     ))}
                   </SelectContent>
                 </Select>
