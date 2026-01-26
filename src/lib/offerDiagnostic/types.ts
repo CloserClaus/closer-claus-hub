@@ -7,12 +7,68 @@ export type OfferType =
   | 'retention_monetization'
   | 'operational_enablement';
 
-export type Promise = 
+// Internal promise buckets used for scoring (not shown to user)
+export type PromiseBucket = 
   | 'top_of_funnel_volume'
   | 'mid_funnel_engagement'
   | 'top_line_revenue'
   | 'efficiency_cost_savings'
   | 'ops_compliance_outcomes';
+
+// Keep Promise as alias for PromiseBucket for backward compatibility with scoring engine
+export type Promise = PromiseBucket;
+
+// Concrete promise outcomes shown to users
+export type PromiseOutcome = 
+  // Outbound & Sales Enablement - TOFU
+  | 'more_booked_meetings'
+  | 'more_qualified_pipeline'
+  | 'more_demos_on_calendar'
+  | 'replace_founder_led_outreach'
+  | 'build_outbound_system'
+  | 'increase_show_up_rates'
+  // Outbound & Sales Enablement - MOFU
+  | 'higher_demo_to_close_rate'
+  | 'shorter_sales_cycles'
+  | 'improve_follow_up_performance'
+  // Outbound & Sales Enablement - Revenue
+  | 'increase_new_client_sales'
+  | 'increase_mrr_from_outbound'
+  // Demand Capture - TOFU
+  | 'increase_inbound_leads'
+  | 'increase_landing_page_conversion'
+  | 'increase_ecommerce_conversions'
+  | 'generate_more_calls_from_paid'
+  // Demand Capture - Revenue
+  | 'increase_roas'
+  | 'increase_sales_from_paid'
+  | 'increase_ltv_from_ad_spend'
+  // Demand Creation - TOFU
+  | 'build_brand_awareness'
+  | 'increase_social_traffic'
+  | 'increase_content_driven_leads'
+  | 'improve_engagement_across_channels'
+  // Demand Creation - MOFU
+  | 'improve_nurture_conversion'
+  | 'increase_pipeline_handoff_rates'
+  // Retention & Monetization - Revenue
+  | 'increase_client_ltv'
+  | 'increase_repeat_purchases'
+  | 'increase_upsells'
+  | 'increase_referrals'
+  | 'reduce_client_churn'
+  // Retention & Monetization - MOFU
+  | 'increase_onboarding_activation'
+  | 'increase_product_adoption'
+  // Operational Enablement - Efficiency
+  | 'reduce_manual_work_time'
+  | 'reduce_support_workload'
+  | 'automate_repetitive_tasks'
+  | 'standardize_processes'
+  // Operational Enablement - Ops
+  | 'improve_data_accuracy'
+  | 'improve_reporting_visibility'
+  | 'systemize_compliance_documentation';
 
 export type ICPIndustry = 
   | 'local_services'
@@ -79,7 +135,8 @@ export type RiskModel =
 
 export interface DiagnosticFormData {
   offerType: OfferType | null;
-  promise: Promise | null;
+  promiseOutcome: PromiseOutcome | null;  // What user selects (concrete outcome)
+  promise: PromiseBucket | null;           // Auto-mapped bucket for scoring
   icpIndustry: ICPIndustry | null;
   icpSize: ICPSize | null;
   icpMaturity: ICPMaturity | null;
