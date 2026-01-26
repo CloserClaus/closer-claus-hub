@@ -195,12 +195,12 @@ function AlignmentScoreCard({ score }: { score: number }) {
 
 function DimensionScoresTable({ scores }: { scores: ScoringResult['dimensionScores'] }) {
   const dimensions = [
-    { key: 'painUrgency' as const, label: 'Pain & Urgency', maxScore: 25 },
-    { key: 'buyingPower' as const, label: 'Buying Power', maxScore: 25 },
+    { key: 'painUrgency' as const, label: 'Pain & Urgency', maxScore: 20 },
+    { key: 'buyingPower' as const, label: 'Buying Power', maxScore: 20 },
     { key: 'executionFeasibility' as const, label: 'Execution Feasibility', maxScore: 15 },
-    { key: 'pricingFit' as const, label: 'Pricing Fit', maxScore: 20 },
-    { key: 'riskAlignment' as const, label: 'Risk Alignment', maxScore: 15 },
+    { key: 'pricingFit' as const, label: 'Pricing Fit', maxScore: 15 },
     { key: 'riskAlignment' as const, label: 'Risk Alignment', maxScore: 10 },
+    { key: 'outboundFit' as const, label: 'Outbound Fit', maxScore: 20 },
   ];
 
   return (

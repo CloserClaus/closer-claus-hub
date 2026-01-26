@@ -18,42 +18,43 @@ import type {
   RiskModel,
   ScoringSegment,
   ProofLevel,
+  PromiseBucket,
 } from './types';
 
-// ========== DIMENSION 1: Pain/Urgency (0-25) ==========
+// ========== DIMENSION 1: Pain/Urgency (0-20) ==========
 // Based on ScoringSegment
 
 const SEGMENT_PAIN_URGENCY: Record<ScoringSegment, number> = {
-  SaaS: 25,
-  Professional: 20,
-  DTC: 18,
-  RealEstate: 18,
-  Healthcare: 17,
-  OtherB2B: 17,
-  Info: 15,
-  Local: 14,
+  SaaS: 20,
+  Professional: 17,
+  DTC: 15,
+  RealEstate: 15,
+  Healthcare: 14,
+  OtherB2B: 14,
+  Info: 12,
+  Local: 10,
 };
 
 function calculatePainUrgency(scoringSegment: ScoringSegment): number {
-  return Math.min(SEGMENT_PAIN_URGENCY[scoringSegment], 25);
+  return Math.min(SEGMENT_PAIN_URGENCY[scoringSegment], 20);
 }
 
-// ========== DIMENSION 2: Buying Power (0-25) ==========
+// ========== DIMENSION 2: Buying Power (0-20) ==========
 // Based on ScoringSegment
 
 const SEGMENT_BUYING_POWER: Record<ScoringSegment, number> = {
-  SaaS: 25,
-  RealEstate: 23,
-  Healthcare: 23,
-  Professional: 20,
-  DTC: 18,
-  OtherB2B: 18,
-  Info: 15,
-  Local: 14,
+  SaaS: 20,
+  RealEstate: 18,
+  Healthcare: 18,
+  Professional: 16,
+  DTC: 14,
+  OtherB2B: 14,
+  Info: 12,
+  Local: 10,
 };
 
 function calculateBuyingPower(scoringSegment: ScoringSegment): number {
-  return Math.min(SEGMENT_BUYING_POWER[scoringSegment], 25);
+  return Math.min(SEGMENT_BUYING_POWER[scoringSegment], 20);
 }
 
 // ========== DIMENSION 3: Execution Feasibility (0-15) ==========
@@ -71,7 +72,7 @@ function calculateExecutionFeasibility(fulfillmentComplexity: FulfillmentComplex
   return Math.min(FULFILLMENT_FEASIBILITY[fulfillmentComplexity], 15);
 }
 
-// ========== DIMENSION 4: Pricing Fit (0-20) ==========
+// ========== DIMENSION 4: Pricing Fit (0-15) ==========
 // Compare PriceTier to SegmentBudgetRange
 
 // Segment budget ranges (1 = lowest, 5 = highest)
@@ -125,38 +126,38 @@ function calculatePricingFit(
   // Calculate fit based on difference between price tier and budget capacity
   const difference = priceTier - segmentBudgetTier;
   
-  // Perfect match = 20, overpricing penalty, underpricing penalty
+  // Perfect match = 15, overpricing penalty, underpricing penalty
   if (difference === 0) {
-    return 20; // Perfect alignment
+    return 15; // Perfect alignment
   } else if (difference > 0) {
     // Price too high for segment - bigger penalty
-    const mismatchPenalty = Math.min(difference * 5, 15);
-    return Math.max(20 - mismatchPenalty, 5);
+    const mismatchPenalty = Math.min(difference * 4, 12);
+    return Math.max(15 - mismatchPenalty, 3);
   } else {
     // Undercharging - smaller penalty
     const underchargePenalty = Math.abs(difference) * 2;
-    return Math.max(20 - underchargePenalty, 10);
+    return Math.max(15 - underchargePenalty, 8);
   }
 }
 
-// ========== DIMENSION 5: Risk Alignment (0-15) ==========
+// ========== DIMENSION 5: Risk Alignment (0-10) ==========
 // ProofLevel boosts acceptance, high guarantees require high proof
 
 const PROOF_LEVEL_SCORE: Record<ProofLevel, number> = {
-  category_killer: 15,
-  strong: 12,
-  moderate: 9,
-  weak: 5,
+  category_killer: 10,
+  strong: 8,
+  moderate: 6,
+  weak: 3,
   none: 0,
 };
 
 // Risk model requirements (how much proof needed)
 const RISK_MODEL_PROOF_REQUIREMENT: Record<RiskModel, number> = {
-  no_guarantee: 3,       // Low proof requirement
-  conditional_guarantee: 6,
-  full_guarantee: 12,    // High proof requirement
-  performance_only: 9,
-  pay_after_results: 10,
+  no_guarantee: 2,       // Low proof requirement
+  conditional_guarantee: 4,
+  full_guarantee: 8,    // High proof requirement
+  performance_only: 6,
+  pay_after_results: 7,
 };
 
 function calculateRiskAlignment(
@@ -168,12 +169,58 @@ function calculateRiskAlignment(
   
   // If proof >= required, score well
   if (proofScore >= proofRequired) {
-    return Math.min(15, 10 + (proofScore - proofRequired));
+    return Math.min(10, 6 + (proofScore - proofRequired));
   }
   
   // If proof < required, penalize
   const shortfall = proofRequired - proofScore;
-  return Math.max(0, 10 - shortfall);
+  return Math.max(0, 6 - shortfall);
+}
+
+// ========== DIMENSION 6: Outbound Fit (0-20) ==========
+// OutboundFit = VerticalFit (0-10) + ProofFit (0-5) + PromiseFit (0-5)
+
+// VerticalFit based on ScoringSegment (maps to outbound viability)
+const VERTICAL_FIT_SCORE: Record<ScoringSegment, number> = {
+  SaaS: 10,
+  Professional: 7,      // B2B Service Agency & Professional Services
+  DTC: 5,
+  RealEstate: 5,
+  Healthcare: 5,
+  OtherB2B: 5,
+  Info: 4,              // Creators / Info / Coaching
+  Local: 3,             // Local SMB / Trades / Home Services
+};
+
+// ProofFit based on ProofLevel
+const PROOF_FIT_SCORE: Record<ProofLevel, number> = {
+  category_killer: 5,
+  strong: 5,
+  moderate: 3,
+  weak: 1,
+  none: 0,
+};
+
+// PromiseFit based on Promise (outbound-specific mapping)
+const PROMISE_FIT_SCORE: Record<PromiseBucket, number> = {
+  top_of_funnel_volume: 5,    // Book meetings / opportunities
+  top_line_revenue: 5,        // Increase revenue / ROAS / MRR
+  mid_funnel_engagement: 3,   // Lower CAC / improve conversion
+  efficiency_cost_savings: 2, // Efficiency / cost savings
+  ops_compliance_outcomes: 1, // Ops / compliance / SOP
+};
+
+function calculateOutboundFit(
+  scoringSegment: ScoringSegment,
+  proofLevel: ProofLevel,
+  promise: PromiseBucket
+): number {
+  const verticalFit = VERTICAL_FIT_SCORE[scoringSegment] || 5;
+  const proofFit = PROOF_FIT_SCORE[proofLevel] || 1;
+  const promiseFit = PROMISE_FIT_SCORE[promise] || 2;
+  
+  // Sum and cap at 20
+  return Math.min(verticalFit + proofFit + promiseFit, 20);
 }
 
 // ========== SWITCHING COST (0-20) ==========
@@ -202,16 +249,18 @@ function calculateSwitchingCost(
 }
 
 // ========== ALIGNMENT SCORE (0-100) ==========
-// Composite of 5 dimensions: Pain/Urgency (25), Buying Power (25), Execution Feasibility (15), Pricing Fit (20), Risk Alignment (15)
+// Composite of 6 dimensions: Pain/Urgency (20), Buying Power (20), Execution Feasibility (15), 
+// Pricing Fit (15), Risk Alignment (10), Outbound Fit (20)
 function calculateAlignmentScoreFromDimensions(
   painUrgency: number,
   buyingPower: number,
   executionFeasibility: number,
   pricingFit: number,
-  riskAlignment: number
+  riskAlignment: number,
+  outboundFit: number
 ): number {
   // Sum all dimensions and cap at 100
-  const total = painUrgency + buyingPower + executionFeasibility + pricingFit + riskAlignment;
+  const total = painUrgency + buyingPower + executionFeasibility + pricingFit + riskAlignment + outboundFit;
   return Math.min(100, total);
 }
 
@@ -357,7 +406,7 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
 
   const { 
     scoringSegment, pricingStructure, recurringPriceTier, oneTimePriceTier,
-    usageVolumeTier, proofLevel, riskModel, fulfillmentComplexity 
+    usageVolumeTier, proofLevel, riskModel, fulfillmentComplexity, promise 
   } = formData;
 
   const dimensionScores: DimensionScores = {
@@ -366,17 +415,19 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
     executionFeasibility: calculateExecutionFeasibility(fulfillmentComplexity!),
     pricingFit: calculatePricingFit(scoringSegment!, pricingStructure!, recurringPriceTier, oneTimePriceTier, usageVolumeTier),
     riskAlignment: calculateRiskAlignment(proofLevel!, riskModel!),
+    outboundFit: calculateOutboundFit(scoringSegment!, proofLevel!, promise!),
   };
 
   const switchingCost = calculateSwitchingCost(pricingStructure!, fulfillmentComplexity!);
   
-  // Calculate alignment score from all 5 dimensions
+  // Calculate alignment score from all 6 dimensions
   const alignmentScore = calculateAlignmentScoreFromDimensions(
     dimensionScores.painUrgency, 
     dimensionScores.buyingPower, 
     dimensionScores.executionFeasibility,
     dimensionScores.pricingFit,
-    dimensionScores.riskAlignment
+    dimensionScores.riskAlignment,
+    dimensionScores.outboundFit
   );
 
   const extendedScores: ExtendedScores = {
@@ -401,4 +452,14 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
 }
 
 // Export matrices for use in other engines
-export { PROMISE_MATURITY_FIT, PROMISE_FULFILLMENT_FIT, SEGMENT_BUDGET_TIER, PROOF_LEVEL_SCORE, RECURRING_PRICE_TO_TIER };
+export { 
+  PROMISE_MATURITY_FIT, 
+  PROMISE_FULFILLMENT_FIT, 
+  SEGMENT_BUDGET_TIER, 
+  PROOF_LEVEL_SCORE, 
+  RECURRING_PRICE_TO_TIER,
+  PROOF_FIT_SCORE,
+  PROMISE_FIT_SCORE,
+  VERTICAL_FIT_SCORE,
+  calculateOutboundFit,
+};

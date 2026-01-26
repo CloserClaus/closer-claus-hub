@@ -197,11 +197,12 @@ export interface DiagnosticFormData {
 }
 
 export interface DimensionScores {
-  painUrgency: number;      // 0-25 (segment-based)
-  buyingPower: number;      // 0-25 (segment-based)
+  painUrgency: number;      // 0-20 (segment-based)
+  buyingPower: number;      // 0-20 (segment-based)
   executionFeasibility: number; // 0-15
-  pricingFit: number;       // 0-20
-  riskAlignment: number;    // 0-15 (includes proof level)
+  pricingFit: number;       // 0-15
+  riskAlignment: number;    // 0-10 (includes proof level)
+  outboundFit: number;      // 0-20 (VerticalFit + ProofFit + PromiseFit)
 }
 
 export interface ExtendedScores extends DimensionScores {
