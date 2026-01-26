@@ -210,7 +210,7 @@ export interface ExtendedScores extends DimensionScores {
   switchingCost: number; // 0-20
 }
 
-export type ReadinessLabel = 'Weak' | 'Fair' | 'Strong';
+export type ReadinessLabel = 'Weak' | 'Moderate' | 'Strong';
 
 export type Grade = 'Weak' | 'Average' | 'Strong' | 'Excellent';
 

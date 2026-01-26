@@ -790,11 +790,11 @@ function calculateReadinessScore(alignmentScore: number): number {
   return Math.round((alignmentScore / 10) * 10) / 10; // One decimal place
 }
 
-type ReadinessLabel = 'Weak' | 'Fair' | 'Strong';
+type ReadinessLabel = 'Weak' | 'Moderate' | 'Strong';
 
 function getReadinessLabel(alignmentScore: number): ReadinessLabel {
   if (alignmentScore < 50) return 'Weak';
-  if (alignmentScore < 70) return 'Fair';
+  if (alignmentScore < 75) return 'Moderate';
   return 'Strong';
 }
 
@@ -919,8 +919,9 @@ export function generateContextAwareFixStack(
   const topFixes = contextAwareFixes.slice(0, 3);
   
   // Calculate readiness score and label
+  // NOTE: readinessScore is 0-10, but readinessLabel uses alignmentScore (0-100)
   const readinessScore = calculateReadinessScore(scores.alignmentScore);
-  const readinessLabel = getReadinessLabel(readinessScore);
+  const readinessLabel = getReadinessLabel(scores.alignmentScore);
   
   // Get constraint-based violations
   const violations = getTopViolations(formData, 5);
