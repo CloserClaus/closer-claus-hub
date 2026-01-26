@@ -43,6 +43,8 @@ import {
   ChevronDown,
   Lightbulb,
   Info,
+  Copy,
+  Check,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -70,10 +72,13 @@ import type {
   ContextModifiers,
   ContextAwareFix,
   Violation,
+  StructuredRecommendation,
+  FixCategory,
 } from '@/lib/offerDiagnostic/types';
 import { calculateScore } from '@/lib/offerDiagnostic/scoringEngine';
 import { PROBLEM_CATEGORY_LABELS } from '@/lib/offerDiagnostic/fixStackEngine';
 import { generateContextAwareFixStack, MODIFIER_LABELS } from '@/lib/offerDiagnostic/contextAwareFixEngine';
+import { CATEGORY_LABELS } from '@/lib/offerDiagnostic/recommendationEngine';
 import {
   OFFER_TYPE_OPTIONS,
   PROMISE_OPTIONS,
@@ -363,9 +368,123 @@ function ContextAwareFixCard({ fix, index }: { fix: ContextAwareFix; index: numb
   );
 }
 
-// Top Fixes Display - Now shows constraint-based violations
-function TopRecommendationsDisplay({ violations }: { violations: Violation[] }) {
-  if (violations.length === 0) {
+// Structured Recommendation Card with copy functionality
+function StructuredRecommendationCard({ 
+  recommendation, 
+  index 
+}: { 
+  recommendation: StructuredRecommendation; 
+  index: number;
+}) {
+  const [copied, setCopied] = useState(false);
+  
+  const formatForClipboard = () => {
+    const lines = [
+      `${recommendation.headline}`,
+      '',
+      recommendation.plainExplanation,
+      '',
+      'Action Steps:',
+      ...recommendation.actionSteps.map(step => `• ${step}`),
+      '',
+      `Goal: ${recommendation.desiredState}`,
+    ];
+    return lines.join('\n');
+  };
+  
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(formatForClipboard());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+  
+  const getCategoryColor = (category: FixCategory) => {
+    switch (category) {
+      case 'icp_shift': return 'bg-blue-500/10 text-blue-600 border-blue-500/30';
+      case 'promise_shift': return 'bg-purple-500/10 text-purple-600 border-purple-500/30';
+      case 'fulfillment_shift': return 'bg-green-500/10 text-green-600 border-green-500/30';
+      case 'pricing_shift': return 'bg-orange-500/10 text-orange-600 border-orange-500/30';
+      case 'risk_shift': return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/30';
+      case 'positioning_shift': return 'bg-pink-500/10 text-pink-600 border-pink-500/30';
+      case 'founder_psychology_check': return 'bg-indigo-500/10 text-indigo-600 border-indigo-500/30';
+      default: return 'bg-muted text-muted-foreground border-muted';
+    }
+  };
+
+  return (
+    <Card className="border-l-4 border-l-primary">
+      <CardContent className="pt-4 space-y-4">
+        {/* Header with number, headline, category and copy button */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 flex-1">
+            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-sm font-semibold shrink-0 mt-0.5">
+              {index + 1}
+            </span>
+            <div className="space-y-2">
+              <h4 className="font-semibold text-base leading-tight">{recommendation.headline}</h4>
+              <Badge variant="outline" className={getCategoryColor(recommendation.category)}>
+                {CATEGORY_LABELS[recommendation.category]}
+              </Badge>
+            </div>
+          </div>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="shrink-0 h-8 w-8"
+            onClick={handleCopy}
+          >
+            {copied ? (
+              <Check className="h-4 w-4 text-green-500" />
+            ) : (
+              <Copy className="h-4 w-4 text-muted-foreground" />
+            )}
+          </Button>
+        </div>
+        
+        {/* Plain explanation */}
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          {recommendation.plainExplanation}
+        </p>
+        
+        {/* Action steps */}
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-foreground">What to do:</div>
+          <ul className="space-y-1.5">
+            {recommendation.actionSteps.map((step, stepIndex) => (
+              <li key={stepIndex} className="flex items-start gap-2 text-sm">
+                <ArrowRight className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                <span>{step}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        
+        {/* Desired state */}
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+          <Target className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+          <div>
+            <div className="text-xs font-medium text-green-600 mb-0.5">Goal</div>
+            <span className="text-sm text-green-700">{recommendation.desiredState}</span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Top Recommendations Display - Now shows structured, founder-friendly recommendations
+function TopRecommendationsDisplay({ 
+  recommendations, 
+  violations 
+}: { 
+  recommendations: StructuredRecommendation[];
+  violations: Violation[];
+}) {
+  if (recommendations.length === 0 && violations.length === 0) {
     return (
       <Card className="border-primary/30 bg-primary/5">
         <CardContent className="pt-6">
@@ -373,29 +492,13 @@ function TopRecommendationsDisplay({ violations }: { violations: Violation[] }) 
             <CheckCircle2 className="h-6 w-6" />
             <div>
               <div className="font-semibold">Well Optimized</div>
-              <div className="text-sm text-muted-foreground">No major constraint violations detected at this time.</div>
+              <div className="text-sm text-muted-foreground">No major issues detected. Your offer looks solid!</div>
             </div>
           </div>
         </CardContent>
       </Card>
     );
   }
-
-  const getSeverityColor = (severity: Violation['severity']) => {
-    switch (severity) {
-      case 'high': return 'bg-red-500/20 text-red-600 border-red-500/30';
-      case 'medium': return 'bg-yellow-500/20 text-yellow-600 border-yellow-500/30';
-      case 'low': return 'bg-blue-500/20 text-blue-600 border-blue-500/30';
-    }
-  };
-
-  const getSeverityLabel = (severity: Violation['severity']) => {
-    switch (severity) {
-      case 'high': return 'High Severity';
-      case 'medium': return 'Medium Severity';
-      case 'low': return 'Low Severity';
-    }
-  };
 
   return (
     <Card>
@@ -405,31 +508,16 @@ function TopRecommendationsDisplay({ violations }: { violations: Violation[] }) 
           Top Recommendations
         </CardTitle>
         <CardDescription>
-          Constraint-based recommendations to improve your offer alignment.
+          {recommendations.length} actionable fixes to improve your offer alignment
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {violations.map((violation, index) => (
-          <Card key={violation.id} className="border-l-4 border-l-primary">
-            <CardContent className="pt-4 space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-sm font-semibold">
-                    {index + 1}
-                  </span>
-                  <span className="font-semibold">{violation.rule}</span>
-                </div>
-                <Badge variant="outline" className={getSeverityColor(violation.severity)}>
-                  {getSeverityLabel(violation.severity)}
-                </Badge>
-              </div>
-              
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-primary/5 text-sm">
-                <Lightbulb className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                <span>{violation.recommendation}</span>
-              </div>
-            </CardContent>
-          </Card>
+      <CardContent className="space-y-4">
+        {recommendations.map((rec, index) => (
+          <StructuredRecommendationCard 
+            key={rec.id} 
+            recommendation={rec} 
+            index={index} 
+          />
         ))}
       </CardContent>
     </Card>
@@ -774,7 +862,10 @@ export default function OfferDiagnostic() {
 
               <ContextModifiersPanel modifiers={contextAwareFixStack.contextModifiers} />
               <DetectedProblemsDisplay problems={contextAwareFixStack.problems} />
-              <TopRecommendationsDisplay violations={contextAwareFixStack.violations} />
+              <TopRecommendationsDisplay 
+                recommendations={contextAwareFixStack.structuredRecommendations} 
+                violations={contextAwareFixStack.violations} 
+              />
             </>
           )}
         </div>
