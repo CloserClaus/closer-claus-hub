@@ -230,9 +230,181 @@ export const PROMISE_BY_OFFER_TYPE: Record<string, string[]> = {
 export const ICP_INDUSTRY_OPTIONS = [
   { value: 'local_services', label: 'Local Services' },
   { value: 'professional_services', label: 'Professional Services' },
+  { value: 'dtc_ecommerce', label: 'Ecommerce / DTC' },
+  { value: 'saas_tech', label: 'SaaS / Tech' },
   { value: 'b2b_service_agency', label: 'B2B Service Agency' },
-  { value: 'dtc_ecommerce', label: 'DTC/Ecommerce' },
-  { value: 'saas_tech', label: 'SaaS/Tech' },
+  { value: 'information_coaching', label: 'Information / Coaching' },
+  { value: 'real_estate', label: 'Real Estate' },
+  { value: 'healthcare', label: 'Healthcare' },
+  { value: 'other_b2b', label: 'Other B2B' },
+] as const;
+
+// ========== VERTICAL SEGMENT SYSTEM ==========
+
+// Vertical segments grouped by industry
+export const VERTICAL_SEGMENTS_BY_INDUSTRY: Record<string, { value: string; label: string }[]> = {
+  local_services: [
+    { value: 'home_services', label: 'Home Services' },
+    { value: 'health_wellness', label: 'Health/Wellness' },
+    { value: 'trades', label: 'Trades' },
+    { value: 'hospitality', label: 'Hospitality' },
+    { value: 'real_estate_services', label: 'Real Estate Services' },
+    { value: 'events', label: 'Events' },
+  ],
+  professional_services: [
+    { value: 'accounting', label: 'Accounting' },
+    { value: 'legal', label: 'Legal' },
+    { value: 'consulting', label: 'Consulting' },
+    { value: 'insurance', label: 'Insurance' },
+    { value: 'engineering_architecture', label: 'Engineering & Architecture' },
+    { value: 'financial_advisors', label: 'Financial Advisors' },
+  ],
+  dtc_ecommerce: [
+    { value: 'fashion', label: 'Fashion' },
+    { value: 'health_supplements', label: 'Health & Supplements' },
+    { value: 'consumer_electronics', label: 'Consumer Electronics' },
+    { value: 'home_kitchen', label: 'Home & Kitchen' },
+    { value: 'beauty', label: 'Beauty' },
+    { value: 'other_dtc', label: 'Other DTC' },
+  ],
+  saas_tech: [
+    { value: 'workflow_tools', label: 'Workflow Tools' },
+    { value: 'devtools', label: 'DevTools' },
+    { value: 'ecommerce_enablement', label: 'Ecommerce Enablement' },
+    { value: 'sales_marketing_tools', label: 'Sales/Marketing Tools' },
+    { value: 'healthcare_tech', label: 'Healthcare Tech' },
+    { value: 'vertical_saas', label: 'Vertical SaaS' },
+  ],
+  b2b_service_agency: [
+    { value: 'marketing_agency', label: 'Marketing Agency' },
+    { value: 'sales_agency', label: 'Sales Agency' },
+    { value: 'branding_agency', label: 'Branding Agency' },
+    { value: 'creative_agency', label: 'Creative Agency' },
+    { value: 'dev_agency', label: 'Dev Agency' },
+    { value: 'it_services', label: 'IT Services' },
+  ],
+  information_coaching: [
+    { value: 'business_coaching', label: 'Business Coaching' },
+    { value: 'fitness_coaching', label: 'Fitness Coaching' },
+    { value: 'career_coaching', label: 'Career Coaching' },
+    { value: 'info_products', label: 'Info Products' },
+    { value: 'education', label: 'Education' },
+    { value: 'certification', label: 'Certification' },
+  ],
+  real_estate: [
+    { value: 'brokerages', label: 'Brokerages' },
+    { value: 'investors', label: 'Investors' },
+    { value: 'property_management', label: 'Property Management' },
+    { value: 'wholesaling', label: 'Wholesaling' },
+    { value: 'development', label: 'Development' },
+    { value: 'rentals', label: 'Rentals' },
+  ],
+  healthcare: [
+    { value: 'clinics', label: 'Clinics' },
+    { value: 'dental', label: 'Dental' },
+    { value: 'chiro_pt', label: 'Chiro/PT' },
+    { value: 'medspa', label: 'Medspa' },
+    { value: 'home_care', label: 'Home Care' },
+    { value: 'specialty_practices', label: 'Specialty Practices' },
+  ],
+  other_b2b: [
+    { value: 'industrial_b2b', label: 'Industrial B2B' },
+    { value: 'manufacturing', label: 'Manufacturing' },
+    { value: 'supply_chain', label: 'Supply Chain' },
+    { value: 'staffing', label: 'Staffing' },
+    { value: 'logistics', label: 'Logistics' },
+    { value: 'other', label: 'Other' },
+  ],
+};
+
+// Internal mapping: VerticalSegment → ScoringSegment
+export const VERTICAL_TO_SCORING_SEGMENT: Record<string, string> = {
+  // Local Services → Local
+  'home_services': 'Local',
+  'health_wellness': 'Local',
+  'trades': 'Local',
+  'hospitality': 'Local',
+  'events': 'Local',
+  'real_estate_services': 'RealEstate',
+  
+  // Professional Services → Professional
+  'accounting': 'Professional',
+  'legal': 'Professional',
+  'consulting': 'Professional',
+  'insurance': 'Professional',
+  'engineering_architecture': 'Professional',
+  'financial_advisors': 'Professional',
+  
+  // Ecommerce / DTC → DTC
+  'fashion': 'DTC',
+  'health_supplements': 'DTC',
+  'consumer_electronics': 'DTC',
+  'home_kitchen': 'DTC',
+  'beauty': 'DTC',
+  'other_dtc': 'DTC',
+  
+  // SaaS / Tech → SaaS
+  'workflow_tools': 'SaaS',
+  'devtools': 'SaaS',
+  'ecommerce_enablement': 'SaaS',
+  'sales_marketing_tools': 'SaaS',
+  'healthcare_tech': 'SaaS',
+  'vertical_saas': 'SaaS',
+  
+  // B2B Service Agency → Professional
+  'marketing_agency': 'Professional',
+  'sales_agency': 'Professional',
+  'branding_agency': 'Professional',
+  'creative_agency': 'Professional',
+  'dev_agency': 'Professional',
+  'it_services': 'Professional',
+  
+  // Information / Coaching → Info
+  'business_coaching': 'Info',
+  'fitness_coaching': 'Info',
+  'career_coaching': 'Info',
+  'info_products': 'Info',
+  'education': 'Info',
+  'certification': 'Info',
+  
+  // Real Estate → RealEstate
+  'brokerages': 'RealEstate',
+  'investors': 'RealEstate',
+  'property_management': 'RealEstate',
+  'wholesaling': 'RealEstate',
+  'development': 'RealEstate',
+  'rentals': 'RealEstate',
+  
+  // Healthcare → Healthcare
+  'clinics': 'Healthcare',
+  'dental': 'Healthcare',
+  'chiro_pt': 'Healthcare',
+  'medspa': 'Healthcare',
+  'home_care': 'Healthcare',
+  'specialty_practices': 'Healthcare',
+  
+  // Other B2B → OtherB2B
+  'industrial_b2b': 'OtherB2B',
+  'manufacturing': 'OtherB2B',
+  'supply_chain': 'OtherB2B',
+  'staffing': 'OtherB2B',
+  'logistics': 'OtherB2B',
+  'other': 'OtherB2B',
+};
+
+// Helper to get scoring segment from vertical segment
+export function getScoringSegmentFromVertical(verticalSegment: string): string | null {
+  return VERTICAL_TO_SCORING_SEGMENT[verticalSegment] || null;
+}
+
+// ========== PROOF LEVEL SYSTEM ==========
+
+export const PROOF_LEVEL_OPTIONS = [
+  { value: 'none', label: 'None (no results yet)' },
+  { value: 'weak', label: 'Weak (1–2 case studies)' },
+  { value: 'moderate', label: 'Moderate (consistent small outcomes)' },
+  { value: 'strong', label: 'Strong (multiple wins)' },
+  { value: 'category_killer', label: 'Category Killer (dominant in niche)' },
 ] as const;
 
 export const ICP_SIZE_OPTIONS = [

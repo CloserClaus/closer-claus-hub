@@ -75,7 +75,51 @@ export type ICPIndustry =
   | 'professional_services'
   | 'b2b_service_agency'
   | 'dtc_ecommerce'
-  | 'saas_tech';
+  | 'saas_tech'
+  | 'information_coaching'
+  | 'real_estate'
+  | 'healthcare'
+  | 'other_b2b';
+
+// Vertical Segment (conditional on Industry) - what user sees
+export type VerticalSegment = 
+  // Local Services
+  | 'home_services' | 'health_wellness' | 'trades' | 'hospitality' | 'real_estate_services' | 'events'
+  // Professional Services
+  | 'accounting' | 'legal' | 'consulting' | 'insurance' | 'engineering_architecture' | 'financial_advisors'
+  // Ecommerce / DTC
+  | 'fashion' | 'health_supplements' | 'consumer_electronics' | 'home_kitchen' | 'beauty' | 'other_dtc'
+  // SaaS / Tech
+  | 'workflow_tools' | 'devtools' | 'ecommerce_enablement' | 'sales_marketing_tools' | 'healthcare_tech' | 'vertical_saas'
+  // B2B Service Agency
+  | 'marketing_agency' | 'sales_agency' | 'branding_agency' | 'creative_agency' | 'dev_agency' | 'it_services'
+  // Information / Coaching
+  | 'business_coaching' | 'fitness_coaching' | 'career_coaching' | 'info_products' | 'education' | 'certification'
+  // Real Estate
+  | 'brokerages' | 'investors' | 'property_management' | 'wholesaling' | 'development' | 'rentals'
+  // Healthcare
+  | 'clinics' | 'dental' | 'chiro_pt' | 'medspa' | 'home_care' | 'specialty_practices'
+  // Other B2B
+  | 'industrial_b2b' | 'manufacturing' | 'supply_chain' | 'staffing' | 'logistics' | 'other';
+
+// Internal scoring segments (6 buckets)
+export type ScoringSegment = 
+  | 'Local'
+  | 'Professional'
+  | 'DTC'
+  | 'SaaS'
+  | 'Info'
+  | 'RealEstate'
+  | 'Healthcare'
+  | 'OtherB2B';
+
+// Proof Level for market validation
+export type ProofLevel = 
+  | 'none'
+  | 'weak'
+  | 'moderate'
+  | 'strong'
+  | 'category_killer';
 
 export type ICPSize = 
   | 'solo_founder'
@@ -138,6 +182,8 @@ export interface DiagnosticFormData {
   promiseOutcome: PromiseOutcome | null;  // What user selects (concrete outcome)
   promise: PromiseBucket | null;           // Auto-mapped bucket for scoring
   icpIndustry: ICPIndustry | null;
+  verticalSegment: VerticalSegment | null; // Conditional on Industry
+  scoringSegment: ScoringSegment | null;   // Auto-mapped for scoring
   icpSize: ICPSize | null;
   icpMaturity: ICPMaturity | null;
   pricingStructure: PricingStructure | null;
@@ -147,14 +193,15 @@ export interface DiagnosticFormData {
   usageVolumeTier: UsageVolumeTier | null;
   riskModel: RiskModel | null;
   fulfillmentComplexity: FulfillmentComplexity | null;
+  proofLevel: ProofLevel | null;           // Market proof/validation
 }
 
 export interface DimensionScores {
-  painUrgency: number;      // 0-25 (OfferTypeUrgency + PromiseMaturityFit)
-  buyingPower: number;      // 0-25
-  executionFeasibility: number; // 0-20 (OfferExecutionFeasibility + PromiseFulfillmentFit)
+  painUrgency: number;      // 0-25 (segment-based)
+  buyingPower: number;      // 0-25 (segment-based)
+  executionFeasibility: number; // 0-15
   pricingFit: number;       // 0-20
-  riskAlignment: number;    // 0-10
+  riskAlignment: number;    // 0-15 (includes proof level)
 }
 
 export interface ExtendedScores extends DimensionScores {
