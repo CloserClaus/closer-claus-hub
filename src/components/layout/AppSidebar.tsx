@@ -109,6 +109,10 @@ const agencyOwnerNav: NavItem[] = [{
   url: '/dashboard',
   icon: LayoutDashboard
 }, {
+  title: 'Offer Diagnostic',
+  url: '/offer-diagnostic',
+  icon: ClipboardCheck
+}, {
   title: 'Jobs',
   url: '/jobs',
   icon: Briefcase,
@@ -158,10 +162,6 @@ const agencyOwnerNav: NavItem[] = [{
   title: 'Billing',
   url: '/billing',
   icon: CreditCard
-}, {
-  title: 'Offer Diagnostic',
-  url: '/offer-diagnostic',
-  icon: ClipboardCheck
 }];
 const sdrNav: NavItem[] = [{
   title: 'Dashboard',

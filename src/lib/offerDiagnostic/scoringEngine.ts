@@ -270,11 +270,11 @@ function calculateReadinessScore(alignmentScore: number): number {
 }
 
 // ========== READINESS LABEL ==========
-type ReadinessLabel = 'Weak' | 'Fair' | 'Strong';
+type ReadinessLabel = 'Weak' | 'Moderate' | 'Strong';
 
 function getReadinessLabel(alignmentScore: number): ReadinessLabel {
   if (alignmentScore < 50) return 'Weak';
-  if (alignmentScore < 70) return 'Fair';
+  if (alignmentScore < 75) return 'Moderate';
   return 'Strong';
 }
 

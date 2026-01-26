@@ -138,7 +138,7 @@ function getEffortColor(effort: FixArchetype['effort']) {
 function getReadinessLabelColor(label: string) {
   switch (label) {
     case 'Strong': return 'text-green-500';
-    case 'Fair': return 'text-yellow-500';
+    case 'Moderate': return 'text-yellow-500';
     case 'Weak': return 'text-red-500';
     default: return 'text-muted-foreground';
   }
@@ -147,7 +147,7 @@ function getReadinessLabelColor(label: string) {
 function getReadinessLabelBg(label: string) {
   switch (label) {
     case 'Strong': return 'bg-green-500/10 border-green-500/30';
-    case 'Fair': return 'bg-yellow-500/10 border-yellow-500/30';
+    case 'Moderate': return 'bg-yellow-500/10 border-yellow-500/30';
     case 'Weak': return 'bg-red-500/10 border-red-500/30';
     default: return 'bg-muted border-muted';
   }
@@ -203,31 +203,49 @@ function DimensionScoresTable({ scores }: { scores: ScoringResult['dimensionScor
     { key: 'outboundFit' as const, label: 'Outbound Fit', maxScore: 20 },
   ];
 
+  // Find the lowest scoring dimension (primary bottleneck)
+  const lowestDimension = dimensions.reduce((lowest, current) => {
+    const currentPercentage = (scores[current.key] / current.maxScore) * 100;
+    const lowestPercentage = (scores[lowest.key] / lowest.maxScore) * 100;
+    return currentPercentage < lowestPercentage ? current : lowest;
+  }, dimensions[0]);
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Dimension</TableHead>
-          <TableHead className="text-right">Score</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {dimensions.map(({ key, label, maxScore }) => {
-          const score = scores[key];
-          const percentage = (score / maxScore) * 100;
-          return (
-            <TableRow key={key}>
-              <TableCell className="font-medium">{label}</TableCell>
-              <TableCell className="text-right">
-                <span className={percentage < 50 ? 'text-red-500 font-semibold' : ''}>
-                  {score}/{maxScore}
-                </span>
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+    <div className="space-y-3">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Dimension</TableHead>
+            <TableHead className="text-right">Score</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {dimensions.map(({ key, label, maxScore }) => {
+            const score = scores[key];
+            const percentage = (score / maxScore) * 100;
+            const isBottleneck = key === lowestDimension.key;
+            return (
+              <TableRow key={key} className={isBottleneck ? 'bg-destructive/5' : ''}>
+                <TableCell className="font-medium">{label}</TableCell>
+                <TableCell className="text-right">
+                  <span className={percentage < 50 ? 'text-red-500 font-semibold' : ''}>
+                    {score}/{maxScore}
+                  </span>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+      
+      {/* Primary Bottleneck Line */}
+      <div className="flex items-center gap-2 text-sm p-2 rounded-md bg-muted/50 border border-muted">
+        <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+        <span className="text-muted-foreground">
+          Primary Bottleneck: <span className="font-medium text-foreground">{lowestDimension.label}</span> ({scores[lowestDimension.key]}/{lowestDimension.maxScore})
+        </span>
+      </div>
+    </div>
   );
 }
 
