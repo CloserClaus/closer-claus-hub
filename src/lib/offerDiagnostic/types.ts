@@ -246,6 +246,27 @@ export interface Violation {
   rule: string;
   severity: ViolationSeverity;
   recommendation: string;
+  fixCategory?: 'icp_shift' | 'promise_shift' | 'fulfillment_shift' | 'pricing_shift' | 'risk_shift';
+}
+
+// ========== Structured Recommendation Types ==========
+
+export type FixCategory = 
+  | 'icp_shift'
+  | 'promise_shift'
+  | 'fulfillment_shift'
+  | 'pricing_shift'
+  | 'risk_shift'
+  | 'positioning_shift'
+  | 'founder_psychology_check';
+
+export interface StructuredRecommendation {
+  id: string;
+  category: FixCategory;
+  headline: string;
+  plainExplanation: string;
+  actionSteps: string[];
+  desiredState: string;
 }
 
 export interface ContextAwareFixStackResult {
@@ -256,5 +277,6 @@ export interface ContextAwareFixStackResult {
   contextModifiers: ContextModifiers;
   problems: DetectedProblem[];
   topFixes: ContextAwareFix[];
-  violations: Violation[]; // NEW: Constraint-based violations
+  violations: Violation[];
+  structuredRecommendations: StructuredRecommendation[]; // NEW: Founder-friendly recommendations
 }

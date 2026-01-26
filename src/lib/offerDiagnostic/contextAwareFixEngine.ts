@@ -19,10 +19,12 @@ import type {
   ICPSize,
   RecurringPriceTier,
   Violation,
+  StructuredRecommendation,
 } from './types';
 import { generateContextModifiers } from './contextModifierEngine';
 import { generateFixStack, PROBLEM_CATEGORY_LABELS } from './fixStackEngine';
 import { getTopViolations } from './violationEngine';
+import { generateStructuredRecommendations } from './recommendationEngine';
 
 // ========== Risk Fix Layer Types ==========
 interface RiskFix {
@@ -920,8 +922,15 @@ export function generateContextAwareFixStack(
   const readinessScore = calculateReadinessScore(scores.alignmentScore);
   const readinessLabel = getReadinessLabel(readinessScore);
   
-  // Get constraint-based violations (NEW: replaces bucket-based recommendations)
-  const violations = getTopViolations(formData, 3);
+  // Get constraint-based violations
+  const violations = getTopViolations(formData, 5);
+  
+  // Generate structured recommendations from violations (NEW: founder-friendly format)
+  const structuredRecommendations = generateStructuredRecommendations(
+    violations.map(v => ({ id: v.id, severity: v.severity })),
+    formData,
+    5 // limit to 5 recommendations
+  );
 
   return {
     finalScore,
@@ -931,7 +940,8 @@ export function generateContextAwareFixStack(
     contextModifiers: modifiers,
     problems: baseFixStack.problems,
     topFixes,
-    violations, // NEW: Constraint-based violations
+    violations,
+    structuredRecommendations, // NEW: Founder-friendly recommendations
   };
 }
 
