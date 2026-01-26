@@ -5,6 +5,7 @@ import type {
   ScoringResult,
   Grade,
   OfferType,
+  Promise,
   ICPMaturity,
   ICPSize,
   ICPIndustry,
@@ -17,7 +18,9 @@ import type {
   RiskModel,
 } from './types';
 
-// ========== DIMENSION 1: Pain Urgency (0-25) ==========
+// ========== DIMENSION 1: Pain/Urgency (0-25) ==========
+// = OfferTypeUrgency (0-15) + PromiseMaturityFit (0-10)
+
 const INTRINSIC_URGENCY: Record<OfferType, number> = {
   outbound_sales_enablement: 15,
   retention_monetization: 12,
@@ -26,44 +29,135 @@ const INTRINSIC_URGENCY: Record<OfferType, number> = {
   operational_enablement: 6,
 };
 
-const MATURITY_MODIFIER: Record<ICPMaturity, number> = {
-  scaling: 10,
-  early_traction: 8,
-  mature: 5,
-  enterprise: 3,
-  pre_revenue: 0,
+// Matrix D: Promise × ICP Maturity (0-10)
+const PROMISE_MATURITY_FIT: Record<Promise, Record<ICPMaturity, number>> = {
+  top_of_funnel_volume: {
+    pre_revenue: 2,
+    early_traction: 6,
+    scaling: 8,
+    mature: 7,
+    enterprise: 5,
+  },
+  mid_funnel_engagement: {
+    pre_revenue: 1,
+    early_traction: 7,
+    scaling: 9,
+    mature: 8,
+    enterprise: 6,
+  },
+  top_line_revenue: {
+    pre_revenue: 0,
+    early_traction: 6,
+    scaling: 10,
+    mature: 9,
+    enterprise: 4,
+  },
+  efficiency_cost_savings: {
+    pre_revenue: 3,
+    early_traction: 4,
+    scaling: 6,
+    mature: 7,
+    enterprise: 8,
+  },
+  ops_compliance_outcomes: {
+    pre_revenue: 5,
+    early_traction: 4,
+    scaling: 5,
+    mature: 7,
+    enterprise: 10,
+  },
 };
 
-function calculatePainUrgency(offerType: OfferType, icpMaturity: ICPMaturity): number {
+function calculatePainUrgency(offerType: OfferType, promise: Promise, icpMaturity: ICPMaturity): number {
   const intrinsic = INTRINSIC_URGENCY[offerType];
-  const modifier = MATURITY_MODIFIER[icpMaturity];
-  return Math.min(intrinsic + modifier, 25);
+  const promiseMaturityFit = PROMISE_MATURITY_FIT[promise][icpMaturity];
+  return Math.min(intrinsic + promiseMaturityFit, 25);
 }
 
-// ========== DIMENSION 2: Buying Power (0-20) ==========
+// ========== DIMENSION 2: Buying Power (0-25) ==========
 const ICP_SIZE_BUDGET: Record<ICPSize, number> = {
-  '21_100_employees': 12,
-  '6_20_employees': 10,
-  '100_plus_employees': 8,
-  '1_5_employees': 5,
-  'solo_founder': 3,
+  '21_100_employees': 15,
+  '6_20_employees': 12,
+  '100_plus_employees': 10,
+  '1_5_employees': 6,
+  'solo_founder': 4,
 };
 
 const ICP_INDUSTRY_BUDGET: Record<ICPIndustry, number> = {
-  saas_tech: 8,
-  professional_services: 7,
-  dtc_ecommerce: 6,
-  b2b_service_agency: 5,
-  local_services: 4,
+  saas_tech: 10,
+  professional_services: 9,
+  dtc_ecommerce: 7,
+  b2b_service_agency: 6,
+  local_services: 5,
 };
 
 function calculateBuyingPower(icpSize: ICPSize, icpIndustry: ICPIndustry): number {
   const sizeBudget = ICP_SIZE_BUDGET[icpSize];
   const industryBudget = ICP_INDUSTRY_BUDGET[icpIndustry];
-  return Math.min(sizeBudget + industryBudget, 20);
+  return Math.min(sizeBudget + industryBudget, 25);
 }
 
-// ========== DIMENSION 3: Pricing Fit (0-20) ==========
+// ========== DIMENSION 3: Execution Feasibility (0-20) ==========
+// = OfferExecutionFeasibility (0-10) + PromiseFulfillmentFit (0-10)
+
+// Offer Execution Feasibility base scores (0-10)
+const OFFER_EXECUTION_FEASIBILITY: Record<FulfillmentComplexity, number> = {
+  software_platform: 10,
+  package_based: 8,
+  coaching_advisory: 7,
+  custom_dfy: 5,
+  staffing_placement: 3,
+};
+
+// Matrix E: Promise × Fulfillment Type (0-10)
+const PROMISE_FULFILLMENT_FIT: Record<Promise, Record<FulfillmentComplexity, number>> = {
+  top_of_funnel_volume: {
+    custom_dfy: 8,
+    package_based: 7,
+    coaching_advisory: 5,
+    software_platform: 6,
+    staffing_placement: 9,
+  },
+  mid_funnel_engagement: {
+    custom_dfy: 6,
+    package_based: 7,
+    coaching_advisory: 6,
+    software_platform: 5,
+    staffing_placement: 4,
+  },
+  top_line_revenue: {
+    custom_dfy: 4,
+    package_based: 6,
+    coaching_advisory: 8,
+    software_platform: 5,
+    staffing_placement: 3,
+  },
+  efficiency_cost_savings: {
+    custom_dfy: 5,
+    package_based: 6,
+    coaching_advisory: 6,
+    software_platform: 9,
+    staffing_placement: 4,
+  },
+  ops_compliance_outcomes: {
+    custom_dfy: 3,
+    package_based: 4,
+    coaching_advisory: 7,
+    software_platform: 8,
+    staffing_placement: 2,
+  },
+};
+
+function calculateExecutionFeasibility(
+  fulfillmentComplexity: FulfillmentComplexity,
+  promise: Promise
+): number {
+  const offerFeas = OFFER_EXECUTION_FEASIBILITY[fulfillmentComplexity];
+  const promiseFulfillmentFit = PROMISE_FULFILLMENT_FIT[promise][fulfillmentComplexity];
+  return Math.min(offerFeas + promiseFulfillmentFit, 20);
+}
+
+// ========== DIMENSION 4: Pricing Fit (0-20) ==========
 // Matrix B: ICPSize × PricingStructure
 const MATRIX_B: Record<ICPSize, Record<PricingStructure, number>> = {
   solo_founder: { recurring: 1, one_time: 2, performance_only: -3, usage_based: -1 },
@@ -119,79 +213,43 @@ function calculatePricingFit(
   return Math.min(normalizedMatrixB + tierOrVolumeScore, 20);
 }
 
-// ========== DIMENSION 4: Execution Feasibility (0-20) ==========
-// FulfillmentFeasibility scores based on new fulfillment options
-const FULFILLMENT_FEASIBILITY: Record<FulfillmentComplexity, number> = {
-  software_platform: 10,
-  package_based: 8,
-  coaching_advisory: 7,
-  custom_dfy: 5,
-  staffing_placement: 3,
-};
-
-// Matrix D: UsageOutputType × ICPIndustry (only if usage-based)
-const MATRIX_D: Record<UsageOutputType, Record<ICPIndustry, number>> = {
-  lead_based: { local_services: 1, professional_services: 3, b2b_service_agency: 5, dtc_ecommerce: -1, saas_tech: 4 },
-  conversion_based: { local_services: -1, professional_services: 4, b2b_service_agency: 5, dtc_ecommerce: 5, saas_tech: 5 },
-  task_based: { local_services: -3, professional_services: 1, b2b_service_agency: 3, dtc_ecommerce: 2, saas_tech: 4 },
-};
-
-function calculateExecutionFeasibility(
-  fulfillmentComplexity: FulfillmentComplexity,
-  pricingStructure: PricingStructure,
-  usageOutputType: UsageOutputType | null,
-  icpIndustry: ICPIndustry
-): number {
-  const fulfillmentFeas = FULFILLMENT_FEASIBILITY[fulfillmentComplexity];
-
-  let matrixDScore = 5; // neutral if not usage-based
-
-  if (pricingStructure === 'usage_based' && usageOutputType) {
-    const rawScore = MATRIX_D[usageOutputType][icpIndustry];
-    // Normalize from -3 to +5 to 0-10
-    matrixDScore = Math.max(0, Math.min(10, rawScore + 5));
-  }
-
-  return Math.min(fulfillmentFeas + matrixDScore, 20);
-}
-
-// ========== DIMENSION 5: Risk Alignment (0-15) ==========
-// Matrix: ICPMaturity × RiskModel with values 0-15
+// ========== DIMENSION 5: Risk Alignment (0-10) ==========
+// Matrix: ICPMaturity × RiskModel with values 0-10
 const RISK_ALIGNMENT_MATRIX: Record<ICPMaturity, Record<RiskModel, number>> = {
   pre_revenue: {
-    no_guarantee: 3,
-    conditional_guarantee: 6,
+    no_guarantee: 2,
+    conditional_guarantee: 5,
     full_guarantee: 0,
-    performance_only: 4,
-    pay_after_results: 5,
+    performance_only: 3,
+    pay_after_results: 4,
   },
   early_traction: {
-    no_guarantee: 4,
-    conditional_guarantee: 7,
+    no_guarantee: 3,
+    conditional_guarantee: 6,
     full_guarantee: 2,
-    performance_only: 6,
-    pay_after_results: 7,
+    performance_only: 5,
+    pay_after_results: 6,
   },
   scaling: {
-    no_guarantee: 5,
-    conditional_guarantee: 9,
-    full_guarantee: 7,
-    performance_only: 10,
-    pay_after_results: 9,
-  },
-  mature: {
-    no_guarantee: 7,
-    conditional_guarantee: 8,
+    no_guarantee: 4,
+    conditional_guarantee: 7,
     full_guarantee: 6,
-    performance_only: 4,
+    performance_only: 8,
     pay_after_results: 7,
   },
-  enterprise: {
+  mature: {
     no_guarantee: 6,
     conditional_guarantee: 7,
     full_guarantee: 5,
     performance_only: 3,
     pay_after_results: 6,
+  },
+  enterprise: {
+    no_guarantee: 5,
+    conditional_guarantee: 6,
+    full_guarantee: 4,
+    performance_only: 2,
+    pay_after_results: 5,
   },
 };
 
@@ -200,7 +258,7 @@ function calculateRiskAlignment(
   riskModel: RiskModel
 ): number {
   const riskScore = RISK_ALIGNMENT_MATRIX[icpMaturity][riskModel];
-  return Math.max(0, Math.min(15, riskScore));
+  return Math.max(0, Math.min(10, riskScore));
 }
 
 // ========== SWITCHING COST (0-20) ==========
@@ -229,16 +287,16 @@ function calculateSwitchingCost(
 }
 
 // ========== ALIGNMENT SCORE (0-100) ==========
-// Composite of 5 dimensions: Pain Urgency, Buying Power, Pricing Fit, Execution Feasibility, Risk Alignment
+// Composite of 5 dimensions: Pain/Urgency (25), Buying Power (25), Execution Feasibility (20), Pricing Fit (20), Risk Alignment (10)
 function calculateAlignmentScoreFromDimensions(
   painUrgency: number,
   buyingPower: number,
-  pricingFit: number,
   executionFeasibility: number,
+  pricingFit: number,
   riskAlignment: number
 ): number {
   // Sum all dimensions and cap at 100
-  const total = painUrgency + buyingPower + pricingFit + executionFeasibility + riskAlignment;
+  const total = painUrgency + buyingPower + executionFeasibility + pricingFit + riskAlignment;
   return Math.min(100, total);
 }
 
@@ -248,13 +306,12 @@ function calculateReadinessScore(alignmentScore: number): number {
 }
 
 // ========== READINESS LABEL ==========
-type ReadinessLabel = 'Weak' | 'Moderate' | 'Strong' | 'High Potential';
+type ReadinessLabel = 'Weak' | 'Fair' | 'Strong';
 
-function getReadinessLabel(readinessScore: number): ReadinessLabel {
-  if (readinessScore < 4.0) return 'Weak';
-  if (readinessScore < 6.0) return 'Moderate';
-  if (readinessScore < 8.0) return 'Strong';
-  return 'High Potential';
+function getReadinessLabel(alignmentScore: number): ReadinessLabel {
+  if (alignmentScore < 50) return 'Weak';
+  if (alignmentScore < 70) return 'Fair';
+  return 'Strong';
 }
 
 // ========== GRADE CALCULATION ==========
@@ -267,10 +324,10 @@ function calculateGrade(score: number): Grade {
 
 // ========== FORM VALIDATION ==========
 function isFormComplete(formData: DiagnosticFormData): boolean {
-  const { offerType, icpIndustry, icpSize, icpMaturity, pricingStructure, riskModel, fulfillmentComplexity } = formData;
+  const { offerType, promise, icpIndustry, icpSize, icpMaturity, pricingStructure, riskModel, fulfillmentComplexity } = formData;
   
-  // Base required fields (including riskModel)
-  if (!offerType || !icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !riskModel || !fulfillmentComplexity) {
+  // Base required fields (including promise)
+  if (!offerType || !promise || !icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !riskModel || !fulfillmentComplexity) {
     return false;
   }
 
@@ -288,6 +345,16 @@ function isFormComplete(formData: DiagnosticFormData): boolean {
   return true;
 }
 
+// ========== GET PROMISE MATURITY FIT SCORE ==========
+export function getPromiseMaturityFit(promise: Promise, icpMaturity: ICPMaturity): number {
+  return PROMISE_MATURITY_FIT[promise][icpMaturity];
+}
+
+// ========== GET PROMISE FULFILLMENT FIT SCORE ==========
+export function getPromiseFulfillmentFit(promise: Promise, fulfillmentComplexity: FulfillmentComplexity): number {
+  return PROMISE_FULFILLMENT_FIT[promise][fulfillmentComplexity];
+}
+
 // ========== MAIN SCORING FUNCTION ==========
 export function calculateScore(formData: DiagnosticFormData): ScoringResult | null {
   if (!isFormComplete(formData)) {
@@ -295,16 +362,16 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
   }
 
   const { 
-    offerType, icpIndustry, icpSize, icpMaturity, 
+    offerType, promise, icpIndustry, icpSize, icpMaturity, 
     pricingStructure, recurringPriceTier, oneTimePriceTier,
-    usageOutputType, usageVolumeTier, riskModel, fulfillmentComplexity 
+    usageVolumeTier, riskModel, fulfillmentComplexity 
   } = formData;
 
   const dimensionScores: DimensionScores = {
-    painUrgency: calculatePainUrgency(offerType!, icpMaturity!),
+    painUrgency: calculatePainUrgency(offerType!, promise!, icpMaturity!),
     buyingPower: calculateBuyingPower(icpSize!, icpIndustry!),
+    executionFeasibility: calculateExecutionFeasibility(fulfillmentComplexity!, promise!),
     pricingFit: calculatePricingFit(icpSize!, pricingStructure!, recurringPriceTier, oneTimePriceTier, usageVolumeTier),
-    executionFeasibility: calculateExecutionFeasibility(fulfillmentComplexity!, pricingStructure!, usageOutputType, icpIndustry!),
     riskAlignment: calculateRiskAlignment(icpMaturity!, riskModel!),
   };
 
@@ -314,8 +381,8 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
   const alignmentScore = calculateAlignmentScoreFromDimensions(
     dimensionScores.painUrgency, 
     dimensionScores.buyingPower, 
-    dimensionScores.pricingFit,
     dimensionScores.executionFeasibility,
+    dimensionScores.pricingFit,
     dimensionScores.riskAlignment
   );
 
@@ -341,4 +408,4 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
 }
 
 // Export matrices for use in other engines
-export { MATRIX_B, MATRIX_D, RISK_ALIGNMENT_MATRIX };
+export { MATRIX_B, PROMISE_MATURITY_FIT, PROMISE_FULFILLMENT_FIT, RISK_ALIGNMENT_MATRIX };

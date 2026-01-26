@@ -53,6 +53,7 @@ import {
 import type {
   DiagnosticFormData,
   OfferType,
+  Promise,
   ICPIndustry,
   ICPSize,
   ICPMaturity,
@@ -75,6 +76,8 @@ import { PROBLEM_CATEGORY_LABELS } from '@/lib/offerDiagnostic/fixStackEngine';
 import { generateContextAwareFixStack, MODIFIER_LABELS } from '@/lib/offerDiagnostic/contextAwareFixEngine';
 import {
   OFFER_TYPE_OPTIONS,
+  PROMISE_OPTIONS,
+  PROMISE_BY_OFFER_TYPE,
   ICP_INDUSTRY_OPTIONS,
   ICP_SIZE_OPTIONS,
   ICP_MATURITY_OPTIONS,
@@ -89,6 +92,7 @@ import {
 
 const initialFormData: DiagnosticFormData = {
   offerType: null,
+  promise: null,
   icpIndustry: null,
   icpSize: null,
   icpMaturity: null,
@@ -121,9 +125,8 @@ function getEffortColor(effort: FixArchetype['effort']) {
 
 function getReadinessLabelColor(label: string) {
   switch (label) {
-    case 'High Potential': return 'text-green-500';
-    case 'Strong': return 'text-blue-500';
-    case 'Moderate': return 'text-yellow-500';
+    case 'Strong': return 'text-green-500';
+    case 'Fair': return 'text-yellow-500';
     case 'Weak': return 'text-red-500';
     default: return 'text-muted-foreground';
   }
@@ -131,9 +134,8 @@ function getReadinessLabelColor(label: string) {
 
 function getReadinessLabelBg(label: string) {
   switch (label) {
-    case 'High Potential': return 'bg-green-500/10 border-green-500/30';
-    case 'Strong': return 'bg-blue-500/10 border-blue-500/30';
-    case 'Moderate': return 'bg-yellow-500/10 border-yellow-500/30';
+    case 'Strong': return 'bg-green-500/10 border-green-500/30';
+    case 'Fair': return 'bg-yellow-500/10 border-yellow-500/30';
     case 'Weak': return 'bg-red-500/10 border-red-500/30';
     default: return 'bg-muted border-muted';
   }
@@ -181,11 +183,11 @@ function AlignmentScoreCard({ score }: { score: number }) {
 
 function DimensionScoresTable({ scores }: { scores: ScoringResult['dimensionScores'] }) {
   const dimensions = [
-    { key: 'painUrgency' as const, label: 'Pain Urgency', maxScore: 25 },
-    { key: 'buyingPower' as const, label: 'Buying Power', maxScore: 20 },
-    { key: 'pricingFit' as const, label: 'Pricing Fit', maxScore: 20 },
+    { key: 'painUrgency' as const, label: 'Pain & Urgency', maxScore: 25 },
+    { key: 'buyingPower' as const, label: 'Buying Power', maxScore: 25 },
     { key: 'executionFeasibility' as const, label: 'Execution Feasibility', maxScore: 20 },
-    { key: 'riskAlignment' as const, label: 'Risk Alignment', maxScore: 15 },
+    { key: 'pricingFit' as const, label: 'Pricing Fit', maxScore: 20 },
+    { key: 'riskAlignment' as const, label: 'Risk Alignment', maxScore: 10 },
   ];
 
   return (
@@ -468,10 +470,10 @@ export default function OfferDiagnostic() {
   const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
 
   const isFormComplete = useMemo(() => {
-    const { offerType, icpIndustry, icpSize, icpMaturity, pricingStructure, riskModel, fulfillmentComplexity } = formData;
+    const { offerType, promise, icpIndustry, icpSize, icpMaturity, pricingStructure, riskModel, fulfillmentComplexity } = formData;
     
-    // Base required fields including riskModel
-    if (!offerType || !icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !riskModel || !fulfillmentComplexity) {
+    // Base required fields including promise
+    if (!offerType || !promise || !icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !riskModel || !fulfillmentComplexity) {
       return false;
     }
 
@@ -488,6 +490,16 @@ export default function OfferDiagnostic() {
     return true;
   }, [formData]);
 
+  // Get available promise options based on selected offer type
+  const availablePromiseOptions = useMemo(() => {
+    if (!formData.offerType) return [];
+    const allowedPromises = PROMISE_BY_OFFER_TYPE[formData.offerType] || [];
+    return PROMISE_OPTIONS.map(option => ({
+      ...option,
+      disabled: !allowedPromises.includes(option.value),
+    }));
+  }, [formData.offerType]);
+
   const handleFieldChange = <K extends keyof DiagnosticFormData>(
     field: K,
     value: DiagnosticFormData[K]
@@ -500,6 +512,11 @@ export default function OfferDiagnostic() {
         newData.oneTimePriceTier = null;
         newData.usageOutputType = null;
         newData.usageVolumeTier = null;
+      }
+      
+      // Reset promise when offer type changes
+      if (field === 'offerType') {
+        newData.promise = null;
       }
       
       return newData;
@@ -568,10 +585,58 @@ export default function OfferDiagnostic() {
           <Card>
             <CardHeader className="pb-4">
               <CardTitle className="text-lg">Offer</CardTitle>
-              <CardDescription>Define your core service offering</CardDescription>
+              <CardDescription>Define your core service offering and promise</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               {renderSelect<OfferType>('Offer Type', 'offerType', OFFER_TYPE_OPTIONS, formData.offerType)}
+              
+              {/* Promise Dropdown with filtering and tooltips */}
+              <div className="space-y-2">
+                <Label htmlFor="promise">Promise</Label>
+                <Select
+                  value={formData.promise || 'none'}
+                  onValueChange={(value) => handleFieldChange('promise', value === 'none' ? null : value as Promise)}
+                  disabled={!formData.offerType}
+                >
+                  <SelectTrigger id="promise" className="bg-background">
+                    <SelectValue placeholder="Select what outcome your offer promises" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background z-50 max-w-[400px]">
+                    {availablePromiseOptions.map((option) => (
+                      <TooltipProvider key={option.value} delayDuration={100}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <SelectItem 
+                              value={option.value} 
+                              disabled={option.disabled}
+                              className={`cursor-pointer ${option.disabled ? 'opacity-50' : ''}`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span>{option.label}</span>
+                                <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                              </div>
+                            </SelectItem>
+                          </TooltipTrigger>
+                          <TooltipContent 
+                            side="right" 
+                            sideOffset={8}
+                            className="max-w-[280px] bg-popover text-popover-foreground border shadow-md z-[9999]"
+                          >
+                            <p className="text-sm">
+                              {option.disabled 
+                                ? 'Not relevant for selected offer type' 
+                                : option.tooltip}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!formData.offerType && (
+                  <p className="text-xs text-muted-foreground">Select an Offer Type first</p>
+                )}
+              </div>
             </CardContent>
           </Card>
 

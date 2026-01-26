@@ -8,6 +8,44 @@ export const OFFER_TYPE_OPTIONS = [
   { value: 'operational_enablement', label: 'Operational Enablement' },
 ] as const;
 
+// Promise options with tooltips
+export const PROMISE_OPTIONS = [
+  { 
+    value: 'top_of_funnel_volume', 
+    label: 'Top-of-Funnel Volume',
+    tooltip: 'More leads, more booked calls',
+  },
+  { 
+    value: 'mid_funnel_engagement', 
+    label: 'Mid-Funnel Engagement',
+    tooltip: 'Better pipeline movement, demo attendance',
+  },
+  { 
+    value: 'top_line_revenue', 
+    label: 'Top-Line Revenue',
+    tooltip: 'Increased MRR/ARR or new client revenue',
+  },
+  { 
+    value: 'efficiency_cost_savings', 
+    label: 'Efficiency & Cost Savings',
+    tooltip: 'Reduced CAC, reduced labor time, improved margins',
+  },
+  { 
+    value: 'ops_compliance_outcomes', 
+    label: 'Ops & Compliance Outcomes',
+    tooltip: 'Clean data, accurate reporting, compliance',
+  },
+] as const;
+
+// Promise filtering by Offer Type
+export const PROMISE_BY_OFFER_TYPE: Record<string, string[]> = {
+  demand_creation: ['top_of_funnel_volume', 'mid_funnel_engagement'],
+  demand_capture: ['mid_funnel_engagement', 'top_line_revenue'],
+  outbound_sales_enablement: ['top_of_funnel_volume', 'mid_funnel_engagement', 'top_line_revenue'],
+  retention_monetization: ['top_line_revenue'],
+  operational_enablement: ['efficiency_cost_savings', 'ops_compliance_outcomes'],
+};
+
 export const ICP_INDUSTRY_OPTIONS = [
   { value: 'local_services', label: 'Local Services' },
   { value: 'professional_services', label: 'Professional Services' },
@@ -68,12 +106,12 @@ export const USAGE_VOLUME_TIER_OPTIONS = [
 export const FULFILLMENT_COMPLEXITY_OPTIONS = [
   { 
     value: 'custom_dfy', 
-    label: 'Custom Done-For-You Services',
+    label: 'Custom Done-For-You',
     tooltip: 'Definition: Scope varies per client. Example: Custom PPC + landing pages.',
   },
   { 
     value: 'package_based', 
-    label: 'Package-Based Services',
+    label: 'Productized Service',
     tooltip: 'Definition: Pre-defined packages with fixed deliverables. Example: Video editing packages.',
   },
   { 
@@ -83,7 +121,7 @@ export const FULFILLMENT_COMPLEXITY_OPTIONS = [
   },
   { 
     value: 'software_platform', 
-    label: 'Software / Platform Access',
+    label: 'Software / Platform',
     tooltip: 'Definition: Client pays to use a platform. Example: CRM SaaS.',
   },
   { 

@@ -788,13 +788,12 @@ function calculateReadinessScore(alignmentScore: number): number {
   return Math.round((alignmentScore / 10) * 10) / 10; // One decimal place
 }
 
-type ReadinessLabel = 'Weak' | 'Moderate' | 'Strong' | 'High Potential';
+type ReadinessLabel = 'Weak' | 'Fair' | 'Strong';
 
-function getReadinessLabel(readinessScore: number): ReadinessLabel {
-  if (readinessScore < 4.0) return 'Weak';
-  if (readinessScore < 6.0) return 'Moderate';
-  if (readinessScore < 8.0) return 'Strong';
-  return 'High Potential';
+function getReadinessLabel(alignmentScore: number): ReadinessLabel {
+  if (alignmentScore < 50) return 'Weak';
+  if (alignmentScore < 70) return 'Fair';
+  return 'Strong';
 }
 
 // ========== Main Export ==========

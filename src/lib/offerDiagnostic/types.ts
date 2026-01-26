@@ -7,6 +7,13 @@ export type OfferType =
   | 'retention_monetization'
   | 'operational_enablement';
 
+export type Promise = 
+  | 'top_of_funnel_volume'
+  | 'mid_funnel_engagement'
+  | 'top_line_revenue'
+  | 'efficiency_cost_savings'
+  | 'ops_compliance_outcomes';
+
 export type ICPIndustry = 
   | 'local_services'
   | 'professional_services'
@@ -72,6 +79,7 @@ export type RiskModel =
 
 export interface DiagnosticFormData {
   offerType: OfferType | null;
+  promise: Promise | null;
   icpIndustry: ICPIndustry | null;
   icpSize: ICPSize | null;
   icpMaturity: ICPMaturity | null;
@@ -85,11 +93,11 @@ export interface DiagnosticFormData {
 }
 
 export interface DimensionScores {
-  painUrgency: number;
-  buyingPower: number;
-  pricingFit: number;
-  executionFeasibility: number;
-  riskAlignment: number;
+  painUrgency: number;      // 0-25 (OfferTypeUrgency + PromiseMaturityFit)
+  buyingPower: number;      // 0-25
+  executionFeasibility: number; // 0-20 (OfferExecutionFeasibility + PromiseFulfillmentFit)
+  pricingFit: number;       // 0-20
+  riskAlignment: number;    // 0-10
 }
 
 export interface ExtendedScores extends DimensionScores {
@@ -97,7 +105,7 @@ export interface ExtendedScores extends DimensionScores {
   switchingCost: number; // 0-20
 }
 
-export type ReadinessLabel = 'Weak' | 'Moderate' | 'Strong' | 'High Potential';
+export type ReadinessLabel = 'Weak' | 'Fair' | 'Strong';
 
 export type Grade = 'Weak' | 'Average' | 'Strong' | 'Excellent';
 
