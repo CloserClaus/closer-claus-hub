@@ -424,10 +424,11 @@ export const ICP_MATURITY_OPTIONS = [
 ] as const;
 
 export const PRICING_STRUCTURE_OPTIONS = [
-  { value: 'recurring', label: 'Recurring (retainer)' },
-  { value: 'one_time', label: 'One-Time (project)' },
-  { value: 'performance_only', label: 'Performance-Only' },
-  { value: 'usage_based', label: 'Usage-Based (operational output)' },
+  { value: 'recurring', label: 'Recurring (Retainer)' },
+  { value: 'one_time', label: 'One-Time (Project)' },
+  { value: 'performance_only', label: 'Performance Only' },
+  { value: 'usage_based', label: 'Usage-Based (Operational Output)' },
+  { value: 'hybrid', label: 'Hybrid (Retainer + Performance)' },
 ] as const;
 
 export const RECURRING_PRICE_TIER_OPTIONS = [
@@ -445,15 +446,45 @@ export const ONE_TIME_PRICE_TIER_OPTIONS = [
 ] as const;
 
 export const USAGE_OUTPUT_TYPE_OPTIONS = [
-  { value: 'lead_based', label: 'Lead-based (per lead / per booked call)' },
-  { value: 'conversion_based', label: 'Conversion-based (per demo / per sale)' },
-  { value: 'task_based', label: 'Task-based (per workflow / per task)' },
+  { value: 'api_calls', label: 'API Calls' },
+  { value: 'seats', label: 'Seats' },
+  { value: 'credits', label: 'Credits' },
+  { value: 'bandwidth', label: 'Bandwidth' },
 ] as const;
 
 export const USAGE_VOLUME_TIER_OPTIONS = [
-  { value: 'low', label: 'Low (<1k units/mo)' },
-  { value: 'mid', label: 'Mid (1k–10k units/mo)' },
-  { value: 'high', label: 'High (10k+ units/mo)' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+] as const;
+
+// Hybrid retainer tier options
+export const HYBRID_RETAINER_TIER_OPTIONS = [
+  { value: 'under_150', label: '<$150/mo' },
+  { value: '150_500', label: '$150–$500/mo' },
+  { value: '500_2k', label: '$500–$2,000/mo' },
+  { value: '2k_5k', label: '$2,000–$5,000/mo' },
+  { value: '5k_plus', label: '$5,000+/mo' },
+] as const;
+
+// Performance basis options
+export const PERFORMANCE_BASIS_OPTIONS = [
+  { value: 'per_appointment', label: '$ per appointment' },
+  { value: 'per_opportunity', label: '$ per opportunity' },
+  { value: 'per_closed_deal', label: '$ per closed deal' },
+  { value: 'percent_revenue', label: '% of revenue' },
+  { value: 'percent_profit', label: '% of profit' },
+  { value: 'percent_ad_spend', label: '% of ad spend' },
+] as const;
+
+// Performance compensation tier options
+export const PERFORMANCE_COMP_TIER_OPTIONS = [
+  { value: 'under_15_percent', label: '<15%' },
+  { value: '15_30_percent', label: '15–30%' },
+  { value: 'over_30_percent', label: '30%+' },
+  { value: 'under_250_unit', label: '<$250/unit' },
+  { value: '250_500_unit', label: '$250–$500/unit' },
+  { value: 'over_500_unit', label: '$500+/unit' },
 ] as const;
 
 export const FULFILLMENT_COMPLEXITY_OPTIONS = [

@@ -64,6 +64,9 @@ import type {
   OneTimePriceTier,
   UsageOutputType,
   UsageVolumeTier,
+  HybridRetainerTier,
+  PerformanceBasis,
+  PerformanceCompTier,
   RiskModel,
   FulfillmentComplexity,
   ScoringResult,
@@ -91,6 +94,9 @@ import {
   ONE_TIME_PRICE_TIER_OPTIONS,
   USAGE_OUTPUT_TYPE_OPTIONS,
   USAGE_VOLUME_TIER_OPTIONS,
+  HYBRID_RETAINER_TIER_OPTIONS,
+  PERFORMANCE_BASIS_OPTIONS,
+  PERFORMANCE_COMP_TIER_OPTIONS,
   RISK_MODEL_OPTIONS,
   FULFILLMENT_COMPLEXITY_OPTIONS,
   VERTICAL_SEGMENTS_BY_INDUSTRY,
@@ -113,6 +119,9 @@ const initialFormData: DiagnosticFormData = {
   oneTimePriceTier: null,
   usageOutputType: null,
   usageVolumeTier: null,
+  hybridRetainerTier: null,
+  performanceBasis: null,
+  performanceCompTier: null,
   riskModel: null,
   fulfillmentComplexity: null,
   proofLevel: null,
@@ -600,6 +609,14 @@ export default function OfferDiagnostic() {
     if (pricingStructure === 'usage_based' && (!formData.usageOutputType || !formData.usageVolumeTier)) {
       return false;
     }
+    // Hybrid requires retainer tier, performance basis, and comp tier
+    if (pricingStructure === 'hybrid' && (!formData.hybridRetainerTier || !formData.performanceBasis || !formData.performanceCompTier)) {
+      return false;
+    }
+    // Performance only requires performance basis and comp tier
+    if (pricingStructure === 'performance_only' && (!formData.performanceBasis || !formData.performanceCompTier)) {
+      return false;
+    }
 
     return true;
   }, [formData]);
@@ -666,6 +683,9 @@ export default function OfferDiagnostic() {
         newData.oneTimePriceTier = null;
         newData.usageOutputType = null;
         newData.usageVolumeTier = null;
+        newData.hybridRetainerTier = null;
+        newData.performanceBasis = null;
+        newData.performanceCompTier = null;
       }
       
       // Reset promise outcome when offer type changes
@@ -859,10 +879,24 @@ export default function OfferDiagnostic() {
                 </div>
               )}
               
-              {formData.pricingStructure === 'usage_based' && (
+              {/* Hybrid (Retainer + Performance) fields */}
+              {formData.pricingStructure === 'hybrid' && (
+                <div className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-1">
+                    {renderSelect<HybridRetainerTier>('Retainer Tier', 'hybridRetainerTier', HYBRID_RETAINER_TIER_OPTIONS, formData.hybridRetainerTier)}
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {renderSelect<PerformanceBasis>('Performance Basis', 'performanceBasis', PERFORMANCE_BASIS_OPTIONS, formData.performanceBasis)}
+                    {renderSelect<PerformanceCompTier>('Compensation Tier', 'performanceCompTier', PERFORMANCE_COMP_TIER_OPTIONS, formData.performanceCompTier)}
+                  </div>
+                </div>
+              )}
+              
+              {/* Performance Only fields */}
+              {formData.pricingStructure === 'performance_only' && (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {renderSelect<UsageOutputType>('Usage Output Type', 'usageOutputType', USAGE_OUTPUT_TYPE_OPTIONS, formData.usageOutputType)}
-                  {renderSelect<UsageVolumeTier>('Usage Volume Tier', 'usageVolumeTier', USAGE_VOLUME_TIER_OPTIONS, formData.usageVolumeTier)}
+                  {renderSelect<PerformanceBasis>('Performance Basis', 'performanceBasis', PERFORMANCE_BASIS_OPTIONS, formData.performanceBasis)}
+                  {renderSelect<PerformanceCompTier>('Compensation Tier', 'performanceCompTier', PERFORMANCE_COMP_TIER_OPTIONS, formData.performanceCompTier)}
                 </div>
               )}
             </CardContent>

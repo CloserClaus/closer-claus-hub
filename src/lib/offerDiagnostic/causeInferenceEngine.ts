@@ -11,6 +11,9 @@ import type {
   ICPSize,
   OfferType,
   Promise,
+  PricingStructure,
+  PerformanceBasis,
+  PerformanceCompTier,
 } from './types';
 
 // ========== VIOLATION THRESHOLDS ==========
@@ -31,7 +34,9 @@ export type InferredCause =
   | 'promiseMismatch'
   | 'riskMisalignment'
   | 'fulfillmentBottleneck'
-  | 'awarenessMismatch';
+  | 'awarenessMismatch'
+  | 'performanceMismatch'
+  | 'compensationFriction';
 
 export interface DetectedCause {
   id: InferredCause;
@@ -77,6 +82,16 @@ const FIX_CATALOG: Record<InferredCause, string[]> = {
     'Change promise from revenue to pipeline volume.',
     'Collect proof before scaling downmarket.',
   ],
+  performanceMismatch: [
+    'Switch from % revenue to $ per appointment.',
+    'Add retainer until revenue is stable.',
+    'Avoid % revenue with immature ICPs.',
+  ],
+  compensationFriction: [
+    'Lower percentage bands for faster close rates.',
+    'Lower unit payout for volume-based models.',
+    'Add minimum retainer to cover delivery.',
+  ],
 };
 
 // ========== CAUSE LABELS ==========
@@ -88,6 +103,8 @@ const CAUSE_LABELS: Record<InferredCause, string> = {
   riskMisalignment: 'Risk model needs adjustment',
   fulfillmentBottleneck: 'Fulfillment blocks scale',
   awarenessMismatch: 'ICP maturity vs promise gap',
+  performanceMismatch: 'Performance model friction',
+  compensationFriction: 'Compensation tier too high',
 };
 
 // ========== SEVERITY WEIGHTS ==========
@@ -232,6 +249,52 @@ export function inferCauses(
       label: CAUSE_LABELS.awarenessMismatch,
       severity: 4,
       fixes: [...FIX_CATALOG.awarenessMismatch],
+    });
+  }
+  
+  // ========== PERFORMANCE-RELATED CAUSES ==========
+  
+  const pricingStructure = formData.pricingStructure;
+  const performanceBasis = formData.performanceBasis;
+  const performanceCompTier = formData.performanceCompTier;
+  const scaledMaturities: ICPMaturity[] = ['scaling', 'mature', 'enterprise'];
+  const percentBasedPerformance: PerformanceBasis[] = ['percent_revenue', 'percent_profit'];
+  const highCompTiers: PerformanceCompTier[] = ['over_30_percent', 'over_500_unit'];
+  
+  // Cause: Performance Mismatch
+  // Trigger: (Hybrid or Performance Only) AND (% revenue or % profit) AND (Pre-revenue or Early traction)
+  if (
+    pricingStructure &&
+    (pricingStructure === 'hybrid' || pricingStructure === 'performance_only') &&
+    performanceBasis &&
+    percentBasedPerformance.includes(performanceBasis) &&
+    icpMaturity &&
+    earlyMaturities.includes(icpMaturity)
+  ) {
+    // Suppression: Don't show if targeting scaled/mature ICPs
+    if (!scaledMaturities.includes(icpMaturity)) {
+      causes.push({
+        id: 'performanceMismatch',
+        label: CAUSE_LABELS.performanceMismatch,
+        severity: 4,
+        fixes: [...FIX_CATALOG.performanceMismatch],
+      });
+    }
+  }
+  
+  // Cause: Compensation Friction
+  // Trigger: (Hybrid or Performance Only) AND (30%+ or $500+/unit)
+  if (
+    pricingStructure &&
+    (pricingStructure === 'hybrid' || pricingStructure === 'performance_only') &&
+    performanceCompTier &&
+    highCompTiers.includes(performanceCompTier)
+  ) {
+    causes.push({
+      id: 'compensationFriction',
+      label: CAUSE_LABELS.compensationFriction,
+      severity: 3,
+      fixes: [...FIX_CATALOG.compensationFriction],
     });
   }
   

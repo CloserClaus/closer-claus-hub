@@ -458,7 +458,45 @@ export function detectViolations(formData: DiagnosticFormData): Violation[] {
     }
   }
   
-  return violations;
+  // ========== PERFORMANCE-BASED VIOLATIONS (NEW) ==========
+  
+  const { performanceBasis, performanceCompTier } = formData;
+  const earlyMaturities: ICPMaturity[] = ['pre_revenue', 'early_traction'];
+  
+  // RULE 13 — Performance Friction Violation
+  // Trigger: (Hybrid or Performance Only) AND (% revenue or % profit) AND (Pre-revenue or Early traction)
+  if (
+    (pricingStructure === 'hybrid' || pricingStructure === 'performance_only') &&
+    performanceBasis &&
+    (performanceBasis === 'percent_revenue' || performanceBasis === 'percent_profit') &&
+    icpMaturity &&
+    earlyMaturities.includes(icpMaturity)
+  ) {
+    violations.push({
+      id: 'performance_friction',
+      rule: 'Performance Friction Violation',
+      severity: 'high',
+      recommendation: 'Avoid % revenue with immature ICPs. Switch from % revenue to $ per appointment, add retainer until revenue is stable, or target ICPs with more predictable revenue.',
+      fixCategory: 'pricing_shift',
+    });
+  }
+  
+  // RULE 14 — Compensation Stability Violation
+  // Trigger: (Hybrid or Performance Only) AND (30%+ or $500+/unit)
+  const highCompTiers: typeof performanceCompTier[] = ['over_30_percent', 'over_500_unit'];
+  if (
+    (pricingStructure === 'hybrid' || pricingStructure === 'performance_only') &&
+    performanceCompTier &&
+    highCompTiers.includes(performanceCompTier)
+  ) {
+    violations.push({
+      id: 'compensation_stability',
+      rule: 'Compensation Stability Violation',
+      severity: 'medium',
+      recommendation: 'High compensation tiers reduce close rates. Lower percentage bands for faster close rates, lower unit payout for volume-based models, or add minimum retainer to cover delivery.',
+      fixCategory: 'pricing_shift',
+    });
+  }
 }
 
 // ========== VIOLATION SORTING BY SEVERITY ==========
