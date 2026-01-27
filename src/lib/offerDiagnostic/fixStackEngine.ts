@@ -9,13 +9,13 @@ import type {
   ICPIndustry,
 } from './types';
 
-// ========== Category Thresholds ==========
+// ========== Category Thresholds (Updated for new violation rules) ==========
 const CATEGORY_THRESHOLDS: Record<string, number> = {
-  low_buying_power: 12,
-  pricing_misfit: 10,
-  risk_misalignment: 5,
-  low_pain_urgency: 12,
-  fulfillment_misalignment: 10,
+  low_buying_power: 10,           // buyingPower < 10
+  pricing_misfit: 10,             // pricingFit < 10
+  risk_misalignment: 5,           // riskAlignment < 5
+  low_pain_urgency: 12,           // painUrgency < 12
+  fulfillment_misalignment: 8,    // executionFeasibility < 8
   low_mechanism_power: 50,
   low_switching_cost: 10,
 };
