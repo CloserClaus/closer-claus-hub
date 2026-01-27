@@ -137,10 +137,7 @@ export type ICPMaturity =
 
 export type PricingStructure = 
   | 'recurring'
-  | 'retainer'
-  | 'hybrid'
   | 'one_time'
-  | 'one_time_project'
   | 'performance_only'
   | 'usage_based';
 
@@ -169,7 +166,6 @@ export type UsageVolumeTier =
 export type FulfillmentComplexity = 
   | 'custom_dfy'
   | 'package_based'
-  | 'productized_service'
   | 'coaching_advisory'
   | 'software_platform'
   | 'staffing_placement';
@@ -179,7 +175,6 @@ export type RiskModel =
   | 'conditional_guarantee'
   | 'full_guarantee'
   | 'performance_only'
-  | 'pay_on_performance'
   | 'pay_after_results';
 
 export interface DiagnosticFormData {

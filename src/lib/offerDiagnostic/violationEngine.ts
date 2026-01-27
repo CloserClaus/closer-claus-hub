@@ -1,4 +1,3 @@
-// Violation Engine - Detects violations and infers causes based on the new spec
 import type {
   DiagnosticFormData,
   ICPSize,
@@ -6,14 +5,26 @@ import type {
   ICPMaturity,
   FulfillmentComplexity,
   PricingStructure,
-  PromiseBucket,
+  RecurringPriceTier,
+  Promise,
+  ScoringSegment,
   ProofLevel,
   RiskModel,
-  OfferType,
 } from './types';
-import { calculateScore } from './scoringEngine';
+import { 
+  getPromiseMaturityFit, 
+  getPromiseFulfillmentFit, 
+  SEGMENT_BUDGET_TIER, 
+  PROOF_LEVEL_SCORE, 
+  RECURRING_PRICE_TO_TIER,
+  PROOF_FIT_SCORE,
+  PROMISE_FIT_SCORE,
+  VERTICAL_FIT_SCORE,
+  calculateOutboundFit,
+} from './scoringEngine';
 
 // ========== VIOLATION TYPES ==========
+
 export type ViolationSeverity = 'high' | 'medium' | 'low';
 
 export interface Violation {
@@ -24,203 +35,432 @@ export interface Violation {
   fixCategory?: 'icp_shift' | 'promise_shift' | 'fulfillment_shift' | 'pricing_shift' | 'risk_shift';
 }
 
-// ========== VIOLATION FLAGS (from spec) ==========
-export interface ViolationFlags {
-  outboundViolation: boolean;
-  executionViolation: boolean;
-  pricingViolation: boolean;
-  buyingPowerViolation: boolean;
-  riskViolation: boolean;
-  urgencyViolation: boolean;
+// ========== INTERNAL CONSTRAINTS (NOT SHOWN TO USER) ==========
+
+export interface ConstraintValues {
+  buyingPowerConstraint: 'low' | 'moderate' | 'high';
+  maturityConstraint: ICPMaturity;
+  urgencyConstraint: 'low' | 'moderate' | 'high';
+  fulfillmentComplexityConstraint: FulfillmentComplexity;
+  riskToleranceConstraint: 'low' | 'moderate' | 'high';
+  priceToValueConstraint: 'low' | 'moderate' | 'high';
 }
 
-// ========== CAUSE FLAGS (from spec) ==========
-export interface CauseFlags {
-  causeProofDeficiency: boolean;
-  causePricingMisalignment: boolean;
-  causeMarketMisalignment: boolean;
-  causePromiseChannelMismatch: boolean;
-  causeRiskMisalignment: boolean;
-  causeFulfillmentBottleneck: boolean;
-  causeAwarenessMismatch: boolean;
+// ========== CONSTRAINT DERIVATION ==========
+
+function deriveBuyingPowerConstraint(
+  icpSize: ICPSize,
+  icpIndustry: ICPIndustry
+): 'low' | 'moderate' | 'high' {
+  const lowSizes: ICPSize[] = ['solo_founder', '1_5_employees'];
+  const lowIndustries: ICPIndustry[] = ['local_services', 'information_coaching'];
+  
+  if (lowSizes.includes(icpSize) || lowIndustries.includes(icpIndustry)) {
+    return 'low';
+  }
+  
+  const highSizes: ICPSize[] = ['21_100_employees', '100_plus_employees'];
+  const highIndustries: ICPIndustry[] = ['saas_tech', 'professional_services', 'healthcare', 'real_estate'];
+  
+  if (highSizes.includes(icpSize) && highIndustries.includes(icpIndustry)) {
+    return 'high';
+  }
+  
+  return 'moderate';
 }
 
-// ========== DETECT VIOLATION FLAGS ==========
-export function detectViolationFlags(formData: DiagnosticFormData): ViolationFlags | null {
-  const scoringResult = calculateScore(formData);
-  if (!scoringResult) return null;
-
-  const { dimensionScores } = scoringResult;
-
-  return {
-    outboundViolation: dimensionScores.outboundFit < 10,
-    executionViolation: dimensionScores.executionFeasibility < 8,
-    pricingViolation: dimensionScores.pricingFit < 10,
-    buyingPowerViolation: dimensionScores.buyingPower < 10,
-    riskViolation: dimensionScores.riskAlignment < 5,
-    urgencyViolation: dimensionScores.painUrgency < 12,
-  };
+function deriveMaturityConstraint(icpMaturity: ICPMaturity): ICPMaturity {
+  return icpMaturity;
 }
 
-// ========== INFER CAUSES ==========
-export function inferCauses(formData: DiagnosticFormData, violationFlags: ViolationFlags): CauseFlags {
-  const {
-    proofLevel,
-    promise,
-    icpMaturity,
-    offerType,
-    fulfillmentComplexity,
-    icpSize,
-  } = formData;
+function deriveUrgencyConstraint(offerType: string): 'low' | 'moderate' | 'high' {
+  const highUrgency = ['outbound_sales_enablement', 'retention_monetization'];
+  const moderateUrgency = ['demand_capture', 'demand_creation'];
+  
+  if (highUrgency.includes(offerType)) return 'high';
+  if (moderateUrgency.includes(offerType)) return 'moderate';
+  return 'low';
+}
 
-  const earlyMaturity: ICPMaturity[] = ['pre_revenue', 'early_traction'];
+function deriveFulfillmentComplexityConstraint(
+  fulfillmentComplexity: FulfillmentComplexity
+): FulfillmentComplexity {
+  return fulfillmentComplexity;
+}
+
+function deriveRiskToleranceConstraint(
+  icpMaturity: ICPMaturity,
+  icpSize: ICPSize
+): 'low' | 'moderate' | 'high' {
+  const lowMaturity: ICPMaturity[] = ['pre_revenue', 'early_traction'];
+  const smallSizes: ICPSize[] = ['solo_founder', '1_5_employees'];
+  
+  if (lowMaturity.includes(icpMaturity) || smallSizes.includes(icpSize)) {
+    return 'low';
+  }
+  
+  const highMaturity: ICPMaturity[] = ['mature', 'enterprise'];
   const largeSizes: ICPSize[] = ['21_100_employees', '100_plus_employees'];
-  const topFunnelPromises: PromiseBucket[] = ['top_of_funnel_volume', 'mid_funnel_engagement'];
+  
+  if (highMaturity.includes(icpMaturity) && largeSizes.includes(icpSize)) {
+    return 'high';
+  }
+  
+  return 'moderate';
+}
 
+function derivePriceToValueConstraint(
+  pricingStructure: PricingStructure,
+  recurringPriceTier: RecurringPriceTier | null,
+  fulfillmentComplexity: FulfillmentComplexity
+): 'low' | 'moderate' | 'high' {
+  // High-touch fulfillment with low price = low value
+  const highTouchFulfillment: FulfillmentComplexity[] = ['custom_dfy', 'staffing_placement'];
+  const lowPriceTiers: RecurringPriceTier[] = ['under_150', '150_500'];
+  const highPriceTiers: RecurringPriceTier[] = ['2k_5k', '5k_plus'];
+  
+  if (highTouchFulfillment.includes(fulfillmentComplexity)) {
+    if (pricingStructure === 'recurring' && recurringPriceTier && lowPriceTiers.includes(recurringPriceTier)) {
+      return 'low';
+    }
+    if (pricingStructure === 'recurring' && recurringPriceTier && highPriceTiers.includes(recurringPriceTier)) {
+      return 'high';
+    }
+  }
+  
+  // Software/platform with very high price without services
+  if (fulfillmentComplexity === 'software_platform') {
+    if (pricingStructure === 'recurring' && recurringPriceTier && highPriceTiers.includes(recurringPriceTier)) {
+      return 'low'; // Software alone at high price = low perceived value
+    }
+  }
+  
+  return 'moderate';
+}
+
+export function deriveConstraints(formData: DiagnosticFormData): ConstraintValues | null {
+  const { 
+    offerType, icpIndustry, icpSize, icpMaturity, 
+    pricingStructure, recurringPriceTier, fulfillmentComplexity 
+  } = formData;
+  
+  if (!offerType || !icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !fulfillmentComplexity) {
+    return null;
+  }
+  
   return {
-    // ProofDeficiency: (proof_level in ['None','Weak']) AND (promise not in ['Top-of-funnel volume'])
-    causeProofDeficiency: 
-      (proofLevel === 'none' || proofLevel === 'weak') && 
-      promise !== 'top_of_funnel_volume',
-
-    // PricingMisalignment: pricingViolation
-    causePricingMisalignment: violationFlags.pricingViolation,
-
-    // MarketMisalignment: buyingPowerViolation AND icpMaturity in early stages
-    causeMarketMisalignment: 
-      violationFlags.buyingPowerViolation && 
-      icpMaturity !== null && 
-      earlyMaturity.includes(icpMaturity),
-
-    // PromiseChannelMismatch: offer_type='Demand Creation' OR promise in top funnel
-    causePromiseChannelMismatch:
-      offerType === 'demand_creation' ||
-      (promise !== null && topFunnelPromises.includes(promise)),
-
-    // RiskMisalignment: riskViolation
-    causeRiskMisalignment: violationFlags.riskViolation,
-
-    // FulfillmentBottleneck: fulfillment='Custom DFY' AND icp_size is large
-    causeFulfillmentBottleneck:
-      fulfillmentComplexity === 'custom_dfy' &&
-      icpSize !== null &&
-      largeSizes.includes(icpSize),
-
-    // AwarenessMismatch: early maturity AND revenue promise
-    causeAwarenessMismatch:
-      icpMaturity !== null &&
-      earlyMaturity.includes(icpMaturity) &&
-      promise === 'top_line_revenue',
+    buyingPowerConstraint: deriveBuyingPowerConstraint(icpSize, icpIndustry),
+    maturityConstraint: deriveMaturityConstraint(icpMaturity),
+    urgencyConstraint: deriveUrgencyConstraint(offerType),
+    fulfillmentComplexityConstraint: deriveFulfillmentComplexityConstraint(fulfillmentComplexity),
+    riskToleranceConstraint: deriveRiskToleranceConstraint(icpMaturity, icpSize),
+    priceToValueConstraint: derivePriceToValueConstraint(pricingStructure, recurringPriceTier, fulfillmentComplexity),
   };
 }
 
-// ========== CONVERT TO VIOLATIONS ARRAY ==========
+// ========== PROMISE-BASED VIOLATION DETECTION ==========
+
+interface PromiseViolationResult {
+  promiseMaturityFit: number;
+  promiseFulfillmentFit: number;
+  maturityMismatch: boolean;
+  fulfillmentMismatch: boolean;
+  doubleStress: boolean;
+}
+
+function detectPromiseViolations(formData: DiagnosticFormData): PromiseViolationResult | null {
+  const { promise, icpMaturity, fulfillmentComplexity } = formData;
+  
+  if (!promise || !icpMaturity || !fulfillmentComplexity) {
+    return null;
+  }
+  
+  const promiseMaturityFit = getPromiseMaturityFit(promise, icpMaturity);
+  const promiseFulfillmentFit = getPromiseFulfillmentFit(promise, fulfillmentComplexity);
+  
+  const maturityMismatch = promiseMaturityFit <= 3;
+  const fulfillmentMismatch = promiseFulfillmentFit <= 3;
+  const doubleStress = maturityMismatch && fulfillmentMismatch;
+  
+  return {
+    promiseMaturityFit,
+    promiseFulfillmentFit,
+    maturityMismatch,
+    fulfillmentMismatch,
+    doubleStress,
+  };
+}
+
+// ========== VIOLATION DETECTION RULES ==========
+
 export function detectViolations(formData: DiagnosticFormData): Violation[] {
   const violations: Violation[] = [];
+  const constraints = deriveConstraints(formData);
   
-  const flags = detectViolationFlags(formData);
-  if (!flags) return violations;
-
-  const causes = inferCauses(formData, flags);
-  const { proofLevel, fulfillmentComplexity, riskModel, offerType, icpSize, icpMaturity } = formData;
-
-  // Check each cause and create violations
-
-  if (causes.causeProofDeficiency) {
-    violations.push({
-      id: 'proof_deficiency',
-      rule: 'Proof Deficiency',
-      severity: 'high',
-      recommendation: 'Narrow the claim until you have strong proof. Collect 3–5 wins before scaling promise.',
-      fixCategory: 'risk_shift',
-    });
+  if (!constraints) return violations;
+  
+  const { 
+    icpIndustry, icpMaturity, pricingStructure, 
+    recurringPriceTier, fulfillmentComplexity, offerType, promise 
+  } = formData;
+  
+  const highPriceTiers: RecurringPriceTier[] = ['2k_5k', '5k_plus'];
+  const isHighPrice = pricingStructure === 'recurring' && recurringPriceTier && highPriceTiers.includes(recurringPriceTier);
+  
+  // ========== PROMISE-BASED VIOLATIONS (NEW) ==========
+  const promiseViolations = detectPromiseViolations(formData);
+  
+  if (promiseViolations) {
+    // ViolationC: DoubleStress (highest severity - both mismatches)
+    if (promiseViolations.doubleStress) {
+      violations.push({
+        id: 'double_stress',
+        rule: 'Double Stress Violation',
+        severity: 'high',
+        recommendation: 'Critical misalignment: Your promise doesn\'t fit your ICP maturity OR your fulfillment model. Consider shifting to a different ICP stage, changing your promise, or switching fulfillment type.',
+        fixCategory: 'icp_shift',
+      });
+    } else {
+      // ViolationA: MaturityPromiseMismatch
+      if (promiseViolations.maturityMismatch) {
+        const maturityLabel = icpMaturity === 'pre_revenue' ? 'Pre-Revenue' : 
+                             icpMaturity === 'early_traction' ? 'Early Traction' :
+                             icpMaturity === 'scaling' ? 'Scaling' :
+                             icpMaturity === 'mature' ? 'Mature' : 'Enterprise';
+        
+        violations.push({
+          id: 'maturity_promise_mismatch',
+          rule: 'Maturity-Promise Mismatch',
+          severity: 'medium',
+          recommendation: `Shift to Early Traction or Scaling buyers — ${maturityLabel} cannot support this promise. Consider changing your target ICP maturity stage.`,
+          fixCategory: 'icp_shift',
+        });
+      }
+      
+      // ViolationB: FulfillmentPromiseMismatch
+      if (promiseViolations.fulfillmentMismatch) {
+        const promiseLabel = promise === 'top_of_funnel_volume' ? 'Top-of-Funnel Volume' :
+                            promise === 'mid_funnel_engagement' ? 'Mid-Funnel Engagement' :
+                            promise === 'top_line_revenue' ? 'Top-Line Revenue' :
+                            promise === 'efficiency_cost_savings' ? 'Efficiency & Cost Savings' : 
+                            'Ops & Compliance Outcomes';
+        
+        violations.push({
+          id: 'fulfillment_promise_mismatch',
+          rule: 'Fulfillment-Promise Mismatch',
+          severity: 'medium',
+          recommendation: `Switch fulfillment model to reliably deliver ${promiseLabel}. Your current fulfillment type doesn't support this promise effectively.`,
+          fixCategory: 'fulfillment_shift',
+        });
+      }
+    }
   }
-
-  if (causes.causePricingMisalignment) {
+  
+  // ========== EXISTING VIOLATIONS ==========
+  
+  // RULE 1 — Budget vs Price Violation
+  if (
+    constraints.buyingPowerConstraint === 'low' && 
+    isHighPrice
+  ) {
     violations.push({
-      id: 'pricing_misalignment',
-      rule: 'Pricing Misalignment',
+      id: 'budget_vs_price',
+      rule: 'Budget vs Price Violation',
       severity: 'high',
-      recommendation: 'Switch to hybrid pricing to reduce sticker shock, or lower initial retainer until proof compounds.',
+      recommendation: 'Your buyer tier cannot afford this pricing. Either move down in price tier, simplify scope, or target larger companies.',
       fixCategory: 'pricing_shift',
     });
   }
-
-  if (causes.causeMarketMisalignment) {
+  
+  // RULE 2 — Budget vs Fulfillment Complexity Violation
+  const complexFulfillment: FulfillmentComplexity[] = ['custom_dfy', 'staffing_placement'];
+  if (
+    constraints.buyingPowerConstraint === 'low' && 
+    fulfillmentComplexity && 
+    complexFulfillment.includes(fulfillmentComplexity)
+  ) {
     violations.push({
-      id: 'market_misalignment',
-      rule: 'Market Misalignment',
+      id: 'budget_vs_fulfillment',
+      rule: 'Budget vs Fulfillment Complexity Violation',
       severity: 'high',
-      recommendation: 'Shift upmarket to ICPs with higher buying power, or switch vertical to one with urgent problems & budgets.',
-      fixCategory: 'icp_shift',
+      recommendation: 'Low-budget buyers cannot sustain labor-intensive delivery. Package scope or move upmarket.',
+      fixCategory: 'fulfillment_shift',
     });
   }
-
-  if (causes.causePromiseChannelMismatch) {
+  
+  // RULE 3 — Maturity vs Fulfillment Complexity Violation
+  const immatureStages: ICPMaturity[] = ['pre_revenue', 'early_traction'];
+  if (
+    icpMaturity && 
+    immatureStages.includes(icpMaturity) && 
+    fulfillmentComplexity && 
+    complexFulfillment.includes(fulfillmentComplexity)
+  ) {
     violations.push({
-      id: 'promise_channel_mismatch',
-      rule: 'Promise-Channel Mismatch',
-      severity: 'medium',
-      recommendation: 'Cold outbound will struggle here. Switch promise to revenue or pipeline outcomes, or add downstream proof.',
-      fixCategory: 'promise_shift',
+      id: 'maturity_vs_fulfillment',
+      rule: 'Maturity vs Fulfillment Complexity Violation',
+      severity: 'high',
+      recommendation: 'Immature buyers cannot consume complex fulfillment. Offer lighter packages, advisory, or DIY versions.',
+      fixCategory: 'fulfillment_shift',
     });
   }
-
-  if (causes.causeRiskMisalignment) {
+  
+  // RULE 4 — Maturity vs Risk Model Violation
+  const acceptableRiskModels = ['performance_only', 'conditional_guarantee', 'pay_after_results'];
+  if (
+    icpMaturity === 'pre_revenue' && 
+    formData.riskModel && 
+    !acceptableRiskModels.includes(formData.riskModel)
+  ) {
     violations.push({
-      id: 'risk_misalignment',
-      rule: 'Risk Misalignment',
-      severity: 'medium',
-      recommendation: 'Use conditional guarantees instead of full guarantees. Add milestone-based commitments.',
+      id: 'maturity_vs_risk',
+      rule: 'Maturity vs Risk Model Violation',
+      severity: 'high',
+      recommendation: 'Pre-revenue buyers delay decisions unless risk is reduced. Add conditional guarantees, pay-after-results, or performance components.',
       fixCategory: 'risk_shift',
     });
   }
-
-  if (causes.causeFulfillmentBottleneck) {
+  
+  // RULE 5 — Performance Model Misalignment Violation
+  if (
+    pricingStructure === 'performance_only' && 
+    fulfillmentComplexity !== 'software_platform' && 
+    offerType !== 'outbound_sales_enablement'
+  ) {
     violations.push({
-      id: 'fulfillment_bottleneck',
-      rule: 'Fulfillment Bottleneck',
+      id: 'performance_misalignment',
+      rule: 'Performance Model Misalignment Violation',
       severity: 'medium',
-      recommendation: 'Productize delivery to reduce labor variance. Add SOPs & QA before scaling headcount.',
-      fixCategory: 'fulfillment_shift',
+      recommendation: 'Performance-only models require outbound or software control. Switch to hybrid or retainer + performance.',
+      fixCategory: 'pricing_shift',
     });
   }
-
-  if (causes.causeAwarenessMismatch) {
+  
+  // RULE 6 — Software Pricing Violation
+  if (
+    fulfillmentComplexity === 'software_platform' && 
+    isHighPrice
+  ) {
     violations.push({
-      id: 'awareness_mismatch',
-      rule: 'Awareness Mismatch',
-      severity: 'medium',
-      recommendation: 'Target ICPs that already have traction. Switch promise from revenue to pipeline volume.',
+      id: 'software_pricing',
+      rule: 'Software Pricing Violation',
+      severity: 'low',
+      recommendation: 'Software priced above $1500/mo stalls without services. Split into SaaS + onboarding or move to enterprise ICP.',
+      fixCategory: 'pricing_shift',
+    });
+  }
+  
+  // RULE 7 — Coaching Misfit Violation
+  if (
+    fulfillmentComplexity === 'coaching_advisory' && 
+    icpMaturity === 'pre_revenue'
+  ) {
+    violations.push({
+      id: 'coaching_misfit',
+      rule: 'Coaching Misfit Violation',
+      severity: 'low',
+      recommendation: 'Pre-revenue buyers cannot implement coaching. Add done-for-you elements or move upmarket.',
       fixCategory: 'icp_shift',
     });
   }
-
-  // Direct violation flags as violations
-  if (flags.outboundViolation && !causes.causePromiseChannelMismatch) {
+  
+  // RULE 8 — Churn Risk Violation
+  const churnIndustries: ICPIndustry[] = ['dtc_ecommerce', 'local_services'];
+  if (
+    icpIndustry && 
+    churnIndustries.includes(icpIndustry) && 
+    pricingStructure === 'recurring' && 
+    fulfillmentComplexity === 'custom_dfy'
+  ) {
     violations.push({
-      id: 'low_outbound_fit',
-      rule: 'Low Outbound Fit',
-      severity: 'high',
-      recommendation: 'Cold outbound will struggle here. Consider switching to solution-aware verticals like SaaS.',
-      fixCategory: 'icp_shift',
-    });
-  }
-
-  if (flags.executionViolation && !causes.causeFulfillmentBottleneck) {
-    violations.push({
-      id: 'execution_risk',
-      rule: 'Execution Risk',
+      id: 'churn_risk',
+      rule: 'Churn Risk Violation',
       severity: 'medium',
-      recommendation: 'Your offer type and fulfillment model create execution challenges. Simplify delivery.',
-      fixCategory: 'fulfillment_shift',
+      recommendation: 'Recurring custom work in churn-heavy industries burns margin. Productize scope or switch to project-based.',
+      fixCategory: 'pricing_shift',
     });
   }
-
+  
+  // ========== NEW VERTICAL/PROOF VIOLATIONS ==========
+  
+  const { scoringSegment, proofLevel, riskModel } = formData;
+  
+  // RULE 9 — Vertical Pricing Mismatch
+  // Trigger: PriceTier > SegmentBudgetRange
+  if (scoringSegment && recurringPriceTier && pricingStructure === 'recurring') {
+    const segmentBudget = SEGMENT_BUDGET_TIER[scoringSegment];
+    const priceTier = RECURRING_PRICE_TO_TIER[recurringPriceTier];
+    
+    if (priceTier > segmentBudget + 1) {
+      violations.push({
+        id: 'vertical_pricing_mismatch',
+        rule: 'Vertical Pricing Mismatch',
+        severity: 'high',
+        recommendation: 'Your vertical typically cannot support this pricing level. Reduce retainer, switch to hybrid model, or move upmarket to a richer vertical.',
+        fixCategory: 'pricing_shift',
+      });
+    }
+  }
+  
+  // RULE 10 — Proof Risk Mismatch
+  // Trigger: RiskModel requires more proof than available
+  if (proofLevel && riskModel) {
+    const proofScore = PROOF_LEVEL_SCORE[proofLevel];
+    const highRiskModels: RiskModel[] = ['full_guarantee', 'pay_after_results', 'performance_only'];
+    const needsHighProof = highRiskModels.includes(riskModel);
+    
+    // If using high-risk model but proof is weak/none
+    if (needsHighProof && proofScore <= 5) {
+      violations.push({
+        id: 'proof_risk_mismatch',
+        rule: 'Proof Risk Mismatch',
+        severity: 'high',
+        recommendation: 'Your risk model requires more proof to convert predictably. Add conditional guarantee instead, switch to pay-after-results only after wins, or collect case studies before scaling price.',
+        fixCategory: 'risk_shift',
+      });
+    }
+  }
+  
+  // ========== NEW OUTBOUND-RELATED VIOLATIONS ==========
+  
+  // RULE 11 — Low Outbound Fit
+  // Trigger: OutboundFit < 10
+  if (scoringSegment && proofLevel && promise) {
+    const outboundFit = calculateOutboundFit(scoringSegment, proofLevel, promise);
+    
+    if (outboundFit < 10) {
+      violations.push({
+        id: 'low_outbound_fit',
+        rule: 'Low Outbound Fit',
+        severity: 'high',
+        recommendation: 'Cold outbound will struggle here. This ICP needs education before cold calls. Consider switching to solution-aware verticals like SaaS, adjust your promise to meetings instead of revenue, or use content/partnership channels before outbound.',
+        fixCategory: 'icp_shift',
+      });
+    }
+  }
+  
+  // RULE 12 — Proof Promise Mismatch
+  // Trigger: ProofFit <= 1 AND PromiseFit >= 5
+  if (proofLevel && promise) {
+    const proofFit = PROOF_FIT_SCORE[proofLevel];
+    const promiseFit = PROMISE_FIT_SCORE[promise];
+    
+    if (proofFit <= 1 && promiseFit >= 5) {
+      violations.push({
+        id: 'proof_promise_mismatch',
+        rule: 'Proof Promise Mismatch',
+        severity: 'high',
+        recommendation: 'High-trust promise without proof. You\'re making a big promise but have no track record to back it up. Run pilot deals to build case studies, add a conditional guarantee instead of full guarantee, or lower your promise from revenue to booked meetings.',
+        fixCategory: 'risk_shift',
+      });
+    }
+  }
+  
   return violations;
 }
 
 // ========== VIOLATION SORTING BY SEVERITY ==========
+
 const SEVERITY_ORDER: Record<ViolationSeverity, number> = {
   high: 3,
   medium: 2,
@@ -231,40 +471,10 @@ export function sortViolationsBySeverity(violations: Violation[]): Violation[] {
   return [...violations].sort((a, b) => SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity]);
 }
 
-// ========== GET TOP VIOLATIONS ==========
+// ========== GET TOP 3 VIOLATIONS ==========
+
 export function getTopViolations(formData: DiagnosticFormData, limit: number = 3): Violation[] {
   const violations = detectViolations(formData);
   const sorted = sortViolationsBySeverity(violations);
   return sorted.slice(0, limit);
-}
-
-// ========== LEGACY EXPORTS ==========
-export interface ConstraintValues {
-  buyingPowerConstraint: 'low' | 'moderate' | 'high';
-  maturityConstraint: ICPMaturity;
-  urgencyConstraint: 'low' | 'moderate' | 'high';
-  fulfillmentComplexityConstraint: FulfillmentComplexity;
-  riskToleranceConstraint: 'low' | 'moderate' | 'high';
-  priceToValueConstraint: 'low' | 'moderate' | 'high';
-}
-
-export function deriveConstraints(formData: DiagnosticFormData): ConstraintValues | null {
-  const { icpIndustry, icpSize, icpMaturity, pricingStructure, fulfillmentComplexity, offerType } = formData;
-  
-  if (!icpIndustry || !icpSize || !icpMaturity || !pricingStructure || !fulfillmentComplexity || !offerType) {
-    return null;
-  }
-
-  const lowSizes: ICPSize[] = ['solo_founder', '1_5_employees'];
-  const highSizes: ICPSize[] = ['21_100_employees', '100_plus_employees'];
-  const lowMaturity: ICPMaturity[] = ['pre_revenue', 'early_traction'];
-
-  return {
-    buyingPowerConstraint: lowSizes.includes(icpSize) ? 'low' : highSizes.includes(icpSize) ? 'high' : 'moderate',
-    maturityConstraint: icpMaturity,
-    urgencyConstraint: offerType === 'outbound_sales_enablement' ? 'high' : offerType === 'demand_creation' ? 'low' : 'moderate',
-    fulfillmentComplexityConstraint: fulfillmentComplexity,
-    riskToleranceConstraint: lowMaturity.includes(icpMaturity) ? 'low' : 'moderate',
-    priceToValueConstraint: 'moderate',
-  };
 }
