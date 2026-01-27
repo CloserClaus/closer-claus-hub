@@ -497,6 +497,8 @@ export function detectViolations(formData: DiagnosticFormData): Violation[] {
       fixCategory: 'pricing_shift',
     });
   }
+  
+  return violations;
 }
 
 // ========== VIOLATION SORTING BY SEVERITY ==========
