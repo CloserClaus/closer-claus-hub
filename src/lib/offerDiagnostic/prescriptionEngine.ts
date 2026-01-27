@@ -145,14 +145,14 @@ function getExecutionFeasibilityRecommendations(formData: DiagnosticFormData): s
   }
   
   if (formData.pricingStructure === 'usage_based') {
-    if (formData.usageOutputType === 'task_based' && formData.icpIndustry === 'local_services') {
-      recs.push('Task-based pricing poorly aligns with Local Services. Consider lead or conversion-based.');
+    if (formData.usageOutputType === 'credits' && formData.icpIndustry === 'local_services') {
+      recs.push('Credits-based pricing poorly aligns with Local Services. Consider API calls or seats.');
     }
-    if (formData.usageOutputType === 'lead_based' && formData.icpIndustry === 'dtc_ecommerce') {
-      recs.push('Lead-based pricing poorly aligns with DTC. Consider conversion-based.');
+    if (formData.usageOutputType === 'api_calls' && formData.icpIndustry === 'dtc_ecommerce') {
+      recs.push('API calls-based pricing poorly aligns with DTC. Consider seats or bandwidth.');
     }
-    if (formData.usageOutputType === 'conversion_based') {
-      recs.push('Conversion-based usage aligns well with DTC, B2B Agency, and SaaS.');
+    if (formData.usageOutputType === 'seats') {
+      recs.push('Seats-based usage aligns well with B2B Agency and SaaS.');
     }
   }
 

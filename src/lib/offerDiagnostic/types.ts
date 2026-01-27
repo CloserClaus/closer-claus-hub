@@ -139,7 +139,31 @@ export type PricingStructure =
   | 'recurring'
   | 'one_time'
   | 'performance_only'
-  | 'usage_based';
+  | 'usage_based'
+  | 'hybrid';
+
+export type HybridRetainerTier =
+  | 'under_150'
+  | '150_500'
+  | '500_2k'
+  | '2k_5k'
+  | '5k_plus';
+
+export type PerformanceBasis =
+  | 'per_appointment'
+  | 'per_opportunity'
+  | 'per_closed_deal'
+  | 'percent_revenue'
+  | 'percent_profit'
+  | 'percent_ad_spend';
+
+export type PerformanceCompTier =
+  | 'under_15_percent'
+  | '15_30_percent'
+  | 'over_30_percent'
+  | 'under_250_unit'
+  | '250_500_unit'
+  | 'over_500_unit';
 
 export type RecurringPriceTier = 
   | 'under_150'
@@ -154,13 +178,14 @@ export type OneTimePriceTier =
   | '10k_plus';
 
 export type UsageOutputType = 
-  | 'lead_based'
-  | 'conversion_based'
-  | 'task_based';
+  | 'api_calls'
+  | 'seats'
+  | 'credits'
+  | 'bandwidth';
 
 export type UsageVolumeTier = 
   | 'low'
-  | 'mid'
+  | 'medium'
   | 'high';
 
 export type FulfillmentComplexity = 
@@ -191,6 +216,10 @@ export interface DiagnosticFormData {
   oneTimePriceTier: OneTimePriceTier | null;
   usageOutputType: UsageOutputType | null;
   usageVolumeTier: UsageVolumeTier | null;
+  // Hybrid pricing fields
+  hybridRetainerTier: HybridRetainerTier | null;
+  performanceBasis: PerformanceBasis | null;
+  performanceCompTier: PerformanceCompTier | null;
   riskModel: RiskModel | null;
   fulfillmentComplexity: FulfillmentComplexity | null;
   proofLevel: ProofLevel | null;           // Market proof/validation

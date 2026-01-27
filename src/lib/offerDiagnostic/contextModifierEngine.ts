@@ -95,7 +95,8 @@ const PRICING_BOOST: Record<PricingStructure, number> = {
   recurring: 0,
   one_time: 0,
   performance_only: 2,
-  usage_based: 1, // Treat as hybrid-like
+  usage_based: 1,
+  hybrid: 1, // Hybrid is like usage-based
 };
 
 function calculateMechanismStrength(

@@ -118,8 +118,8 @@ function calculatePricingFit(
   } else if (pricingStructure === 'one_time' && oneTimePriceTier) {
     priceTier = ONE_TIME_PRICE_TO_TIER[oneTimePriceTier];
   } else if (pricingStructure === 'usage_based' && usageVolumeTier) {
-    priceTier = usageVolumeTier === 'low' ? 2 : usageVolumeTier === 'mid' ? 3 : 4;
-  } else if (pricingStructure === 'performance_only') {
+    priceTier = usageVolumeTier === 'low' ? 2 : usageVolumeTier === 'medium' ? 3 : 4;
+  } else if (pricingStructure === 'performance_only' || pricingStructure === 'hybrid') {
     priceTier = 3; // neutral baseline
   }
   
@@ -229,6 +229,7 @@ const SWITCHING_COST_BASE: Record<PricingStructure, number> = {
   one_time: 4,
   performance_only: 6,
   usage_based: 10,
+  hybrid: 10, // Hybrid is similar to usage-based
 };
 
 const FULFILLMENT_SWITCHING_MODIFIER: Record<FulfillmentComplexity, number> = {
@@ -307,6 +308,14 @@ function isFormComplete(formData: DiagnosticFormData): boolean {
     return false;
   }
   if (pricingStructure === 'usage_based' && (!formData.usageOutputType || !formData.usageVolumeTier)) {
+    return false;
+  }
+  // Hybrid requires retainer tier, performance basis, and comp tier
+  if (pricingStructure === 'hybrid' && (!formData.hybridRetainerTier || !formData.performanceBasis || !formData.performanceCompTier)) {
+    return false;
+  }
+  // Performance only requires performance basis and comp tier
+  if (pricingStructure === 'performance_only' && (!formData.performanceBasis || !formData.performanceCompTier)) {
     return false;
   }
 
@@ -398,6 +407,84 @@ export function getPromiseFulfillmentFit(promise: Promise, fulfillmentComplexity
   return PROMISE_FULFILLMENT_FIT[promise][fulfillmentComplexity];
 }
 
+// ========== PERFORMANCE MODIFIERS ==========
+import type { PerformanceBasis, PerformanceCompTier, HybridRetainerTier } from './types';
+
+// Performance basis modifiers for outboundFit and buyingPower
+const PERFORMANCE_BASIS_MODIFIERS: Record<PerformanceBasis, { outboundFit: number; buyingPower: number }> = {
+  per_appointment: { outboundFit: 3, buyingPower: 2 },
+  per_opportunity: { outboundFit: 2, buyingPower: 2 },
+  per_closed_deal: { outboundFit: 1, buyingPower: 1 },
+  percent_revenue: { outboundFit: -3, buyingPower: -3 },
+  percent_profit: { outboundFit: -2, buyingPower: -2 },
+  percent_ad_spend: { outboundFit: -1, buyingPower: -2 },
+};
+
+// Performance comp tier modifiers for outboundFit and riskAlignment
+const PERFORMANCE_COMP_TIER_MODIFIERS: Record<PerformanceCompTier, { outboundFit: number; riskAlignment: number }> = {
+  under_15_percent: { outboundFit: 0, riskAlignment: 0 },
+  '15_30_percent': { outboundFit: 0, riskAlignment: 0 },
+  over_30_percent: { outboundFit: -2, riskAlignment: -2 },
+  under_250_unit: { outboundFit: 0, riskAlignment: 0 },
+  '250_500_unit': { outboundFit: 0, riskAlignment: 0 },
+  over_500_unit: { outboundFit: -2, riskAlignment: -2 },
+};
+
+// Risk alignment modifiers based on performance basis
+const PERFORMANCE_BASIS_RISK_MODIFIERS: Record<PerformanceBasis, number> = {
+  per_appointment: 5,
+  per_opportunity: 4,
+  per_closed_deal: 2,
+  percent_revenue: 3,
+  percent_profit: 2,
+  percent_ad_spend: 1,
+};
+
+function applyPerformanceModifiers(
+  dimensionScores: DimensionScores,
+  formData: DiagnosticFormData
+): DimensionScores {
+  const { pricingStructure, performanceBasis, performanceCompTier, fulfillmentComplexity } = formData;
+  
+  // Only apply modifiers for hybrid or performance_only
+  if (pricingStructure !== 'hybrid' && pricingStructure !== 'performance_only') {
+    return dimensionScores;
+  }
+  
+  const modifiedScores = { ...dimensionScores };
+  
+  // Apply performance basis modifiers
+  if (performanceBasis) {
+    const basisMods = PERFORMANCE_BASIS_MODIFIERS[performanceBasis];
+    modifiedScores.outboundFit = Math.max(0, Math.min(20, modifiedScores.outboundFit + basisMods.outboundFit));
+    modifiedScores.buyingPower = Math.max(0, Math.min(20, modifiedScores.buyingPower + basisMods.buyingPower));
+    
+    // Apply risk alignment modifiers from performance basis
+    const riskMod = PERFORMANCE_BASIS_RISK_MODIFIERS[performanceBasis];
+    modifiedScores.riskAlignment = Math.max(0, Math.min(10, modifiedScores.riskAlignment + Math.floor(riskMod / 2)));
+  }
+  
+  // Apply performance comp tier modifiers
+  if (performanceCompTier) {
+    const tierMods = PERFORMANCE_COMP_TIER_MODIFIERS[performanceCompTier];
+    modifiedScores.outboundFit = Math.max(0, Math.min(20, modifiedScores.outboundFit + tierMods.outboundFit));
+    modifiedScores.riskAlignment = Math.max(0, Math.min(10, modifiedScores.riskAlignment + tierMods.riskAlignment));
+  }
+  
+  // Apply execution feasibility modifiers for specific combinations
+  if (performanceBasis && fulfillmentComplexity) {
+    if (performanceBasis === 'percent_revenue' && fulfillmentComplexity === 'coaching_advisory') {
+      modifiedScores.executionFeasibility = Math.max(0, modifiedScores.executionFeasibility - 3);
+    } else if (performanceBasis === 'percent_revenue' && fulfillmentComplexity === 'package_based') {
+      modifiedScores.executionFeasibility = Math.max(0, modifiedScores.executionFeasibility - 1);
+    } else if (performanceBasis === 'per_appointment' && fulfillmentComplexity === 'staffing_placement') {
+      modifiedScores.executionFeasibility = Math.min(15, modifiedScores.executionFeasibility + 2);
+    }
+  }
+  
+  return modifiedScores;
+}
+
 // ========== MAIN SCORING FUNCTION ==========
 export function calculateScore(formData: DiagnosticFormData): ScoringResult | null {
   if (!isFormComplete(formData)) {
@@ -406,17 +493,30 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
 
   const { 
     scoringSegment, pricingStructure, recurringPriceTier, oneTimePriceTier,
-    usageVolumeTier, proofLevel, riskModel, fulfillmentComplexity, promise 
+    usageVolumeTier, proofLevel, riskModel, fulfillmentComplexity, promise,
+    hybridRetainerTier
   } = formData;
 
-  const dimensionScores: DimensionScores = {
+  // For hybrid pricing, use the hybrid retainer tier as the recurring price tier for pricing fit calculation
+  const effectiveRecurringTier = pricingStructure === 'hybrid' ? hybridRetainerTier : recurringPriceTier;
+
+  let dimensionScores: DimensionScores = {
     painUrgency: calculatePainUrgency(scoringSegment!),
     buyingPower: calculateBuyingPower(scoringSegment!),
     executionFeasibility: calculateExecutionFeasibility(fulfillmentComplexity!),
-    pricingFit: calculatePricingFit(scoringSegment!, pricingStructure!, recurringPriceTier, oneTimePriceTier, usageVolumeTier),
+    pricingFit: calculatePricingFit(
+      scoringSegment!, 
+      pricingStructure === 'hybrid' ? 'recurring' : pricingStructure!, // Treat hybrid as recurring for base pricing
+      effectiveRecurringTier, 
+      oneTimePriceTier, 
+      usageVolumeTier
+    ),
     riskAlignment: calculateRiskAlignment(proofLevel!, riskModel!),
     outboundFit: calculateOutboundFit(scoringSegment!, proofLevel!, promise!),
   };
+  
+  // Apply performance modifiers for hybrid/performance_only
+  dimensionScores = applyPerformanceModifiers(dimensionScores, formData);
 
   const switchingCost = calculateSwitchingCost(pricingStructure!, fulfillmentComplexity!);
   
