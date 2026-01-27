@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Upload, FileText, X, Check, AlertCircle, Download, AlertTriangle } from 'lucide-react';
+import { Upload, FileText, X, Check, AlertCircle, Download, AlertTriangle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -39,16 +39,32 @@ interface ColumnMapping {
   [csvColumn: string]: string;
 }
 
+// All available lead fields including Apollo enrichment fields
 const LEAD_FIELDS = [
-  { value: 'first_name', label: 'First Name', required: true },
-  { value: 'last_name', label: 'Last Name', required: true },
+  { value: 'first_name', label: 'First Name', required: false },
+  { value: 'last_name', label: 'Last Name', required: false },
   { value: 'email', label: 'Email', required: false },
   { value: 'phone', label: 'Phone', required: false },
   { value: 'company', label: 'Company', required: false },
   { value: 'title', label: 'Job Title', required: false },
   { value: 'notes', label: 'Notes', required: false },
+  // Apollo enrichment fields
+  { value: 'linkedin_url', label: 'LinkedIn URL', required: false },
+  { value: 'company_domain', label: 'Company Domain', required: false },
+  { value: 'company_linkedin_url', label: 'Company LinkedIn', required: false },
+  { value: 'city', label: 'City', required: false },
+  { value: 'state', label: 'State', required: false },
+  { value: 'country', label: 'Country', required: false },
+  { value: 'industry', label: 'Industry', required: false },
+  { value: 'department', label: 'Department', required: false },
+  { value: 'seniority', label: 'Seniority', required: false },
+  { value: 'employee_count', label: 'Company Size', required: false },
+  { value: 'source', label: 'Source', required: false },
   { value: '_skip', label: 'Skip this column', required: false },
 ];
+
+// Minimum required fields count
+const MIN_REQUIRED_FIELDS = 2;
 
 export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) {
   const { user } = useAuth();
@@ -121,13 +137,25 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
   const autoMapColumns = (csvHeaders: string[]) => {
     const mapping: ColumnMapping = {};
     const fieldMappings: { [key: string]: string[] } = {
-      first_name: ['first_name', 'firstname', 'first name', 'given name', 'givenname', 'fname'],
-      last_name: ['last_name', 'lastname', 'last name', 'surname', 'family name', 'familyname', 'lname'],
-      email: ['email', 'e-mail', 'email address', 'emailaddress'],
-      phone: ['phone', 'telephone', 'phone number', 'phonenumber', 'mobile', 'cell', 'tel'],
-      company: ['company', 'company name', 'companyname', 'organization', 'organisation', 'org'],
-      title: ['title', 'job title', 'jobtitle', 'position', 'role'],
+      first_name: ['first_name', 'firstname', 'first name', 'given name', 'givenname', 'fname', 'first'],
+      last_name: ['last_name', 'lastname', 'last name', 'surname', 'family name', 'familyname', 'lname', 'last'],
+      email: ['email', 'e-mail', 'email address', 'emailaddress', 'email_address'],
+      phone: ['phone', 'telephone', 'phone number', 'phonenumber', 'mobile', 'cell', 'tel', 'phone_number'],
+      company: ['company', 'company name', 'companyname', 'organization', 'organisation', 'org', 'company_name'],
+      title: ['title', 'job title', 'jobtitle', 'position', 'role', 'job_title'],
       notes: ['notes', 'note', 'comments', 'comment', 'description'],
+      // Apollo enrichment field mappings
+      linkedin_url: ['linkedin_url', 'linkedin', 'linkedin url', 'linkedinurl', 'linkedin_profile', 'linkedin profile'],
+      company_domain: ['company_domain', 'domain', 'website', 'company domain', 'companydomain', 'company_website'],
+      company_linkedin_url: ['company_linkedin_url', 'company linkedin', 'company_linkedin', 'companylinkedin'],
+      city: ['city', 'location_city', 'location city'],
+      state: ['state', 'province', 'region', 'location_state', 'location state'],
+      country: ['country', 'location_country', 'location country', 'nation'],
+      industry: ['industry', 'sector', 'vertical', 'company_industry'],
+      department: ['department', 'dept', 'team', 'division'],
+      seniority: ['seniority', 'level', 'seniority_level', 'job_level', 'joblevel'],
+      employee_count: ['employee_count', 'employees', 'company_size', 'company size', 'companysize', 'headcount', 'num_employees'],
+      source: ['source', 'lead_source', 'lead source', 'origin'],
     };
 
     csvHeaders.forEach(header => {
@@ -194,17 +222,28 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
     }));
   };
 
+  const getMappedFieldsCount = (): number => {
+    return Object.values(columnMapping).filter(field => field !== '_skip').length;
+  };
+
   const validateMapping = (): boolean => {
-    const mappedFields = Object.values(columnMapping);
-    const hasFirstName = mappedFields.includes('first_name');
-    const hasLastName = mappedFields.includes('last_name');
+    const mappedFields = Object.values(columnMapping).filter(f => f !== '_skip');
+    const mappedFieldsCount = mappedFields.length;
 
     const newErrors: string[] = [];
-    if (!hasFirstName) {
-      newErrors.push('First Name is required');
+    
+    // Check minimum 2 fields mapped
+    if (mappedFieldsCount < MIN_REQUIRED_FIELDS) {
+      newErrors.push(`At least ${MIN_REQUIRED_FIELDS} fields must be mapped (currently ${mappedFieldsCount})`);
     }
-    if (!hasLastName) {
-      newErrors.push('Last Name is required');
+
+    // Check for at least one identifying field (name, email, or phone)
+    const hasIdentifyingField = mappedFields.some(f => 
+      ['first_name', 'last_name', 'email', 'phone'].includes(f)
+    );
+    
+    if (!hasIdentifyingField) {
+      newErrors.push('At least one identifying field is required (First Name, Last Name, Email, or Phone)');
     }
 
     setErrors(newErrors);
@@ -219,7 +258,7 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
       // Fetch existing leads for this workspace
       const { data: existingLeads, error } = await supabase
         .from('leads')
-        .select('email, first_name, last_name, company')
+        .select('email, first_name, last_name, company, phone')
         .eq('workspace_id', workspaceId);
 
       if (error) {
@@ -231,6 +270,9 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
       const existingEmails = new Set(
         existingLeads?.filter(l => l.email).map(l => l.email!.toLowerCase()) || []
       );
+      const existingPhones = new Set(
+        existingLeads?.filter(l => l.phone).map(l => l.phone!) || []
+      );
       const existingNameCompanyCombos = new Set(
         existingLeads?.map(l => 
           `${l.first_name?.toLowerCase()}-${l.last_name?.toLowerCase()}-${l.company?.toLowerCase() || ''}`
@@ -239,11 +281,13 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
 
       // Also track duplicates within the CSV itself
       const csvEmails = new Set<string>();
+      const csvPhones = new Set<string>();
       const csvNameCompanyCombos = new Set<string>();
 
       leads.forEach((lead, index) => {
         const email = lead.email?.toLowerCase();
-        const nameCombo = `${lead.first_name.toLowerCase()}-${lead.last_name.toLowerCase()}-${lead.company?.toLowerCase() || ''}`;
+        const phone = lead.phone;
+        const nameCombo = `${(lead.first_name || '').toLowerCase()}-${(lead.last_name || '').toLowerCase()}-${(lead.company || '').toLowerCase()}`;
 
         // Check email duplicates (most reliable)
         if (email) {
@@ -258,8 +302,21 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
           csvEmails.add(email);
         }
 
-        // Check name+company duplicates if no email
-        if (!email) {
+        // Check phone duplicates
+        if (phone) {
+          if (existingPhones.has(phone)) {
+            foundDuplicates.push({ index, reason: `Phone "${lead.phone}" already exists` });
+            return;
+          }
+          if (csvPhones.has(phone)) {
+            foundDuplicates.push({ index, reason: `Duplicate phone "${lead.phone}" in CSV` });
+            return;
+          }
+          csvPhones.add(phone);
+        }
+
+        // Check name+company duplicates if no email or phone
+        if (!email && !phone && lead.first_name && lead.last_name) {
           if (existingNameCompanyCombos.has(nameCombo)) {
             foundDuplicates.push({ 
               index, 
@@ -289,7 +346,10 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
   const handleProceedToPreview = async () => {
     if (validateMapping()) {
       const leads = rows.map(transformRowToLead);
-      const validLeads = leads.filter(lead => lead.first_name && lead.last_name);
+      // Filter leads that have at least some data
+      const validLeads = leads.filter(lead => 
+        lead.first_name || lead.last_name || lead.email || lead.phone
+      );
       const foundDuplicates = await checkForDuplicates(validLeads);
       setDuplicates(foundDuplicates);
       setStep('preview');
@@ -300,18 +360,27 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
     const lead: {
       workspace_id: string;
       created_by: string;
-      first_name: string;
-      last_name: string;
+      first_name?: string;
+      last_name?: string;
       email?: string;
       phone?: string;
       company?: string;
       title?: string;
       notes?: string;
+      linkedin_url?: string;
+      company_domain?: string;
+      company_linkedin_url?: string;
+      city?: string;
+      state?: string;
+      country?: string;
+      industry?: string;
+      department?: string;
+      seniority?: string;
+      employee_count?: string;
+      source?: string;
     } = {
       workspace_id: workspaceId,
       created_by: user!.id,
-      first_name: '',
-      last_name: '',
     };
 
     Object.entries(columnMapping).forEach(([csvColumn, leadField]) => {
@@ -335,7 +404,12 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
 
     try {
       const leads = rows.map(transformRowToLead);
-      let validLeads = leads.filter(lead => lead.first_name && lead.last_name);
+      
+      // Filter leads that have at least some identifying data
+      let validLeads = leads.filter(lead => 
+        lead.first_name || lead.last_name || lead.email || lead.phone
+      );
+      
       const invalidCount = leads.length - validLeads.length;
 
       // Filter out duplicates if skip is enabled
@@ -345,18 +419,25 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
       }
 
       if (validLeads.length === 0) {
-        toast.error('No valid leads to upload (all are duplicates or invalid)');
+        toast.error('No valid leads to upload (all are duplicates or have no identifying data)');
         setIsUploading(false);
         return;
       }
+
+      // Ensure first_name and last_name have default values if missing
+      const leadsToInsert = validLeads.map(lead => ({
+        ...lead,
+        first_name: lead.first_name || 'Unknown',
+        last_name: lead.last_name || 'Contact',
+      }));
 
       // Upload in batches of 50
       const batchSize = 50;
       let uploadedCount = 0;
       const failedRows: number[] = [];
 
-      for (let i = 0; i < validLeads.length; i += batchSize) {
-        const batch = validLeads.slice(i, i + batchSize);
+      for (let i = 0; i < leadsToInsert.length; i += batchSize) {
+        const batch = leadsToInsert.slice(i, i + batchSize);
         
         const { error } = await supabase
           .from('leads')
@@ -371,14 +452,14 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
           uploadedCount += batch.length;
         }
 
-        setUploadProgress(Math.round(((i + batch.length) / validLeads.length) * 100));
+        setUploadProgress(Math.round(((i + batch.length) / leadsToInsert.length) * 100));
       }
 
       if (failedRows.length > 0) {
         setErrors([`Failed to upload ${failedRows.length} leads`]);
         toast.error(`Uploaded ${uploadedCount} leads, ${failedRows.length} failed`);
       } else {
-        toast.success(`Successfully uploaded ${uploadedCount} leads${invalidCount > 0 ? ` (${invalidCount} skipped due to missing required fields)` : ''}`);
+        toast.success(`Successfully uploaded ${uploadedCount} leads${invalidCount > 0 ? ` (${invalidCount} skipped due to missing data)` : ''}`);
         setStep('complete');
         setTimeout(() => {
           onSuccess();
@@ -393,7 +474,7 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
   };
 
   const downloadTemplate = () => {
-    const template = 'First Name,Last Name,Email,Phone,Company,Job Title,Notes\nJohn,Doe,john@example.com,+1234567890,Acme Corp,Sales Manager,Interested in our product\nJane,Smith,jane@example.com,+0987654321,Tech Inc,CTO,Follow up next week';
+    const template = 'First Name,Last Name,Email,Phone,Company,Job Title,LinkedIn URL,Company Domain,City,State,Country,Industry,Department,Seniority,Company Size,Notes\nJohn,Doe,john@example.com,+1234567890,Acme Corp,Sales Manager,https://linkedin.com/in/johndoe,acme.com,New York,NY,USA,Technology,Sales,Manager,51-200,Interested in our product\nJane,Smith,jane@example.com,+0987654321,Tech Inc,CTO,https://linkedin.com/in/janesmith,techinc.io,San Francisco,CA,USA,SaaS,Engineering,C-Level,11-50,Follow up next week';
     const blob = new Blob([template], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -404,6 +485,7 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
   };
 
   const previewLeads = rows.slice(0, 5).map(transformRowToLead);
+  const mappedFieldsCount = getMappedFieldsCount();
 
   return (
     <div className="space-y-6">
@@ -430,6 +512,19 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
             className="hidden"
           />
           
+          <div className="p-4 rounded-lg bg-muted/50 border border-border">
+            <div className="flex items-start gap-3">
+              <Info className="h-5 w-5 text-primary mt-0.5" />
+              <div className="text-sm">
+                <p className="font-medium mb-1">Flexible Import</p>
+                <p className="text-muted-foreground">
+                  You only need at least 2 fields to import leads. Supported fields include: name, email, phone, 
+                  company, job title, LinkedIn URL, location, industry, and more.
+                </p>
+              </div>
+            </div>
+          </div>
+          
           <div className="flex justify-between items-center pt-4 border-t border-border">
             <Button variant="ghost" onClick={downloadTemplate}>
               <Download className="h-4 w-4 mr-2" />
@@ -450,6 +545,9 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
               <p className="font-medium">{file?.name}</p>
               <p className="text-sm text-muted-foreground">{rows.length} rows found</p>
             </div>
+            <Badge variant={mappedFieldsCount >= MIN_REQUIRED_FIELDS ? "default" : "secondary"}>
+              {mappedFieldsCount} fields mapped
+            </Badge>
             <Button
               variant="ghost"
               size="icon"
@@ -468,34 +566,37 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Map Columns</CardTitle>
               <CardDescription>
-                Match your CSV columns to lead fields. First Name and Last Name are required.
+                Match your CSV columns to lead fields. Minimum 2 fields required, including at least one identifying field (name, email, or phone).
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {headers.map(header => (
-                <div key={header} className="flex items-center gap-4">
-                  <span className="w-1/3 text-sm font-medium truncate" title={header}>
-                    {header}
-                  </span>
-                  <span className="text-muted-foreground">→</span>
-                  <Select
-                    value={columnMapping[header] || '_skip'}
-                    onValueChange={(value) => handleMappingChange(header, value)}
-                  >
-                    <SelectTrigger className="w-2/3">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {LEAD_FIELDS.map(field => (
-                        <SelectItem key={field.value} value={field.value}>
-                          {field.label}
-                          {field.required && <span className="text-destructive ml-1">*</span>}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <ScrollArea className="max-h-[300px]">
+                <div className="space-y-3 pr-4">
+                  {headers.map(header => (
+                    <div key={header} className="flex items-center gap-4">
+                      <span className="w-1/3 text-sm font-medium truncate" title={header}>
+                        {header}
+                      </span>
+                      <span className="text-muted-foreground">→</span>
+                      <Select
+                        value={columnMapping[header] || '_skip'}
+                        onValueChange={(value) => handleMappingChange(header, value)}
+                      >
+                        <SelectTrigger className="w-2/3">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {LEAD_FIELDS.map(field => (
+                            <SelectItem key={field.value} value={field.value}>
+                              {field.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </ScrollArea>
             </CardContent>
           </Card>
 
@@ -582,21 +683,23 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>First Name</TableHead>
-                  <TableHead>Last Name</TableHead>
+                  <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Phone</TableHead>
                   <TableHead>Company</TableHead>
+                  <TableHead>Title</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {previewLeads.map((lead, index) => (
                   <TableRow key={index}>
-                    <TableCell>{lead.first_name || '-'}</TableCell>
-                    <TableCell>{lead.last_name || '-'}</TableCell>
+                    <TableCell>
+                      {[lead.first_name, lead.last_name].filter(Boolean).join(' ') || '-'}
+                    </TableCell>
                     <TableCell>{lead.email || '-'}</TableCell>
                     <TableCell>{lead.phone || '-'}</TableCell>
                     <TableCell>{lead.company || '-'}</TableCell>
+                    <TableCell>{lead.title || '-'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -618,7 +721,7 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
               Back
             </Button>
             <Button onClick={handleUpload} disabled={isUploading}>
-              {isUploading ? 'Uploading...' : `Upload ${rows.length} Leads`}
+              {isUploading ? 'Uploading...' : `Upload ${skipDuplicates ? rows.length - duplicates.length : rows.length} Leads`}
             </Button>
           </div>
         </div>

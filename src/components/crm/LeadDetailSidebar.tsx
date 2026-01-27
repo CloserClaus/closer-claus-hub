@@ -13,6 +13,12 @@ import {
   MessageSquare,
   PhoneCall,
   FileText,
+  Globe,
+  Linkedin,
+  MapPin,
+  Users,
+  Layers,
+  Award,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +41,17 @@ interface Lead {
   last_contacted_at: string | null;
   created_at: string;
   assigned_to?: string | null;
+  // Apollo enrichment fields
+  linkedin_url?: string | null;
+  company_domain?: string | null;
+  company_linkedin_url?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  industry?: string | null;
+  department?: string | null;
+  seniority?: string | null;
+  employee_count?: string | null;
 }
 
 interface Activity {
@@ -141,7 +158,15 @@ export function LeadDetailSidebar({
     }
   };
 
+  const formatLocation = () => {
+    const parts = [lead?.city, lead?.state, lead?.country].filter(Boolean);
+    return parts.join(', ');
+  };
+
   if (!lead) return null;
+
+  const hasEnrichmentData = lead.linkedin_url || lead.company_domain || lead.industry || 
+    lead.department || lead.seniority || lead.employee_count || formatLocation();
 
   return (
     <>
@@ -161,6 +186,11 @@ export function LeadDetailSidebar({
                       {lead.company}
                       {lead.title && ` • ${lead.title}`}
                     </p>
+                  )}
+                  {lead.seniority && (
+                    <Badge variant="outline" className="mt-2 text-xs">
+                      {lead.seniority}
+                    </Badge>
                   )}
                 </div>
                 <div className="flex gap-2">
@@ -211,7 +241,18 @@ export function LeadDetailSidebar({
                         <span className="text-sm">{lead.phone}</span>
                       </a>
                     )}
-                    {!lead.email && !lead.phone && (
+                    {lead.linkedin_url && (
+                      <a
+                        href={lead.linkedin_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                      >
+                        <Linkedin className="h-4 w-4 text-primary" />
+                        <span className="text-sm">LinkedIn Profile</span>
+                      </a>
+                    )}
+                    {!lead.email && !lead.phone && !lead.linkedin_url && (
                       <p className="text-sm text-muted-foreground italic">
                         No contact information
                       </p>
@@ -220,6 +261,66 @@ export function LeadDetailSidebar({
                 </div>
 
                 <Separator />
+
+                {/* Company & Professional Info */}
+                {hasEnrichmentData && (
+                  <>
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                        Professional Details
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        {lead.department && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Layers className="h-4 w-4 text-muted-foreground" />
+                            <span>{lead.department}</span>
+                          </div>
+                        )}
+                        {lead.industry && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Briefcase className="h-4 w-4 text-muted-foreground" />
+                            <span>{lead.industry}</span>
+                          </div>
+                        )}
+                        {lead.employee_count && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Users className="h-4 w-4 text-muted-foreground" />
+                            <span>{lead.employee_count} employees</span>
+                          </div>
+                        )}
+                        {formatLocation() && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <MapPin className="h-4 w-4 text-muted-foreground" />
+                            <span>{formatLocation()}</span>
+                          </div>
+                        )}
+                        {lead.company_domain && (
+                          <a
+                            href={`https://${lead.company_domain}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-sm text-primary hover:underline"
+                          >
+                            <Globe className="h-4 w-4" />
+                            <span>{lead.company_domain}</span>
+                          </a>
+                        )}
+                        {lead.company_linkedin_url && (
+                          <a
+                            href={lead.company_linkedin_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-sm text-primary hover:underline"
+                          >
+                            <Linkedin className="h-4 w-4" />
+                            <span>Company LinkedIn</span>
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    <Separator />
+                  </>
+                )}
 
                 {/* Notes */}
                 {lead.notes && (

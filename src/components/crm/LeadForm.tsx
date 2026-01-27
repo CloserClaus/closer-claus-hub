@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 const leadSchema = z.object({
   first_name: z.string().trim().min(1, 'First name is required').max(50),
@@ -18,6 +20,17 @@ const leadSchema = z.object({
   company: z.string().trim().max(100).optional().or(z.literal('')),
   title: z.string().trim().max(100).optional().or(z.literal('')),
   notes: z.string().trim().max(1000).optional().or(z.literal('')),
+  // Apollo enrichment fields
+  linkedin_url: z.string().trim().url('Invalid URL').optional().or(z.literal('')),
+  company_domain: z.string().trim().max(255).optional().or(z.literal('')),
+  company_linkedin_url: z.string().trim().url('Invalid URL').optional().or(z.literal('')),
+  city: z.string().trim().max(100).optional().or(z.literal('')),
+  state: z.string().trim().max(100).optional().or(z.literal('')),
+  country: z.string().trim().max(100).optional().or(z.literal('')),
+  industry: z.string().trim().max(100).optional().or(z.literal('')),
+  department: z.string().trim().max(100).optional().or(z.literal('')),
+  seniority: z.string().trim().max(100).optional().or(z.literal('')),
+  employee_count: z.string().trim().max(50).optional().or(z.literal('')),
 });
 
 type LeadFormData = z.infer<typeof leadSchema>;
@@ -31,6 +44,16 @@ interface Lead {
   company: string | null;
   title: string | null;
   notes: string | null;
+  linkedin_url?: string | null;
+  company_domain?: string | null;
+  company_linkedin_url?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  industry?: string | null;
+  department?: string | null;
+  seniority?: string | null;
+  employee_count?: string | null;
 }
 
 interface LeadFormProps {
@@ -45,6 +68,7 @@ export function LeadForm({ lead, workspaceId, defaultAssignee, onSuccess, onCanc
   const { user } = useAuth();
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const form = useForm<LeadFormData>({
     resolver: zodResolver(leadSchema),
@@ -56,6 +80,16 @@ export function LeadForm({ lead, workspaceId, defaultAssignee, onSuccess, onCanc
       company: lead?.company || '',
       title: lead?.title || '',
       notes: lead?.notes || '',
+      linkedin_url: lead?.linkedin_url || '',
+      company_domain: lead?.company_domain || '',
+      company_linkedin_url: lead?.company_linkedin_url || '',
+      city: lead?.city || '',
+      state: lead?.state || '',
+      country: lead?.country || '',
+      industry: lead?.industry || '',
+      department: lead?.department || '',
+      seniority: lead?.seniority || '',
+      employee_count: lead?.employee_count || '',
     },
   });
 
@@ -69,7 +103,23 @@ export function LeadForm({ lead, workspaceId, defaultAssignee, onSuccess, onCanc
       company: lead?.company || '',
       title: lead?.title || '',
       notes: lead?.notes || '',
+      linkedin_url: lead?.linkedin_url || '',
+      company_domain: lead?.company_domain || '',
+      company_linkedin_url: lead?.company_linkedin_url || '',
+      city: lead?.city || '',
+      state: lead?.state || '',
+      country: lead?.country || '',
+      industry: lead?.industry || '',
+      department: lead?.department || '',
+      seniority: lead?.seniority || '',
+      employee_count: lead?.employee_count || '',
     });
+    
+    // Auto-expand advanced fields if any are populated
+    if (lead && (lead.linkedin_url || lead.company_domain || lead.city || lead.state || 
+        lead.country || lead.industry || lead.department || lead.seniority || lead.employee_count)) {
+      setShowAdvanced(true);
+    }
   }, [lead, form]);
 
   const checkForDuplicates = async (email: string | null, phone: string | null): Promise<{ isDuplicate: boolean; matchedField?: string; existingLead?: { first_name: string; last_name: string; company: string | null } }> => {
@@ -144,6 +194,16 @@ export function LeadForm({ lead, workspaceId, defaultAssignee, onSuccess, onCanc
         company: data.company || null,
         title: data.title || null,
         notes: data.notes || null,
+        linkedin_url: data.linkedin_url || null,
+        company_domain: data.company_domain || null,
+        company_linkedin_url: data.company_linkedin_url || null,
+        city: data.city || null,
+        state: data.state || null,
+        country: data.country || null,
+        industry: data.industry || null,
+        department: data.department || null,
+        seniority: data.seniority || null,
+        employee_count: data.employee_count || null,
         // Auto-assign to creator if defaultAssignee provided (for SDRs)
         ...(defaultAssignee && !lead ? { assigned_to: defaultAssignee } : {}),
       };
@@ -263,6 +323,158 @@ export function LeadForm({ lead, workspaceId, defaultAssignee, onSuccess, onCanc
             )}
           />
         </div>
+
+        <FormField
+          control={form.control}
+          name="linkedin_url"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>LinkedIn URL</FormLabel>
+              <FormControl>
+                <Input {...field} placeholder="https://linkedin.com/in/..." className="bg-muted border-border" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+          <CollapsibleTrigger asChild>
+            <Button type="button" variant="ghost" className="w-full justify-between text-muted-foreground hover:text-foreground">
+              <span>Additional Details</span>
+              {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-4 pt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="company_domain"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Company Domain</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="example.com" className="bg-muted border-border" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="industry"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Industry</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Technology, Finance..." className="bg-muted border-border" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="department"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Department</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Sales, Marketing..." className="bg-muted border-border" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="seniority"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Seniority</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="C-Level, VP, Manager..." className="bg-muted border-border" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="employee_count"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Company Size</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="1-10, 11-50, 51-200..." className="bg-muted border-border" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-3 gap-4">
+              <FormField
+                control={form.control}
+                name="city"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>City</FormLabel>
+                    <FormControl>
+                      <Input {...field} className="bg-muted border-border" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="state"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>State</FormLabel>
+                    <FormControl>
+                      <Input {...field} className="bg-muted border-border" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="country"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Country</FormLabel>
+                    <FormControl>
+                      <Input {...field} className="bg-muted border-border" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="company_linkedin_url"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Company LinkedIn URL</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="https://linkedin.com/company/..." className="bg-muted border-border" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CollapsibleContent>
+        </Collapsible>
 
         <FormField
           control={form.control}
