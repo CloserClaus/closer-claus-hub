@@ -421,7 +421,9 @@ export function detectViolations(formData: DiagnosticFormData): Violation[] {
     }
   }
   
-  // ========== NEW OUTBOUND-RELATED VIOLATIONS ==========
+  // ========== THRESHOLD-BASED VIOLATIONS (Using dimension scores) ==========
+  // Note: These are detected using the cause inference engine post-scoring
+  // The violations below are the primary rule-based violations
   
   // RULE 11 — Low Outbound Fit
   // Trigger: OutboundFit < 10
@@ -433,7 +435,7 @@ export function detectViolations(formData: DiagnosticFormData): Violation[] {
         id: 'low_outbound_fit',
         rule: 'Low Outbound Fit',
         severity: 'high',
-        recommendation: 'Cold outbound will struggle here. This ICP needs education before cold calls. Consider switching to solution-aware verticals like SaaS, adjust your promise to meetings instead of revenue, or use content/partnership channels before outbound.',
+        recommendation: 'Outbound unlikely to convert. This ICP needs education before cold calls. Switch to solution-aware verticals like SaaS, adjust your promise to meetings instead of revenue, or use content/partnership channels first.',
         fixCategory: 'icp_shift',
       });
     }
@@ -450,7 +452,7 @@ export function detectViolations(formData: DiagnosticFormData): Violation[] {
         id: 'proof_promise_mismatch',
         rule: 'Proof Promise Mismatch',
         severity: 'high',
-        recommendation: 'High-trust promise without proof. You\'re making a big promise but have no track record to back it up. Run pilot deals to build case studies, add a conditional guarantee instead of full guarantee, or lower your promise from revenue to booked meetings.',
+        recommendation: 'High-trust promise without proof. Run pilot deals to build case studies, add conditional guarantee instead of full guarantee, or lower promise from revenue to booked meetings.',
         fixCategory: 'risk_shift',
       });
     }
