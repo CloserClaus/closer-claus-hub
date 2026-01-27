@@ -70,6 +70,7 @@ function calculateMaturity(icpMaturity: ICPMaturity): MaturityLevel {
 const FULFILLMENT_MAP: Record<FulfillmentComplexity, FulfillmentType> = {
   custom_dfy: 'Labor',
   package_based: 'Hybrid',
+  productized_service: 'Hybrid',
   coaching_advisory: 'Hybrid',
   software_platform: 'Automation',
   staffing_placement: 'Staffing',
@@ -93,9 +94,12 @@ const MECHANISM_LEVELS: MechanismStrength[] = ['Weak', 'Medium', 'Strong', 'Very
 // Pricing model boost values
 const PRICING_BOOST: Record<PricingStructure, number> = {
   recurring: 0,
+  retainer: 0,
+  hybrid: 1,
   one_time: 0,
+  one_time_project: 0,
   performance_only: 2,
-  usage_based: 1, // Treat as hybrid-like
+  usage_based: 1,
 };
 
 function calculateMechanismStrength(
