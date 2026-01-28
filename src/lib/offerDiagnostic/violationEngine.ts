@@ -10,7 +10,9 @@ import type {
   ScoringSegment,
   ProofLevel,
   RiskModel,
+  OfferType,
 } from './types';
+import { generateInferredContext } from './contextModifierEngine';
 import { 
   getPromiseMaturityFit, 
   getPromiseFulfillmentFit, 
@@ -498,6 +500,81 @@ export function detectViolations(formData: DiagnosticFormData): Violation[] {
     });
   }
   
+  // ========== CONTEXT-AWARE VIOLATIONS (NEW PATCH) ==========
+  
+  const inferredContext = generateInferredContext(formData);
+  
+  // RULE 15 — Proof Mismatch Violation
+  // Trigger: (proof_level in ['None','Weak']) AND (inferProofExpectations='high')
+  const weakProofLevels: ProofLevel[] = ['none', 'weak'];
+  if (
+    proofLevel &&
+    weakProofLevels.includes(proofLevel) &&
+    inferredContext.proofExpectation === 'high'
+  ) {
+    violations.push({
+      id: 'proof_mismatch',
+      rule: 'Proof Mismatch Violation',
+      severity: 'high',
+      recommendation: 'Your ICP expects strong proof but your current proof level is weak. Run 2-3 micro clients to gather screenshots and testimonials, narrow the promise until you have evidence, or stack proof assets before scaling outbound.',
+      fixCategory: 'risk_shift',
+    });
+  }
+  
+  // RULE 16 — Pricing to Budget Mismatch Violation
+  // Trigger: (inferBudgetExpectation='low' AND price_tier in ['$2,000–$5,000/mo','$5,000+/mo']) OR
+  //          (inferBudgetExpectation='medium' AND price_tier='$5,000+/mo')
+  const highPriceTiersArr: RecurringPriceTier[] = ['2k_5k', '5k_plus'];
+  const veryHighPriceTiers: RecurringPriceTier[] = ['5k_plus'];
+  if (
+    pricingStructure === 'recurring' && recurringPriceTier &&
+    (
+      (inferredContext.budgetExpectation === 'low' && highPriceTiersArr.includes(recurringPriceTier)) ||
+      (inferredContext.budgetExpectation === 'medium' && veryHighPriceTiers.includes(recurringPriceTier))
+    )
+  ) {
+    violations.push({
+      id: 'pricing_to_budget_mismatch',
+      rule: 'Pricing to Budget Mismatch Violation',
+      severity: 'high',
+      recommendation: 'Your pricing exceeds what this ICP typically budgets. Move upmarket to ICPs with higher budgets, lower initial retainer and expand later, or switch to hybrid pricing to reduce upfront cost.',
+      fixCategory: 'pricing_shift',
+    });
+  }
+  
+  // RULE 17 — Awareness Channel Mismatch Violation
+  // Trigger: (inferMarketAwareness='problem-unaware' AND offer_type in ['Demand Capture','Outbound & Sales Enablement'])
+  const outboundOfferTypes: OfferType[] = ['demand_capture', 'outbound_sales_enablement'];
+  if (
+    inferredContext.marketAwareness === 'problem-unaware' &&
+    offerType &&
+    outboundOfferTypes.includes(offerType)
+  ) {
+    violations.push({
+      id: 'awareness_channel_mismatch',
+      rule: 'Awareness Channel Mismatch Violation',
+      severity: 'medium',
+      recommendation: 'Problem-unaware ICPs don\'t respond to cold outbound. Move to solution-aware verticals, educate via inbound before outbound, or switch promise to cost-saving or efficiency.',
+      fixCategory: 'icp_shift',
+    });
+  }
+  
+  // RULE 18 — Performance Immaturity Violation
+  // Trigger: (pricing_structure='Performance-only' AND icp_maturity in ['Pre-revenue','Early traction'])
+  if (
+    pricingStructure === 'performance_only' &&
+    icpMaturity &&
+    earlyMaturities.includes(icpMaturity)
+  ) {
+    violations.push({
+      id: 'performance_immaturity',
+      rule: 'Performance Immaturity Violation',
+      severity: 'high',
+      recommendation: 'Performance-only pricing with immature ICPs creates unpredictable cash flow. Add minimum retainer to cover operational load, switch from % revenue to $ per appointment, or only use performance with solution-aware buyers.',
+      fixCategory: 'pricing_shift',
+    });
+  }
+  
   return violations;
 }
 
@@ -509,8 +586,30 @@ const SEVERITY_ORDER: Record<ViolationSeverity, number> = {
   low: 1,
 };
 
+// Custom severity order for new context-aware violations
+const VIOLATION_PRIORITY: Record<string, number> = {
+  performance_immaturity: 10,
+  pricing_to_budget_mismatch: 9,
+  proof_mismatch: 8,
+  awareness_channel_mismatch: 7,
+  // Existing violations get lower priority
+  double_stress: 6,
+  budget_vs_price: 5,
+  proof_risk_mismatch: 5,
+  low_outbound_fit: 5,
+};
+
 export function sortViolationsBySeverity(violations: Violation[]): Violation[] {
-  return [...violations].sort((a, b) => SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity]);
+  return [...violations].sort((a, b) => {
+    // First sort by custom priority if available
+    const aPriority = VIOLATION_PRIORITY[a.id] || 0;
+    const bPriority = VIOLATION_PRIORITY[b.id] || 0;
+    if (aPriority !== bPriority) {
+      return bPriority - aPriority;
+    }
+    // Fall back to severity order
+    return SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity];
+  });
 }
 
 // ========== GET TOP 3 VIOLATIONS ==========
