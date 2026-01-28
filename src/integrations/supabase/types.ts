@@ -38,6 +38,10 @@ export type Database = {
           linkedin_url: string | null
           phone: string | null
           phone_status: string | null
+          readiness_evaluated_at: string | null
+          readiness_score: number | null
+          readiness_signals: string[] | null
+          readiness_verdict: string | null
           search_filters: Json | null
           seniority: string | null
           state: string | null
@@ -67,6 +71,10 @@ export type Database = {
           linkedin_url?: string | null
           phone?: string | null
           phone_status?: string | null
+          readiness_evaluated_at?: string | null
+          readiness_score?: number | null
+          readiness_signals?: string[] | null
+          readiness_verdict?: string | null
           search_filters?: Json | null
           seniority?: string | null
           state?: string | null
@@ -96,6 +104,10 @@ export type Database = {
           linkedin_url?: string | null
           phone?: string | null
           phone_status?: string | null
+          readiness_evaluated_at?: string | null
+          readiness_score?: number | null
+          readiness_signals?: string[] | null
+          readiness_verdict?: string | null
           search_filters?: Json | null
           seniority?: string | null
           state?: string | null
@@ -1483,6 +1495,9 @@ export type Database = {
           linkedin_url: string | null
           notes: string | null
           phone: string | null
+          readiness_notes: string | null
+          readiness_score: number | null
+          readiness_segment: string | null
           seniority: string | null
           source: string | null
           state: string | null
@@ -1511,6 +1526,9 @@ export type Database = {
           linkedin_url?: string | null
           notes?: string | null
           phone?: string | null
+          readiness_notes?: string | null
+          readiness_score?: number | null
+          readiness_segment?: string | null
           seniority?: string | null
           source?: string | null
           state?: string | null
@@ -1539,6 +1557,9 @@ export type Database = {
           linkedin_url?: string | null
           notes?: string | null
           phone?: string | null
+          readiness_notes?: string | null
+          readiness_score?: number | null
+          readiness_segment?: string | null
           seniority?: string | null
           source?: string | null
           state?: string | null
@@ -1714,6 +1735,65 @@ export type Database = {
           workspace_id?: string | null
         }
         Relationships: []
+      }
+      offer_diagnostic_state: {
+        Row: {
+          company_size: string | null
+          created_at: string
+          fulfillment: string | null
+          id: string
+          offer_type: string | null
+          price_tier: string | null
+          pricing_structure: string | null
+          promise: string | null
+          proof_level: string | null
+          risk_model: string | null
+          updated_at: string
+          user_id: string
+          vertical_segment: string | null
+          workspace_id: string
+        }
+        Insert: {
+          company_size?: string | null
+          created_at?: string
+          fulfillment?: string | null
+          id?: string
+          offer_type?: string | null
+          price_tier?: string | null
+          pricing_structure?: string | null
+          promise?: string | null
+          proof_level?: string | null
+          risk_model?: string | null
+          updated_at?: string
+          user_id: string
+          vertical_segment?: string | null
+          workspace_id: string
+        }
+        Update: {
+          company_size?: string | null
+          created_at?: string
+          fulfillment?: string | null
+          id?: string
+          offer_type?: string | null
+          price_tier?: string | null
+          pricing_structure?: string | null
+          promise?: string | null
+          proof_level?: string | null
+          risk_model?: string | null
+          updated_at?: string
+          user_id?: string
+          vertical_segment?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offer_diagnostic_state_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {

@@ -10,6 +10,7 @@ import {
   LayoutGrid,
   Table as TableIcon,
   UserPlus,
+  Zap,
 } from 'lucide-react';
 import { Tables } from '@/integrations/supabase/types';
 import { ResultsTable } from './ResultsTable';
@@ -17,8 +18,11 @@ import { ResultsPagination } from './ResultsPagination';
 import { EnrichmentDialog } from './EnrichmentDialog';
 import { AddToListDialog } from './AddToListDialog';
 import { ImportToCRMDialog } from './ImportToCRMDialog';
+import { EvaluateReadinessDialog } from './EvaluateReadinessDialog';
 import { EnrichmentProgress } from '@/hooks/useApolloSearch';
 import { useImportToCRM } from '@/hooks/useImportToCRM';
+import { useLeadReadinessEvaluation } from '@/hooks/useLeadReadinessEvaluation';
+import { useLeadCredits } from '@/hooks/useLeadCredits';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { LeadCard } from './LeadCard';
 
@@ -61,10 +65,19 @@ export function ApolloSearchResults({
   const [showEnrichDialog, setShowEnrichDialog] = useState(false);
   const [showAddToListDialog, setShowAddToListDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showEvaluateDialog, setShowEvaluateDialog] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [enrichCount, setEnrichCount] = useState<string>('');
 
   const { importLeads, isImporting, importProgress, resetImportProgress } = useImportToCRM();
+  const { 
+    evaluateLeads, 
+    isEvaluating, 
+    progress: evaluationProgress, 
+    resetProgress: resetEvaluationProgress,
+    getEvaluationCost,
+  } = useLeadReadinessEvaluation();
+  const { credits } = useLeadCredits();
 
   // Calculate paginated results for client-side pagination
   const totalPages = Math.ceil(results.length / ITEMS_PER_PAGE);
@@ -121,6 +134,20 @@ export function ApolloSearchResults({
       return () => clearTimeout(timer);
     }
   }, [showImportDialog, resetImportProgress]);
+
+  // Reset evaluation progress when dialog closes
+  useEffect(() => {
+    if (!showEvaluateDialog) {
+      const timer = setTimeout(resetEvaluationProgress, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [showEvaluateDialog, resetEvaluationProgress]);
+
+  const handleEvaluateReadiness = async () => {
+    // Evaluate all visible leads on current page
+    const leadIds = paginatedResults.map(l => l.id);
+    await evaluateLeads(leadIds);
+  };
 
   // Calculate counts for selected leads on current page
   const unenrichedSelected = paginatedResults
@@ -212,6 +239,23 @@ export function ApolloSearchResults({
                 </span>
               )}
             </div>
+          </div>
+
+          {/* Evaluate Readiness Button */}
+          <div className="flex items-center gap-2 pt-3 border-t mt-3">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowEvaluateDialog(true)}
+              disabled={isEvaluating || paginatedResults.length === 0}
+              className="h-8"
+            >
+              <Zap className="h-3.5 w-3.5 mr-1.5" />
+              Evaluate Readiness ({paginatedResults.length})
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {getEvaluationCost(paginatedResults.length)} credits
+            </span>
           </div>
 
           {/* Selection Actions Bar */}
@@ -347,6 +391,17 @@ export function ApolloSearchResults({
         onImport={handleImport}
         isImporting={isImporting}
         importProgress={importProgress}
+      />
+
+      <EvaluateReadinessDialog
+        open={showEvaluateDialog}
+        onOpenChange={setShowEvaluateDialog}
+        leadCount={paginatedResults.length}
+        creditCost={getEvaluationCost(paginatedResults.length)}
+        availableCredits={credits}
+        onConfirm={handleEvaluateReadiness}
+        isEvaluating={isEvaluating}
+        progress={evaluationProgress}
       />
     </>
   );
