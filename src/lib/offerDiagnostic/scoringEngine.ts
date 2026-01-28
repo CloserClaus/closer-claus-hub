@@ -485,6 +485,250 @@ function applyPerformanceModifiers(
   return modifiedScores;
 }
 
+// ========== MATRIX 1: ICP ↔ PRICE FIT ==========
+// Determines price band based on ICP characteristics and applies fit modifier
+
+type IcpPriceBand = 'LOW' | 'MID' | 'HIGH';
+type PricePosition = 'TOO_LOW' | 'MATCHED' | 'PREMIUM';
+
+const ICP_PRICE_FIT_MATRIX: Record<IcpPriceBand, Record<PricePosition, number>> = {
+  LOW: { TOO_LOW: 1, MATCHED: 3, PREMIUM: -3 },
+  MID: { TOO_LOW: -1, MATCHED: 4, PREMIUM: -1 },
+  HIGH: { TOO_LOW: -3, MATCHED: 3, PREMIUM: 1 },
+};
+
+// Price tier midpoints for normalization (monthly equivalent)
+const RECURRING_TIER_MIDPOINTS: Record<RecurringPriceTier, number> = {
+  'under_150': 100,
+  '150_500': 325,
+  '500_2k': 1250,
+  '2k_5k': 3500,
+  '5k_plus': 7500,
+};
+
+const HYBRID_TIER_MIDPOINTS: Record<HybridRetainerTier, number> = {
+  'under_150': 100,
+  '150_500': 325,
+  '500_2k': 1250,
+  '2k_5k': 3500,
+  '5k_plus': 7500,
+};
+
+const ONE_TIME_TIER_MIDPOINTS: Record<OneTimePriceTier, number> = {
+  'under_3k': 1000,
+  '3k_10k': 6500,
+  '10k_plus': 15000,
+};
+
+// Price band expected ranges
+const PRICE_BAND_RANGES: Record<IcpPriceBand, { min: number; max: number }> = {
+  LOW: { min: 0, max: 500 },
+  MID: { min: 300, max: 3000 },
+  HIGH: { min: 2000, max: 10000 },
+};
+
+function deriveIcpPriceBand(
+  icpIndustry: ICPIndustry | null,
+  icpSize: ICPSize | null,
+  icpMaturity: ICPMaturity | null
+): IcpPriceBand {
+  const lowSizes: ICPSize[] = ['solo_founder', '1_5_employees'];
+  const highSizes: ICPSize[] = ['21_100_employees', '100_plus_employees'];
+  
+  // Local services with small companies = LOW
+  if (icpIndustry === 'local_services' && icpSize && lowSizes.includes(icpSize)) {
+    return 'LOW';
+  }
+  
+  // Local services but scaling = MID
+  if (icpIndustry === 'local_services' && icpMaturity === 'scaling') {
+    return 'MID';
+  }
+  
+  // Professional services with medium companies = MID
+  if (icpIndustry === 'professional_services' && icpSize && ['6_20_employees', '21_100_employees'].includes(icpSize)) {
+    return 'MID';
+  }
+  
+  // SaaS, B2B services, or large companies = HIGH
+  if (
+    icpIndustry === 'saas_tech' || 
+    icpIndustry === 'b2b_service_agency' ||
+    (icpSize && highSizes.includes(icpSize))
+  ) {
+    return 'HIGH';
+  }
+  
+  return 'MID'; // default
+}
+
+function getNormalizedMonthlyPrice(
+  pricingStructure: PricingStructure | null,
+  recurringPriceTier: RecurringPriceTier | null,
+  hybridRetainerTier: HybridRetainerTier | null,
+  oneTimePriceTier: OneTimePriceTier | null
+): number | null {
+  if (pricingStructure === 'recurring' && recurringPriceTier) {
+    return RECURRING_TIER_MIDPOINTS[recurringPriceTier];
+  }
+  if (pricingStructure === 'hybrid' && hybridRetainerTier) {
+    return HYBRID_TIER_MIDPOINTS[hybridRetainerTier];
+  }
+  if (pricingStructure === 'one_time' && oneTimePriceTier) {
+    return ONE_TIME_TIER_MIDPOINTS[oneTimePriceTier] / 3; // Amortize over 3 months
+  }
+  if (pricingStructure === 'usage_based') {
+    return null; // Neutral - no adjustment
+  }
+  return null;
+}
+
+function derivePricePosition(price: number | null, band: IcpPriceBand): PricePosition {
+  if (price === null) return 'MATCHED'; // Neutral for usage-based
+  
+  const range = PRICE_BAND_RANGES[band];
+  if (price < range.min) return 'TOO_LOW';
+  if (price > range.max) return 'PREMIUM';
+  return 'MATCHED';
+}
+
+function applyIcpPriceFitMatrix(
+  dimensionScores: DimensionScores,
+  formData: DiagnosticFormData
+): DimensionScores {
+  const { icpIndustry, icpSize, icpMaturity, pricingStructure, recurringPriceTier, hybridRetainerTier, oneTimePriceTier } = formData;
+  
+  const priceBand = deriveIcpPriceBand(icpIndustry, icpSize, icpMaturity);
+  const normalizedPrice = getNormalizedMonthlyPrice(pricingStructure, recurringPriceTier, hybridRetainerTier, oneTimePriceTier);
+  const pricePosition = derivePricePosition(normalizedPrice, priceBand);
+  
+  const modifier = ICP_PRICE_FIT_MATRIX[priceBand][pricePosition];
+  const clampedModifier = Math.max(-4, Math.min(4, modifier));
+  
+  return {
+    ...dimensionScores,
+    pricingFit: Math.max(0, Math.min(15, dimensionScores.pricingFit + clampedModifier)),
+  };
+}
+
+// ========== MATRIX 2: PROOF ↔ PROMISE SEVERITY ==========
+// Adjusts risk alignment and outbound fit based on proof-promise match
+
+type PromiseSeverity = 'LOW' | 'MID' | 'HIGH';
+type ProofBucket = 'NONE' | 'WEAK' | 'MODERATE' | 'STRONG';
+
+const PROOF_PROMISE_MATRIX: Record<ProofBucket, Record<PromiseSeverity, number>> = {
+  NONE: { LOW: 0, MID: -3, HIGH: -6 },
+  WEAK: { LOW: 1, MID: -2, HIGH: -4 },
+  MODERATE: { LOW: 2, MID: 1, HIGH: -1 },
+  STRONG: { LOW: 3, MID: 2, HIGH: 1 },
+};
+
+function derivePromiseSeverity(promise: PromiseBucket | null): PromiseSeverity {
+  if (!promise) return 'MID';
+  
+  const lowSeverity: PromiseBucket[] = ['ops_compliance_outcomes', 'efficiency_cost_savings'];
+  const highSeverity: PromiseBucket[] = ['top_line_revenue'];
+  
+  if (lowSeverity.includes(promise)) return 'LOW';
+  if (highSeverity.includes(promise)) return 'HIGH';
+  return 'MID';
+}
+
+function deriveProofBucket(proofLevel: ProofLevel | null): ProofBucket {
+  if (!proofLevel || proofLevel === 'none') return 'NONE';
+  if (proofLevel === 'weak') return 'WEAK';
+  if (proofLevel === 'moderate') return 'MODERATE';
+  return 'STRONG'; // strong or category_killer
+}
+
+function applyProofPromiseSeverityMatrix(
+  dimensionScores: DimensionScores,
+  formData: DiagnosticFormData
+): DimensionScores {
+  const { proofLevel, promise } = formData;
+  
+  const proofBucket = deriveProofBucket(proofLevel);
+  const promiseSeverity = derivePromiseSeverity(promise);
+  
+  const rawModifier = PROOF_PROMISE_MATRIX[proofBucket][promiseSeverity];
+  
+  // Distribute 70% to riskAlignment, 30% to outboundFit
+  const riskMod = Math.round(rawModifier * 0.7);
+  const outboundMod = Math.round(rawModifier * 0.3);
+  
+  // Clamp per dimension (-5 to +5)
+  const clampedRiskMod = Math.max(-5, Math.min(5, riskMod));
+  const clampedOutboundMod = Math.max(-5, Math.min(5, outboundMod));
+  
+  return {
+    ...dimensionScores,
+    riskAlignment: Math.max(0, Math.min(10, dimensionScores.riskAlignment + clampedRiskMod)),
+    outboundFit: Math.max(0, Math.min(20, dimensionScores.outboundFit + clampedOutboundMod)),
+  };
+}
+
+// ========== MATRIX 3: ICP MATURITY ↔ PROMISE TIMELINE ==========
+// Adjusts pain/urgency based on timeline match
+
+type PromiseTimeline = 'SHORT' | 'MID' | 'LONG';
+type MaturityBucket = 'PRE_REVENUE' | 'EARLY_TRACTION' | 'SCALING' | 'MATURE';
+
+const MATURITY_PROMISE_TIMELINE_MATRIX: Record<MaturityBucket, Record<PromiseTimeline, number>> = {
+  PRE_REVENUE: { SHORT: 1, MID: -1, LONG: -3 },
+  EARLY_TRACTION: { SHORT: 2, MID: 1, LONG: -2 },
+  SCALING: { SHORT: 1, MID: 3, LONG: 2 },
+  MATURE: { SHORT: 0, MID: 2, LONG: 3 },
+};
+
+function derivePromiseTimeline(promise: PromiseBucket | null): PromiseTimeline {
+  if (!promise) return 'MID';
+  
+  const shortTimeline: PromiseBucket[] = ['top_of_funnel_volume'];
+  const longTimeline: PromiseBucket[] = ['top_line_revenue'];
+  
+  if (shortTimeline.includes(promise)) return 'SHORT';
+  if (longTimeline.includes(promise)) return 'LONG';
+  return 'MID';
+}
+
+function deriveMaturityBucket(icpMaturity: ICPMaturity | null): MaturityBucket {
+  if (!icpMaturity || icpMaturity === 'pre_revenue') return 'PRE_REVENUE';
+  if (icpMaturity === 'early_traction') return 'EARLY_TRACTION';
+  if (icpMaturity === 'scaling') return 'SCALING';
+  return 'MATURE'; // mature or enterprise
+}
+
+function applyMaturityPromiseTimelineMatrix(
+  dimensionScores: DimensionScores,
+  formData: DiagnosticFormData
+): DimensionScores {
+  const { icpMaturity, promise } = formData;
+  
+  const maturityBucket = deriveMaturityBucket(icpMaturity);
+  const promiseTimeline = derivePromiseTimeline(promise);
+  
+  const modifier = MATURITY_PROMISE_TIMELINE_MATRIX[maturityBucket][promiseTimeline];
+  const clampedModifier = Math.max(-4, Math.min(4, modifier));
+  
+  return {
+    ...dimensionScores,
+    painUrgency: Math.max(0, Math.min(20, dimensionScores.painUrgency + clampedModifier)),
+  };
+}
+
+// ========== APPLY ALL RELATIONAL MATRICES ==========
+function applyRelationalMatrices(
+  dimensionScores: DimensionScores,
+  formData: DiagnosticFormData
+): DimensionScores {
+  // Apply matrices in order: ICP-Price, Proof-Promise, Maturity-Timeline
+  let scores = applyIcpPriceFitMatrix(dimensionScores, formData);
+  scores = applyProofPromiseSeverityMatrix(scores, formData);
+  scores = applyMaturityPromiseTimelineMatrix(scores, formData);
+  return scores;
+}
+
 // ========== MAIN SCORING FUNCTION ==========
 export function calculateScore(formData: DiagnosticFormData): ScoringResult | null {
   if (!isFormComplete(formData)) {
@@ -517,6 +761,9 @@ export function calculateScore(formData: DiagnosticFormData): ScoringResult | nu
   
   // Apply performance modifiers for hybrid/performance_only
   dimensionScores = applyPerformanceModifiers(dimensionScores, formData);
+  
+  // Apply relational matrices (post-base-score adjustments)
+  dimensionScores = applyRelationalMatrices(dimensionScores, formData);
 
   const switchingCost = calculateSwitchingCost(pricingStructure!, fulfillmentComplexity!);
   
