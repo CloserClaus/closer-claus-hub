@@ -1,5 +1,6 @@
 // ============= Founder-Friendly Recommendation Engine =============
 // Converts violations into actionable, multi-solution recommendations
+// With hard suppression rules and bottleneck-locked routing
 
 import type {
   DiagnosticFormData,
@@ -8,6 +9,9 @@ import type {
   ICPIndustry,
   PricingStructure,
   FulfillmentComplexity,
+  ProofLevel,
+  RiskModel,
+  DimensionScores,
 } from './types';
 
 // ========== TYPES ==========
@@ -121,6 +125,183 @@ const VIOLATION_TO_CATEGORIES: Record<string, FixCategory[]> = {
   'low_outbound_fit': ['icp_shift', 'promise_shift', 'positioning_shift'],
   'proof_promise_mismatch': ['risk_shift', 'promise_shift', 'founder_psychology_check'],
 };
+
+// ========== HARD SUPPRESSION RULES (NON-NEGOTIABLE) ==========
+
+interface SuppressionContext {
+  proofLevel: ProofLevel | null;
+  buyingPower: number;
+  riskModel: RiskModel | null;
+  executionFeasibility: number;
+}
+
+type SuppressedFixId = 
+  | 'reduce_promise_scope'
+  | 'run_micro_pilots'
+  | 'get_first_clients'
+  | 'collect_testimonials'
+  | 'prove_delivery'
+  | 'increase_price_after_proof'
+  | 'move_upmarket_pricing'
+  | 'add_guarantee'
+  | 'introduce_risk_reversal';
+
+// Fixes to suppress when proofLevel is MODERATE or STRONG
+const PROOF_SUPPRESSED_FIXES: string[] = [
+  'reduce promise scope',
+  'run micro-pilots',
+  'first 3–5 clients',
+  'collect testimonials',
+  'prove delivery',
+  'accumulate screenshots',
+  'collect 3–5 wins',
+];
+
+// Fixes to suppress when buyingPower < 14
+const LOW_BUYING_POWER_SUPPRESSED_FIXES: string[] = [
+  'increase price after',
+  'move upmarket',
+];
+
+// Fixes to suppress when guarantee already exists
+const GUARANTEE_SUPPRESSED_FIXES: string[] = [
+  'add guarantee',
+  'introduce risk reversal',
+  'add conditional guarantee',
+];
+
+// Fixes to suppress when executionFeasibility >= 10
+const EXECUTION_SUPPRESSED_FIXES: string[] = [
+  'productize delivery',
+  'add sops',
+  'delivery systems',
+  'fulfillment shift',
+];
+
+function isFixSuppressed(fix: string, ctx: SuppressionContext): boolean {
+  const fixLower = fix.toLowerCase();
+  
+  // Suppress early-stage advice if proof exists
+  const hasProof = ctx.proofLevel && ['moderate', 'strong', 'category_killer'].includes(ctx.proofLevel);
+  if (hasProof && PROOF_SUPPRESSED_FIXES.some(s => fixLower.includes(s))) {
+    return true;
+  }
+  
+  // Suppress pricing increase if buying power is low
+  if (ctx.buyingPower < 14 && LOW_BUYING_POWER_SUPPRESSED_FIXES.some(s => fixLower.includes(s))) {
+    return true;
+  }
+  
+  // Suppress add guarantee if guarantee already exists
+  const hasGuarantee = ctx.riskModel && ['conditional_guarantee', 'full_guarantee'].includes(ctx.riskModel);
+  if (hasGuarantee && GUARANTEE_SUPPRESSED_FIXES.some(s => fixLower.includes(s))) {
+    return true;
+  }
+  
+  // Suppress execution fixes if execution is not a bottleneck
+  if (ctx.executionFeasibility >= 10 && EXECUTION_SUPPRESSED_FIXES.some(s => fixLower.includes(s))) {
+    return true;
+  }
+  
+  return false;
+}
+
+// ========== BOTTLENECK-LOCKED RECOMMENDATION ROUTING ==========
+
+type DimensionKey = 'painUrgency' | 'buyingPower' | 'executionFeasibility' | 'pricingFit' | 'riskAlignment' | 'outboundFit';
+
+const DIMENSION_CAPS: Record<DimensionKey, number> = {
+  painUrgency: 20,
+  buyingPower: 20,
+  executionFeasibility: 15,
+  pricingFit: 15,
+  riskAlignment: 10,
+  outboundFit: 20,
+};
+
+const BOTTLENECK_ALLOWED_CATEGORIES: Record<DimensionKey, FixCategory[]> = {
+  pricingFit: ['pricing_shift', 'icp_shift'],
+  painUrgency: ['promise_shift', 'icp_shift', 'positioning_shift'],
+  outboundFit: ['icp_shift', 'promise_shift', 'positioning_shift'],
+  buyingPower: ['icp_shift', 'pricing_shift'],
+  riskAlignment: ['risk_shift', 'promise_shift'],
+  executionFeasibility: ['fulfillment_shift', 'pricing_shift'],
+};
+
+const BOTTLENECK_BLOCKED_CATEGORIES: Record<DimensionKey, FixCategory[]> = {
+  pricingFit: ['risk_shift', 'promise_shift', 'founder_psychology_check'],
+  painUrgency: ['pricing_shift', 'fulfillment_shift', 'risk_shift'],
+  outboundFit: ['pricing_shift', 'risk_shift'],
+  buyingPower: ['fulfillment_shift', 'risk_shift'],
+  riskAlignment: ['pricing_shift', 'fulfillment_shift'],
+  executionFeasibility: ['risk_shift', 'positioning_shift'],
+};
+
+function findPrimaryBottleneck(dimensionScores: DimensionScores): DimensionKey {
+  const dimensions: DimensionKey[] = ['painUrgency', 'buyingPower', 'executionFeasibility', 'pricingFit', 'riskAlignment', 'outboundFit'];
+  
+  let lowest: DimensionKey = 'pricingFit';
+  let lowestPercentage = 100;
+  
+  for (const dim of dimensions) {
+    const cap = DIMENSION_CAPS[dim];
+    const percentage = (dimensionScores[dim] / cap) * 100;
+    if (percentage < lowestPercentage) {
+      lowestPercentage = percentage;
+      lowest = dim;
+    }
+  }
+  
+  return lowest;
+}
+
+function findSecondaryBottleneck(dimensionScores: DimensionScores, primary: DimensionKey): DimensionKey | null {
+  const dimensions: DimensionKey[] = ['painUrgency', 'buyingPower', 'executionFeasibility', 'pricingFit', 'riskAlignment', 'outboundFit'];
+  
+  const primaryCap = DIMENSION_CAPS[primary];
+  const primaryPercentage = (dimensionScores[primary] / primaryCap) * 100;
+  
+  for (const dim of dimensions) {
+    if (dim === primary) continue;
+    const cap = DIMENSION_CAPS[dim];
+    const percentage = (dimensionScores[dim] / cap) * 100;
+    // Within 5% of primary
+    if (Math.abs(percentage - primaryPercentage) <= 5) {
+      return dim;
+    }
+  }
+  
+  return null;
+}
+
+function isCategoryAllowedByBottleneck(
+  category: FixCategory,
+  primaryBottleneck: DimensionKey,
+  secondaryBottleneck: DimensionKey | null
+): boolean {
+  const allowed = BOTTLENECK_ALLOWED_CATEGORIES[primaryBottleneck] || [];
+  const blocked = BOTTLENECK_BLOCKED_CATEGORIES[primaryBottleneck] || [];
+  
+  // Check if blocked
+  if (blocked.includes(category)) {
+    return false;
+  }
+  
+  // Check if allowed by primary
+  if (allowed.includes(category)) {
+    return true;
+  }
+  
+  // Check if allowed by secondary (within 5%)
+  if (secondaryBottleneck) {
+    const secondaryAllowed = BOTTLENECK_ALLOWED_CATEGORIES[secondaryBottleneck] || [];
+    if (secondaryAllowed.includes(category)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
 
 // ========== CONTEXTUAL FILTERS ==========
 
@@ -456,13 +637,36 @@ export interface ViolationInput {
   severity: 'high' | 'medium' | 'low';
 }
 
+export interface RecommendationGeneratorOptions {
+  dimensionScores?: DimensionScores;
+  suppressionContext?: SuppressionContext;
+}
+
 export function generateStructuredRecommendations(
   violations: ViolationInput[],
   formData: DiagnosticFormData,
-  limit: number = 5
+  limit: number = 3,
+  options?: RecommendationGeneratorOptions
 ): StructuredRecommendation[] {
   const recommendations: StructuredRecommendation[] = [];
   const usedCategories = new Set<FixCategory>();
+  
+  // Build suppression context
+  const suppressionCtx: SuppressionContext = options?.suppressionContext || {
+    proofLevel: formData.proofLevel,
+    buyingPower: options?.dimensionScores?.buyingPower ?? 15,
+    riskModel: formData.riskModel,
+    executionFeasibility: options?.dimensionScores?.executionFeasibility ?? 10,
+  };
+  
+  // Determine bottlenecks for routing
+  let primaryBottleneck: DimensionKey = 'pricingFit';
+  let secondaryBottleneck: DimensionKey | null = null;
+  
+  if (options?.dimensionScores) {
+    primaryBottleneck = findPrimaryBottleneck(options.dimensionScores);
+    secondaryBottleneck = findSecondaryBottleneck(options.dimensionScores, primaryBottleneck);
+  }
   
   // Sort violations by severity
   const sortedViolations = [...violations].sort((a, b) => {
@@ -477,10 +681,28 @@ export function generateStructuredRecommendations(
       // Avoid duplicate category recommendations
       if (usedCategories.has(category)) continue;
       
+      // Check if category is allowed by bottleneck routing
+      if (options?.dimensionScores && !isCategoryAllowedByBottleneck(category, primaryBottleneck, secondaryBottleneck)) {
+        continue;
+      }
+      
       const ctx: IssueContext = { formData, violationId: violation.id };
       const recommendation = generateRecommendationForCategory(category, ctx);
       
-      recommendations.push(recommendation);
+      // Apply hard suppression rules to action steps
+      const filteredActionSteps = recommendation.actionSteps.filter(step => {
+        if (shouldFilterFix(step, formData)) return false;
+        if (isFixSuppressed(step, suppressionCtx)) return false;
+        return true;
+      });
+      
+      // Skip recommendation if all action steps are suppressed
+      if (filteredActionSteps.length === 0) continue;
+      
+      recommendations.push({
+        ...recommendation,
+        actionSteps: filteredActionSteps.slice(0, 4),
+      });
       usedCategories.add(category);
       
       // Stop if we hit the limit
@@ -490,8 +712,8 @@ export function generateStructuredRecommendations(
     if (recommendations.length >= limit) break;
   }
   
-  // If we have no recommendations from violations, provide founder psychology fallback
-  if (recommendations.length === 0) {
+  // Quality gate: ensure minimum recommendations
+  if (recommendations.length < 1) {
     recommendations.push(generateFounderPsychologyRecommendation({
       formData,
       violationId: 'general',
@@ -512,3 +734,8 @@ export const CATEGORY_LABELS: Record<FixCategory, string> = {
   positioning_shift: 'Positioning',
   founder_psychology_check: 'Founder Mindset',
 };
+
+// ========== EXPORTED UTILITIES FOR EXTERNAL USE ==========
+
+export { findPrimaryBottleneck, findSecondaryBottleneck, isFixSuppressed, isCategoryAllowedByBottleneck };
+export type { SuppressionContext, DimensionKey };

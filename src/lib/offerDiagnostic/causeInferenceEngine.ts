@@ -327,11 +327,20 @@ export function inferCauses(
   const earlyMaturities: ICPMaturity[] = ['pre_revenue', 'early_traction'];
   const largeSizes: ICPSize[] = ['21_100_employees', '100_plus_employees'];
   const acceptableRiskModels: RiskModel[] = ['conditional_guarantee', 'pay_after_results'];
+  const scaledMaturities: ICPMaturity[] = ['scaling', 'mature', 'enterprise'];
+  
+  // FIX: Proof misclassification - Don't treat MODERATE as early-stage
+  // MODERATE or STRONG proof means growth-stage, not early-stage
+  const hasGoodProof = proofLevel && ['moderate', 'strong', 'category_killer'].includes(proofLevel);
+  const isActuallyEarlyStage = !hasGoodProof && icpMaturity && earlyMaturities.includes(icpMaturity);
+  
+  // FIX: Maturity override - disable certain causes for scaled+proof
+  const isScaledWithProof = icpMaturity && scaledMaturities.includes(icpMaturity) && hasGoodProof;
   
   // Cause: Proof Deficiency
-  if (proofLevel && lowProofLevels.includes(proofLevel) && flags.outboundViolation) {
+  // FIX: Only trigger if proof is actually low (not moderate/strong)
+  if (proofLevel && lowProofLevels.includes(proofLevel) && flags.outboundViolation && !isScaledWithProof) {
     let fixes = [...FIX_CATALOG.proofDeficiency];
-    // Suppression: Strong/Moderate proof removes this cause
     causes.push({
       id: 'proofDeficiency',
       label: CAUSE_LABELS.proofDeficiency,
@@ -417,7 +426,7 @@ export function inferCauses(
   const pricingStructure = formData.pricingStructure;
   const performanceBasis = formData.performanceBasis;
   const performanceCompTier = formData.performanceCompTier;
-  const scaledMaturities: ICPMaturity[] = ['scaling', 'mature', 'enterprise'];
+  // Note: scaledMaturities already defined above
   const percentBasedPerformance: PerformanceBasis[] = ['percent_revenue', 'percent_profit'];
   const highCompTiers: PerformanceCompTier[] = ['over_30_percent', 'over_500_unit'];
   
