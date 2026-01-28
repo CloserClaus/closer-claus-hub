@@ -105,6 +105,10 @@ export function useImportToCRM() {
               country: lead.country,
               source: 'apollo',
               apollo_lead_id: lead.id,
+              // Readiness fields from evaluation
+              readiness_score: lead.readiness_score,
+              readiness_segment: lead.readiness_verdict,
+              readiness_notes: lead.readiness_signals?.join('; ') || null,
             })
             .select()
             .single();

@@ -11,6 +11,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { Tables } from '@/integrations/supabase/types';
+import { ReadinessBadge } from './ReadinessBadge';
 
 type ApolloLead = Tables<'apollo_leads'>;
 
@@ -60,6 +61,12 @@ export function LeadCard({ lead, isSelected, onToggleSelect }: LeadCardProps) {
                 ) : (
                   <Badge variant="outline" className="text-[10px] text-muted-foreground">Pending</Badge>
                 )}
+                <ReadinessBadge
+                  verdict={lead.readiness_verdict}
+                  score={lead.readiness_score}
+                  signals={lead.readiness_signals}
+                  compact
+                />
                 {lead.seniority && (
                   <Badge variant="secondary" className="text-[10px] capitalize font-normal">
                     {lead.seniority.replace('_', ' ')}

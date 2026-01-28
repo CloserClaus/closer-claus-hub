@@ -104,6 +104,7 @@ import {
   PROOF_LEVEL_OPTIONS,
 } from '@/lib/offerDiagnostic/dropdownOptions';
 import type { PromiseBucket, PromiseOutcome, VerticalSegment, ScoringSegment, ProofLevel } from '@/lib/offerDiagnostic/types';
+import { useOfferDiagnosticState } from '@/hooks/useOfferDiagnosticState';
 
 const initialFormData: DiagnosticFormData = {
   offerType: null,
@@ -591,6 +592,9 @@ function DetectedProblemsDisplay({ problems }: { problems: DetectedProblem[] }) 
 export default function OfferDiagnostic() {
   const [formData, setFormData] = useState<DiagnosticFormData>(initialFormData);
   const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
+  
+  // Hook for persisting offer diagnostic state (used for lead evaluation context)
+  const { saveState: saveOfferState } = useOfferDiagnosticState();
 
   const isFormComplete = useMemo(() => {
     const { offerType, promiseOutcome, promise, icpIndustry, verticalSegment, scoringSegment, icpSize, icpMaturity, pricingStructure, riskModel, fulfillmentComplexity, proofLevel } = formData;
@@ -709,6 +713,19 @@ export default function OfferDiagnostic() {
     const result = calculateScore(formData);
     if (result) {
       setScoringResult(result);
+      
+      // Save state for lead evaluation context
+      saveOfferState({
+        offer_type: formData.offerType,
+        promise: formData.promise,
+        vertical_segment: formData.verticalSegment,
+        company_size: formData.icpSize,
+        pricing_structure: formData.pricingStructure,
+        price_tier: formData.recurringPriceTier || formData.oneTimePriceTier || formData.hybridRetainerTier || null,
+        proof_level: formData.proofLevel,
+        risk_model: formData.riskModel,
+        fulfillment: formData.fulfillmentComplexity,
+      });
     }
   };
 

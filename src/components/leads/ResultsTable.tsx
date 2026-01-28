@@ -23,10 +23,11 @@ import {
   Globe,
 } from 'lucide-react';
 import { Tables } from '@/integrations/supabase/types';
+import { ReadinessBadge } from './ReadinessBadge';
 
 type ApolloLead = Tables<'apollo_leads'>;
 
-type SortField = 'name' | 'company' | 'title' | 'location' | 'status';
+type SortField = 'name' | 'company' | 'title' | 'location' | 'status' | 'readiness';
 type SortDirection = 'asc' | 'desc';
 
 interface ResultsTableProps {
@@ -95,6 +96,11 @@ export function ResultsTable({
         return locA.localeCompare(locB) * direction;
       case 'status':
         return a.enrichment_status.localeCompare(b.enrichment_status) * direction;
+      case 'readiness':
+        // Sort by readiness score (nulls last)
+        const scoreA = a.readiness_score ?? -1;
+        const scoreB = b.readiness_score ?? -1;
+        return (scoreA - scoreB) * direction;
       default:
         return 0;
     }
@@ -157,6 +163,17 @@ export function ResultsTable({
             </TableHead>
             <TableHead className="min-w-[110px] text-xs font-semibold">Links</TableHead>
             <TableHead className="min-w-[200px] text-xs font-semibold">Contact Info</TableHead>
+            <TableHead className="min-w-[100px]">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="-ml-3 h-7 text-xs font-semibold flex items-center gap-1"
+                onClick={() => handleSort('readiness')}
+              >
+                Readiness
+                <SortIcon field="readiness" />
+              </Button>
+            </TableHead>
             <TableHead className="text-right min-w-[100px]">
               <Button
                 variant="ghost"
@@ -324,6 +341,14 @@ export function ResultsTable({
                     </span>
                   </div>
                 )}
+              </TableCell>
+              {/* Readiness */}
+              <TableCell className="py-3">
+                <ReadinessBadge
+                  verdict={lead.readiness_verdict}
+                  score={lead.readiness_score}
+                  signals={lead.readiness_signals}
+                />
               </TableCell>
               {/* Status */}
               <TableCell className="text-right py-3">

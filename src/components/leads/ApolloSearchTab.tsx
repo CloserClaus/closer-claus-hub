@@ -213,6 +213,11 @@ export function ApolloSearchTab() {
     enriched_by: null,
     search_filters: null,
     created_at: new Date().toISOString(),
+    // Readiness evaluation fields
+    readiness_score: null,
+    readiness_verdict: null,
+    readiness_signals: null,
+    readiness_evaluated_at: null,
   })) : []);
 
   const displayPagination = pagination || (showDemoResults && demoLeads.length > 0 ? {
