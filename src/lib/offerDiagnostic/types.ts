@@ -414,3 +414,62 @@ export interface ContextAwareFixStackResult {
   violations: Violation[];
   structuredRecommendations: StructuredRecommendation[]; // NEW: Founder-friendly recommendations
 }
+
+// ========== Latent Scoring Types ==========
+
+export interface LatentScores {
+  economicHeadroom: number;       // 0-20
+  proofToPromise: number;         // 0-20
+  fulfillmentScalability: number; // 0-20
+  riskAlignment: number;          // 0-20
+  channelFit: number;             // 0-20
+}
+
+export type LatentBottleneckKey = keyof LatentScores;
+
+export interface LatentScoringResult {
+  alignmentScore: number;          // 0-100
+  readinessLabel: ReadinessLabel;
+  latentScores: LatentScores;
+  latentBottleneckKey: LatentBottleneckKey;
+}
+
+export type AIRecommendationCategory = 
+  | 'pricing_shift' 
+  | 'icp_shift' 
+  | 'promise_shift' 
+  | 'fulfillment_shift' 
+  | 'risk_shift' 
+  | 'channel_shift';
+
+export interface AIRecommendation {
+  id: string;
+  headline: string;
+  plainExplanation: string;
+  actionSteps: string[];
+  desiredState: string;
+  category: AIRecommendationCategory;
+}
+
+export interface OfferDiagnosticSnapshot {
+  id?: string;
+  workspaceId: string;
+  createdAt?: string;
+  version: number;
+  formData: DiagnosticFormData;
+  latentScores: LatentScores;
+  alignmentScore: number;
+  readinessLabel: ReadinessLabel;
+  latentBottleneckKey: LatentBottleneckKey;
+  aiRecommendations: StructuredRecommendation[];
+}
+
+export interface ActiveOfferContext {
+  latentScores: LatentScores;
+  latentBottleneckKey: LatentBottleneckKey;
+  promise: PromiseBucket | null;
+  offerType: OfferType | null;
+  pricingStructure: PricingStructure | null;
+  proofLevel: ProofLevel | null;
+  fulfillmentComplexity: FulfillmentComplexity | null;
+}

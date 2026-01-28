@@ -1738,10 +1738,19 @@ export type Database = {
       }
       offer_diagnostic_state: {
         Row: {
+          ai_recommendations: Json | null
           company_size: string | null
           created_at: string
           fulfillment: string | null
           id: string
+          latent_alignment_score: number | null
+          latent_bottleneck_key: string | null
+          latent_channel_fit: number | null
+          latent_economic_headroom: number | null
+          latent_fulfillment_scalability: number | null
+          latent_proof_to_promise: number | null
+          latent_readiness_label: string | null
+          latent_risk_alignment: number | null
           offer_type: string | null
           price_tier: string | null
           pricing_structure: string | null
@@ -1750,14 +1759,24 @@ export type Database = {
           risk_model: string | null
           updated_at: string
           user_id: string
+          version: number | null
           vertical_segment: string | null
           workspace_id: string
         }
         Insert: {
+          ai_recommendations?: Json | null
           company_size?: string | null
           created_at?: string
           fulfillment?: string | null
           id?: string
+          latent_alignment_score?: number | null
+          latent_bottleneck_key?: string | null
+          latent_channel_fit?: number | null
+          latent_economic_headroom?: number | null
+          latent_fulfillment_scalability?: number | null
+          latent_proof_to_promise?: number | null
+          latent_readiness_label?: string | null
+          latent_risk_alignment?: number | null
           offer_type?: string | null
           price_tier?: string | null
           pricing_structure?: string | null
@@ -1766,14 +1785,24 @@ export type Database = {
           risk_model?: string | null
           updated_at?: string
           user_id: string
+          version?: number | null
           vertical_segment?: string | null
           workspace_id: string
         }
         Update: {
+          ai_recommendations?: Json | null
           company_size?: string | null
           created_at?: string
           fulfillment?: string | null
           id?: string
+          latent_alignment_score?: number | null
+          latent_bottleneck_key?: string | null
+          latent_channel_fit?: number | null
+          latent_economic_headroom?: number | null
+          latent_fulfillment_scalability?: number | null
+          latent_proof_to_promise?: number | null
+          latent_readiness_label?: string | null
+          latent_risk_alignment?: number | null
           offer_type?: string | null
           price_tier?: string | null
           pricing_structure?: string | null
@@ -1782,6 +1811,7 @@ export type Database = {
           risk_model?: string | null
           updated_at?: string
           user_id?: string
+          version?: number | null
           vertical_segment?: string | null
           workspace_id?: string
         }
