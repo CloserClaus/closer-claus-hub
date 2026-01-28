@@ -62,15 +62,22 @@ export function EvaluateReadinessDialog({
                 <div>
                   <div className="font-medium">{leadCount} lead{leadCount !== 1 ? 's' : ''}</div>
                   <div className="text-sm text-muted-foreground">
-                    Cost: {creditCost} credits
+                    @ 0.5 credits per lead
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm text-muted-foreground">Your balance</div>
-                  <div className={`font-medium ${canAfford ? 'text-foreground' : 'text-destructive'}`}>
-                    {availableCredits} credits
+                  <div className="text-sm text-muted-foreground">AI Enrichment Cost</div>
+                  <div className="font-bold text-lg text-primary">
+                    {creditCost} credits
                   </div>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between p-2 rounded-lg border">
+                <span className="text-sm text-muted-foreground">Your credit balance</span>
+                <span className={`font-medium ${canAfford ? 'text-green-600' : 'text-destructive'}`}>
+                  {availableCredits} credits
+                </span>
               </div>
 
               {!canAfford && (

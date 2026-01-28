@@ -224,58 +224,83 @@ async function evaluateLead(
   offerContext: OfferContext,
   apiKey: string
 ): Promise<EvaluationResult> {
-  const systemPrompt = `You evaluate buying readiness for outbound campaigns.
-The user has already filtered for ICP. DO NOT judge ICP fit.
-Only evaluate how ready they are to buy based on company maturity, proof, outbound leverage, founder involvement, and market signals.
+  const systemPrompt = `You are an expert revenue operations analyst specializing in evaluating B2B companies' buying readiness for outbound agency services.
 
-Output STRICT JSON with no commentary:
+Your output MUST be valid JSON with no explanation and no trailing text.
+
+Your job is to return a readiness score 0–100 and a readiness segment (HOT, WARM, COOL, COLD) based on the agency's Offer Diagnostic context and the company's observable market signals.
+
+You NEVER modify the user's ICP or tell them to change strategy. You only evaluate readiness based on the chosen ICP.
+
+—— CONTEXT LOGIC ——
+
+1. Use the Offer Diagnostic context to understand the user's ICP and promise:
+    - offer_type
+    - promise
+    - ICP industry + vertical segment
+    - company size
+    - business maturity
+    - pricing structure + tier
+    - proof level
+    - risk model
+    - fulfillment complexity
+
+2. Readiness scoring is based on observable signals from the prospect company:
+
+    **Stage Signals (0–40 pts)**
+    - Headcount trajectory (hiring page, LinkedIn headcount trend, founders hiring SDRs etc)
+    - Recency of founding
+    - Market category momentum
+    - Presence of sales roles or SDR roles
+
+    **Proof Signals (0–30 pts)**
+    - Case studies
+    - Testimonials
+    - Portfolio
+    - Named clients
+    - Published metrics
+
+    **Pricing & Positioning Signals (0–20 pts)**
+    - Premium, mid, or bargain positioning
+    - Website quality & clarity
+    - ICP fit strength relative to user's ICP
+
+    **Urgency Signals (0–10 pts)**
+    - Active hiring for sales roles
+    - Founder publicly posting about growth, lead gen, or scaling problems
+    - Recent product launches or pivots
+
+3. Segment Rules:
+    - HOT: ≥ 75
+    - WARM: 55–74
+    - COOL: 35–54
+    - COLD: < 35
+
+4. Output STRICT JSON:
 {
-  "readiness_score": <0-100>,
-  "signals": [array of strings describing positive or negative signals found],
-  "verdict": "HOT|WARM|COOL|COLD"
+  "readiness_score": number 0–100,
+  "signals": ["array of observable signal strings found"],
+  "verdict": "HOT" | "WARM" | "COOL" | "COLD"
+}`;
+
+  const userPrompt = `Lead company data from Apollo:
+company_name: ${lead.company_name || "Unknown"}
+company_domain: ${lead.company_domain || "Not available"}
+linkedin_company_url: ${lead.company_linkedin_url || "Not available"}
+linkedin_person_url: ${lead.linkedin_url || "Not available"}
+job_title: ${lead.title || "Unknown"}
+
+Offer Diagnostic State (JSON):
+${JSON.stringify(offerContext, null, 2)}
+
+If no usable company data exists (missing domain AND LinkedIn AND company name), respond:
+{
+  "readiness_score": 0,
+  "signals": ["insufficient-data"],
+  "verdict": "COLD"
 }
 
-Mapping rules:
-- HOT: score >= 75
-- WARM: score >= 55 and < 75
-- COOL: score >= 35 and < 55
-- COLD: score < 35
-
-Consider these signals when reading provided context:
-
-POSITIVE SIGNALS:
-- founder selling / founder-led sales
-- hiring outbound / SDR roles
-- posting case studies or portfolio
-- pricing above freelancer level
-- consistent website activity
-- offering high-urgency services
-- market proof demonstrated
-- recent funding or expansion
-- technical / marketing sophistication
-
-NEGATIVE SIGNALS:
-- no website or placeholder site
-- no client proof or portfolio
-- sells B2C only (but do not fail them, just score cooler)
-- no founder presence
-- low activity on web
-- unclear service positioning
-- tiny bootstrapped solopreneur with no leverage
-
-The offer context should influence only if the target is mature enough to engage.`;
-
-  const userPrompt = `Here is the lead:
-{
-  "company_name": "${lead.company_name || "Unknown"}",
-  "job_title": "${lead.title || "Unknown"}",
-  "company_domain": "${lead.company_domain || "Not available"}",
-  "linkedin_company_url": "${lead.company_linkedin_url || "Not available"}",
-  "linkedin_person_url": "${lead.linkedin_url || "Not available"}"
-}
-
-Offer context:
-${JSON.stringify(offerContext, null, 2)}`;
+Otherwise evaluate readiness now.`;
 
   const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
