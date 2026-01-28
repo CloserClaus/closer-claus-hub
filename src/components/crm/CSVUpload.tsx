@@ -569,34 +569,45 @@ export function CSVUpload({ workspaceId, onSuccess, onCancel }: CSVUploadProps) 
                 Match your CSV columns to lead fields. Minimum 2 fields required, including at least one identifying field (name, email, or phone).
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <ScrollArea className="max-h-[300px]">
-                <div className="space-y-3 pr-4">
-                  {headers.map(header => (
-                    <div key={header} className="flex items-center gap-4">
-                      <span className="w-1/3 text-sm font-medium truncate" title={header}>
-                        {header}
-                      </span>
-                      <span className="text-muted-foreground">→</span>
-                      <Select
-                        value={columnMapping[header] || '_skip'}
-                        onValueChange={(value) => handleMappingChange(header, value)}
-                      >
-                        <SelectTrigger className="w-2/3">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {LEAD_FIELDS.map(field => (
-                            <SelectItem key={field.value} value={field.value}>
-                              {field.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
+            <CardContent className="p-0">
+              <div className="max-h-[400px] overflow-y-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-card z-10">
+                    <TableRow>
+                      <TableHead className="w-[40%]">CSV Column</TableHead>
+                      <TableHead className="w-[10%] text-center"></TableHead>
+                      <TableHead className="w-[50%]">Map To</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {headers.map(header => (
+                      <TableRow key={header}>
+                        <TableCell className="font-medium truncate" title={header}>
+                          {header}
+                        </TableCell>
+                        <TableCell className="text-center text-muted-foreground">→</TableCell>
+                        <TableCell>
+                          <Select
+                            value={columnMapping[header] || '_skip'}
+                            onValueChange={(value) => handleMappingChange(header, value)}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {LEAD_FIELDS.map(field => (
+                                <SelectItem key={field.value} value={field.value}>
+                                  {field.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
 
