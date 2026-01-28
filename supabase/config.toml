@@ -135,5 +135,5 @@ verify_jwt = true
 [functions.cleanup-dialer-sessions]
 verify_jwt = false
 
-[functions.apollo-enrich]
+[functions.evaluate-lead-readiness]
 verify_jwt = false
