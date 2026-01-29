@@ -1,9 +1,15 @@
 // ============= evaluateOfferV2 — SINGLE EXECUTION AUTHORITY =============
 // This is the ONLY function that produces scoring, bottleneck, and recommendation output.
 // All other engines (scoringEngine, recommendationEngine, violationEngine, etc.) are DISABLED.
-// INCLUDES: 8 Stabilization Rules for Outbound Diagnostic
+// INCLUDES: Viability Gates + 8 Stabilization Rules for Outbound Diagnostic
 
-import type { DiagnosticFormData, StructuredRecommendation } from './types';
+import type { 
+  DiagnosticFormData, 
+  StructuredRecommendation,
+  ViabilityGateName,
+  ViabilityGateResult,
+  ViabilityGatesOutput,
+} from './types';
 import { 
   calculateLatentScores, 
   type LatentScores, 
@@ -24,6 +30,23 @@ import {
   type StabilizationContext,
 } from './stabilizationRules';
 
+// ========== VIABILITY GATE THRESHOLDS (PROMPT 2) ==========
+
+const GATE_THRESHOLDS: Record<ViabilityGateName, number> = {
+  economicFeasibility: 8,         // EFI < 8 = FAIL
+  proofToPromiseCredibility: 10,  // ProofToPromise < 10 = FAIL
+  fulfillmentScalability: 9,      // FulfillmentScalability < 9 = FAIL
+  channelFit: 9,                  // ChannelFit < 9 = FAIL
+};
+
+// Gate priority order (CRITICAL - PROMPT 2.B)
+const GATE_PRIORITY_ORDER: ViabilityGateName[] = [
+  'economicFeasibility',
+  'proofToPromiseCredibility',
+  'fulfillmentScalability',
+  'channelFit',
+];
+
 // ========== OUTPUT TYPE ==========
 
 export interface EvaluateOfferV2Result {
@@ -36,6 +59,11 @@ export interface EvaluateOfferV2Result {
   
   // AI-generated recommendations — ONLY SOURCE OF TRUTH
   recommendations: StructuredRecommendation[];
+  
+  // Viability Gates (NEW - PROMPT 1 & 2)
+  outboundReady: boolean;        // MANDATORY - computed boolean
+  failedGate: ViabilityGateName | null;  // MANDATORY - explicit failed gate
+  viabilityGates: ViabilityGatesOutput;
   
   // Status flags
   isOptimizationLevel: boolean;
@@ -77,6 +105,152 @@ function isFormCompleteForV2(formData: DiagnosticFormData): boolean {
   return true;
 }
 
+// ========== VIABILITY GATES COMPUTATION (PROMPT 1 & 2) ==========
+
+function computeViabilityGates(latentScores: LatentScores): ViabilityGatesOutput {
+  // Map latent scores to gate scores
+  const gateScoreMap: Record<ViabilityGateName, number> = {
+    economicFeasibility: latentScores.economicHeadroom,
+    proofToPromiseCredibility: latentScores.proofToPromise,
+    fulfillmentScalability: latentScores.fulfillmentScalability,
+    channelFit: latentScores.channelFit,
+  };
+  
+  // Evaluate each gate
+  const gates: ViabilityGateResult[] = GATE_PRIORITY_ORDER.map(gate => ({
+    gate,
+    score: gateScoreMap[gate],
+    threshold: GATE_THRESHOLDS[gate],
+    passed: gateScoreMap[gate] >= GATE_THRESHOLDS[gate],
+  }));
+  
+  // Find first failed gate by priority (PROMPT 2.B)
+  let failedGate: ViabilityGateName | null = null;
+  for (const gate of GATE_PRIORITY_ORDER) {
+    const gateResult = gates.find(g => g.gate === gate);
+    if (gateResult && !gateResult.passed) {
+      failedGate = gate;
+      break; // Only ONE gate may be marked as failed
+    }
+  }
+  
+  // Compute outboundReady boolean (PROMPT 2.C)
+  const outboundReady = failedGate === null;
+  
+  // Compute score capping logic (PROMPT 2.D)
+  let scoreCap: number | null = null;
+  let scoreFloor: number | null = null;
+  
+  if (!outboundReady) {
+    scoreCap = 69; // If not ready, max score is 69
+  } else {
+    // Check if all gates >= 12
+    const allGatesAbove12 = gates.every(g => g.score >= 12);
+    if (allGatesAbove12) {
+      scoreFloor = 70;
+    }
+    
+    // Check if all gates >= 15
+    const allGatesAbove15 = gates.every(g => g.score >= 15);
+    if (allGatesAbove15) {
+      scoreFloor = 80;
+    }
+    
+    // Check if all gates >= 18
+    const allGatesAbove18 = gates.every(g => g.score >= 18);
+    if (allGatesAbove18) {
+      scoreFloor = 90;
+    }
+  }
+  
+  return {
+    gates,
+    failedGate,
+    outboundReady,
+    scoreCap,
+    scoreFloor,
+  };
+}
+
+// ========== APPLY SCORE CAPPING ==========
+
+function applyScoreCapping(rawScore: number, viabilityGates: ViabilityGatesOutput): number {
+  let score = rawScore;
+  
+  // Apply cap (bad offers cannot look good)
+  if (viabilityGates.scoreCap !== null && score > viabilityGates.scoreCap) {
+    console.log(`[evaluateOfferV2] Capping score from ${score} to ${viabilityGates.scoreCap}`);
+    score = viabilityGates.scoreCap;
+  }
+  
+  // Apply floor (good offers cannot look mediocre)
+  if (viabilityGates.scoreFloor !== null && score < viabilityGates.scoreFloor) {
+    console.log(`[evaluateOfferV2] Raising score from ${score} to ${viabilityGates.scoreFloor}`);
+    score = viabilityGates.scoreFloor;
+  }
+  
+  return score;
+}
+
+// ========== DERIVE READINESS LABEL (PROMPT 2.F) ==========
+
+function deriveReadinessLabel(alignmentScore: number, outboundReady: boolean): ReadinessLabel {
+  // Labels are DERIVED, not inferred
+  if (!outboundReady) {
+    return 'Weak'; // Not Ready = Weak
+  }
+  
+  if (alignmentScore >= 80) {
+    return 'Strong';
+  }
+  
+  if (alignmentScore >= 70) {
+    return 'Moderate';
+  }
+  
+  return 'Weak';
+}
+
+// ========== BOTTLENECK FROM GATES (PROMPT 2.E) ==========
+
+function determineBottleneckFromGates(
+  viabilityGates: ViabilityGatesOutput,
+  latentScores: LatentScores
+): LatentBottleneckKey {
+  // If a gate failed, bottleneck = failed gate
+  if (viabilityGates.failedGate) {
+    // Map gate name to latent key
+    const gateToLatentMap: Record<ViabilityGateName, LatentBottleneckKey> = {
+      economicFeasibility: 'economicHeadroom',
+      proofToPromiseCredibility: 'proofToPromise',
+      fulfillmentScalability: 'fulfillmentScalability',
+      channelFit: 'channelFit',
+    };
+    return gateToLatentMap[viabilityGates.failedGate];
+  }
+  
+  // Else, bottleneck = LOWEST scoring gate
+  const gateScores = viabilityGates.gates.map(g => ({
+    gate: g.gate,
+    score: g.score,
+  }));
+  
+  // Sort by score ascending
+  gateScores.sort((a, b) => a.score - b.score);
+  
+  const lowestGate = gateScores[0]?.gate || 'proofToPromiseCredibility';
+  
+  // Map back to latent key
+  const gateToLatentMap: Record<ViabilityGateName, LatentBottleneckKey> = {
+    economicFeasibility: 'economicHeadroom',
+    proofToPromiseCredibility: 'proofToPromise',
+    fulfillmentScalability: 'fulfillmentScalability',
+    channelFit: 'channelFit',
+  };
+  
+  return gateToLatentMap[lowestGate];
+}
+
 // ========== MAIN EVALUATION FUNCTION ==========
 
 /**
@@ -84,14 +258,16 @@ function isFormCompleteForV2(formData: DiagnosticFormData): boolean {
  * 
  * This function is the ONLY source of:
  * - alignmentScore (0-100)
- * - bottleneck identification
+ * - outboundReady (boolean) — MANDATORY
+ * - failedGate (string | null) — MANDATORY
+ * - primaryBottleneck — MANDATORY
  * - readiness label
  * - recommendations
  * 
  * NO OTHER FUNCTION may compute or modify these.
- * Legacy engines (calculateScore, scoringEngine, recommendationEngine, etc.) are DISABLED.
+ * Legacy engines (calculateScore, scoringEngine, recommendationEngine, etc.) are DELETED.
  * 
- * INCLUDES: 8 Stabilization Rules to prevent infinite optimization loops
+ * INCLUDES: Viability Gates + 8 Stabilization Rules
  */
 export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<EvaluateOfferV2Result | null> {
   // Validation check
@@ -105,8 +281,7 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
   const pricingStability = checkPricingStability(formData);
   
   // ========== STEP 2: LATENT SCORING ==========
-  // This is the ONLY scoring mechanism. Legacy dimensions are INERT.
-  // Pass pricing bottleneck eligibility to scoring engine
+  // This is the ONLY scoring mechanism.
   const latentResult = calculateLatentScores(formData, {
     pricingCanBeBottleneck: pricingStability.canSelectAsBottleneck,
   });
@@ -118,7 +293,25 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
   
   console.log('[evaluateOfferV2] Latent scores computed:', latentResult);
   
-  // ========== STEP 3: COMPUTE FULL STABILIZATION CONTEXT ==========
+  // ========== STEP 3: VIABILITY GATES (NEW - PROMPT 1 & 2) ==========
+  const viabilityGates = computeViabilityGates(latentResult.latentScores);
+  
+  console.log('[evaluateOfferV2] Viability Gates:', {
+    outboundReady: viabilityGates.outboundReady,
+    failedGate: viabilityGates.failedGate,
+    gates: viabilityGates.gates.map(g => `${g.gate}: ${g.score}/${g.threshold} (${g.passed ? 'PASS' : 'FAIL'})`),
+  });
+  
+  // ========== STEP 4: APPLY SCORE CAPPING ==========
+  const cappedAlignmentScore = applyScoreCapping(latentResult.alignmentScore, viabilityGates);
+  
+  // ========== STEP 5: DERIVE READINESS LABEL ==========
+  const readinessLabel = deriveReadinessLabel(cappedAlignmentScore, viabilityGates.outboundReady);
+  
+  // ========== STEP 6: DETERMINE BOTTLENECK FROM GATES ==========
+  const bottleneckKey = determineBottleneckFromGates(viabilityGates, latentResult.latentScores);
+  
+  // ========== STEP 7: COMPUTE FULL STABILIZATION CONTEXT ==========
   const stabilizationContext = computeStabilizationContext(formData, latentResult.latentScores);
   
   // RULE 4: Check local optimum
@@ -133,15 +326,16 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
     hasEligibleBottleneck: bottleneckEligibility.shouldForceRecommendations,
   });
   
-  // ========== STEP 4: AI RECOMMENDATIONS ==========
-  // This is the ONLY recommendation source. Legacy engines are INERT.
+  // ========== STEP 8: AI RECOMMENDATIONS ==========
+  // Pass viability gates to AI for guardrails
   const aiInput: AIPrescriptionInput = {
-    alignmentScore: latentResult.alignmentScore,
-    readinessLabel: latentResult.readinessLabel,
+    alignmentScore: cappedAlignmentScore,
+    readinessLabel,
     latentScores: latentResult.latentScores,
-    latentBottleneckKey: latentResult.latentBottleneckKey,
+    latentBottleneckKey: bottleneckKey,
     formData,
     stabilizationContext,
+    viabilityGates, // NEW: Pass gates to AI
   };
   
   const aiResult = await generateAIPrescription(aiInput);
@@ -149,21 +343,26 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
   console.log('[evaluateOfferV2] AI recommendations generated:', aiResult.recommendations.length);
   console.log('[evaluateOfferV2] Blocked recommendations:', aiResult.blockedRecommendations);
   
-  // ========== STEP 5: BUILD RESULT ==========
+  // ========== STEP 9: BUILD RESULT ==========
   const result: EvaluateOfferV2Result = {
     // Core outputs — ONLY SOURCE OF TRUTH
-    alignmentScore: latentResult.alignmentScore,
-    readinessLabel: latentResult.readinessLabel,
+    alignmentScore: cappedAlignmentScore,
+    readinessLabel,
     latentScores: latentResult.latentScores,
-    latentBottleneckKey: latentResult.latentBottleneckKey,
-    bottleneckLabel: LATENT_SCORE_LABELS[latentResult.latentBottleneckKey],
+    latentBottleneckKey: bottleneckKey,
+    bottleneckLabel: LATENT_SCORE_LABELS[bottleneckKey],
     
     // AI-generated recommendations
     recommendations: convertToStructuredRecommendations(aiResult.recommendations),
     
+    // Viability Gates (MANDATORY - PROMPT 1.E)
+    outboundReady: viabilityGates.outboundReady,
+    failedGate: viabilityGates.failedGate,
+    viabilityGates,
+    
     // Status flags
     isOptimizationLevel: aiResult.isOptimizationLevel,
-    notOutboundReady: aiResult.notOutboundReady,
+    notOutboundReady: !viabilityGates.outboundReady,
     isLoading: false,
     
     // Stabilization flags
@@ -178,8 +377,9 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
   // ========== EXECUTION GUARANTEE ==========
   console.log('[evaluateOfferV2] ✓ Evaluation complete. Source:', result._executionSource);
   console.log('[evaluateOfferV2] ✓ Alignment Score:', result.alignmentScore);
+  console.log('[evaluateOfferV2] ✓ Outbound Ready:', result.outboundReady);
+  console.log('[evaluateOfferV2] ✓ Failed Gate:', result.failedGate);
   console.log('[evaluateOfferV2] ✓ Primary Bottleneck:', result.bottleneckLabel);
-  console.log('[evaluateOfferV2] ✓ At Local Optimum:', result.isAtLocalOptimum);
   
   return result;
 }
@@ -209,6 +409,17 @@ export function assertEvaluateOfferV2Source(result: unknown): asserts result is 
       'Legacy engines MUST be disabled. Check execution flow.'
     );
   }
+  
+  // PROMPT 1.E: Validate mandatory output contract
+  if (castResult.outboundReady === undefined) {
+    throw new Error('[EXECUTION HALT] Missing outboundReady in result');
+  }
+  if (castResult.failedGate === undefined) {
+    throw new Error('[EXECUTION HALT] Missing failedGate in result');
+  }
+  if (castResult.latentBottleneckKey === undefined) {
+    throw new Error('[EXECUTION HALT] Missing primaryBottleneck in result');
+  }
 }
 
 // ========== SYNC VERSION FOR IMMEDIATE LATENT SCORES ==========
@@ -223,6 +434,8 @@ export function getLatentScoresSync(formData: DiagnosticFormData): {
   latentScores: LatentScores;
   latentBottleneckKey: LatentBottleneckKey;
   bottleneckLabel: string;
+  outboundReady: boolean;
+  failedGate: ViabilityGateName | null;
   isAtLocalOptimum?: boolean;
 } | null {
   if (!isFormCompleteForV2(formData)) {
@@ -237,15 +450,29 @@ export function getLatentScoresSync(formData: DiagnosticFormData): {
   });
   if (!latentResult) return null;
   
+  // Compute viability gates
+  const viabilityGates = computeViabilityGates(latentResult.latentScores);
+  
+  // Apply score capping
+  const cappedScore = applyScoreCapping(latentResult.alignmentScore, viabilityGates);
+  
+  // Derive readiness label
+  const readinessLabel = deriveReadinessLabel(cappedScore, viabilityGates.outboundReady);
+  
+  // Determine bottleneck from gates
+  const bottleneckKey = determineBottleneckFromGates(viabilityGates, latentResult.latentScores);
+  
   // Check local optimum for UI display
   const localOptimumResult = checkLocalOptimum(latentResult.latentScores);
   
   return {
-    alignmentScore: latentResult.alignmentScore,
-    readinessLabel: latentResult.readinessLabel,
+    alignmentScore: cappedScore,
+    readinessLabel,
     latentScores: latentResult.latentScores,
-    latentBottleneckKey: latentResult.latentBottleneckKey,
-    bottleneckLabel: LATENT_SCORE_LABELS[latentResult.latentBottleneckKey],
+    latentBottleneckKey: bottleneckKey,
+    bottleneckLabel: LATENT_SCORE_LABELS[bottleneckKey],
+    outboundReady: viabilityGates.outboundReady,
+    failedGate: viabilityGates.failedGate,
     isAtLocalOptimum: localOptimumResult.isAtLocalOptimum,
   };
 }

@@ -481,3 +481,38 @@ export interface ActiveOfferContext {
   proofLevel: ProofLevel | null;
   fulfillmentComplexity: FulfillmentComplexity | null;
 }
+
+// ========== Category Labels (moved from legacy recommendationEngine) ==========
+
+export const CATEGORY_LABELS: Record<FixCategory, string> = {
+  icp_shift: 'Target Market',
+  promise_shift: 'Offer Promise',
+  fulfillment_shift: 'Delivery Model',
+  pricing_shift: 'Pricing',
+  risk_shift: 'Risk & Guarantees',
+  positioning_shift: 'Positioning',
+  founder_psychology_check: 'Founder Mindset',
+};
+
+// ========== Viability Gate Types ==========
+
+export type ViabilityGateName = 
+  | 'economicFeasibility'
+  | 'proofToPromiseCredibility'
+  | 'fulfillmentScalability'
+  | 'channelFit';
+
+export interface ViabilityGateResult {
+  gate: ViabilityGateName;
+  score: number;
+  threshold: number;
+  passed: boolean;
+}
+
+export interface ViabilityGatesOutput {
+  gates: ViabilityGateResult[];
+  failedGate: ViabilityGateName | null;
+  outboundReady: boolean;
+  scoreCap: number | null;
+  scoreFloor: number | null;
+}

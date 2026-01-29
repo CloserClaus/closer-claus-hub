@@ -82,7 +82,7 @@ import {
   getScoringSegmentFromVertical,
   PROOF_LEVEL_OPTIONS,
 } from '@/lib/offerDiagnostic/dropdownOptions';
-import { CATEGORY_LABELS } from '@/lib/offerDiagnostic/recommendationEngine';
+import { CATEGORY_LABELS } from '@/lib/offerDiagnostic/types';
 import { useOfferDiagnosticState } from '@/hooks/useOfferDiagnosticState';
 
 // ============= SINGLE EXECUTION AUTHORITY =============
