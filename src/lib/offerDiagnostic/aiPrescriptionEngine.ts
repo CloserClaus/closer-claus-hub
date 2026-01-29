@@ -3,13 +3,17 @@
 // Replaces legacy rule-based recommendation engine for final output
 // INCLUDES: 8 Stabilization Rules for Outbound Diagnostic
 
-import type { DiagnosticFormData, StructuredRecommendation, FixCategory } from './types';
+import type { 
+  DiagnosticFormData, 
+  StructuredRecommendation, 
+  FixCategory,
+  ViabilityGatesOutput,
+} from './types';
 import type { 
   LatentScores, 
   LatentBottleneckKey, 
   ReadinessLabel,
   AIRecommendationCategory,
-  BOTTLENECK_ALLOWED_CATEGORIES 
 } from './latentScoringEngine';
 import { 
   computeStabilizationContext, 
@@ -27,6 +31,7 @@ export interface AIPrescriptionInput {
   latentBottleneckKey: LatentBottleneckKey;
   formData: DiagnosticFormData;
   stabilizationContext?: StabilizationContext;
+  viabilityGates?: ViabilityGatesOutput;  // NEW: Viability gates for AI guardrails
 }
 
 // ========== AI RECOMMENDATION OUTPUT ==========
@@ -129,9 +134,32 @@ const BOTTLENECK_FOCUS_MAP: Record<LatentBottleneckKey, string> = {
 // ========== BUILD USER PROMPT WITH STABILIZATION CONTEXT ==========
 
 function buildUserPrompt(input: AIPrescriptionInput): string {
-  const { alignmentScore, readinessLabel, latentScores, latentBottleneckKey, formData, stabilizationContext } = input;
+  const { alignmentScore, readinessLabel, latentScores, latentBottleneckKey, formData, stabilizationContext, viabilityGates } = input;
   
   const bottleneckFocus = BOTTLENECK_FOCUS_MAP[latentBottleneckKey];
+  
+  // Build viability gates context (PROMPT 2.G - CRITICAL)
+  const gatesNotes: string[] = [];
+  
+  if (viabilityGates) {
+    // HARD RULE: If not outbound ready, AI must acknowledge this
+    if (!viabilityGates.outboundReady) {
+      gatesNotes.push(`=== CRITICAL: OUTBOUND IS BLOCKED ===`);
+      gatesNotes.push(`Failed Gate: ${viabilityGates.failedGate}`);
+      gatesNotes.push(`You MUST start your response by acknowledging: "Outbound is blocked due to ${viabilityGates.failedGate}."`);
+      gatesNotes.push(`Do NOT suggest scaling outbound, diversifying channels, or "you are ready".`);
+      gatesNotes.push(`Focus ONLY on fixing the failed gate.`);
+    } else {
+      gatesNotes.push(`=== OUTBOUND READY: TRUE ===`);
+      gatesNotes.push(`All viability gates passed. Focus on optimization.`);
+    }
+    
+    // Gate scores for context
+    gatesNotes.push(`\nGATE SCORES:`);
+    viabilityGates.gates.forEach(g => {
+      gatesNotes.push(`- ${g.gate}: ${g.score}/${g.threshold} (${g.passed ? 'PASS' : 'FAIL'})`);
+    });
+  }
   
   // Build stabilization constraints
   const stabilizationNotes: string[] = [];
@@ -196,6 +224,10 @@ function buildUserPrompt(input: AIPrescriptionInput): string {
     constraints.push(`- ICP Specificity is "${formData.icpSpecificity}". Do NOT recommend narrowing the ICP.`);
   }
   
+  const gatesText = gatesNotes.length > 0
+    ? `\n\n${gatesNotes.join('\n')}`
+    : '';
+  
   const stabilizationText = stabilizationNotes.length > 0
     ? `\n\n=== STABILIZATION RULES (CRITICAL - DO NOT VIOLATE) ===\n${stabilizationNotes.join('\n')}`
     : '';
@@ -205,7 +237,9 @@ function buildUserPrompt(input: AIPrescriptionInput): string {
     : '';
   
   let qualityNote = '';
-  if (alignmentScore >= 80) {
+  if (viabilityGates && !viabilityGates.outboundReady) {
+    qualityNote = '\n\nNOTE: This offer is NOT outbound ready. Do NOT say "you are ready" or suggest scaling. Focus on the blocking gate.';
+  } else if (alignmentScore >= 80) {
     qualityNote = '\n\nNOTE: This offer is already strong. Recommendations should be optimization-level, not corrective.';
   } else if (alignmentScore < 50) {
     qualityNote = '\n\nNOTE: This offer has significant issues. Focus on the most critical fix for OUTBOUND success.';
@@ -214,6 +248,7 @@ function buildUserPrompt(input: AIPrescriptionInput): string {
   return `Evaluate this offer for OUTBOUND SALES readiness and provide recommendations:
 
 ALIGNMENT SCORE: ${alignmentScore}/100 (${readinessLabel})
+${gatesText}
 
 LATENT SCORES:
 - Economic Headroom (EFI): ${latentScores.economicHeadroom}/20
