@@ -1,6 +1,7 @@
 // ============= AI-Driven Prescription Engine =============
 // Generates recommendations using AI based on latent bottlenecks
 // Replaces legacy rule-based recommendation engine for final output
+// INCLUDES: 8 Stabilization Rules for Outbound Diagnostic
 
 import type { DiagnosticFormData, StructuredRecommendation, FixCategory } from './types';
 import type { 
@@ -10,6 +11,11 @@ import type {
   AIRecommendationCategory,
   BOTTLENECK_ALLOWED_CATEGORIES 
 } from './latentScoringEngine';
+import { 
+  computeStabilizationContext, 
+  filterRecommendation,
+  type StabilizationContext 
+} from './stabilizationRules';
 import { supabase } from '@/integrations/supabase/client';
 
 // ========== AI INPUT PAYLOAD ==========
@@ -20,6 +26,7 @@ export interface AIPrescriptionInput {
   latentScores: LatentScores;
   latentBottleneckKey: LatentBottleneckKey;
   formData: DiagnosticFormData;
+  stabilizationContext?: StabilizationContext;
 }
 
 // ========== AI RECOMMENDATION OUTPUT ==========
@@ -37,56 +44,76 @@ export interface AIPrescriptionResult {
   recommendations: AIRecommendation[];
   isOptimizationLevel: boolean;
   notOutboundReady: boolean;
+  stabilizationApplied: boolean;
+  blockedRecommendations: number;
 }
 
-// ========== SYSTEM PROMPT ==========
+// ========== SYSTEM PROMPT WITH STABILIZATION RULES ==========
 
-const AI_SYSTEM_PROMPT = `You are a senior B2B go-to-market advisor.
-Your task is to give founders brutally honest, practical advice
-to improve their offer BEFORE they do outbound.
+const AI_SYSTEM_PROMPT = `You are a senior B2B go-to-market advisor specializing in OUTBOUND sales readiness.
+Your task is to give founders brutally honest, practical advice to improve their offer for OUTBOUND success.
 
-Rules you MUST follow:
+=== HARD RULES (NEVER VIOLATE) ===
 
-1. Base all advice ONLY on the provided inputs and scores.
-2. NEVER recommend something the user already has.
-   - If proofLevel is Moderate or higher, do NOT suggest "get first clients" or "collect testimonials".
-   - If riskModel is Conditional or better, do NOT suggest "add guarantee".
-3. Focus ONLY on the primary bottleneck.
-4. Do NOT give generic advice.
-5. Every recommendation must change ONE structural lever:
-   - pricing
-   - ICP focus
-   - promise scope
-   - fulfillment model
-   - risk structure
-   - channel choice
-6. Assume the founder is competent.
-7. Do NOT mention scores or numbers in the output.
-8. If the offer is fundamentally misaligned, say so directly.
+RULE 1 - CHANNEL CONSTRAINT:
+- NEVER recommend switching to inbound, SEO, ads, partnerships, or non-outbound channels
+- All recommendations MUST improve outbound performance within the outbound channel
+- Do NOT suggest "consider other channels" or "maybe outbound isn't right"
 
-ICP SPECIFICITY RULES (CRITICAL):
-- Do NOT assume ICP is broad unless icpSpecificity = "broad"
-- Do NOT recommend narrowing ICP if icpSpecificity = "narrow" or "exact"
-- Only recommend ICP changes when icpSpecificity is explicitly "broad"
+RULE 2 - PRICING STABILITY:
+- If pricing is noted as "within viable band", do NOT recommend pricing changes
+- Only suggest pricing changes if explicitly noted as underpriced or overpriced
 
-Tone:
-Clear. Direct. Consulting-style. No fluff.
+RULE 3 - FULFILLMENT LOCK:
+- If fulfillment is "package_based" or "software_platform", do NOT recommend productization
+- Only suggest automation depth, SOP refinement, tooling efficiency for already-productized offers
 
-IMPORTANT: Return ONLY valid JSON matching this exact schema:
+RULE 4 - LOCAL OPTIMUM:
+- If noted as "at local optimum", only provide tactical refinements, not structural changes
+- Do NOT suggest pivots, restructuring, or major changes when all scores are healthy
+
+RULE 5 - BOTTLENECK ELIGIBILITY:
+- Only focus on the PRIMARY BOTTLENECK provided
+- If no eligible bottleneck is noted, provide optimization tips only
+
+RULE 6 - ICP SPECIFICITY:
+- If ICP specificity is "exact" or "narrow", do NOT recommend narrowing ICP further
+- Only recommend ICP changes if explicitly noted as "broad"
+
+RULE 7 - SECOND-ORDER CONSISTENCY:
+- Never recommend fixing something the user has already correctly configured
+- Check the "already correct" list and avoid those areas
+
+RULE 8 - RECOMMENDATION OBJECTIVE:
+Priority order:
+1. Least disruptive improvement
+2. Improves outbound conversion probability
+3. Preserves user's chosen business model
+Do NOT optimize for hypothetical perfect businesses.
+
+=== OUTPUT RULES ===
+
+1. Base all advice ONLY on provided inputs and scores
+2. Every recommendation must target the PRIMARY BOTTLENECK
+3. Each recommendation changes ONE structural lever only
+4. Do NOT mention scores or numbers in output
+5. 1-2 recommendations maximum
+
+IMPORTANT: Return ONLY valid JSON:
 {
   "recommendations": [
     {
       "id": "string",
       "headline": "string (clear, decisive)",
-      "plainExplanation": "string (why this matters)",
+      "plainExplanation": "string (why this matters for outbound)",
       "actionSteps": ["string", "string", "string"],
-      "desiredState": "string (what good looks like)",
+      "desiredState": "string (what good looks like for outbound)",
       "category": "pricing_shift" | "icp_shift" | "promise_shift" | "fulfillment_shift" | "risk_shift" | "channel_shift"
     }
   ]
 }
 
-Return 1-2 recommendations maximum. Focus on highest-leverage changes targeting the PRIMARY BOTTLENECK only.`;
+Tone: Clear. Direct. Consulting-style. Outbound-focused.`;
 
 // ========== BOTTLENECK TO FOCUS MAPPING ==========
 
@@ -99,14 +126,58 @@ const BOTTLENECK_FOCUS_MAP: Record<LatentBottleneckKey, string> = {
   icpSpecificityStrength: 'Focus on ICP targeting. The target market definition may be too broad for effective outbound.',
 };
 
-// ========== BUILD USER PROMPT ==========
+// ========== BUILD USER PROMPT WITH STABILIZATION CONTEXT ==========
 
 function buildUserPrompt(input: AIPrescriptionInput): string {
-  const { alignmentScore, readinessLabel, latentScores, latentBottleneckKey, formData } = input;
+  const { alignmentScore, readinessLabel, latentScores, latentBottleneckKey, formData, stabilizationContext } = input;
   
   const bottleneckFocus = BOTTLENECK_FOCUS_MAP[latentBottleneckKey];
   
-  // Build constraints based on existing state
+  // Build stabilization constraints
+  const stabilizationNotes: string[] = [];
+  
+  if (stabilizationContext) {
+    // Rule 2: Pricing stability
+    if (stabilizationContext.pricingStability.isWithinViableBand) {
+      stabilizationNotes.push('- PRICING IS WITHIN VIABLE BAND: Do NOT recommend pricing changes');
+    } else if (stabilizationContext.pricingStability.isUnderpriced) {
+      stabilizationNotes.push('- Pricing is UNDERPRICED: May suggest raising price');
+    } else if (stabilizationContext.pricingStability.isOverpriced) {
+      stabilizationNotes.push('- Pricing is OVERPRICED: May suggest lowering price');
+    }
+    
+    // Rule 3: Fulfillment lock
+    if (stabilizationContext.fulfillmentLock.lockLevel === 'fully_locked') {
+      stabilizationNotes.push('- FULFILLMENT IS ALREADY PRODUCTIZED: Do NOT recommend productization, only second-order optimizations');
+    }
+    
+    // Rule 4: Local optimum
+    if (stabilizationContext.localOptimum.isAtLocalOptimum) {
+      stabilizationNotes.push('- AT LOCAL OPTIMUM (all core latents ≥70%): Only provide tactical refinements, NOT structural changes');
+    }
+    
+    // Rule 5: Bottleneck eligibility
+    if (!stabilizationContext.bottleneckEligibility.shouldForceRecommendations) {
+      stabilizationNotes.push('- NO ELIGIBLE BOTTLENECK: Provide optimization tips only, no major changes needed');
+    }
+    
+    // Rule 6: ICP specificity
+    if (!stabilizationContext.icpOverride.shouldTreatAsBroad) {
+      stabilizationNotes.push('- ICP IS NARROW/EXACT: Do NOT recommend narrowing ICP further');
+    }
+    
+    // Rule 7: Second-order consistency
+    if (stabilizationContext.secondOrderConsistency.alreadyCorrectSelections.length > 0) {
+      stabilizationNotes.push(`- ALREADY CORRECT: ${stabilizationContext.secondOrderConsistency.alreadyCorrectSelections.join(', ')} - do NOT recommend changes to these`);
+    }
+    
+    // Rule 8: Recommendation objective
+    if (stabilizationContext.recommendationObjective.mustPreserve.length > 0) {
+      stabilizationNotes.push(`- MUST PRESERVE: ${stabilizationContext.recommendationObjective.mustPreserve.join(', ')}`);
+    }
+  }
+  
+  // Build legacy constraints
   const constraints: string[] = [];
   
   if (['moderate', 'strong', 'category_killer'].includes(formData.proofLevel || '')) {
@@ -121,6 +192,14 @@ function buildUserPrompt(input: AIPrescriptionInput): string {
     constraints.push('- User already has hybrid pricing. Do NOT suggest switching to hybrid.');
   }
   
+  if (formData.icpSpecificity === 'narrow' || formData.icpSpecificity === 'exact') {
+    constraints.push(`- ICP Specificity is "${formData.icpSpecificity}". Do NOT recommend narrowing the ICP.`);
+  }
+  
+  const stabilizationText = stabilizationNotes.length > 0
+    ? `\n\n=== STABILIZATION RULES (CRITICAL - DO NOT VIOLATE) ===\n${stabilizationNotes.join('\n')}`
+    : '';
+  
   const constraintsText = constraints.length > 0 
     ? `\n\nCONSTRAINTS (do not violate):\n${constraints.join('\n')}`
     : '';
@@ -129,10 +208,10 @@ function buildUserPrompt(input: AIPrescriptionInput): string {
   if (alignmentScore >= 80) {
     qualityNote = '\n\nNOTE: This offer is already strong. Recommendations should be optimization-level, not corrective.';
   } else if (alignmentScore < 50) {
-    qualityNote = '\n\nNOTE: This offer has significant issues. Clearly state that the offer is not outbound-ready and focus on the most critical fix.';
+    qualityNote = '\n\nNOTE: This offer has significant issues. Focus on the most critical fix for OUTBOUND success.';
   }
   
-  return `Evaluate this offer and provide recommendations:
+  return `Evaluate this offer for OUTBOUND SALES readiness and provide recommendations:
 
 ALIGNMENT SCORE: ${alignmentScore}/100 (${readinessLabel})
 
@@ -160,9 +239,10 @@ OFFER CONFIGURATION:
 - Proof Level: ${formData.proofLevel}
 - Fulfillment: ${formData.fulfillmentComplexity}
 - ICP Specificity: ${formData.icpSpecificity}
-${constraintsText}${qualityNote}
+${stabilizationText}${constraintsText}${qualityNote}
 
-Provide 1-3 high-leverage recommendations focused on the primary bottleneck.`;
+Provide 1-2 high-leverage recommendations focused on improving OUTBOUND conversion.
+REMEMBER: All recommendations must keep the user IN outbound - never suggest switching channels.`;
 }
 
 // ========== FALLBACK RECOMMENDATIONS ==========
@@ -285,17 +365,26 @@ function generateFallbackRecommendations(input: AIPrescriptionInput): AIRecommen
 // ========== MAIN AI PRESCRIPTION FUNCTION ==========
 
 export async function generateAIPrescription(input: AIPrescriptionInput): Promise<AIPrescriptionResult> {
-  const { alignmentScore } = input;
+  const { alignmentScore, formData, latentScores } = input;
   
   const isOptimizationLevel = alignmentScore >= 80;
   const notOutboundReady = alignmentScore < 50;
+  
+  // Compute stabilization context for filtering
+  const stabilizationContext = input.stabilizationContext || computeStabilizationContext(formData, latentScores);
+  
+  // Enrich input with stabilization context
+  const enrichedInput: AIPrescriptionInput = {
+    ...input,
+    stabilizationContext,
+  };
   
   try {
     // Call AI edge function
     const { data, error } = await supabase.functions.invoke('offer-diagnostic-ai', {
       body: {
         systemPrompt: AI_SYSTEM_PROMPT,
-        userPrompt: buildUserPrompt(input),
+        userPrompt: buildUserPrompt(enrichedInput),
         temperature: 0.2,
       },
     });
@@ -306,6 +395,8 @@ export async function generateAIPrescription(input: AIPrescriptionInput): Promis
         recommendations: generateFallbackRecommendations(input),
         isOptimizationLevel,
         notOutboundReady,
+        stabilizationApplied: true,
+        blockedRecommendations: 0,
       };
     }
     
@@ -318,8 +409,9 @@ export async function generateAIPrescription(input: AIPrescriptionInput): Promis
       throw new Error('Invalid AI response structure');
     }
     
-    // Validate and limit to 3 recommendations
-    const recommendations: AIRecommendation[] = parsed.recommendations
+    // Validate, filter, and limit to 2 recommendations
+    let blockedCount = 0;
+    const rawRecommendations: AIRecommendation[] = parsed.recommendations
       .slice(0, 3)
       .map((rec: any, idx: number) => ({
         id: rec.id || `ai_rec_${idx}`,
@@ -330,10 +422,48 @@ export async function generateAIPrescription(input: AIPrescriptionInput): Promis
         category: rec.category || 'pricing_shift',
       }));
     
+    // Apply stabilization filters (Rules 1-7)
+    const filteredRecommendations = rawRecommendations.filter(rec => {
+      const filterResult = filterRecommendation(
+        rec.headline,
+        rec.plainExplanation,
+        rec.category,
+        stabilizationContext
+      );
+      
+      if (filterResult.isBlocked) {
+        console.log(`[Stabilization] Blocked recommendation: "${rec.headline}" — reason: ${filterResult.blockReason}`);
+        blockedCount++;
+        return false;
+      }
+      return true;
+    });
+    
+    // Limit to 2 recommendations max (Rule 8: least disruptive)
+    const recommendations = filteredRecommendations.slice(0, 2);
+    
+    // If all recommendations were blocked, return a single safe fallback
+    if (recommendations.length === 0) {
+      recommendations.push({
+        id: 'optimization_mode',
+        headline: 'Your offer is well-configured for outbound',
+        plainExplanation: 'No major structural changes are needed. Focus on execution: refine messaging, optimize sequences, and improve targeting precision within your current model.',
+        actionSteps: [
+          'A/B test email subject lines and opening hooks',
+          'Refine your ICP list with better firmographic data',
+          'Improve follow-up cadence timing',
+        ],
+        desiredState: 'Consistent outbound performance with incremental improvements',
+        category: 'channel_shift',
+      });
+    }
+    
     return {
       recommendations,
       isOptimizationLevel,
       notOutboundReady,
+      stabilizationApplied: true,
+      blockedRecommendations: blockedCount,
     };
     
   } catch (err) {
@@ -342,6 +472,8 @@ export async function generateAIPrescription(input: AIPrescriptionInput): Promis
       recommendations: generateFallbackRecommendations(input),
       isOptimizationLevel,
       notOutboundReady,
+      stabilizationApplied: false,
+      blockedRecommendations: 0,
     };
   }
 }
