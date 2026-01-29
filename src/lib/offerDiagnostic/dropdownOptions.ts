@@ -423,6 +423,13 @@ export const ICP_MATURITY_OPTIONS = [
   { value: 'enterprise', label: 'Enterprise' },
 ] as const;
 
+// ICP Specificity - NEW REQUIRED FIELD
+export const ICP_SPECIFICITY_OPTIONS = [
+  { value: 'broad', label: 'Broad (entire vertical / industry)' },
+  { value: 'narrow', label: 'Narrow (single category or sub-vertical)' },
+  { value: 'exact', label: 'Exact (single trade, role, or tightly defined niche)' },
+] as const;
+
 export const PRICING_STRUCTURE_OPTIONS = [
   { value: 'recurring', label: 'Recurring (Retainer)' },
   { value: 'one_time', label: 'One-Time (Project)' },

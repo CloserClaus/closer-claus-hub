@@ -43,12 +43,13 @@ export interface EvaluateOfferV2Result {
 function isFormCompleteForV2(formData: DiagnosticFormData): boolean {
   const { 
     offerType, promise, icpIndustry, verticalSegment,
-    icpSize, icpMaturity, pricingStructure, riskModel, 
+    icpSize, icpMaturity, icpSpecificity, pricingStructure, riskModel, 
     fulfillmentComplexity, proofLevel 
   } = formData;
   
+  // icpSpecificity is now REQUIRED
   if (!offerType || !promise || !icpIndustry || !verticalSegment || 
-      !icpSize || !icpMaturity || !pricingStructure || !riskModel || 
+      !icpSize || !icpMaturity || !icpSpecificity || !pricingStructure || !riskModel || 
       !fulfillmentComplexity || !proofLevel) {
     return false;
   }
