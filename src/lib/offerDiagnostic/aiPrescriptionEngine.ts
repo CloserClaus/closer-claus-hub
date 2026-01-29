@@ -49,7 +49,7 @@ Rules you MUST follow:
 
 1. Base all advice ONLY on the provided inputs and scores.
 2. NEVER recommend something the user already has.
-   - If proofLevel is Moderate or higher, do NOT suggest "get first clients".
+   - If proofLevel is Moderate or higher, do NOT suggest "get first clients" or "collect testimonials".
    - If riskModel is Conditional or better, do NOT suggest "add guarantee".
 3. Focus ONLY on the primary bottleneck.
 4. Do NOT give generic advice.
@@ -63,6 +63,11 @@ Rules you MUST follow:
 6. Assume the founder is competent.
 7. Do NOT mention scores or numbers in the output.
 8. If the offer is fundamentally misaligned, say so directly.
+
+ICP SPECIFICITY RULES (CRITICAL):
+- Do NOT assume ICP is broad unless icpSpecificity = "broad"
+- Do NOT recommend narrowing ICP if icpSpecificity = "narrow" or "exact"
+- Only recommend ICP changes when icpSpecificity is explicitly "broad"
 
 Tone:
 Clear. Direct. Consulting-style. No fluff.
@@ -81,16 +86,17 @@ IMPORTANT: Return ONLY valid JSON matching this exact schema:
   ]
 }
 
-Return 1-3 recommendations maximum. Focus on highest-leverage changes.`;
+Return 1-2 recommendations maximum. Focus on highest-leverage changes targeting the PRIMARY BOTTLENECK only.`;
 
 // ========== BOTTLENECK TO FOCUS MAPPING ==========
 
 const BOTTLENECK_FOCUS_MAP: Record<LatentBottleneckKey, string> = {
-  economicHeadroom: 'Focus on pricing structure or ICP targeting. The current price may not match what the target market can afford.',
+  economicHeadroom: 'Focus on pricing structure or ICP targeting. The current price may not match what the target market can afford (Economic Friction is too high).',
   proofToPromise: 'Focus on promise scope. The current promise may be too ambitious for the available proof.',
   fulfillmentScalability: 'Focus on delivery model. The fulfillment approach may not scale reliably.',
   riskAlignment: 'Focus on risk structure. The risk model may not match the proof level.',
   channelFit: 'Focus on channel choice. Outbound may not be the right approach for this offer.',
+  icpSpecificityStrength: 'Focus on ICP targeting. The target market definition may be too broad for effective outbound.',
 };
 
 // ========== BUILD USER PROMPT ==========
@@ -131,11 +137,12 @@ function buildUserPrompt(input: AIPrescriptionInput): string {
 ALIGNMENT SCORE: ${alignmentScore}/100 (${readinessLabel})
 
 LATENT SCORES:
-- Economic Headroom: ${latentScores.economicHeadroom}/20
+- Economic Headroom (EFI): ${latentScores.economicHeadroom}/20
 - Proof-to-Promise: ${latentScores.proofToPromise}/20  
 - Fulfillment Scalability: ${latentScores.fulfillmentScalability}/20
 - Risk Alignment: ${latentScores.riskAlignment}/20
 - Channel Fit: ${latentScores.channelFit}/20
+- ICP Specificity: ${latentScores.icpSpecificityStrength}/20
 
 PRIMARY BOTTLENECK: ${latentBottleneckKey}
 ${bottleneckFocus}
@@ -152,6 +159,7 @@ OFFER CONFIGURATION:
 - Risk Model: ${formData.riskModel}
 - Proof Level: ${formData.proofLevel}
 - Fulfillment: ${formData.fulfillmentComplexity}
+- ICP Specificity: ${formData.icpSpecificity}
 ${constraintsText}${qualityNote}
 
 Provide 1-3 high-leverage recommendations focused on the primary bottleneck.`;
@@ -169,6 +177,7 @@ function generateFallbackRecommendations(input: AIPrescriptionInput): AIRecommen
     fulfillmentScalability: 'fulfillment_shift',
     riskAlignment: 'risk_shift',
     channelFit: 'channel_shift',
+    icpSpecificityStrength: 'icp_shift',
   };
   
   const category = categoryMap[latentBottleneckKey];
@@ -234,6 +243,18 @@ function generateFallbackRecommendations(input: AIPrescriptionInput): AIRecommen
       ],
       desiredState: 'Channel matches how your buyers want to buy',
       category: 'channel_shift',
+    },
+    icpSpecificityStrength: {
+      id: 'fallback_icp_specificity',
+      headline: 'Narrow your ICP definition',
+      plainExplanation: 'Your target market may be too broad for effective outbound. A narrower ICP leads to more relevant messaging and higher conversion.',
+      actionSteps: [
+        'Identify your most successful client type and double down',
+        'Define 3-5 specific qualifying criteria for ideal prospects',
+        'Create a "not a fit" list to sharpen focus',
+      ],
+      desiredState: 'Crystal clear ICP that sales can describe in one sentence',
+      category: 'icp_shift',
     },
   };
   

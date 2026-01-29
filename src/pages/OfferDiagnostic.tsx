@@ -45,6 +45,7 @@ import type {
   ICPIndustry,
   ICPSize,
   ICPMaturity,
+  ICPSpecificity,
   PricingStructure,
   RecurringPriceTier,
   OneTimePriceTier,
@@ -66,6 +67,7 @@ import {
   ICP_INDUSTRY_OPTIONS,
   ICP_SIZE_OPTIONS,
   ICP_MATURITY_OPTIONS,
+  ICP_SPECIFICITY_OPTIONS,
   PRICING_STRUCTURE_OPTIONS,
   RECURRING_PRICE_TIER_OPTIONS,
   ONE_TIME_PRICE_TIER_OPTIONS,
@@ -101,6 +103,7 @@ const initialFormData: DiagnosticFormData = {
   scoringSegment: null,
   icpSize: null,
   icpMaturity: null,
+  icpSpecificity: null, // NEW REQUIRED FIELD
   pricingStructure: null,
   recurringPriceTier: null,
   oneTimePriceTier: null,
@@ -173,11 +176,12 @@ function ScoreDisplayV2({ result }: { result: EvaluateOfferV2Result }) {
 
 function LatentScoresTable({ result }: { result: EvaluateOfferV2Result }) {
   const latentDimensions: { key: LatentBottleneckKey; label: string }[] = [
-    { key: 'economicHeadroom', label: 'Economic Headroom' },
+    { key: 'economicHeadroom', label: 'Economic Headroom (EFI)' },
     { key: 'proofToPromise', label: 'Proof-to-Promise Credibility' },
     { key: 'fulfillmentScalability', label: 'Fulfillment Scalability' },
     { key: 'riskAlignment', label: 'Risk Alignment' },
     { key: 'channelFit', label: 'Channel Fit' },
+    { key: 'icpSpecificityStrength', label: 'ICP Specificity' },
   ];
 
   return (
@@ -384,9 +388,10 @@ export default function OfferDiagnostic() {
   const { saveState: saveOfferState, saveLatentScores } = useOfferDiagnosticState();
 
   const isFormComplete = useMemo(() => {
-    const { offerType, promiseOutcome, promise, icpIndustry, verticalSegment, scoringSegment, icpSize, icpMaturity, pricingStructure, riskModel, fulfillmentComplexity, proofLevel } = formData;
+    const { offerType, promiseOutcome, promise, icpIndustry, verticalSegment, scoringSegment, icpSize, icpMaturity, icpSpecificity, pricingStructure, riskModel, fulfillmentComplexity, proofLevel } = formData;
     
-    if (!offerType || !promiseOutcome || !promise || !icpIndustry || !verticalSegment || !scoringSegment || !icpSize || !icpMaturity || !pricingStructure || !riskModel || !fulfillmentComplexity || !proofLevel) {
+    // icpSpecificity is now REQUIRED
+    if (!offerType || !promiseOutcome || !promise || !icpIndustry || !verticalSegment || !scoringSegment || !icpSize || !icpMaturity || !icpSpecificity || !pricingStructure || !riskModel || !fulfillmentComplexity || !proofLevel) {
       return false;
     }
 
@@ -663,6 +668,9 @@ export default function OfferDiagnostic() {
               <div className="grid gap-4 sm:grid-cols-2">
                 {renderSelect<ICPSize>('Company Size', 'icpSize', ICP_SIZE_OPTIONS, formData.icpSize)}
                 {renderSelect<ICPMaturity>('Business Maturity', 'icpMaturity', ICP_MATURITY_OPTIONS, formData.icpMaturity)}
+              </div>
+              <div className="grid gap-4 sm:grid-cols-1">
+                {renderSelect<ICPSpecificity>('ICP Specificity', 'icpSpecificity', ICP_SPECIFICITY_OPTIONS, formData.icpSpecificity)}
               </div>
             </CardContent>
           </Card>

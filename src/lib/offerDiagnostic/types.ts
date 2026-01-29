@@ -102,6 +102,9 @@ export type VerticalSegment =
   // Other B2B
   | 'industrial_b2b' | 'manufacturing' | 'supply_chain' | 'staffing' | 'logistics' | 'other';
 
+// ICP Specificity — NEW REQUIRED FIELD
+export type ICPSpecificity = 'broad' | 'narrow' | 'exact';
+
 // Internal scoring segments (6 buckets)
 export type ScoringSegment = 
   | 'Local'
@@ -211,6 +214,7 @@ export interface DiagnosticFormData {
   scoringSegment: ScoringSegment | null;   // Auto-mapped for scoring
   icpSize: ICPSize | null;
   icpMaturity: ICPMaturity | null;
+  icpSpecificity: ICPSpecificity | null;   // NEW REQUIRED FIELD
   pricingStructure: PricingStructure | null;
   recurringPriceTier: RecurringPriceTier | null;
   oneTimePriceTier: OneTimePriceTier | null;
@@ -418,14 +422,18 @@ export interface ContextAwareFixStackResult {
 // ========== Latent Scoring Types ==========
 
 export interface LatentScores {
-  economicHeadroom: number;       // 0-20
+  economicHeadroom: number;       // 0-20 (derived from EFI)
   proofToPromise: number;         // 0-20
   fulfillmentScalability: number; // 0-20
   riskAlignment: number;          // 0-20
   channelFit: number;             // 0-20
+  icpSpecificityStrength: number; // 0-20 (NEW)
 }
 
 export type LatentBottleneckKey = keyof LatentScores;
+
+// Economic Friction Index (EFI) class
+export type EFIClass = 'VeryLow' | 'Low' | 'Moderate' | 'High' | 'Extreme';
 
 export interface LatentScoringResult {
   alignmentScore: number;          // 0-100
