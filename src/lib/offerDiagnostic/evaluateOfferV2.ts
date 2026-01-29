@@ -1,6 +1,7 @@
 // ============= evaluateOfferV2 — SINGLE EXECUTION AUTHORITY =============
 // This is the ONLY function that produces scoring, bottleneck, and recommendation output.
 // All other engines (scoringEngine, recommendationEngine, violationEngine, etc.) are DISABLED.
+// INCLUDES: 8 Stabilization Rules for Outbound Diagnostic
 
 import type { DiagnosticFormData, StructuredRecommendation } from './types';
 import { 
@@ -15,6 +16,13 @@ import {
   convertToStructuredRecommendations,
   type AIPrescriptionInput
 } from './aiPrescriptionEngine';
+import {
+  computeStabilizationContext,
+  checkPricingStability,
+  checkBottleneckEligibility,
+  checkLocalOptimum,
+  type StabilizationContext,
+} from './stabilizationRules';
 
 // ========== OUTPUT TYPE ==========
 
@@ -33,6 +41,11 @@ export interface EvaluateOfferV2Result {
   isOptimizationLevel: boolean;
   notOutboundReady: boolean;
   isLoading: boolean;
+  
+  // Stabilization context
+  stabilizationApplied: boolean;
+  isAtLocalOptimum: boolean;
+  hasEligibleBottleneck: boolean;
   
   // Execution verification
   _executionSource: 'evaluateOfferV2';
@@ -77,6 +90,8 @@ function isFormCompleteForV2(formData: DiagnosticFormData): boolean {
  * 
  * NO OTHER FUNCTION may compute or modify these.
  * Legacy engines (calculateScore, scoringEngine, recommendationEngine, etc.) are DISABLED.
+ * 
+ * INCLUDES: 8 Stabilization Rules to prevent infinite optimization loops
  */
 export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<EvaluateOfferV2Result | null> {
   // Validation check
@@ -85,9 +100,16 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
     return null;
   }
   
-  // ========== STEP 1: LATENT SCORING ==========
+  // ========== STEP 1: PRE-COMPUTE STABILIZATION CHECKS ==========
+  // RULE 2: Check pricing stability before computing bottleneck
+  const pricingStability = checkPricingStability(formData);
+  
+  // ========== STEP 2: LATENT SCORING ==========
   // This is the ONLY scoring mechanism. Legacy dimensions are INERT.
-  const latentResult = calculateLatentScores(formData);
+  // Pass pricing bottleneck eligibility to scoring engine
+  const latentResult = calculateLatentScores(formData, {
+    pricingCanBeBottleneck: pricingStability.canSelectAsBottleneck,
+  });
   
   if (!latentResult) {
     console.error('[evaluateOfferV2] Latent scoring failed — halting evaluation');
@@ -96,7 +118,22 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
   
   console.log('[evaluateOfferV2] Latent scores computed:', latentResult);
   
-  // ========== STEP 2: AI RECOMMENDATIONS ==========
+  // ========== STEP 3: COMPUTE FULL STABILIZATION CONTEXT ==========
+  const stabilizationContext = computeStabilizationContext(formData, latentResult.latentScores);
+  
+  // RULE 4: Check local optimum
+  const localOptimumResult = checkLocalOptimum(latentResult.latentScores);
+  
+  // RULE 5: Check bottleneck eligibility
+  const bottleneckEligibility = checkBottleneckEligibility(latentResult.latentScores);
+  
+  console.log('[evaluateOfferV2] Stabilization context:', {
+    pricingWithinBand: pricingStability.isWithinViableBand,
+    atLocalOptimum: localOptimumResult.isAtLocalOptimum,
+    hasEligibleBottleneck: bottleneckEligibility.shouldForceRecommendations,
+  });
+  
+  // ========== STEP 4: AI RECOMMENDATIONS ==========
   // This is the ONLY recommendation source. Legacy engines are INERT.
   const aiInput: AIPrescriptionInput = {
     alignmentScore: latentResult.alignmentScore,
@@ -104,13 +141,15 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
     latentScores: latentResult.latentScores,
     latentBottleneckKey: latentResult.latentBottleneckKey,
     formData,
+    stabilizationContext,
   };
   
   const aiResult = await generateAIPrescription(aiInput);
   
   console.log('[evaluateOfferV2] AI recommendations generated:', aiResult.recommendations.length);
+  console.log('[evaluateOfferV2] Blocked recommendations:', aiResult.blockedRecommendations);
   
-  // ========== STEP 3: BUILD RESULT ==========
+  // ========== STEP 5: BUILD RESULT ==========
   const result: EvaluateOfferV2Result = {
     // Core outputs — ONLY SOURCE OF TRUTH
     alignmentScore: latentResult.alignmentScore,
@@ -127,6 +166,11 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
     notOutboundReady: aiResult.notOutboundReady,
     isLoading: false,
     
+    // Stabilization flags
+    stabilizationApplied: aiResult.stabilizationApplied,
+    isAtLocalOptimum: localOptimumResult.isAtLocalOptimum,
+    hasEligibleBottleneck: bottleneckEligibility.shouldForceRecommendations,
+    
     // Execution verification — MANDATORY
     _executionSource: 'evaluateOfferV2',
   };
@@ -135,6 +179,7 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
   console.log('[evaluateOfferV2] ✓ Evaluation complete. Source:', result._executionSource);
   console.log('[evaluateOfferV2] ✓ Alignment Score:', result.alignmentScore);
   console.log('[evaluateOfferV2] ✓ Primary Bottleneck:', result.bottleneckLabel);
+  console.log('[evaluateOfferV2] ✓ At Local Optimum:', result.isAtLocalOptimum);
   
   return result;
 }
@@ -178,13 +223,22 @@ export function getLatentScoresSync(formData: DiagnosticFormData): {
   latentScores: LatentScores;
   latentBottleneckKey: LatentBottleneckKey;
   bottleneckLabel: string;
+  isAtLocalOptimum?: boolean;
 } | null {
   if (!isFormCompleteForV2(formData)) {
     return null;
   }
   
-  const latentResult = calculateLatentScores(formData);
+  // Check pricing stability for bottleneck eligibility
+  const pricingStability = checkPricingStability(formData);
+  
+  const latentResult = calculateLatentScores(formData, {
+    pricingCanBeBottleneck: pricingStability.canSelectAsBottleneck,
+  });
   if (!latentResult) return null;
+  
+  // Check local optimum for UI display
+  const localOptimumResult = checkLocalOptimum(latentResult.latentScores);
   
   return {
     alignmentScore: latentResult.alignmentScore,
@@ -192,5 +246,6 @@ export function getLatentScoresSync(formData: DiagnosticFormData): {
     latentScores: latentResult.latentScores,
     latentBottleneckKey: latentResult.latentBottleneckKey,
     bottleneckLabel: LATENT_SCORE_LABELS[latentResult.latentBottleneckKey],
+    isAtLocalOptimum: localOptimumResult.isAtLocalOptimum,
   };
 }

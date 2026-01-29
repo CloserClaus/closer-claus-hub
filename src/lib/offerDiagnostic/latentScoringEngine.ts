@@ -349,6 +349,7 @@ function calculateICPSpecificityStrength(formData: DiagnosticFormData): number {
 
 // ========== BOTTLENECK DETECTION ==========
 // Uses NORMALIZED (percentage) scores, not absolute values
+// STABILIZATION RULE 5: Only select as bottleneck if < 65% AND 10% worse than median
 
 const BOTTLENECK_PRIORITY_ORDER: LatentBottleneckKey[] = [
   'proofToPromise',           // Highest downstream sales risk
@@ -359,7 +360,10 @@ const BOTTLENECK_PRIORITY_ORDER: LatentBottleneckKey[] = [
   'riskAlignment',
 ];
 
-function findLatentBottleneck(scores: LatentScores): LatentBottleneckKey {
+function findLatentBottleneck(
+  scores: LatentScores,
+  pricingCanBeBottleneck: boolean = true // RULE 2: Pricing stability lock
+): LatentBottleneckKey {
   // Calculate normalized scores (percentage of max 20)
   const normalized: Record<LatentBottleneckKey, number> = {
     economicHeadroom: (scores.economicHeadroom / 20) * 100,
@@ -370,20 +374,43 @@ function findLatentBottleneck(scores: LatentScores): LatentBottleneckKey {
     icpSpecificityStrength: (scores.icpSpecificityStrength / 20) * 100,
   };
   
-  // Find the LOWEST RELATIVE (normalized) score
+  // RULE 5: Calculate median for eligibility check
+  const sortedPercentages = Object.values(normalized).sort((a, b) => a - b);
+  const medianPercentage = sortedPercentages[Math.floor(sortedPercentages.length / 2)];
+  
+  // Filter for eligible bottlenecks: < 65% AND at least 10% worse than median
+  const allKeys = Object.keys(normalized) as LatentBottleneckKey[];
+  const eligibleKeys = allKeys.filter(key => {
+    const pct = normalized[key];
+    const meetsThreshold = pct < 65 && (medianPercentage - pct) >= 10;
+    
+    // RULE 2: If pricing can't be bottleneck, exclude economicHeadroom
+    if (key === 'economicHeadroom' && !pricingCanBeBottleneck) {
+      return false;
+    }
+    
+    return meetsThreshold;
+  });
+  
+  // If no eligible bottlenecks, still need to return something
+  // Fall back to lowest score (but this signals "no clear bottleneck")
+  const searchKeys = eligibleKeys.length > 0 ? eligibleKeys : allKeys.filter(k => 
+    k !== 'economicHeadroom' || pricingCanBeBottleneck
+  );
+  
+  // Find the LOWEST RELATIVE (normalized) score among eligible
   let lowestKey: LatentBottleneckKey = 'proofToPromise';
   let lowestScore = 100;
   
-  // First pass: find the minimum normalized score
-  for (const key of Object.keys(normalized) as LatentBottleneckKey[]) {
+  for (const key of searchKeys) {
     if (normalized[key] < lowestScore) {
       lowestScore = normalized[key];
       lowestKey = key;
     }
   }
   
-  // Second pass: if there are ties, use priority order
-  const tiedKeys = (Object.keys(normalized) as LatentBottleneckKey[]).filter(
+  // Check for ties and use priority order
+  const tiedKeys = searchKeys.filter(
     k => Math.abs(normalized[k] - lowestScore) < 1 // Within 1% considered tie
   );
   
@@ -434,7 +461,16 @@ function isFormCompleteForLatent(formData: DiagnosticFormData): boolean {
 
 // ========== MAIN LATENT SCORING FUNCTION ==========
 
-export function calculateLatentScores(formData: DiagnosticFormData): LatentScoringResult | null {
+export interface LatentScoringOptions {
+  pricingCanBeBottleneck?: boolean; // RULE 2: From stabilization context
+}
+
+export function calculateLatentScores(
+  formData: DiagnosticFormData,
+  options: LatentScoringOptions = {}
+): LatentScoringResult | null {
+  const { pricingCanBeBottleneck = true } = options;
+  
   if (!isFormCompleteForLatent(formData)) {
     return null;
   }
@@ -464,7 +500,7 @@ export function calculateLatentScores(formData: DiagnosticFormData): LatentScori
   const alignmentScore = Math.min(100, Math.round((rawSum / 120) * 100));
   
   const readinessLabel = getReadinessLabel(alignmentScore);
-  const latentBottleneckKey = findLatentBottleneck(latentScores);
+  const latentBottleneckKey = findLatentBottleneck(latentScores, pricingCanBeBottleneck);
   
   return {
     alignmentScore,
