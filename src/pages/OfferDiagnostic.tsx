@@ -22,40 +22,26 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import { 
-  AlertTriangle, 
-  CheckCircle2, 
-  Target, 
-  Zap,
-  ArrowRight,
-  Gauge,
-  Settings2,
-  ChevronDown,
-  Lightbulb,
-  Info,
-  Copy,
-  Check,
-} from 'lucide-react';
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { 
+  AlertTriangle, 
+  CheckCircle2, 
+  Target, 
+  ArrowRight,
+  Gauge,
+  Lightbulb,
+  Info,
+  Copy,
+  Check,
+  Loader2,
+} from 'lucide-react';
 import type {
   DiagnosticFormData,
   OfferType,
-  Promise,
   ICPIndustry,
   ICPSize,
   ICPMaturity,
@@ -69,19 +55,10 @@ import type {
   PerformanceCompTier,
   RiskModel,
   FulfillmentComplexity,
-  ScoringResult,
-  DetectedProblem,
-  FixArchetype,
-  ContextModifiers,
-  ContextAwareFix,
-  Violation,
   StructuredRecommendation,
   FixCategory,
 } from '@/lib/offerDiagnostic/types';
-import { calculateScore } from '@/lib/offerDiagnostic/scoringEngine';
-import { PROBLEM_CATEGORY_LABELS } from '@/lib/offerDiagnostic/fixStackEngine';
-import { generateContextAwareFixStack, MODIFIER_LABELS } from '@/lib/offerDiagnostic/contextAwareFixEngine';
-import { CATEGORY_LABELS } from '@/lib/offerDiagnostic/recommendationEngine';
+import type { VerticalSegment, ScoringSegment, PromiseBucket, PromiseOutcome } from '@/lib/offerDiagnostic/types';
 import {
   OFFER_TYPE_OPTIONS,
   OUTCOMES_BY_OFFER_TYPE,
@@ -103,8 +80,17 @@ import {
   getScoringSegmentFromVertical,
   PROOF_LEVEL_OPTIONS,
 } from '@/lib/offerDiagnostic/dropdownOptions';
-import type { PromiseBucket, PromiseOutcome, VerticalSegment, ScoringSegment, ProofLevel } from '@/lib/offerDiagnostic/types';
+import { CATEGORY_LABELS } from '@/lib/offerDiagnostic/recommendationEngine';
 import { useOfferDiagnosticState } from '@/hooks/useOfferDiagnosticState';
+
+// ============= SINGLE EXECUTION AUTHORITY =============
+// evaluateOfferV2 is the ONLY source of truth for scoring and recommendations
+import { 
+  evaluateOfferV2, 
+  assertEvaluateOfferV2Source,
+  type EvaluateOfferV2Result 
+} from '@/lib/offerDiagnostic/evaluateOfferV2';
+import { LATENT_SCORE_LABELS, type LatentBottleneckKey } from '@/lib/offerDiagnostic/latentScoringEngine';
 
 const initialFormData: DiagnosticFormData = {
   offerType: null,
@@ -128,22 +114,7 @@ const initialFormData: DiagnosticFormData = {
   proofLevel: null,
 };
 
-function getImpactColor(impact: FixArchetype['impact']) {
-  switch (impact) {
-    case 'Very High': return 'bg-green-500/20 text-green-600 border-green-500/30';
-    case 'High': return 'bg-blue-500/20 text-blue-600 border-blue-500/30';
-    case 'Medium': return 'bg-yellow-500/20 text-yellow-600 border-yellow-500/30';
-    case 'Low': return 'bg-muted text-muted-foreground border-muted';
-  }
-}
-
-function getEffortColor(effort: FixArchetype['effort']) {
-  switch (effort) {
-    case 'Low': return 'bg-green-500/20 text-green-600 border-green-500/30';
-    case 'Medium': return 'bg-yellow-500/20 text-yellow-600 border-yellow-500/30';
-    case 'High': return 'bg-red-500/20 text-red-600 border-red-500/30';
-  }
-}
+// ============= HELPER FUNCTIONS =============
 
 function getReadinessLabelColor(label: string) {
   switch (label) {
@@ -163,83 +134,72 @@ function getReadinessLabelBg(label: string) {
   }
 }
 
-function ScoreDisplay({ alignmentScore, readinessScore, readinessLabel }: { 
-  alignmentScore: number; 
-  readinessScore: number; 
-  readinessLabel: string;
-}) {
+function getCategoryColor(category: FixCategory) {
+  switch (category) {
+    case 'icp_shift': return 'bg-blue-500/10 text-blue-600 border-blue-500/30';
+    case 'promise_shift': return 'bg-purple-500/10 text-purple-600 border-purple-500/30';
+    case 'fulfillment_shift': return 'bg-green-500/10 text-green-600 border-green-500/30';
+    case 'pricing_shift': return 'bg-orange-500/10 text-orange-600 border-orange-500/30';
+    case 'risk_shift': return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/30';
+    case 'positioning_shift': return 'bg-pink-500/10 text-pink-600 border-pink-500/30';
+    case 'founder_psychology_check': return 'bg-indigo-500/10 text-indigo-600 border-indigo-500/30';
+    default: return 'bg-muted text-muted-foreground border-muted';
+  }
+}
+
+// ============= SCORE DISPLAY (V2) =============
+
+function ScoreDisplayV2({ result }: { result: EvaluateOfferV2Result }) {
+  const readinessScore = Math.round(result.alignmentScore / 10);
+  
   return (
     <div className="flex flex-col items-center gap-3">
       <div className="text-sm font-medium text-muted-foreground">Alignment Score</div>
-      <div className={`flex flex-col items-center justify-center w-28 h-28 rounded-full border-4 ${getReadinessLabelBg(readinessLabel)}`}>
-        <span className={`text-3xl font-bold ${getReadinessLabelColor(readinessLabel)}`}>{alignmentScore}</span>
+      <div className={`flex flex-col items-center justify-center w-28 h-28 rounded-full border-4 ${getReadinessLabelBg(result.readinessLabel)}`}>
+        <span className={`text-3xl font-bold ${getReadinessLabelColor(result.readinessLabel)}`}>{result.alignmentScore}</span>
         <span className="text-muted-foreground text-xs">/ 100</span>
       </div>
       <div className="text-center space-y-1">
-        <div className="text-sm font-medium">Readiness Score: <span className={getReadinessLabelColor(readinessLabel)}>{readinessScore}</span>/10</div>
-        <Badge variant="outline" className={`${getReadinessLabelBg(readinessLabel)} ${getReadinessLabelColor(readinessLabel)} border-current`}>
-          {readinessLabel}
+        <div className="text-sm font-medium">Readiness Score: <span className={getReadinessLabelColor(result.readinessLabel)}>{readinessScore}</span>/10</div>
+        <Badge variant="outline" className={`${getReadinessLabelBg(result.readinessLabel)} ${getReadinessLabelColor(result.readinessLabel)} border-current`}>
+          {result.readinessLabel}
         </Badge>
       </div>
     </div>
   );
 }
 
-function AlignmentScoreCard({ score }: { score: number }) {
-  const getScoreColor = (s: number) => {
-    if (s >= 70) return 'text-green-500';
-    if (s >= 50) return 'text-yellow-500';
-    return 'text-red-500';
-  };
+// ============= LATENT SCORES TABLE (V2) =============
 
-  return (
-    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-      <Gauge className="h-5 w-5 text-muted-foreground" />
-      <div className="flex-1">
-        <div className="text-sm font-medium">Alignment Score</div>
-        <div className={`text-lg font-bold ${getScoreColor(score)}`}>{score}/100</div>
-      </div>
-    </div>
-  );
-}
-
-function DimensionScoresTable({ scores }: { scores: ScoringResult['dimensionScores'] }) {
-  const dimensions = [
-    { key: 'painUrgency' as const, label: 'Pain & Urgency', maxScore: 20 },
-    { key: 'buyingPower' as const, label: 'Buying Power', maxScore: 20 },
-    { key: 'executionFeasibility' as const, label: 'Execution Feasibility', maxScore: 15 },
-    { key: 'pricingFit' as const, label: 'Pricing Fit', maxScore: 15 },
-    { key: 'riskAlignment' as const, label: 'Risk Alignment', maxScore: 10 },
-    { key: 'outboundFit' as const, label: 'Outbound Fit', maxScore: 20 },
+function LatentScoresTable({ result }: { result: EvaluateOfferV2Result }) {
+  const latentDimensions: { key: LatentBottleneckKey; label: string }[] = [
+    { key: 'economicHeadroom', label: 'Economic Headroom' },
+    { key: 'proofToPromise', label: 'Proof-to-Promise Credibility' },
+    { key: 'fulfillmentScalability', label: 'Fulfillment Scalability' },
+    { key: 'riskAlignment', label: 'Risk Alignment' },
+    { key: 'channelFit', label: 'Channel Fit' },
   ];
-
-  // Find the lowest scoring dimension (primary bottleneck)
-  const lowestDimension = dimensions.reduce((lowest, current) => {
-    const currentPercentage = (scores[current.key] / current.maxScore) * 100;
-    const lowestPercentage = (scores[lowest.key] / lowest.maxScore) * 100;
-    return currentPercentage < lowestPercentage ? current : lowest;
-  }, dimensions[0]);
 
   return (
     <div className="space-y-3">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Dimension</TableHead>
+            <TableHead>Latent Dimension</TableHead>
             <TableHead className="text-right">Score</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {dimensions.map(({ key, label, maxScore }) => {
-            const score = scores[key];
-            const percentage = (score / maxScore) * 100;
-            const isBottleneck = key === lowestDimension.key;
+          {latentDimensions.map(({ key, label }) => {
+            const score = result.latentScores[key];
+            const percentage = (score / 20) * 100;
+            const isBottleneck = key === result.latentBottleneckKey;
             return (
               <TableRow key={key} className={isBottleneck ? 'bg-destructive/5' : ''}>
                 <TableCell className="font-medium">{label}</TableCell>
                 <TableCell className="text-right">
                   <span className={percentage < 50 ? 'text-red-500 font-semibold' : ''}>
-                    {score}/{maxScore}
+                    {score}/20
                   </span>
                 </TableCell>
               </TableRow>
@@ -252,160 +212,16 @@ function DimensionScoresTable({ scores }: { scores: ScoringResult['dimensionScor
       <div className="flex items-center gap-2 text-sm p-2 rounded-md bg-muted/50 border border-muted">
         <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
         <span className="text-muted-foreground">
-          Primary Bottleneck: <span className="font-medium text-foreground">{lowestDimension.label}</span> ({scores[lowestDimension.key]}/{lowestDimension.maxScore})
+          Primary Bottleneck: <span className="font-medium text-foreground">{result.bottleneckLabel}</span> ({result.latentScores[result.latentBottleneckKey]}/20)
         </span>
       </div>
     </div>
   );
 }
 
-function FixArchetypeCard({ fix, index }: { fix: FixArchetype; index: number }) {
-  return (
-    <div className="rounded-lg border bg-card p-4 space-y-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-sm font-semibold">
-            {index + 1}
-          </span>
-          <span className="font-semibold">{fix.whatToChange}</span>
-        </div>
-        <div className="flex gap-2">
-          <Badge variant="outline" className={getEffortColor(fix.effort)}>
-            {fix.effort} Effort
-          </Badge>
-          <Badge variant="outline" className={getImpactColor(fix.impact)}>
-            {fix.impact} Impact
-          </Badge>
-        </div>
-      </div>
-      
-      <div className="space-y-2 text-sm">
-        <div className="flex items-start gap-2">
-          <ArrowRight className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-          <span>{fix.howToChangeIt}</span>
-        </div>
-        <div className="flex items-start gap-2 text-muted-foreground">
-          <Zap className="h-4 w-4 mt-0.5 shrink-0" />
-          <span><strong>When:</strong> {fix.whenToChooseThis}</span>
-        </div>
-        <div className="flex items-start gap-2 text-muted-foreground">
-          <Target className="h-4 w-4 mt-0.5 shrink-0" />
-          <span><strong>Target:</strong> {fix.targetCondition}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
+// ============= RECOMMENDATION CARD (V2) =============
 
-function ProblemCard({ problem, index }: { problem: DetectedProblem; index: number }) {
-  return (
-    <AccordionItem value={`problem-${index}`} className="border rounded-lg px-4">
-      <AccordionTrigger className="hover:no-underline">
-        <div className="flex items-center gap-3 text-left">
-          <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
-          <div>
-            <div className="font-semibold">{PROBLEM_CATEGORY_LABELS[problem.category]}</div>
-            <div className="text-sm text-muted-foreground">{problem.problem}</div>
-          </div>
-        </div>
-      </AccordionTrigger>
-      <AccordionContent className="pt-2 pb-4 space-y-4">
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-sm">
-          <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
-          <span>{problem.whyItMatters}</span>
-        </div>
-        
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <CheckCircle2 className="h-4 w-4 text-primary" />
-            <span>Recommended Fixes</span>
-          </div>
-          <div className="space-y-3">
-            {problem.fixes.map((fix, fixIndex) => (
-              <FixArchetypeCard key={fixIndex} fix={fix} index={fixIndex} />
-            ))}
-          </div>
-        </div>
-      </AccordionContent>
-    </AccordionItem>
-  );
-}
-
-// Context Modifiers Display
-function ContextModifiersPanel({ modifiers }: { modifiers: ContextModifiers }) {
-  const [isOpen, setIsOpen] = useState(false);
-  
-  const modifierEntries = Object.entries(modifiers) as [keyof ContextModifiers, string][];
-  
-  return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <Card className="border-muted">
-        <CollapsibleTrigger className="w-full">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Settings2 className="h-4 w-4 text-muted-foreground" />
-                <CardTitle className="text-sm font-medium">Context Modifiers</CardTitle>
-              </div>
-              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-            </div>
-          </CardHeader>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <CardContent className="pt-0">
-            <div className="grid gap-2 sm:grid-cols-5">
-              {modifierEntries.map(([key, value]) => (
-                <div key={key} className="rounded-lg bg-muted/50 p-2 text-center">
-                  <div className="text-xs text-muted-foreground">{MODIFIER_LABELS[key]}</div>
-                  <div className="font-medium text-sm">{value}</div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </CollapsibleContent>
-      </Card>
-    </Collapsible>
-  );
-}
-
-// Context-Aware Fix Card
-function ContextAwareFixCard({ fix, index }: { fix: ContextAwareFix; index: number }) {
-  return (
-    <Card className="border-l-4 border-l-primary">
-      <CardContent className="pt-4 space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-sm font-semibold">
-              {index + 1}
-            </span>
-            <span className="font-semibold">{fix.whatToChange}</span>
-          </div>
-          <div className="flex gap-2">
-            <Badge variant="outline" className={getEffortColor(fix.effort)}>
-              {fix.effort} Effort
-            </Badge>
-            <Badge variant="outline" className={getImpactColor(fix.impact)}>
-              {fix.impact} Impact
-            </Badge>
-          </div>
-        </div>
-        
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-primary/5 text-sm">
-          <Lightbulb className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-          <span>{fix.instruction}</span>
-        </div>
-        
-        <div className="flex items-start gap-2 text-sm text-muted-foreground">
-          <Target className="h-4 w-4 mt-0.5 shrink-0" />
-          <span><strong>Target:</strong> {fix.targetCondition}</span>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// Structured Recommendation Card with copy functionality
-function StructuredRecommendationCard({ 
+function RecommendationCardV2({ 
   recommendation, 
   index 
 }: { 
@@ -437,24 +253,11 @@ function StructuredRecommendationCard({
       console.error('Failed to copy:', err);
     }
   };
-  
-  const getCategoryColor = (category: FixCategory) => {
-    switch (category) {
-      case 'icp_shift': return 'bg-blue-500/10 text-blue-600 border-blue-500/30';
-      case 'promise_shift': return 'bg-purple-500/10 text-purple-600 border-purple-500/30';
-      case 'fulfillment_shift': return 'bg-green-500/10 text-green-600 border-green-500/30';
-      case 'pricing_shift': return 'bg-orange-500/10 text-orange-600 border-orange-500/30';
-      case 'risk_shift': return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/30';
-      case 'positioning_shift': return 'bg-pink-500/10 text-pink-600 border-pink-500/30';
-      case 'founder_psychology_check': return 'bg-indigo-500/10 text-indigo-600 border-indigo-500/30';
-      default: return 'bg-muted text-muted-foreground border-muted';
-    }
-  };
 
   return (
     <Card className="border-l-4 border-l-primary">
       <CardContent className="pt-4 space-y-4">
-        {/* Header with number, headline, category and copy button */}
+        {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 flex-1">
             <span className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-sm font-semibold shrink-0 mt-0.5">
@@ -512,15 +315,10 @@ function StructuredRecommendationCard({
   );
 }
 
-// Top Recommendations Display - Now shows structured, founder-friendly recommendations
-function TopRecommendationsDisplay({ 
-  recommendations, 
-  violations 
-}: { 
-  recommendations: StructuredRecommendation[];
-  violations: Violation[];
-}) {
-  if (recommendations.length === 0 && violations.length === 0) {
+// ============= RECOMMENDATIONS DISPLAY (V2) =============
+
+function RecommendationsDisplayV2({ result }: { result: EvaluateOfferV2Result }) {
+  if (result.recommendations.length === 0) {
     return (
       <Card className="border-primary/30 bg-primary/5">
         <CardContent className="pt-6">
@@ -544,12 +342,25 @@ function TopRecommendationsDisplay({
           Top Recommendations
         </CardTitle>
         <CardDescription>
-          {recommendations.length} actionable fixes to improve your offer alignment
+          {result.recommendations.length} actionable fixes based on your primary bottleneck: <span className="font-medium">{result.bottleneckLabel}</span>
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {recommendations.map((rec, index) => (
-          <StructuredRecommendationCard 
+        {/* Not outbound ready warning */}
+        {result.notOutboundReady && (
+          <div className="flex items-start gap-3 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+            <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+            <div>
+              <div className="font-medium text-destructive">Not Outbound Ready</div>
+              <div className="text-sm text-muted-foreground">
+                This offer has significant alignment issues. Focus on the recommendations below before investing in cold outreach.
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {result.recommendations.map((rec, index) => (
+          <RecommendationCardV2 
             key={rec.id} 
             recommendation={rec} 
             index={index} 
@@ -560,67 +371,30 @@ function TopRecommendationsDisplay({
   );
 }
 
-// Detected Problems Display (simplified, no fix archetypes here)
-function DetectedProblemsDisplay({ problems }: { problems: DetectedProblem[] }) {
-  if (problems.length === 0) return null;
-
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <AlertTriangle className="h-5 w-5 text-destructive" />
-          Detected Issues ({problems.length})
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          {problems.map((problem, index) => (
-            <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-destructive/5 border border-destructive/20">
-              <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
-              <div className="flex-1">
-                <div className="font-medium text-sm">{PROBLEM_CATEGORY_LABELS[problem.category]}</div>
-                <div className="text-sm text-muted-foreground">{problem.whyItMatters}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+// ============= MAIN PAGE COMPONENT =============
 
 export default function OfferDiagnostic() {
   const [formData, setFormData] = useState<DiagnosticFormData>(initialFormData);
-  const [scoringResult, setScoringResult] = useState<ScoringResult | null>(null);
   
-  // Hook for persisting offer diagnostic state (used for lead evaluation context)
-  const { saveState: saveOfferState } = useOfferDiagnosticState();
+  // V2 RESULT — SINGLE SOURCE OF TRUTH
+  const [evaluationResult, setEvaluationResult] = useState<EvaluateOfferV2Result | null>(null);
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  
+  // Hook for persisting offer diagnostic state
+  const { saveState: saveOfferState, saveLatentScores } = useOfferDiagnosticState();
 
   const isFormComplete = useMemo(() => {
     const { offerType, promiseOutcome, promise, icpIndustry, verticalSegment, scoringSegment, icpSize, icpMaturity, pricingStructure, riskModel, fulfillmentComplexity, proofLevel } = formData;
     
-    // Base required fields including new fields
     if (!offerType || !promiseOutcome || !promise || !icpIndustry || !verticalSegment || !scoringSegment || !icpSize || !icpMaturity || !pricingStructure || !riskModel || !fulfillmentComplexity || !proofLevel) {
       return false;
     }
 
-    if (pricingStructure === 'recurring' && !formData.recurringPriceTier) {
-      return false;
-    }
-    if (pricingStructure === 'one_time' && !formData.oneTimePriceTier) {
-      return false;
-    }
-    if (pricingStructure === 'usage_based' && (!formData.usageOutputType || !formData.usageVolumeTier)) {
-      return false;
-    }
-    // Hybrid requires retainer tier, performance basis, and comp tier
-    if (pricingStructure === 'hybrid' && (!formData.hybridRetainerTier || !formData.performanceBasis || !formData.performanceCompTier)) {
-      return false;
-    }
-    // Performance only requires performance basis and comp tier
-    if (pricingStructure === 'performance_only' && (!formData.performanceBasis || !formData.performanceCompTier)) {
-      return false;
-    }
+    if (pricingStructure === 'recurring' && !formData.recurringPriceTier) return false;
+    if (pricingStructure === 'one_time' && !formData.oneTimePriceTier) return false;
+    if (pricingStructure === 'usage_based' && (!formData.usageOutputType || !formData.usageVolumeTier)) return false;
+    if (pricingStructure === 'hybrid' && (!formData.hybridRetainerTier || !formData.performanceBasis || !formData.performanceCompTier)) return false;
+    if (pricingStructure === 'performance_only' && (!formData.performanceBasis || !formData.performanceCompTier)) return false;
 
     return true;
   }, [formData]);
@@ -653,7 +427,7 @@ export default function OfferDiagnostic() {
         scoringSegment: scoringSegment as ScoringSegment,
       }));
     }
-    setScoringResult(null);
+    setEvaluationResult(null);
   };
 
   // Handle outcome selection with auto-mapping to bucket
@@ -672,7 +446,7 @@ export default function OfferDiagnostic() {
         promise: bucket as PromiseBucket,
       }));
     }
-    setScoringResult(null);
+    setEvaluationResult(null);
   };
 
   const handleFieldChange = <K extends keyof DiagnosticFormData>(
@@ -692,13 +466,11 @@ export default function OfferDiagnostic() {
         newData.performanceCompTier = null;
       }
       
-      // Reset promise outcome when offer type changes
       if (field === 'offerType') {
         newData.promiseOutcome = null;
         newData.promise = null;
       }
       
-      // Reset vertical segment when industry changes
       if (field === 'icpIndustry') {
         newData.verticalSegment = null;
         newData.scoringSegment = null;
@@ -706,13 +478,31 @@ export default function OfferDiagnostic() {
       
       return newData;
     });
-    setScoringResult(null);
+    setEvaluationResult(null);
   };
 
-  const handleSubmit = () => {
-    const result = calculateScore(formData);
-    if (result) {
-      setScoringResult(result);
+  // ============= SINGLE EXECUTION AUTHORITY — SUBMIT HANDLER =============
+  const handleSubmit = async () => {
+    setIsEvaluating(true);
+    setEvaluationResult(null);
+    
+    try {
+      // ONLY evaluateOfferV2 is called. NO OTHER ENGINES.
+      const result = await evaluateOfferV2(formData);
+      
+      if (!result) {
+        console.error('[OfferDiagnostic] evaluateOfferV2 returned null');
+        setIsEvaluating(false);
+        return;
+      }
+      
+      // ========== EXECUTION GUARANTEE ==========
+      // Verify this came from evaluateOfferV2, not legacy engines
+      assertEvaluateOfferV2Source(result);
+      console.log('[OfferDiagnostic] ✓ Execution verified:', result._executionSource);
+      
+      // Set result — UI will ONLY render from this
+      setEvaluationResult(result);
       
       // Save state for lead evaluation context
       saveOfferState({
@@ -726,13 +516,23 @@ export default function OfferDiagnostic() {
         risk_model: formData.riskModel,
         fulfillment: formData.fulfillmentComplexity,
       });
+      
+      // Save latent scores for persistence
+      saveLatentScores({
+        latentScores: result.latentScores,
+        alignmentScore: result.alignmentScore,
+        readinessLabel: result.readinessLabel,
+        latentBottleneckKey: result.latentBottleneckKey,
+        aiRecommendations: result.recommendations,
+      });
+      
+    } catch (error) {
+      console.error('[OfferDiagnostic] Evaluation failed:', error);
+      // EXECUTION HALT — do not render any fallback
+    } finally {
+      setIsEvaluating(false);
     }
   };
-
-  const contextAwareFixStack = useMemo(() => {
-    if (!scoringResult) return null;
-    return generateContextAwareFixStack(formData, scoringResult.extendedScores, scoringResult.visibleScore100);
-  }, [scoringResult, formData]);
 
   const renderSelect = <T extends string>(
     label: string,
@@ -788,7 +588,7 @@ export default function OfferDiagnostic() {
             <CardContent className="space-y-4">
               {renderSelect<OfferType>('Offer Type', 'offerType', OFFER_TYPE_OPTIONS, formData.offerType)}
               
-              {/* Promise Outcome Dropdown - shows concrete outcomes grouped by category */}
+              {/* Promise Outcome Dropdown */}
               <div className="space-y-2">
                 <Label htmlFor="promiseOutcome">What outcome does your offer promise?</Label>
                 <Select
@@ -836,7 +636,7 @@ export default function OfferDiagnostic() {
               <div className="grid gap-4 sm:grid-cols-2">
                 {renderSelect<ICPIndustry>('Industry', 'icpIndustry', ICP_INDUSTRY_OPTIONS, formData.icpIndustry)}
                 
-                {/* Vertical Segment - conditional on Industry */}
+                {/* Vertical Segment */}
                 <div className="space-y-2">
                   <Label htmlFor="verticalSegment">Vertical Segment</Label>
                   <Select
@@ -876,7 +676,7 @@ export default function OfferDiagnostic() {
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 {renderSelect<PricingStructure>('Pricing Structure', 'pricingStructure', PRICING_STRUCTURE_OPTIONS, formData.pricingStructure)}
-                {renderSelect<ProofLevel>('Market Proof', 'proofLevel', PROOF_LEVEL_OPTIONS, formData.proofLevel)}
+                {renderSelect('Market Proof', 'proofLevel', PROOF_LEVEL_OPTIONS, formData.proofLevel)}
               </div>
               
               <div className="grid gap-4 sm:grid-cols-2">
@@ -896,7 +696,6 @@ export default function OfferDiagnostic() {
                 </div>
               )}
               
-              {/* Hybrid (Retainer + Performance) fields */}
               {formData.pricingStructure === 'hybrid' && (
                 <div className="space-y-4">
                   <div className="grid gap-4 sm:grid-cols-1">
@@ -909,7 +708,6 @@ export default function OfferDiagnostic() {
                 </div>
               )}
               
-              {/* Performance Only fields */}
               {formData.pricingStructure === 'performance_only' && (
                 <div className="grid gap-4 sm:grid-cols-2">
                   {renderSelect<PerformanceBasis>('Performance Basis', 'performanceBasis', PERFORMANCE_BASIS_OPTIONS, formData.performanceBasis)}
@@ -978,44 +776,55 @@ export default function OfferDiagnostic() {
           <Button
             size="lg"
             onClick={handleSubmit}
-            disabled={!isFormComplete}
+            disabled={!isFormComplete || isEvaluating}
             className="w-full"
           >
-            Evaluate Offer
+            {isEvaluating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Evaluating...
+              </>
+            ) : (
+              'Evaluate Offer'
+            )}
           </Button>
 
-          {/* Results Section */}
-          {scoringResult && contextAwareFixStack && (
+          {/* ============= RESULTS SECTION — V2 ONLY ============= */}
+          {evaluationResult && (
             <>
+              {/* Execution Verification Banner */}
+              <div className="text-xs text-muted-foreground text-center">
+                Source: {evaluationResult._executionSource} | Alignment: {evaluationResult.alignmentScore}
+              </div>
+              
               <Card>
                 <CardHeader>
                   <CardTitle>Diagnostic Results</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start sm:gap-8">
-                    <ScoreDisplay 
-                      alignmentScore={contextAwareFixStack.alignmentScore}
-                      readinessScore={contextAwareFixStack.readinessScore}
-                      readinessLabel={contextAwareFixStack.readinessLabel}
-                    />
+                    <ScoreDisplayV2 result={evaluationResult} />
                     
                     <div className="flex-1 w-full space-y-4">
-                      <AlignmentScoreCard score={contextAwareFixStack.alignmentScore} />
+                      <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                        <Gauge className="h-5 w-5 text-muted-foreground" />
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">Alignment Score</div>
+                          <div className={`text-lg font-bold ${getReadinessLabelColor(evaluationResult.readinessLabel)}`}>
+                            {evaluationResult.alignmentScore}/100
+                          </div>
+                        </div>
+                      </div>
                       
                       <Separator />
                       
-                      <DimensionScoresTable scores={scoringResult.dimensionScores} />
+                      <LatentScoresTable result={evaluationResult} />
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <ContextModifiersPanel modifiers={contextAwareFixStack.contextModifiers} />
-              <DetectedProblemsDisplay problems={contextAwareFixStack.problems} />
-              <TopRecommendationsDisplay 
-                recommendations={contextAwareFixStack.structuredRecommendations} 
-                violations={contextAwareFixStack.violations} 
-              />
+              <RecommendationsDisplayV2 result={evaluationResult} />
             </>
           )}
         </div>
