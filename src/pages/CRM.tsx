@@ -57,6 +57,9 @@ import { TaskList } from '@/components/crm/TaskList';
 import { CRMPagination } from '@/components/crm/Pagination';
 import { DeleteConfirmDialog } from '@/components/crm/DeleteConfirmDialog';
 import { LeadAssignmentDropdown } from '@/components/crm/LeadAssignmentDropdown';
+import { BulkConvertDialog } from '@/components/crm/BulkConvertDialog';
+import { BulkAssignDialog } from '@/components/crm/BulkAssignDialog';
+import { DedupeLeadsDialog } from '@/components/crm/DedupeLeadsDialog';
 
 interface Lead {
   id: string;
@@ -165,6 +168,11 @@ export default function CRM() {
   const [deleteDealConfirm, setDeleteDealConfirm] = useState<{ open: boolean; dealId: string | null }>({ open: false, dealId: null });
   const [bulkDeleteLeadsConfirm, setBulkDeleteLeadsConfirm] = useState(false);
   const [bulkDeleteDealsConfirm, setBulkDeleteDealsConfirm] = useState(false);
+
+  // Bulk operation dialogs
+  const [showBulkConvert, setShowBulkConvert] = useState(false);
+  const [showBulkAssign, setShowBulkAssign] = useState(false);
+  const [showDedupe, setShowDedupe] = useState(false);
 
   const isAgencyOwner = userRole === 'agency_owner';
 
@@ -1176,6 +1184,9 @@ export default function CRM() {
           onClearSelection={() => setSelectedLeadIds(new Set())}
           onBulkDelete={() => setBulkDeleteLeadsConfirm(true)}
           onBulkAssign={handleBulkAssignLeads}
+          onBulkConvert={() => setShowBulkConvert(true)}
+          onAdvancedAssign={() => setShowBulkAssign(true)}
+          onDedupe={() => setShowDedupe(true)}
           isAgencyOwner={isAgencyOwner}
           isProcessing={isBulkProcessing}
           teamMembers={teamMembers}
@@ -1189,6 +1200,40 @@ export default function CRM() {
           onBulkStageChange={handleBulkStageChange}
           isAgencyOwner={isAgencyOwner}
           isProcessing={isBulkProcessing}
+        />
+
+        {/* Bulk Convert Dialog */}
+        <BulkConvertDialog
+          open={showBulkConvert}
+          onOpenChange={setShowBulkConvert}
+          selectedLeads={leads.filter(l => selectedLeadIds.has(l.id))}
+          workspaceId={currentWorkspace.id}
+          onSuccess={() => {
+            setSelectedLeadIds(new Set());
+            fetchData();
+          }}
+        />
+
+        {/* Bulk Assign Dialog */}
+        <BulkAssignDialog
+          open={showBulkAssign}
+          onOpenChange={setShowBulkAssign}
+          leads={leads}
+          teamMembers={teamMembers}
+          workspaceId={currentWorkspace.id}
+          onSuccess={() => {
+            setSelectedLeadIds(new Set());
+            fetchData();
+          }}
+        />
+
+        {/* Dedupe Dialog */}
+        <DedupeLeadsDialog
+          open={showDedupe}
+          onOpenChange={setShowDedupe}
+          leads={leads}
+          workspaceId={currentWorkspace.id}
+          onSuccess={fetchData}
         />
 
         {/* Lead Detail Sidebar */}
