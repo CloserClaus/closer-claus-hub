@@ -23,6 +23,8 @@ import { SalaryPaymentsTable } from '@/components/admin/SalaryPaymentsTable';
 import { ApolloLeadsTable } from '@/components/admin/ApolloLeadsTable';
 import { MasterLeadsTable } from '@/components/admin/MasterLeadsTable';
 import { ReferralsTable } from '@/components/admin/ReferralsTable';
+import { PhoneNumbersTable } from '@/components/admin/PhoneNumbersTable';
+import { PurchasesSection } from '@/components/admin/PurchasesSection';
 
 const tabTitles: Record<string, string> = {
   overview: 'Platform Overview',
@@ -36,10 +38,12 @@ const tabTitles: Record<string, string> = {
   deals: 'Deals',
   contracts: 'Contracts',
   calls: 'Call Logs',
+  phones: 'Phone Numbers',
   trainings: 'Training Materials',
   disputes: 'Disputes',
   payouts: 'Payouts',
   salaries: 'Salary Payments',
+  purchases: 'Purchases',
   coupons: 'Coupons',
   support: 'Support Tickets',
   bugs: 'Bug Reports',
@@ -89,6 +93,8 @@ export default function AdminDashboard() {
         return <ContractsTable />;
       case 'calls':
         return <CallLogsTable />;
+      case 'phones':
+        return <PhoneNumbersTable />;
       case 'trainings':
         return <TrainingsTable />;
       case 'disputes':
@@ -97,6 +103,8 @@ export default function AdminDashboard() {
         return <PayoutsTable />;
       case 'salaries':
         return <SalaryPaymentsTable />;
+      case 'purchases':
+        return <PurchasesSection />;
       case 'coupons':
         return <CouponsTable />;
       case 'support':

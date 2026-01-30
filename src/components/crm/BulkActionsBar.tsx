@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Trash2, X, UserPlus, TrendingUp, Loader2 } from 'lucide-react';
+import { Trash2, X, UserPlus, TrendingUp, Loader2, ArrowRight, Search, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -36,6 +35,9 @@ interface BulkActionsBarProps {
   onBulkDelete: () => void;
   onBulkStageChange?: (stage: string) => void;
   onBulkAssign?: (userId: string | null) => void;
+  onBulkConvert?: () => void;
+  onAdvancedAssign?: () => void;
+  onDedupe?: () => void;
   isAgencyOwner: boolean;
   isProcessing?: boolean;
   teamMembers?: TeamMember[];
@@ -48,6 +50,9 @@ export function BulkActionsBar({
   onBulkDelete,
   onBulkStageChange,
   onBulkAssign,
+  onBulkConvert,
+  onAdvancedAssign,
+  onDedupe,
   isAgencyOwner,
   isProcessing,
   teamMembers = [],
@@ -77,6 +82,34 @@ export function BulkActionsBar({
         </Button>
       </div>
 
+      {/* Bulk Convert for Leads - Agency Owner Only */}
+      {type === 'leads' && isAgencyOwner && onBulkConvert && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onBulkConvert}
+          disabled={isProcessing}
+          className="gap-2"
+        >
+          <ArrowRight className="h-4 w-4" />
+          Convert to Deals
+        </Button>
+      )}
+
+      {/* Advanced Assign for Leads - Agency Owner Only */}
+      {type === 'leads' && isAgencyOwner && onAdvancedAssign && teamMembers.length > 0 && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onAdvancedAssign}
+          disabled={isProcessing}
+          className="gap-2"
+        >
+          <Users className="h-4 w-4" />
+          Advanced Assign
+        </Button>
+      )}
+
       {/* Bulk Assign for Leads - Agency Owner Only */}
       {type === 'leads' && isAgencyOwner && onBulkAssign && teamMembers.length > 0 && (
         <div className="flex items-center gap-2">
@@ -97,6 +130,20 @@ export function BulkActionsBar({
             </SelectContent>
           </Select>
         </div>
+      )}
+
+      {/* Dedupe for Leads - Agency Owner Only */}
+      {type === 'leads' && isAgencyOwner && onDedupe && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onDedupe}
+          disabled={isProcessing}
+          className="gap-2"
+        >
+          <Search className="h-4 w-4" />
+          Dedupe
+        </Button>
       )}
 
       {type === 'deals' && onBulkStageChange && (

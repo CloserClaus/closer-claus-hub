@@ -127,6 +127,9 @@ export default function Auth() {
   const handleAgencySignUp = async (data: AgencySignUpFormData) => {
     setIsLoading(true);
     const redirectUrl = `${window.location.origin}/`;
+    
+    // Capture referral code from URL
+    const refCode = searchParams.get('ref');
 
     const { error } = await supabase.auth.signUp({
       email: data.email,
@@ -136,6 +139,7 @@ export default function Auth() {
         data: {
           full_name: data.fullName,
           signup_role: 'agency_owner',
+          referred_by: refCode || undefined,
         },
       },
     });
