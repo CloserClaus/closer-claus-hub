@@ -174,8 +174,8 @@ serve(async (req) => {
         );
       }
 
-      // Pricing with 20% margin: Local $1.40/mo, Toll-free $2.60/mo
-      const monthlyPrice = number_type === 'toll_free' ? 2.60 : 1.40;
+      // Pricing doubled: Local $2.80/mo, Toll-free $5.20/mo
+      const monthlyPrice = number_type === 'toll_free' ? 5.20 : 2.80;
 
       lineItems = [{
         price_data: {

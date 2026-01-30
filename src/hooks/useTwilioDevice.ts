@@ -20,8 +20,10 @@ interface TwilioDeviceState {
   error: string | null;
 }
 
-// Token refresh interval: 45 minutes (well before 1-hour expiry)
-const TOKEN_REFRESH_INTERVAL = 45 * 60 * 1000;
+// Token refresh intervals
+const TOKEN_REFRESH_INTERVAL = 30 * 60 * 1000; // 30 minutes (more aggressive refresh)
+const HEALTH_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
+const MAX_TOKEN_AGE = 55 * 60 * 1000; // Force refresh if token is older than 55 minutes
 
 export function useTwilioDevice(options: UseTwilioDeviceOptions) {
   const { workspaceId, onCallStatusChange, onCallConnected, onCallDisconnected } = options;
@@ -36,14 +38,19 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
     callDuration: 0,
     error: null,
   });
+  
+  // Connection status for UI feedback
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'reconnecting'>('disconnected');
 
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const callStartTimeRef = useRef<number | null>(null);
   const tokenRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const healthCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isInitializingRef = useRef<boolean>(false);
   const workspaceIdRef = useRef<string | null>(workspaceId);
+  const lastTokenRefreshRef = useRef<number>(0);
 
   // Keep workspaceId ref in sync
   useEffect(() => {
@@ -75,12 +82,19 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
       tokenRefreshIntervalRef.current = null;
     }
     
+    // Clear health check timer
+    if (healthCheckIntervalRef.current) {
+      clearInterval(healthCheckIntervalRef.current);
+      healthCheckIntervalRef.current = null;
+    }
+    
     if (deviceRef.current) {
       deviceRef.current.unregister();
       deviceRef.current.destroy();
       deviceRef.current = null;
     }
     cleanupCall();
+    setConnectionStatus('disconnected');
     setState({
       device: null,
       activeCall: null,
@@ -106,6 +120,7 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
     }
 
     isInitializingRef.current = true;
+    setConnectionStatus('connecting');
 
     try {
       setState(prev => ({ ...prev, isConnecting: true, error: null }));
@@ -134,6 +149,8 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
       device.on('registered', () => {
         console.log('Twilio device registered');
         setState(prev => ({ ...prev, isReady: true, isConnecting: false }));
+        setConnectionStatus('connected');
+        lastTokenRefreshRef.current = Date.now();
         
         // Start proactive token refresh timer after successful registration
         if (tokenRefreshIntervalRef.current) {
@@ -143,23 +160,54 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
           if (deviceRef.current) {
             try {
               console.log('Proactively refreshing token...');
+              setConnectionStatus('reconnecting');
               const { data: refreshData } = await supabase.functions.invoke('twilio', {
                 body: { action: 'get_access_token', workspace_id: workspaceId },
               });
               if (refreshData?.token) {
                 deviceRef.current.updateToken(refreshData.token);
+                lastTokenRefreshRef.current = Date.now();
+                setConnectionStatus('connected');
                 console.log('Token proactively refreshed successfully');
               }
             } catch (err) {
               console.error('Proactive token refresh failed:', err);
+              setConnectionStatus('connected'); // Keep showing connected, retry will happen
             }
           }
         }, TOKEN_REFRESH_INTERVAL);
+        
+        // Start health check interval
+        if (healthCheckIntervalRef.current) {
+          clearInterval(healthCheckIntervalRef.current);
+        }
+        healthCheckIntervalRef.current = setInterval(async () => {
+          // Check if token is too old and force refresh
+          const tokenAge = Date.now() - lastTokenRefreshRef.current;
+          if (tokenAge > MAX_TOKEN_AGE && deviceRef.current && workspaceIdRef.current) {
+            console.log('Token too old, forcing refresh...');
+            try {
+              setConnectionStatus('reconnecting');
+              const { data: refreshData } = await supabase.functions.invoke('twilio', {
+                body: { action: 'get_access_token', workspace_id: workspaceIdRef.current },
+              });
+              if (refreshData?.token) {
+                deviceRef.current.updateToken(refreshData.token);
+                lastTokenRefreshRef.current = Date.now();
+                setConnectionStatus('connected');
+                console.log('Token force-refreshed due to age');
+              }
+            } catch (err) {
+              console.error('Health check token refresh failed:', err);
+            }
+          }
+        }, HEALTH_CHECK_INTERVAL);
       });
 
       device.on('unregistered', () => {
         console.log('Twilio device unregistered');
         setState(prev => ({ ...prev, isReady: false }));
+        setConnectionStatus('disconnected');
       });
 
       device.on('error', (twilioError) => {
@@ -168,6 +216,7 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
         // Check if this is a token expiration error (20104)
         if (twilioError.code === 20104) {
           console.log('Token expired (20104), re-initializing device...');
+          setConnectionStatus('reconnecting');
           toast({
             title: 'Reconnecting Phone System',
             description: 'Your session expired. Reconnecting automatically...',
@@ -187,6 +236,7 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
           error: twilioError.message,
           isConnecting: false,
         }));
+        setConnectionStatus('disconnected');
         toast({
           variant: 'destructive',
           title: 'Phone System Error',
@@ -208,22 +258,27 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
 
       device.on('tokenWillExpire', async () => {
         console.log('Token will expire, refreshing...');
+        setConnectionStatus('reconnecting');
         try {
           const { data: refreshData } = await supabase.functions.invoke('twilio', {
             body: { action: 'get_access_token', workspace_id: workspaceId },
           });
           if (refreshData?.token) {
             device.updateToken(refreshData.token);
+            lastTokenRefreshRef.current = Date.now();
+            setConnectionStatus('connected');
             console.log('Token refreshed via tokenWillExpire event');
           }
         } catch (err) {
           console.error('Failed to refresh token:', err);
+          setConnectionStatus('connected'); // Best effort, keep trying
         }
       });
 
       // Register the device
       await device.register();
       deviceRef.current = device;
+      lastTokenRefreshRef.current = Date.now();
       setState(prev => ({ ...prev, device }));
 
     } catch (err) {
@@ -234,6 +289,7 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
         error: errorMessage,
         isConnecting: false,
       }));
+      setConnectionStatus('disconnected');
     } finally {
       isInitializingRef.current = false;
     }
@@ -461,6 +517,7 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
     formattedDuration: formatDuration(state.callDuration),
     activeCall: state.activeCall,
     error: state.error,
+    connectionStatus,
     
     // Actions
     initializeDevice,

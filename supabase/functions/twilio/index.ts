@@ -294,7 +294,7 @@ serve(async (req) => {
 
         const numbersResult = await twilioFetch(`/AvailablePhoneNumbers/${country}/Local.json?${searchParams.toString()}`);
         
-        // Twilio local number: $1.15/mo + 20% margin = $1.38 (rounded to $1.40)
+        // Phone number pricing doubled: Local $2.80/mo
         const numbers = (numbersResult.available_phone_numbers || []).map((num: any) => ({
           phone_number: num.phone_number,
           friendly_name: num.friendly_name,
@@ -302,7 +302,7 @@ serve(async (req) => {
           region: num.region,
           country: num.iso_country,
           capabilities: num.capabilities,
-          monthly_cost: 1.40, // Twilio local number $1.15 + 20% margin
+          monthly_cost: 2.80, // Local number pricing doubled
         }));
 
         return new Response(
@@ -330,7 +330,7 @@ serve(async (req) => {
         console.log('Number purchased:', purchaseResult);
 
         if (purchaseResult.sid) {
-          // Save to database with 20% margin on Twilio's $1.15/mo
+          // Save to database with doubled pricing
           const { data: phoneNumber, error: saveError } = await supabase
             .from('workspace_phone_numbers')
             .insert({
@@ -339,7 +339,7 @@ serve(async (req) => {
               twilio_phone_sid: purchaseResult.sid,
               country_code: purchaseResult.phone_number.substring(0, 2),
               city: purchaseResult.locality || null,
-              monthly_cost: 1.40, // Twilio $1.15 + 20% margin
+              monthly_cost: 2.80, // Doubled pricing
               is_active: true,
             })
             .select()
