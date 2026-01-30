@@ -207,20 +207,24 @@ serve(async (req) => {
           let userMessage = callResult.message || 'Failed to initiate call';
           const errorCode = callResult.code;
           
+          // Error 21216 on trial accounts means the number is not verified
+          // On paid accounts, it typically means geo-permissions need to be enabled
           if (errorCode === 21216) {
-            userMessage = 'Geographic permissions not enabled. The Twilio account needs permission to call this region. Please contact support to enable calling to this destination.';
+            userMessage = 'Cannot call this number. If using a Twilio trial account, you can only call verified numbers (add them in Twilio Console → Verified Caller IDs). For a paid account, ensure Geographic Permissions are enabled for this region in Twilio Console → Voice → Settings → Geo Permissions.';
           } else if (errorCode === 21217) {
-            userMessage = 'Phone number not verified. Twilio trial accounts can only call verified numbers.';
+            userMessage = 'Phone number not verified. Twilio trial accounts can only call verified numbers. Add this number to Twilio Console → Verified Caller IDs, or upgrade to a paid account.';
           } else if (errorCode === 21214) {
             userMessage = 'The destination number is invalid or cannot receive calls.';
           } else if (errorCode === 21215) {
             userMessage = 'Geographic permissions required for this destination.';
           } else if (errorCode === 21601) {
-            userMessage = 'The caller ID phone number is not valid.';
+            userMessage = 'The caller ID phone number is not valid or not configured correctly.';
           } else if (errorCode === 21610) {
             userMessage = 'This number has been blocked by the recipient.';
           } else if (errorCode === 21614) {
-            userMessage = 'The destination number cannot receive SMS/calls.';
+            userMessage = 'The destination number cannot receive calls.';
+          } else if (errorCode === 20003) {
+            userMessage = 'Twilio authentication failed. Please check your Twilio credentials.';
           }
           
           return new Response(
