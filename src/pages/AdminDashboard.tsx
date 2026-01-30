@@ -22,6 +22,7 @@ import { SupportTicketsTable } from '@/components/admin/SupportTicketsTable';
 import { SalaryPaymentsTable } from '@/components/admin/SalaryPaymentsTable';
 import { ApolloLeadsTable } from '@/components/admin/ApolloLeadsTable';
 import { MasterLeadsTable } from '@/components/admin/MasterLeadsTable';
+import { ReferralsTable } from '@/components/admin/ReferralsTable';
 
 const tabTitles: Record<string, string> = {
   overview: 'Platform Overview',
@@ -43,6 +44,7 @@ const tabTitles: Record<string, string> = {
   support: 'Support Tickets',
   bugs: 'Bug Reports',
   features: 'Feature Requests',
+  referrals: 'Referrals',
   settings: 'Admin Controls',
 };
 
@@ -103,6 +105,8 @@ export default function AdminDashboard() {
         return <BugReportsTable />;
       case 'features':
         return <FeatureRequestsTable />;
+      case 'referrals':
+        return <ReferralsTable />;
       case 'settings':
         return <AdminSettings />;
       default:

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -62,6 +62,9 @@ export function CallScriptManager({ workspaceId }: CallScriptManagerProps) {
   const [formContent, setFormContent] = useState("");
   const [formIsDefault, setFormIsDefault] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  
+  // Ref for the textarea to track cursor position
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const fetchScripts = async () => {
     const { data, error } = await supabase
@@ -200,7 +203,24 @@ export function CallScriptManager({ workspaceId }: CallScriptManagerProps) {
   };
 
   const insertPlaceholder = (placeholder: string) => {
-    setFormContent(prev => prev + placeholder);
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      // Fallback: append to end if no ref
+      setFormContent(prev => prev + placeholder);
+      return;
+    }
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const newContent = formContent.substring(0, start) + placeholder + formContent.substring(end);
+    setFormContent(newContent);
+    
+    // Restore focus and set cursor position after the inserted placeholder
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + placeholder.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
   };
 
   return (
@@ -264,6 +284,7 @@ export function CallScriptManager({ workspaceId }: CallScriptManagerProps) {
                 <div className="space-y-2">
                   <Label htmlFor="content">Script Content</Label>
                   <Textarea
+                    ref={textareaRef}
                     id="content"
                     placeholder={`Hi {{first_name}}, this is [Your Name] from [Your Company].\n\nI'm calling because I noticed {{company}} might benefit from...\n\nIs now a good time to chat about how we can help?`}
                     value={formContent}

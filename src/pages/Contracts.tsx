@@ -497,6 +497,14 @@ export default function Contracts() {
             {/* Contracts Tab (Agency Only) */}
             {isOwner && (
               <TabsContent value="contracts" className="mt-6">
+                {/* Info banner about proposal stage requirement */}
+                <div className="mb-6 p-4 rounded-lg border border-border bg-muted/50 flex items-start gap-3">
+                  <FileText className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium">Contracts can only be created for deals in the Proposal stage.</p>
+                    <p className="text-sm text-muted-foreground">If you can't find your deal here, make sure it's in the Proposal stage inside the CRM.</p>
+                  </div>
+                </div>
                 {isLoading ? (
                   <div className="space-y-4">
                     {[1, 2, 3].map((i) => (

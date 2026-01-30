@@ -97,44 +97,34 @@ const TIER_FREE_NUMBERS: Record<string, number> = {
   alpha: 5,
 };
 
-// Twilio pricing with 20% margin
-// Twilio outbound: $0.014/min -> $0.017/min with margin
-// Packages rounded for simplicity
+// Dialer pricing with doubled costs for higher margins
+// Enterprise offers 20% more minutes for the money (6000 vs 5000)
 const minutePackages: MinutePackage[] = [
-  { id: 'starter', name: 'Starter', minutes: 100, price: 2 },
-  { id: 'growth', name: 'Growth', minutes: 500, price: 10, popular: true },
-  { id: 'pro', name: 'Pro', minutes: 1000, price: 20 },
-  { id: 'enterprise', name: 'Enterprise', minutes: 5000, price: 100 },
+  { id: 'starter', name: 'Starter', minutes: 100, price: 4 },
+  { id: 'growth', name: 'Growth', minutes: 500, price: 20, popular: true },
+  { id: 'pro', name: 'Pro', minutes: 1000, price: 40 },
+  { id: 'enterprise', name: 'Enterprise', minutes: 6000, price: 200 },
 ];
 
-// Real Twilio add-ons with 20% margin (Call Recording is included free for all accounts)
+// Add-ons with flat pricing for simplicity (Call Recording is included free for all accounts)
 const twilioAddons: TwilioAddon[] = [
   {
     id: 'transcription',
     name: 'Call Transcription',
     description: 'AI-powered transcription of call recordings',
-    price: 0.029, // $0.024/min + 20%
-    priceUnit: '/min',
-    priceType: 'per_minute',
+    price: 199,
+    priceUnit: ' flat',
+    priceType: 'per_minute', // Kept for type compatibility
     icon: <MessageSquare className="h-5 w-5" />,
   },
   {
     id: 'amd',
     name: 'Answering Machine Detection',
     description: 'Detect voicemail and answering machines automatically',
-    price: 0.009, // $0.0075/call + 20%
-    priceUnit: '/call',
-    priceType: 'per_call',
+    price: 99,
+    priceUnit: ' flat',
+    priceType: 'per_call', // Kept for type compatibility
     icon: <Zap className="h-5 w-5" />,
-  },
-  {
-    id: 'voice_insights',
-    name: 'Voice Insights',
-    description: 'Advanced call quality metrics and analytics',
-    price: 0.003, // $0.0024/min + 20%
-    priceUnit: '/min',
-    priceType: 'per_minute',
-    icon: <BarChart3 className="h-5 w-5" />,
   },
 ];
 

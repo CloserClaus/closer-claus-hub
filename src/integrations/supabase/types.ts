@@ -1835,6 +1835,7 @@ export type Database = {
           id: string
           onboarding_completed: boolean | null
           phone: string | null
+          referral_code: string | null
           sdr_level: number | null
           stripe_connect_account_id: string | null
           stripe_connect_onboarded_at: string | null
@@ -1851,6 +1852,7 @@ export type Database = {
           id: string
           onboarding_completed?: boolean | null
           phone?: string | null
+          referral_code?: string | null
           sdr_level?: number | null
           stripe_connect_account_id?: string | null
           stripe_connect_onboarded_at?: string | null
@@ -1867,6 +1869,7 @@ export type Database = {
           id?: string
           onboarding_completed?: boolean | null
           phone?: string | null
+          referral_code?: string | null
           sdr_level?: number | null
           stripe_connect_account_id?: string | null
           stripe_connect_onboarded_at?: string | null
@@ -1891,6 +1894,39 @@ export type Database = {
           id?: string
           key?: string
           timestamp?: string
+        }
+        Relationships: []
+      }
+      referrals: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          credits_awarded: number
+          id: string
+          referral_code: string
+          referred_user_id: string | null
+          referrer_id: string
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          credits_awarded?: number
+          id?: string
+          referral_code: string
+          referred_user_id?: string | null
+          referrer_id: string
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          credits_awarded?: number
+          id?: string
+          referral_code?: string
+          referred_user_id?: string | null
+          referrer_id?: string
+          status?: string
         }
         Relationships: []
       }
