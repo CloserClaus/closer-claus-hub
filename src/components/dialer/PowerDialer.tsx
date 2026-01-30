@@ -609,7 +609,15 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
       const data = await response.json();
 
       if (!response.ok) {
-        toast.error(data.error || "Failed to initiate call");
+        // Show detailed error with Twilio code if available
+        const errorMsg = data.error || "Failed to initiate call";
+        if (data.twilio_code) {
+          console.error(`Twilio Error ${data.twilio_code}: ${data.twilio_message}`);
+        }
+        toast.error(errorMsg, {
+          duration: 8000, // Show longer for important errors
+          description: data.twilio_code ? `Error code: ${data.twilio_code}` : undefined,
+        });
         handleCallOutcome('no_answer');
         return;
       }

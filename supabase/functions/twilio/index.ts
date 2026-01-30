@@ -202,8 +202,33 @@ serve(async (req) => {
           );
         } else {
           console.error('Twilio call failed:', callResult);
+          
+          // Translate Twilio error codes to user-friendly messages
+          let userMessage = callResult.message || 'Failed to initiate call';
+          const errorCode = callResult.code;
+          
+          if (errorCode === 21216) {
+            userMessage = 'Geographic permissions not enabled. The Twilio account needs permission to call this region. Please contact support to enable calling to this destination.';
+          } else if (errorCode === 21217) {
+            userMessage = 'Phone number not verified. Twilio trial accounts can only call verified numbers.';
+          } else if (errorCode === 21214) {
+            userMessage = 'The destination number is invalid or cannot receive calls.';
+          } else if (errorCode === 21215) {
+            userMessage = 'Geographic permissions required for this destination.';
+          } else if (errorCode === 21601) {
+            userMessage = 'The caller ID phone number is not valid.';
+          } else if (errorCode === 21610) {
+            userMessage = 'This number has been blocked by the recipient.';
+          } else if (errorCode === 21614) {
+            userMessage = 'The destination number cannot receive SMS/calls.';
+          }
+          
           return new Response(
-            JSON.stringify({ error: callResult.message || 'Failed to initiate call' }),
+            JSON.stringify({ 
+              error: userMessage,
+              twilio_code: errorCode,
+              twilio_message: callResult.message
+            }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }

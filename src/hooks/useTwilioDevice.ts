@@ -336,7 +336,9 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
       });
 
       if (initiateError || !initiateData?.success) {
-        throw new Error(initiateData?.error || initiateError?.message || 'Failed to initiate call');
+        // Use the detailed error message from the edge function
+        const errorMsg = initiateData?.error || initiateError?.message || 'Failed to initiate call';
+        throw new Error(errorMsg);
       }
 
       // Connect using the Twilio Device (for browser audio)
