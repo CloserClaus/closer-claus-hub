@@ -131,11 +131,11 @@ export function useOfferDiagnosticState() {
     saveMutation.mutate(state);
   };
 
-  // Helper to save latent scores separately
+  // Helper to save latent scores separately (NEW: 5 latent variables)
   const saveLatentScores = (data: LatentScoresSaveData) => {
     saveMutation.mutate({
-      latent_economic_headroom: data.latentScores.economicHeadroom,
-      latent_proof_to_promise: data.latentScores.proofToPromise,
+      latent_economic_headroom: data.latentScores.EFI,
+      latent_proof_to_promise: data.latentScores.proofPromise,
       latent_fulfillment_scalability: data.latentScores.fulfillmentScalability,
       latent_risk_alignment: data.latentScores.riskAlignment,
       latent_channel_fit: data.latentScores.channelFit,
@@ -146,14 +146,14 @@ export function useOfferDiagnosticState() {
     });
   };
 
-  // Get active offer context for Leads integration
+  // Get active offer context for Leads integration (NEW: 5 latent variables)
   const getActiveOfferContext = () => {
     if (!savedState) return null;
     
     return {
       latentScores: savedState.latent_alignment_score ? {
-        economicHeadroom: savedState.latent_economic_headroom || 0,
-        proofToPromise: savedState.latent_proof_to_promise || 0,
+        EFI: savedState.latent_economic_headroom || 0,
+        proofPromise: savedState.latent_proof_to_promise || 0,
         fulfillmentScalability: savedState.latent_fulfillment_scalability || 0,
         riskAlignment: savedState.latent_risk_alignment || 0,
         channelFit: savedState.latent_channel_fit || 0,

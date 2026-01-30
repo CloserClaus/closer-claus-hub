@@ -175,13 +175,13 @@ function ScoreDisplayV2({ result }: { result: EvaluateOfferV2Result }) {
 // ============= LATENT SCORES TABLE (V2) =============
 
 function LatentScoresTable({ result }: { result: EvaluateOfferV2Result }) {
+  // NEW: 5 latent variables
   const latentDimensions: { key: LatentBottleneckKey; label: string }[] = [
-    { key: 'economicHeadroom', label: 'Economic Headroom (EFI)' },
-    { key: 'proofToPromise', label: 'Proof-to-Promise Credibility' },
+    { key: 'EFI', label: 'Economic Feasibility (EFI)' },
+    { key: 'proofPromise', label: 'Proof-to-Promise Credibility' },
     { key: 'fulfillmentScalability', label: 'Fulfillment Scalability' },
     { key: 'riskAlignment', label: 'Risk Alignment' },
     { key: 'channelFit', label: 'Channel Fit' },
-    { key: 'icpSpecificityStrength', label: 'ICP Specificity' },
   ];
 
   return (

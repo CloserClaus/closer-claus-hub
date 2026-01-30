@@ -1,13 +1,11 @@
 // ============= AI-Driven Prescription Engine =============
 // Generates recommendations using AI based on latent bottlenecks
-// Replaces legacy rule-based recommendation engine for final output
-// INCLUDES: 8 Stabilization Rules for Outbound Diagnostic
+// STRICTLY respects outboundReady and primaryBottleneck
 
 import type { 
   DiagnosticFormData, 
   StructuredRecommendation, 
   FixCategory,
-  ViabilityGatesOutput,
 } from './types';
 import type { 
   LatentScores, 
@@ -15,11 +13,6 @@ import type {
   ReadinessLabel,
   AIRecommendationCategory,
 } from './latentScoringEngine';
-import { 
-  computeStabilizationContext, 
-  filterRecommendation,
-  type StabilizationContext 
-} from './stabilizationRules';
 import { supabase } from '@/integrations/supabase/client';
 
 // ========== AI INPUT PAYLOAD ==========
@@ -30,8 +23,8 @@ export interface AIPrescriptionInput {
   latentScores: LatentScores;
   latentBottleneckKey: LatentBottleneckKey;
   formData: DiagnosticFormData;
-  stabilizationContext?: StabilizationContext;
-  viabilityGates?: ViabilityGatesOutput;  // NEW: Viability gates for AI guardrails
+  outboundReady: boolean;
+  primaryBottleneck: string;
 }
 
 // ========== AI RECOMMENDATION OUTPUT ==========
@@ -49,62 +42,85 @@ export interface AIPrescriptionResult {
   recommendations: AIRecommendation[];
   isOptimizationLevel: boolean;
   notOutboundReady: boolean;
-  stabilizationApplied: boolean;
-  blockedRecommendations: number;
 }
 
-// ========== SYSTEM PROMPT WITH STABILIZATION RULES ==========
+// ========== SYSTEM PROMPT (STRICT RULES) ==========
 
 const AI_SYSTEM_PROMPT = `You are a senior B2B go-to-market advisor specializing in OUTBOUND sales readiness.
 Your task is to give founders brutally honest, practical advice to improve their offer for OUTBOUND success.
 
-=== HARD RULES (NEVER VIOLATE) ===
+=== CRITICAL: YOU DO NOT COMPUTE SCORES ===
+- You DO NOT compute scores
+- You DO NOT infer bottlenecks
+- You DO NOT judge outbound readiness
+- You ONLY explain and prescribe based on provided outputs
 
-RULE 1 - CHANNEL CONSTRAINT:
-- NEVER recommend switching to inbound, SEO, ads, partnerships, or non-outbound channels
-- All recommendations MUST improve outbound performance within the outbound channel
-- Do NOT suggest "consider other channels" or "maybe outbound isn't right"
+=== HARD RULES (ABSOLUTE - NEVER VIOLATE) ===
 
-RULE 2 - PRICING STABILITY:
-- If pricing is noted as "within viable band", do NOT recommend pricing changes
-- Only suggest pricing changes if explicitly noted as underpriced or overpriced
+RULE 1 - OUTBOUND READY FLAG:
+- You MUST treat "outboundReady" as IMMUTABLE TRUTH
+- If outboundReady = false → outbound is BLOCKED, state this clearly
+- If outboundReady = true → outbound is PERMITTED
+- NEVER contradict the outboundReady flag
 
-RULE 3 - FULFILLMENT LOCK:
-- If fulfillment is "package_based" or "software_platform", do NOT recommend productization
-- Only suggest automation depth, SOP refinement, tooling efficiency for already-productized offers
+RULE 2 - PRIMARY BOTTLENECK:
+- You MUST treat "primaryBottleneck" as FACT
+- Never challenge it
+- Never introduce a different bottleneck
+- ALL recommendations must target the PRIMARY BOTTLENECK only
 
-RULE 4 - LOCAL OPTIMUM:
-- If noted as "at local optimum", only provide tactical refinements, not structural changes
-- Do NOT suggest pivots, restructuring, or major changes when all scores are healthy
+RULE 3 - CHANNEL CONSTRAINT:
+- NEVER recommend switching away from outbound if outboundReady = true
+- Do NOT suggest inbound, SEO, ads, partnerships, or non-outbound channels
+- All recommendations MUST improve outbound performance
 
-RULE 5 - BOTTLENECK ELIGIBILITY:
-- Only focus on the PRIMARY BOTTLENECK provided
-- If no eligible bottleneck is noted, provide optimization tips only
+RULE 4 - BOTTLENECK-SPECIFIC RECOMMENDATIONS:
+If primaryBottleneck = "Economic Feasibility (EFI)":
+- Talk ONLY about pricing math, ICP affordability, unit economics
+- Never mention messaging, proof, or fulfillment
 
-RULE 6 - ICP SPECIFICITY:
-- If ICP specificity is "exact" or "narrow", do NOT recommend narrowing ICP further
-- Only recommend ICP changes if explicitly noted as "broad"
+If primaryBottleneck = "Proof-to-Promise Credibility":
+- Talk ONLY about narrowing promise, reframing proof, specificity
+- Never recommend changing pricing
 
-RULE 7 - SECOND-ORDER CONSISTENCY:
-- Never recommend fixing something the user has already correctly configured
-- Check the "already correct" list and avoid those areas
+If primaryBottleneck = "Fulfillment Scalability":
+- Talk ONLY about delivery constraints, leverage, systems
+- Never recommend ICP or pricing changes
 
-RULE 8 - RECOMMENDATION OBJECTIVE:
-Priority order:
-1. Least disruptive improvement
-2. Improves outbound conversion probability
-3. Preserves user's chosen business model
-Do NOT optimize for hypothetical perfect businesses.
+If primaryBottleneck = "Risk Alignment":
+- Talk ONLY about guarantees, downside framing, incentives
 
-=== OUTPUT RULES ===
+If primaryBottleneck = "Channel Fit":
+- Talk ONLY about outbound suitability, sales motion, buying behavior
+- NEVER suggest abandoning outbound unless outboundReady = false
 
-1. Base all advice ONLY on provided inputs and scores
-2. Every recommendation must target the PRIMARY BOTTLENECK
-3. Each recommendation changes ONE structural lever only
-4. Do NOT mention scores or numbers in output
-5. 1-2 recommendations maximum
+RULE 5 - FORBIDDEN RECOMMENDATIONS:
+- Do NOT recommend increasing price if EFI < 8
+- Do NOT recommend decreasing price if EFI >= 14
+- Do NOT recommend productizing if fulfillment is already productized
+- Do NOT recommend adding guarantees if a guarantee already exists
+- Do NOT recommend "pivoting promise" unless Proof-to-Promise is the bottleneck
 
-IMPORTANT: Return ONLY valid JSON:
+=== RECOMMENDATION MODES ===
+
+MODE A — OUTBOUND BLOCKED (outboundReady = false):
+- State clearly why outbound is blocked
+- Explain the economic or structural reason
+- Give EXACTLY 1-2 corrective actions
+- Actions must ONLY target the primaryBottleneck
+- Do NOT mention any other improvements
+- Tone: Direct, consulting-grade, non-generic
+
+MODE B — OUTBOUND PERMITTED (outboundReady = true):
+- Confirm outbound readiness explicitly
+- State the single weakest latent (primaryBottleneck)
+- Give EXACTLY 1-2 optimization recommendations
+- These are optimizations, NOT prerequisites
+- Never suggest pivoting channels
+
+=== OUTPUT FORMAT (STRICT JSON) ===
+
+Return ONLY valid JSON:
 {
   "recommendations": [
     {
@@ -118,94 +134,39 @@ IMPORTANT: Return ONLY valid JSON:
   ]
 }
 
+- Maximum 2 recommendations
+- No fluff
+- No generic advice
+- No contradictions with provided data
+
 Tone: Clear. Direct. Consulting-style. Outbound-focused.`;
 
 // ========== BOTTLENECK TO FOCUS MAPPING ==========
 
 const BOTTLENECK_FOCUS_MAP: Record<LatentBottleneckKey, string> = {
-  economicHeadroom: 'Focus on pricing structure or ICP targeting. The current price may not match what the target market can afford (Economic Friction is too high).',
-  proofToPromise: 'Focus on promise scope. The current promise may be too ambitious for the available proof.',
+  EFI: 'Focus on pricing structure or ICP targeting. The current price may not match what the target market can afford.',
+  proofPromise: 'Focus on promise scope. The current promise may be too ambitious for the available proof.',
   fulfillmentScalability: 'Focus on delivery model. The fulfillment approach may not scale reliably.',
   riskAlignment: 'Focus on risk structure. The risk model may not match the proof level.',
-  channelFit: 'Focus on channel choice. Outbound may not be the right approach for this offer.',
-  icpSpecificityStrength: 'Focus on ICP targeting. The target market definition may be too broad for effective outbound.',
+  channelFit: 'Focus on outbound approach. The channel may not be optimal for this offer type.',
 };
 
-// ========== BUILD USER PROMPT WITH STABILIZATION CONTEXT ==========
+// ========== BUILD USER PROMPT ==========
 
 function buildUserPrompt(input: AIPrescriptionInput): string {
-  const { alignmentScore, readinessLabel, latentScores, latentBottleneckKey, formData, stabilizationContext, viabilityGates } = input;
+  const { 
+    alignmentScore, 
+    readinessLabel, 
+    latentScores, 
+    latentBottleneckKey, 
+    formData, 
+    outboundReady,
+    primaryBottleneck 
+  } = input;
   
   const bottleneckFocus = BOTTLENECK_FOCUS_MAP[latentBottleneckKey];
   
-  // Build viability gates context (PROMPT 2.G - CRITICAL)
-  const gatesNotes: string[] = [];
-  
-  if (viabilityGates) {
-    // HARD RULE: If not outbound ready, AI must acknowledge this
-    if (!viabilityGates.outboundReady) {
-      gatesNotes.push(`=== CRITICAL: OUTBOUND IS BLOCKED ===`);
-      gatesNotes.push(`Failed Gate: ${viabilityGates.failedGate}`);
-      gatesNotes.push(`You MUST start your response by acknowledging: "Outbound is blocked due to ${viabilityGates.failedGate}."`);
-      gatesNotes.push(`Do NOT suggest scaling outbound, diversifying channels, or "you are ready".`);
-      gatesNotes.push(`Focus ONLY on fixing the failed gate.`);
-    } else {
-      gatesNotes.push(`=== OUTBOUND READY: TRUE ===`);
-      gatesNotes.push(`All viability gates passed. Focus on optimization.`);
-    }
-    
-    // Gate scores for context
-    gatesNotes.push(`\nGATE SCORES:`);
-    viabilityGates.gates.forEach(g => {
-      gatesNotes.push(`- ${g.gate}: ${g.score}/${g.threshold} (${g.passed ? 'PASS' : 'FAIL'})`);
-    });
-  }
-  
-  // Build stabilization constraints
-  const stabilizationNotes: string[] = [];
-  
-  if (stabilizationContext) {
-    // Rule 2: Pricing stability
-    if (stabilizationContext.pricingStability.isWithinViableBand) {
-      stabilizationNotes.push('- PRICING IS WITHIN VIABLE BAND: Do NOT recommend pricing changes');
-    } else if (stabilizationContext.pricingStability.isUnderpriced) {
-      stabilizationNotes.push('- Pricing is UNDERPRICED: May suggest raising price');
-    } else if (stabilizationContext.pricingStability.isOverpriced) {
-      stabilizationNotes.push('- Pricing is OVERPRICED: May suggest lowering price');
-    }
-    
-    // Rule 3: Fulfillment lock
-    if (stabilizationContext.fulfillmentLock.lockLevel === 'fully_locked') {
-      stabilizationNotes.push('- FULFILLMENT IS ALREADY PRODUCTIZED: Do NOT recommend productization, only second-order optimizations');
-    }
-    
-    // Rule 4: Local optimum
-    if (stabilizationContext.localOptimum.isAtLocalOptimum) {
-      stabilizationNotes.push('- AT LOCAL OPTIMUM (all core latents ≥70%): Only provide tactical refinements, NOT structural changes');
-    }
-    
-    // Rule 5: Bottleneck eligibility
-    if (!stabilizationContext.bottleneckEligibility.shouldForceRecommendations) {
-      stabilizationNotes.push('- NO ELIGIBLE BOTTLENECK: Provide optimization tips only, no major changes needed');
-    }
-    
-    // Rule 6: ICP specificity
-    if (!stabilizationContext.icpOverride.shouldTreatAsBroad) {
-      stabilizationNotes.push('- ICP IS NARROW/EXACT: Do NOT recommend narrowing ICP further');
-    }
-    
-    // Rule 7: Second-order consistency
-    if (stabilizationContext.secondOrderConsistency.alreadyCorrectSelections.length > 0) {
-      stabilizationNotes.push(`- ALREADY CORRECT: ${stabilizationContext.secondOrderConsistency.alreadyCorrectSelections.join(', ')} - do NOT recommend changes to these`);
-    }
-    
-    // Rule 8: Recommendation objective
-    if (stabilizationContext.recommendationObjective.mustPreserve.length > 0) {
-      stabilizationNotes.push(`- MUST PRESERVE: ${stabilizationContext.recommendationObjective.mustPreserve.join(', ')}`);
-    }
-  }
-  
-  // Build legacy constraints
+  // Build constraints based on current config
   const constraints: string[] = [];
   
   if (['moderate', 'strong', 'category_killer'].includes(formData.proofLevel || '')) {
@@ -220,45 +181,33 @@ function buildUserPrompt(input: AIPrescriptionInput): string {
     constraints.push('- User already has hybrid pricing. Do NOT suggest switching to hybrid.');
   }
   
-  if (formData.icpSpecificity === 'narrow' || formData.icpSpecificity === 'exact') {
-    constraints.push(`- ICP Specificity is "${formData.icpSpecificity}". Do NOT recommend narrowing the ICP.`);
+  if (['package_based', 'software_platform'].includes(formData.fulfillmentComplexity || '')) {
+    constraints.push('- Fulfillment is already productized. Do NOT recommend productization.');
   }
-  
-  const gatesText = gatesNotes.length > 0
-    ? `\n\n${gatesNotes.join('\n')}`
-    : '';
-  
-  const stabilizationText = stabilizationNotes.length > 0
-    ? `\n\n=== STABILIZATION RULES (CRITICAL - DO NOT VIOLATE) ===\n${stabilizationNotes.join('\n')}`
-    : '';
   
   const constraintsText = constraints.length > 0 
     ? `\n\nCONSTRAINTS (do not violate):\n${constraints.join('\n')}`
     : '';
   
-  let qualityNote = '';
-  if (viabilityGates && !viabilityGates.outboundReady) {
-    qualityNote = '\n\nNOTE: This offer is NOT outbound ready. Do NOT say "you are ready" or suggest scaling. Focus on the blocking gate.';
-  } else if (alignmentScore >= 80) {
-    qualityNote = '\n\nNOTE: This offer is already strong. Recommendations should be optimization-level, not corrective.';
-  } else if (alignmentScore < 50) {
-    qualityNote = '\n\nNOTE: This offer has significant issues. Focus on the most critical fix for OUTBOUND success.';
-  }
+  // Critical outbound status
+  const outboundStatus = outboundReady
+    ? '=== OUTBOUND STATUS: READY ===\nYou may provide optimization recommendations.'
+    : `=== CRITICAL: OUTBOUND IS BLOCKED ===\nFailed due to: ${primaryBottleneck}\nYou MUST start by acknowledging: "Outbound is blocked due to ${primaryBottleneck}."\nFocus ONLY on fixing this issue. Do NOT suggest scaling outbound.`;
   
   return `Evaluate this offer for OUTBOUND SALES readiness and provide recommendations:
 
-ALIGNMENT SCORE: ${alignmentScore}/100 (${readinessLabel})
-${gatesText}
+${outboundStatus}
 
-LATENT SCORES:
-- Economic Headroom (EFI): ${latentScores.economicHeadroom}/20
-- Proof-to-Promise: ${latentScores.proofToPromise}/20  
+ALIGNMENT SCORE: ${alignmentScore}/100 (${readinessLabel})
+
+LATENT SCORES (each 0-20):
+- EFI (Economic Feasibility): ${latentScores.EFI}/20
+- Proof-to-Promise: ${latentScores.proofPromise}/20  
 - Fulfillment Scalability: ${latentScores.fulfillmentScalability}/20
 - Risk Alignment: ${latentScores.riskAlignment}/20
 - Channel Fit: ${latentScores.channelFit}/20
-- ICP Specificity: ${latentScores.icpSpecificityStrength}/20
 
-PRIMARY BOTTLENECK: ${latentBottleneckKey}
+PRIMARY BOTTLENECK: ${primaryBottleneck}
 ${bottleneckFocus}
 
 OFFER CONFIGURATION:
@@ -273,34 +222,35 @@ OFFER CONFIGURATION:
 - Risk Model: ${formData.riskModel}
 - Proof Level: ${formData.proofLevel}
 - Fulfillment: ${formData.fulfillmentComplexity}
-- ICP Specificity: ${formData.icpSpecificity}
-${stabilizationText}${constraintsText}${qualityNote}
+${constraintsText}
 
-Provide 1-2 high-leverage recommendations focused on improving OUTBOUND conversion.
-REMEMBER: All recommendations must keep the user IN outbound - never suggest switching channels.`;
+Provide 1-2 high-leverage recommendations focused on the PRIMARY BOTTLENECK.
+REMEMBER: 
+- If outboundReady = false, focus ONLY on unblocking
+- If outboundReady = true, focus on optimization
+- Never suggest switching channels away from outbound`;
 }
 
 // ========== FALLBACK RECOMMENDATIONS ==========
 
 function generateFallbackRecommendations(input: AIPrescriptionInput): AIRecommendation[] {
-  const { latentBottleneckKey, alignmentScore, formData } = input;
+  const { latentBottleneckKey, outboundReady, primaryBottleneck } = input;
   
   // Category mapping for fallback
   const categoryMap: Record<LatentBottleneckKey, AIRecommendationCategory> = {
-    economicHeadroom: 'pricing_shift',
-    proofToPromise: 'promise_shift',
+    EFI: 'pricing_shift',
+    proofPromise: 'promise_shift',
     fulfillmentScalability: 'fulfillment_shift',
     riskAlignment: 'risk_shift',
     channelFit: 'channel_shift',
-    icpSpecificityStrength: 'icp_shift',
   };
   
   const category = categoryMap[latentBottleneckKey];
   
   // Generate contextual fallback based on bottleneck
   const fallbacksByBottleneck: Record<LatentBottleneckKey, AIRecommendation> = {
-    economicHeadroom: {
-      id: 'fallback_economic',
+    EFI: {
+      id: 'fallback_efi',
       headline: 'Align pricing to market capacity',
       plainExplanation: 'Your pricing may be misaligned with what your target market can afford. Consider adjusting your price point or targeting buyers with higher budgets.',
       actionSteps: [
@@ -311,7 +261,7 @@ function generateFallbackRecommendations(input: AIPrescriptionInput): AIRecommen
       desiredState: 'Price feels like a no-brainer for your ideal buyer',
       category: 'pricing_shift',
     },
-    proofToPromise: {
+    proofPromise: {
       id: 'fallback_proof',
       headline: 'Match your promise to your proof',
       plainExplanation: 'Your current promise may be too ambitious for the proof you have. Consider scaling back or building more case studies.',
@@ -349,45 +299,33 @@ function generateFallbackRecommendations(input: AIPrescriptionInput): AIRecommen
     },
     channelFit: {
       id: 'fallback_channel',
-      headline: 'Reconsider your go-to-market channel',
-      plainExplanation: 'Outbound may not be the optimal channel for this offer. Consider whether inbound, partnerships, or other channels might be more effective.',
+      headline: 'Optimize your outbound approach',
+      plainExplanation: 'Your offer may need repositioning to be more effective via outbound. Consider the buying behavior of your target market.',
       actionSteps: [
-        'Test content/inbound to warm up cold prospects',
-        'Explore partnership or referral channels',
-        'Consider whether the offer needs repositioning for outbound',
+        'Test content to warm up cold prospects before outreach',
+        'Refine messaging to match how your ICP makes decisions',
+        'Consider whether the offer needs repositioning for cold outreach',
       ],
-      desiredState: 'Channel matches how your buyers want to buy',
+      desiredState: 'Outbound messaging resonates with how your buyers want to buy',
       category: 'channel_shift',
-    },
-    icpSpecificityStrength: {
-      id: 'fallback_icp_specificity',
-      headline: 'Narrow your ICP definition',
-      plainExplanation: 'Your target market may be too broad for effective outbound. A narrower ICP leads to more relevant messaging and higher conversion.',
-      actionSteps: [
-        'Identify your most successful client type and double down',
-        'Define 3-5 specific qualifying criteria for ideal prospects',
-        'Create a "not a fit" list to sharpen focus',
-      ],
-      desiredState: 'Crystal clear ICP that sales can describe in one sentence',
-      category: 'icp_shift',
     },
   };
   
   const fallback = fallbacksByBottleneck[latentBottleneckKey];
   
-  // Add a general "not ready" message if score is very low
-  if (alignmentScore < 50) {
+  // Add a "blocked" message if not outbound ready
+  if (!outboundReady) {
     return [
       {
-        id: 'not_outbound_ready',
-        headline: 'This offer is not outbound-ready',
-        plainExplanation: 'Multiple fundamental issues need addressing before cold outreach will be effective. Focus on the structural fix below before investing in outbound.',
+        id: 'outbound_blocked',
+        headline: `Outbound is blocked: ${primaryBottleneck}`,
+        plainExplanation: `This offer cannot succeed with cold outreach until the ${primaryBottleneck} issue is resolved. Focus on the fix below before investing in outbound.`,
         actionSteps: [
           'Address the primary bottleneck first',
-          'Build proof before scaling outreach',
+          'Do not scale outbound until this is fixed',
           'Consider warmer channels while fixing fundamentals',
         ],
-        desiredState: 'Offer passes basic market-fit tests',
+        desiredState: 'Offer passes basic viability gates for outbound',
         category,
       },
       fallback,
@@ -400,26 +338,17 @@ function generateFallbackRecommendations(input: AIPrescriptionInput): AIRecommen
 // ========== MAIN AI PRESCRIPTION FUNCTION ==========
 
 export async function generateAIPrescription(input: AIPrescriptionInput): Promise<AIPrescriptionResult> {
-  const { alignmentScore, formData, latentScores } = input;
+  const { alignmentScore, outboundReady } = input;
   
-  const isOptimizationLevel = alignmentScore >= 80;
-  const notOutboundReady = alignmentScore < 50;
-  
-  // Compute stabilization context for filtering
-  const stabilizationContext = input.stabilizationContext || computeStabilizationContext(formData, latentScores);
-  
-  // Enrich input with stabilization context
-  const enrichedInput: AIPrescriptionInput = {
-    ...input,
-    stabilizationContext,
-  };
+  const isOptimizationLevel = alignmentScore >= 75 && outboundReady;
+  const notOutboundReady = !outboundReady;
   
   try {
     // Call AI edge function
     const { data, error } = await supabase.functions.invoke('offer-diagnostic-ai', {
       body: {
         systemPrompt: AI_SYSTEM_PROMPT,
-        userPrompt: buildUserPrompt(enrichedInput),
+        userPrompt: buildUserPrompt(input),
         temperature: 0.2,
       },
     });
@@ -430,106 +359,95 @@ export async function generateAIPrescription(input: AIPrescriptionInput): Promis
         recommendations: generateFallbackRecommendations(input),
         isOptimizationLevel,
         notOutboundReady,
-        stabilizationApplied: true,
-        blockedRecommendations: 0,
       };
     }
     
     // Parse AI response
-    const parsed = typeof data.result === 'string' 
-      ? JSON.parse(data.result) 
-      : data.result;
+    const aiResponse = data?.result;
     
-    if (!parsed?.recommendations || !Array.isArray(parsed.recommendations)) {
-      throw new Error('Invalid AI response structure');
+    if (!aiResponse) {
+      console.warn('Empty AI response, using fallback');
+      return {
+        recommendations: generateFallbackRecommendations(input),
+        isOptimizationLevel,
+        notOutboundReady,
+      };
     }
     
-    // Validate, filter, and limit to 2 recommendations
-    let blockedCount = 0;
-    const rawRecommendations: AIRecommendation[] = parsed.recommendations
-      .slice(0, 3)
-      .map((rec: any, idx: number) => ({
-        id: rec.id || `ai_rec_${idx}`,
-        headline: rec.headline || 'Review your offer structure',
-        plainExplanation: rec.plainExplanation || 'Consider adjustments to improve alignment.',
-        actionSteps: Array.isArray(rec.actionSteps) ? rec.actionSteps.slice(0, 4) : [],
-        desiredState: rec.desiredState || 'Improved market fit',
-        category: rec.category || 'pricing_shift',
-      }));
+    // Handle both object and string responses
+    let parsedResponse: { recommendations?: AIRecommendation[] };
     
-    // Apply stabilization filters (Rules 1-7)
-    const filteredRecommendations = rawRecommendations.filter(rec => {
-      const filterResult = filterRecommendation(
-        rec.headline,
-        rec.plainExplanation,
-        rec.category,
-        stabilizationContext
-      );
-      
-      if (filterResult.isBlocked) {
-        console.log(`[Stabilization] Blocked recommendation: "${rec.headline}" — reason: ${filterResult.blockReason}`);
-        blockedCount++;
-        return false;
+    if (typeof aiResponse === 'string') {
+      try {
+        parsedResponse = JSON.parse(aiResponse);
+      } catch {
+        console.warn('Could not parse AI response as JSON, using fallback');
+        return {
+          recommendations: generateFallbackRecommendations(input),
+          isOptimizationLevel,
+          notOutboundReady,
+        };
       }
-      return true;
-    });
+    } else {
+      parsedResponse = aiResponse;
+    }
     
-    // Limit to 2 recommendations max (Rule 8: least disruptive)
-    const recommendations = filteredRecommendations.slice(0, 2);
+    const recommendations = parsedResponse.recommendations || [];
     
-    // If all recommendations were blocked, return a single safe fallback
-    if (recommendations.length === 0) {
-      recommendations.push({
-        id: 'optimization_mode',
-        headline: 'Your offer is well-configured for outbound',
-        plainExplanation: 'No major structural changes are needed. Focus on execution: refine messaging, optimize sequences, and improve targeting precision within your current model.',
-        actionSteps: [
-          'A/B test email subject lines and opening hooks',
-          'Refine your ICP list with better firmographic data',
-          'Improve follow-up cadence timing',
-        ],
-        desiredState: 'Consistent outbound performance with incremental improvements',
-        category: 'channel_shift',
-      });
+    // Validate recommendations
+    const validatedRecommendations = recommendations
+      .filter((rec): rec is AIRecommendation => 
+        typeof rec.id === 'string' &&
+        typeof rec.headline === 'string' &&
+        typeof rec.plainExplanation === 'string' &&
+        Array.isArray(rec.actionSteps) &&
+        typeof rec.desiredState === 'string' &&
+        typeof rec.category === 'string'
+      )
+      .slice(0, 2); // Maximum 2 recommendations
+    
+    if (validatedRecommendations.length === 0) {
+      console.warn('No valid recommendations in AI response, using fallback');
+      return {
+        recommendations: generateFallbackRecommendations(input),
+        isOptimizationLevel,
+        notOutboundReady,
+      };
     }
     
     return {
-      recommendations,
+      recommendations: validatedRecommendations,
       isOptimizationLevel,
       notOutboundReady,
-      stabilizationApplied: true,
-      blockedRecommendations: blockedCount,
     };
     
-  } catch (err) {
-    console.error('AI prescription failed:', err);
+  } catch (error) {
+    console.error('AI prescription failed:', error);
     return {
       recommendations: generateFallbackRecommendations(input),
       isOptimizationLevel,
       notOutboundReady,
-      stabilizationApplied: false,
-      blockedRecommendations: 0,
     };
   }
 }
 
-// ========== CONVERT AI RECOMMENDATIONS TO STRUCTURED FORMAT ==========
+// ========== CONVERT TO STRUCTURED RECOMMENDATIONS ==========
 
 export function convertToStructuredRecommendations(
   aiRecs: AIRecommendation[]
 ): StructuredRecommendation[] {
-  const categoryMap: Record<AIRecommendationCategory, FixCategory> = {
+  const categoryToFixCategory: Record<AIRecommendationCategory, FixCategory> = {
     pricing_shift: 'pricing_shift',
     icp_shift: 'icp_shift',
     promise_shift: 'promise_shift',
     fulfillment_shift: 'fulfillment_shift',
     risk_shift: 'risk_shift',
-    channel_shift: 'positioning_shift', // Map channel to positioning for compatibility
+    channel_shift: 'positioning_shift',
   };
   
   return aiRecs.map(rec => ({
     id: rec.id,
-    category: categoryMap[rec.category] || 'icp_shift',
+    category: categoryToFixCategory[rec.category] || 'positioning_shift',
     headline: rec.headline,
     plainExplanation: rec.plainExplanation,
     actionSteps: rec.actionSteps,
