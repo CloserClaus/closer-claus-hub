@@ -419,27 +419,25 @@ export interface ContextAwareFixStackResult {
   structuredRecommendations: StructuredRecommendation[]; // NEW: Founder-friendly recommendations
 }
 
-// ========== Latent Scoring Types ==========
+// ========== Latent Scoring Types (NEW: 5 latent variables) ==========
 
 export interface LatentScores {
-  economicHeadroom: number;       // 0-20 (derived from EFI)
-  proofToPromise: number;         // 0-20
-  fulfillmentScalability: number; // 0-20
-  riskAlignment: number;          // 0-20
-  channelFit: number;             // 0-20
-  icpSpecificityStrength: number; // 0-20 (NEW)
+  EFI: number;                      // 0-20: Economic Feasibility Index
+  proofPromise: number;             // 0-20: Proof-to-Promise Credibility
+  fulfillmentScalability: number;   // 0-20: Fulfillment Scalability
+  riskAlignment: number;            // 0-20: Risk Alignment
+  channelFit: number;               // 0-20: Channel Fit
 }
 
 export type LatentBottleneckKey = keyof LatentScores;
-
-// Economic Friction Index (EFI) class
-export type EFIClass = 'VeryLow' | 'Low' | 'Moderate' | 'High' | 'Extreme';
 
 export interface LatentScoringResult {
   alignmentScore: number;          // 0-100
   readinessLabel: ReadinessLabel;
   latentScores: LatentScores;
   latentBottleneckKey: LatentBottleneckKey;
+  outboundReady: boolean;
+  primaryBottleneck: string;
 }
 
 export type AIRecommendationCategory = 
