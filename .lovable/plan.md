@@ -1,479 +1,347 @@
 
-# Comprehensive Platform Hardening Plan
+
+# Comprehensive Platform Enhancement Plan
 
 ## Overview
-
-This plan addresses 8 critical improvements: RLS policy security, lead data freshness, Stripe payout failure handling, deal closure race conditions, power dialer heartbeat cleanup, partial enrichment visibility, salary payout timing, and LinkedIn URL normalization.
-
----
-
-## Issue 1: Fix RLS Policy Warnings
-
-**Current State**: The database linter identified 3 RLS policies with `USING (true)` or `WITH CHECK (true)`:
-- `daily_stats` - Service role INSERT
-- `email_verification_tokens` - Service role ALL
-- `rate_limits` - Service role ALL
-- `notifications` - Service role INSERT
-
-**Problem**: While these are labeled as "service role" policies, they use `USING (true)` which technically allows any authenticated user to access them in permissive mode.
-
-**Solution**: Convert to RESTRICTIVE policies that check for service role OR use proper authentication checks.
-
-**Database Migration**:
-```sql
--- Drop and recreate policies with proper restrictions
-DROP POLICY IF EXISTS "Service role can insert stats" ON public.daily_stats;
-DROP POLICY IF EXISTS "Service role can manage tokens" ON public.email_verification_tokens;
-DROP POLICY IF EXISTS "Service role can manage rate limits" ON public.rate_limits;
-DROP POLICY IF EXISTS "Service role can insert notifications" ON public.notifications;
-
--- Recreate with auth.jwt() role check for service_role
-CREATE POLICY "Service role can insert stats" ON public.daily_stats
-FOR INSERT WITH CHECK (
-  (auth.jwt() ->> 'role') = 'service_role'
-);
-
-CREATE POLICY "Service role can manage tokens" ON public.email_verification_tokens
-FOR ALL USING (
-  (auth.jwt() ->> 'role') = 'service_role'
-) WITH CHECK (
-  (auth.jwt() ->> 'role') = 'service_role'
-);
-
-CREATE POLICY "Service role can manage rate limits" ON public.rate_limits
-FOR ALL USING (
-  (auth.jwt() ->> 'role') = 'service_role'
-) WITH CHECK (
-  (auth.jwt() ->> 'role') = 'service_role'
-);
-
--- Notifications need service role for edge functions
-CREATE POLICY "Service role can insert notifications" ON public.notifications
-FOR INSERT WITH CHECK (
-  (auth.jwt() ->> 'role') = 'service_role'
-);
-```
+This plan addresses 7 major feature areas across the platform: CRM bulk operations, Scripts editor fix, Dialer troubleshooting, Contracts placeholder, Purchase pricing changes, Refer and Earn program, and Admin Panel enhancements.
 
 ---
 
-## Issue 2: Lead Data Freshness (12-Month Staleness)
+## 1. CRM Bulk Operations
 
-**Current State**: `master_leads` has `last_updated_at` but no staleness tracking or refresh capability.
+### 1.1 Bulk Convert Leads to Deals
+**Current State:** Users must drag-and-drop each lead individually to convert it to a deal.
 
-**Solution**:
-1. Add a computed staleness check (12 months)
-2. Show "Stale" badge in Admin MasterLeadsTable only
-3. Add "Refresh" action to re-enrich stale leads
+**Implementation:**
+- Add a "Convert to Deals" button to the `BulkActionsBar.tsx` component
+- Create a modal dialog allowing users to set default deal values (title prefix, default value, default stage)
+- Implement `handleBulkConvertToDeals()` function that:
+  - Iterates through selected leads
+  - Creates a deal for each lead with proper `lead_id` linking
+  - Assigns deals to the same user as the lead (or workspace owner)
+  - Provides success/failure summary
 
-**Database Changes**:
-```sql
--- Add function to check staleness
-CREATE OR REPLACE FUNCTION public.is_lead_stale(last_updated timestamptz)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-AS $$
-  SELECT last_updated < (now() - interval '12 months')
-$$;
-```
+**Files to modify:**
+- `src/components/crm/BulkActionsBar.tsx` - Add convert button and dialog
+- `src/pages/CRM.tsx` - Add handler function and state
 
-**Frontend Changes (MasterLeadsTable.tsx)**:
-- Add "Stale" badge column using `date-fns` comparison
-- Add "Refresh" button for stale rows that triggers re-enrichment
-- Create new edge function `refresh-master-lead` that:
-  - Calls Apollo API to get fresh data
-  - Updates `master_leads` record
-  - Does NOT charge credits (admin-only operation)
+### 1.2 Advanced Bulk Lead Assignment
+**Current State:** Basic SDR dropdown exists but lacks quantity and tag-based assignment.
 
----
+**Implementation:**
+- Create new `BulkAssignDialog.tsx` component with:
+  - SDR selection dropdown (existing team members)
+  - Number input field for lead quantity
+  - Tag filter dropdown (hot/warm/cool/cold based on `readiness_segment`)
+  - Logic to enable/disable tag dropdown based on whether leads have tags
+- Add database column for lead tags if not using existing `readiness_segment`
+- Assignment logic:
+  - If tag specified: assign from that tag only
+  - If no tag specified but leads are tagged: distribute equally across tags
+  - Respect the quantity limit specified
 
-## Issue 3: Stripe Payout Failure Handling
+**Files to modify:**
+- `src/components/crm/BulkAssignDialog.tsx` (new)
+- `src/components/crm/BulkActionsBar.tsx` - Add assignment dialog trigger
+- `src/pages/CRM.tsx` - Add handler for advanced assignment
 
-**Current State**: `process-salary-payouts` handles immediate failures but lacks:
-- Retry mechanism for failed payouts
-- Detection of closed/disabled Stripe Connect accounts
-- Admin visibility into persistent failures
+### 1.3 Lead Deduplication
+**Current State:** Basic email/phone duplicate check exists in `LeadForm.tsx` but no bulk deduplication.
 
-**Solution**:
-1. Add retry count and last attempt tracking to `salary_payments`
-2. Add automatic retry logic (max 3 attempts)
-3. Handle account status edge cases
-4. Admin notification for persistent failures
+**Implementation:**
+- Create `DedupeLeadsDialog.tsx` component with:
+  - "Find Duplicates" button that triggers analysis
+  - Smart matching algorithm using:
+    - Exact email match
+    - Exact phone match
+    - Normalized LinkedIn URL match
+    - Fuzzy name matching (Levenshtein distance < 3)
+    - Domain extraction from email matching
+  - Results displayed in a review list showing:
+    - Original lead vs duplicate lead side-by-side
+    - Match confidence score and match type
+    - Actions: Keep Both / Delete Duplicate / Merge
+- Tag duplicates with `is_potential_duplicate: true` for user review
 
-**Database Migration**:
-```sql
-ALTER TABLE public.salary_payments 
-ADD COLUMN IF NOT EXISTS retry_count integer DEFAULT 0,
-ADD COLUMN IF NOT EXISTS last_retry_at timestamptz,
-ADD COLUMN IF NOT EXISTS failure_reason text;
+**Files to modify:**
+- `src/components/crm/DedupeLeadsDialog.tsx` (new)
+- `src/pages/CRM.tsx` - Add dedupe button and dialog
 
--- Same for commissions
-ALTER TABLE public.commissions
-ADD COLUMN IF NOT EXISTS payout_retry_count integer DEFAULT 0,
-ADD COLUMN IF NOT EXISTS payout_last_retry_at timestamptz,
-ADD COLUMN IF NOT EXISTS payout_failure_reason text;
-```
-
-**Edge Function Updates (process-salary-payouts)**:
-```typescript
-// Before attempting payout, verify Connect account status
-const account = await stripe.accounts.retrieve(connectAccountId);
-if (!account.charges_enabled || !account.payouts_enabled) {
-  // Account disabled/restricted - update profile status
-  await supabase.from('profiles').update({
-    stripe_connect_status: 'disabled'
-  }).eq('id', sdr_id);
-  
-  // Mark as held with reason
-  await supabase.from('salary_payments').update({
-    sdr_payout_status: 'held',
-    failure_reason: 'Connect account disabled or restricted'
-  }).eq('id', payout.id);
-}
-
-// Add retry logic
-if (payout.retry_count < 3) {
-  // Increment retry count on failure
-  await supabase.from('salary_payments').update({
-    retry_count: payout.retry_count + 1,
-    last_retry_at: new Date().toISOString()
-  }).eq('id', payout.id);
-}
+**Deduplication Algorithm:**
+```text
+1. Normalize all LinkedIn URLs (existing function)
+2. Extract domains from emails
+3. For each lead pair in workspace:
+   - Score 100: exact email match
+   - Score 100: exact phone match  
+   - Score 90: exact LinkedIn URL match
+   - Score 70: same first name + same domain
+   - Score 60: fuzzy name match + same company
+4. Flag pairs with score >= 60 as potential duplicates
 ```
 
 ---
 
-## Issue 4: Concurrent Deal Closure Protection
+## 2. Scripts - Placeholder Insertion Fix
 
-**Current State**: `create-commission` uses `maybeSingle()` check but lacks database-level protection against race conditions.
+### Current Issue
+In `CallScriptManager.tsx`, the `insertPlaceholder()` function appends to the end instead of cursor position.
 
-**Solution**:
-1. Add unique constraint on `commissions(deal_id)`
-2. Use database-level locking for deal updates
-3. Add optimistic locking with version column
+### Solution
+- Get textarea element reference using `useRef`
+- Track cursor position with `selectionStart`
+- Modify `insertPlaceholder()` to:
+  - Get current cursor position from textarea ref
+  - Insert placeholder at cursor position
+  - Restore focus and update cursor position after insertion
 
-**Database Migration**:
-```sql
--- Add unique constraint to prevent duplicate commissions
-ALTER TABLE public.commissions 
-ADD CONSTRAINT commissions_unique_deal UNIQUE (deal_id);
+**Files to modify:**
+- `src/components/dialer/CallScriptManager.tsx`
 
--- Add version column for optimistic locking on deals
-ALTER TABLE public.deals 
-ADD COLUMN IF NOT EXISTS version integer DEFAULT 1;
+---
 
--- Create function for atomic deal closure
-CREATE OR REPLACE FUNCTION public.close_deal_atomic(
-  p_deal_id uuid,
-  p_expected_version integer
-)
-RETURNS boolean
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-  affected_rows integer;
-BEGIN
-  UPDATE public.deals
-  SET 
-    stage = 'closed_won',
-    closed_at = now(),
-    version = version + 1,
-    updated_at = now()
-  WHERE id = p_deal_id
-    AND version = p_expected_version
-    AND stage NOT IN ('closed_won', 'closed_lost');
-  
-  GET DIAGNOSTICS affected_rows = ROW_COUNT;
-  RETURN affected_rows > 0;
-END;
-$$;
+## 3. Dialer Issues
+
+### 3.1 Edge Function Non-2xx Error
+**Diagnosis:** The Twilio edge function appears to be working based on network logs showing 200 responses.
+
+**Investigation Steps:**
+- Check for specific error scenarios in call initiation
+- Verify TWILIO_TWIML_APP_SID is correctly configured
+- Add better error handling and logging
+
+### 3.2 Token Expiration Error ("Twilio was unable to validate...")
+**Current State:** The `useTwilioDevice.ts` hook already has:
+- `tokenWillExpire` event handler
+- Proactive token refresh every 45 minutes
+- Page visibility change handler
+- Error code 20104 (token expired) auto-recovery
+
+**Enhancements:**
+- Add more aggressive token refresh (every 30 minutes instead of 45)
+- Implement connection health check ping every 5 minutes
+- Add visible "Reconnecting..." status when token refresh occurs
+- Store last token refresh timestamp and force refresh if > 55 minutes
+
+**Files to modify:**
+- `src/hooks/useTwilioDevice.ts` - Enhanced token management
+- `src/components/dialer/PowerDialer.tsx` - Add connection status indicator
+
+---
+
+## 4. Contracts Placeholder Text
+
+### Implementation
+Add informational placeholder when no deals are available in proposal stage.
+
+**Files to modify:**
+- `src/pages/Contracts.tsx` - Add empty state message
+
+**Message:**
+> "Contracts can only be created for deals in the Proposal stage. If you can't find your deal here, make sure it's in the Proposal stage inside the CRM."
+
+---
+
+## 5. Purchase Pricing Changes
+
+### Current vs New Pricing
+
+| Item | Current | New |
+|------|---------|-----|
+| Starter (100 min) | $2 | $4 |
+| Growth (500 min) | $10 | $20 |
+| Pro (1000 min) | $20 | $40 |
+| Enterprise | 5000 min / $100 | 6000 min / $200 |
+| Call Transcription | $0.029/min | $199 flat |
+| Answering Machine Detection | $0.009/call | $99 flat |
+| Voice Insights | $0.003/min | **REMOVED** |
+| Local Phone Number | $1.40/mo | $2.80/mo |
+
+**Files to modify:**
+- `src/components/dialer/PurchaseTab.tsx` - Update pricing arrays
+- `supabase/functions/twilio/index.ts` - Update `monthly_cost` for numbers
+- `supabase/functions/purchase-dialer-credits/index.ts` - Update Stripe pricing
+
+---
+
+## 6. Refer and Earn Program
+
+### Database Schema
+New tables required:
+
+```text
+referrals
+├── id (uuid, PK)
+├── referrer_id (uuid, FK -> profiles)
+├── referred_user_id (uuid, FK -> profiles, nullable)
+├── referral_code (text, unique)
+├── status (enum: pending, completed, expired)
+├── credits_awarded (integer, default 0)
+├── created_at (timestamp)
+└── completed_at (timestamp, nullable)
 ```
 
-**Edge Function Updates (create-commission)**:
-```typescript
-// Wrap in try-catch for unique constraint violation
-try {
-  const { error: commissionError } = await supabase
-    .from('commissions')
-    .insert({ ... });
-  
-  if (commissionError?.code === '23505') { // Unique violation
-    return { success: true, message: 'Commission already exists', existing: true };
-  }
-} catch (e) {
-  // Handle race condition gracefully
-}
+### Implementation
+
+**1. Create Referral Code System:**
+- Generate unique codes per user (format: `CC-{user_initials}-{random6}`)
+- Store in `profiles.referral_code` or separate `referrals` table
+
+**2. Refer and Earn Page (`src/pages/ReferAndEarn.tsx`):**
+- Display user's unique referral link
+- Copy-to-clipboard button
+- Referral stats: sent, pending, completed, credits earned
+- List of referrals with status
+
+**3. Auth Page Integration:**
+- Accept `?ref={code}` query parameter
+- Store referral code in signup metadata
+- Track referrer on successful agency signup
+
+**4. Backend Logic (`supabase/functions/process-referral/index.ts`):**
+- Trigger on new agency workspace creation
+- Award 500 lead credits to referrer
+- Update referral status to completed
+
+**5. Admin Panel Section:**
+- New "Referrals" tab showing all referrals
+- Columns: Referrer, Referred Agency, Status, Credits Awarded, Date
+
+**Files to create/modify:**
+- `src/pages/ReferAndEarn.tsx` (new)
+- `src/pages/Auth.tsx` - Add referral code capture
+- `src/components/layout/AppSidebar.tsx` - Add nav item above Settings
+- `src/components/admin/ReferralsTable.tsx` (new)
+- `src/pages/AdminDashboard.tsx` - Add referrals tab
+- `supabase/functions/process-referral/index.ts` (new)
+- Database migration for referrals table
+
+---
+
+## 7. Admin Panel Enhancements
+
+### 7.1 Phone Numbers Management
+New section: "Active Numbers"
+
+**Features:**
+- List all active phone numbers across all workspaces
+- Columns: Number, Workspace, Assigned SDR, Purchased Date, Monthly Cost
+- Admin actions: Terminate number (releases from Twilio, marks inactive)
+- When terminated, workspace's free number count is recalculated
+
+**Files to create:**
+- `src/components/admin/PhoneNumbersTable.tsx`
+
+### 7.2 Purchases Tracking (Collapsible Categories)
+
+**Structure:**
+```text
+Purchases
+├── Lead Credit Purchases
+│   └── (existing lead_credit_purchases table)
+├── Dialer Purchases  
+│   └── (existing credit_purchases table for minutes)
+└── Subscription Purchases
+    └── (from workspaces.subscription_tier history)
+```
+
+**Files to create:**
+- `src/components/admin/PurchasesSection.tsx` - Collapsible container
+- `src/components/admin/LeadCreditPurchasesTable.tsx`
+- `src/components/admin/DialerPurchasesTable.tsx`
+- `src/components/admin/SubscriptionPurchasesTable.tsx`
+
+### 7.3 Commissions Tracking
+Move existing `PayoutsTable` or enhance for commission visibility.
+
+### 7.4 Missing Data Audit
+Items currently not tracked that should be added:
+- Phone number purchases (separate from minutes)
+- Feature addon purchases (transcription, AMD)
+- Referral activity
+- Login/activity logs (optional)
+
+**Updated Admin Sidebar Structure:**
+```text
+Platform Admin
+├── Overview
+├── Users
+│   ├── Agencies
+│   ├── SDRs
+├── Activity
+│   ├── Jobs
+│   ├── Applications
+│   ├── Leads
+│   ├── Deals
+│   ├── Contracts
+│   ├── Calls
+│   ├── Phone Numbers (NEW)
+├── Marketplace
+│   ├── Master Leads
+│   ├── Apollo Leads
+├── Finance
+│   ├── Commissions
+│   ├── Payouts
+│   ├── Salaries
+│   ├── Purchases (NEW - collapsible)
+├── Referrals (NEW)
+├── Support
+│   ├── Support Tickets
+│   ├── Bug Reports
+│   ├── Feature Requests
+├── Settings
+│   ├── Coupons
+│   ├── Admin Controls
 ```
 
 ---
 
-## Issue 5: Power Dialer Heartbeat/Cleanup
+## Technical Considerations
 
-**Current State**: No mechanism to detect abandoned dialer sessions or clean up stale Twilio connections.
+### Database Migrations Required
+1. `referrals` table for referral program
+2. Add `profiles.referral_code` column
+3. Potentially `phone_number_purchases` table for tracking
 
-**Solution**:
-1. Create `dialer_sessions` table to track active sessions
-2. Add heartbeat mechanism from frontend
-3. Create cleanup edge function (cron)
+### Edge Functions to Create/Modify
+1. `process-referral` - Handle referral completion and credit award
+2. `twilio/index.ts` - Update number pricing
+3. `purchase-dialer-credits/index.ts` - Update package pricing
 
-**Database Migration**:
-```sql
-CREATE TABLE public.dialer_sessions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  started_at timestamptz NOT NULL DEFAULT now(),
-  last_heartbeat_at timestamptz NOT NULL DEFAULT now(),
-  current_lead_id uuid REFERENCES leads(id),
-  current_call_sid text,
-  status text NOT NULL DEFAULT 'active',
-  total_calls integer DEFAULT 0,
-  ended_at timestamptz
-);
-
-ALTER TABLE public.dialer_sessions ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can manage their own sessions"
-ON public.dialer_sessions FOR ALL
-USING (user_id = auth.uid());
-```
-
-**Frontend Changes (PowerDialer.tsx)**:
-```typescript
-// Create session on start
-const { data: session } = await supabase
-  .from('dialer_sessions')
-  .insert({ workspace_id, user_id, status: 'active' })
-  .select()
-  .single();
-
-// Heartbeat every 30 seconds
-useEffect(() => {
-  const heartbeat = setInterval(async () => {
-    if (sessionId && dialerStatus !== 'idle') {
-      await supabase
-        .from('dialer_sessions')
-        .update({ last_heartbeat_at: new Date().toISOString() })
-        .eq('id', sessionId);
-    }
-  }, 30000);
-  return () => clearInterval(heartbeat);
-}, [sessionId, dialerStatus]);
-```
-
-**New Edge Function (cleanup-dialer-sessions)**:
-```typescript
-// Run every 5 minutes via cron
-// Find sessions with no heartbeat in last 2 minutes
-const { data: staleSessions } = await supabase
-  .from('dialer_sessions')
-  .select('*')
-  .eq('status', 'active')
-  .lt('last_heartbeat_at', new Date(Date.now() - 2 * 60 * 1000).toISOString());
-
-for (const session of staleSessions) {
-  // End any active Twilio call
-  if (session.current_call_sid) {
-    await twilioClient.calls(session.current_call_sid).update({ status: 'completed' });
-  }
-  // Mark session as abandoned
-  await supabase.from('dialer_sessions').update({
-    status: 'abandoned',
-    ended_at: new Date().toISOString()
-  }).eq('id', session.id);
-}
-```
+### Security Considerations
+- RLS policies for referrals table (users see only their own)
+- Admin-only access for phone number termination
+- Rate limiting on referral code generation
 
 ---
 
-## Issue 6: Partial Enrichment Visibility
+## Implementation Priority
 
-**Current State**: All leads are shown to users regardless of enrichment completeness. Users are charged for all enrichments.
+1. **High Priority (Immediate Impact):**
+   - Dialer token refresh improvements
+   - Contracts placeholder text
+   - Purchase pricing updates
 
-**Solution**:
-1. Define "fully enriched" as having BOTH email AND phone
-2. Only show fully enriched leads to users
-3. Store partially enriched leads but mark them differently
-4. Only charge credits for fully enriched leads
+2. **Medium Priority (Feature Enhancement):**
+   - CRM bulk operations (convert, assign, dedupe)
+   - Scripts placeholder fix
+   - Admin phone numbers table
 
-**Edge Function Updates (apollo-enrich)**:
-```typescript
-// After getting Apollo response, check completeness
-const isFullyEnriched = !!(enrichedData.email && enrichedData.phone);
-
-if (isFullyEnriched) {
-  // Update apollo_leads with enrichment_status = 'enriched'
-  // Charge credits
-  creditsUsed += CREDITS_PER_LEAD;
-  enrichedFromApi++;
-} else {
-  // Update apollo_leads with enrichment_status = 'partial'
-  // Save data but don't charge credits
-  await supabase.from('apollo_leads').update({
-    ...enrichedData,
-    enrichment_status: 'partial', // New status
-    credits_used: 0, // No charge
-  }).eq('id', lead.id);
-  
-  // Still save to master_leads for potential future use
-  // But don't count toward enrichment stats
-}
-
-// Response includes partial count
-return {
-  enriched_count: fullyEnrichedCount,
-  partial_count: partialCount,
-  message: partialCount > 0 
-    ? `${partialCount} leads had incomplete data (no email or phone) and were not charged.`
-    : undefined
-};
-```
-
-**RLS Policy Update**:
-```sql
--- Update workspace member policy to exclude partial leads
-DROP POLICY IF EXISTS "Workspace members can view enriched leads" ON public.apollo_leads;
-CREATE POLICY "Workspace members can view enriched leads" 
-ON public.apollo_leads FOR SELECT
-USING (
-  (is_workspace_owner(auth.uid(), workspace_id) OR is_workspace_member(auth.uid(), workspace_id))
-  AND enrichment_status = 'enriched'  -- Excludes 'partial'
-);
-
--- Owners can still see partial leads
-CREATE POLICY "Workspace owners can view partial leads"
-ON public.apollo_leads FOR SELECT
-USING (
-  is_workspace_owner(auth.uid(), workspace_id)
-  AND enrichment_status = 'partial'
-);
-```
+3. **Lower Priority (New Feature):**
+   - Refer and Earn program
+   - Comprehensive admin purchase tracking
 
 ---
 
-## Issue 7: SDR Salary Month-to-Month Timing
+## Estimated Effort
 
-**Current State**: Already correctly implemented. The `charge-salary` function calculates payout date as:
-```typescript
-const payoutDate = new Date(hiredAt);
-payoutDate.setMonth(payoutDate.getMonth() + 1);
-```
+| Feature Area | Components | Estimated Changes |
+|--------------|------------|-------------------|
+| CRM Bulk Operations | 4 components | Medium |
+| Scripts Fix | 1 component | Small |
+| Dialer Fixes | 2 components | Small |
+| Contracts | 1 page | Small |
+| Purchase Pricing | 3 files | Small |
+| Refer and Earn | 5+ files + migration | Large |
+| Admin Panel | 5+ components | Medium-Large |
 
-This correctly handles month-to-month (Jan 15 -> Feb 15), with edge case handling for months with fewer days.
-
-**Verification**: No changes needed. The existing implementation is correct.
-
----
-
-## Issue 8: LinkedIn URL Deduplication/Normalization
-
-**Current State**: LinkedIn URLs are stored as-is from Apollo. Variations like:
-- `https://linkedin.com/in/johndoe`
-- `https://www.linkedin.com/in/johndoe`
-- `http://linkedin.com/in/johndoe/`
-- `linkedin.com/in/johndoe`
-
-Would be treated as different leads, causing duplicates.
-
-**Solution**: Create a normalization function and apply it consistently.
-
-**Database Function**:
-```sql
-CREATE OR REPLACE FUNCTION public.normalize_linkedin_url(url text)
-RETURNS text
-LANGUAGE plpgsql
-IMMUTABLE
-AS $$
-DECLARE
-  normalized text;
-BEGIN
-  IF url IS NULL OR url = '' THEN
-    RETURN NULL;
-  END IF;
-  
-  -- Lowercase
-  normalized := lower(url);
-  
-  -- Remove protocol
-  normalized := regexp_replace(normalized, '^https?://', '');
-  
-  -- Remove www.
-  normalized := regexp_replace(normalized, '^www\.', '');
-  
-  -- Ensure linkedin.com prefix
-  IF NOT normalized LIKE 'linkedin.com/%' THEN
-    RETURN NULL; -- Invalid LinkedIn URL
-  END IF;
-  
-  -- Remove trailing slash
-  normalized := regexp_replace(normalized, '/$', '');
-  
-  -- Remove query parameters
-  normalized := regexp_replace(normalized, '\?.*$', '');
-  
-  RETURN normalized;
-END;
-$$;
-
--- Create trigger to normalize on insert/update
-CREATE OR REPLACE FUNCTION public.normalize_linkedin_url_trigger()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  NEW.linkedin_url := normalize_linkedin_url(NEW.linkedin_url);
-  RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER master_leads_normalize_linkedin
-BEFORE INSERT OR UPDATE ON public.master_leads
-FOR EACH ROW EXECUTE FUNCTION normalize_linkedin_url_trigger();
-
-CREATE TRIGGER apollo_leads_normalize_linkedin
-BEFORE INSERT OR UPDATE ON public.apollo_leads
-FOR EACH ROW EXECUTE FUNCTION normalize_linkedin_url_trigger();
-```
-
-**Edge Function Updates**: Apply normalization before lookups:
-```typescript
-// In apollo-enrich, normalize before cache lookup
-const normalizeLinkedinUrl = (url: string | null): string | null => {
-  if (!url) return null;
-  let normalized = url.toLowerCase();
-  normalized = normalized.replace(/^https?:\/\//, '');
-  normalized = normalized.replace(/^www\./, '');
-  normalized = normalized.replace(/\/$/, '');
-  normalized = normalized.replace(/\?.*$/, '');
-  return normalized;
-};
-
-const linkedinUrls = leadsToEnrich
-  .map(lead => normalizeLinkedinUrl(lead.linkedin_url))
-  .filter((url): url is string => !!url);
-```
-
----
-
-## Implementation Summary
-
-| Component | Type | Priority | Files Affected |
-|-----------|------|----------|----------------|
-| RLS Policy Fixes | Migration | Critical | New migration |
-| Lead Freshness | Migration + UI | Medium | Migration, MasterLeadsTable.tsx, new edge function |
-| Stripe Retry Logic | Migration + Edge | High | Migration, process-salary-payouts, stripe-webhook |
-| Deal Race Condition | Migration + Edge | High | Migration, create-commission, PipelineBoard.tsx |
-| Dialer Heartbeat | Migration + UI + Edge | Medium | Migration, PowerDialer.tsx, new cleanup function |
-| Partial Enrichment | Migration + Edge + RLS | High | Migration, apollo-enrich, new RLS policies |
-| LinkedIn Normalization | Migration + Edge | Medium | Migration, apollo-enrich, apollo-search |
-
----
-
-## Technical Cron Job Setup
-
-Add to `supabase/config.toml`:
-```toml
-[functions.cleanup-dialer-sessions]
-schedule = "*/5 * * * *"  # Every 5 minutes
-```
