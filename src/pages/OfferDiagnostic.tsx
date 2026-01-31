@@ -438,7 +438,8 @@ export default function OfferDiagnostic() {
     const { offerType, promiseOutcome, promise, icpIndustry, verticalSegment, scoringSegment, icpSize, icpMaturity, icpSpecificity, pricingStructure, riskModel, fulfillmentComplexity, proofLevel } = formData;
     
     // icpSpecificity is now REQUIRED
-    if (!offerType || !promiseOutcome || !promise || !icpIndustry || !verticalSegment || !scoringSegment || !icpSize || !icpMaturity || !icpSpecificity || !pricingStructure || !riskModel || !fulfillmentComplexity || !proofLevel) {
+    // proofLevel check: value 'none' IS valid and should be allowed (not falsy check)
+    if (!offerType || !promiseOutcome || !promise || !icpIndustry || !verticalSegment || !scoringSegment || !icpSize || !icpMaturity || !icpSpecificity || !pricingStructure || !riskModel || !fulfillmentComplexity || proofLevel === null || proofLevel === undefined) {
       return false;
     }
 

@@ -297,55 +297,76 @@ function calculateRiskAlignment(formData: DiagnosticFormData): number {
 }
 
 // ========== LATENT VARIABLE 5: CHANNEL FIT (0-20) ==========
+// REFACTORED: Channel Fit should ONLY answer one question:
+// "Can this offer be SOLD EFFECTIVELY via outbound?"
+// It should NOT judge: overall offer quality, pricing attractiveness,
+// fulfillment scalability, or ICP purchasing power (those are handled by other latents).
 
-function calculateChannelFit(formData: DiagnosticFormData): number {
-  const { offerType, promise, proofLevel, icpMaturity, icpSize } = formData;
-  
-  if (!offerType || !promise) return 8;
-  
-  let score = 10;
-  
-  const isDemandCapture = offerType === 'demand_capture';
-  const isOutboundEnablement = offerType === 'outbound_sales_enablement';
-  const isDemandCreation = offerType === 'demand_creation';
-  const isRetention = offerType === 'retention_monetization';
-  const isOperational = offerType === 'operational_enablement';
-  
-  const isLeadsPipeline = ['top_of_funnel_volume', 'mid_funnel_engagement'].includes(promise);
-  const isRevenue = promise === 'top_line_revenue';
-  const isEfficiency = promise === 'efficiency_cost_savings' || promise === 'ops_compliance_outcomes';
-  
-  if ((isDemandCapture || isOutboundEnablement) && isLeadsPipeline) {
-    score += 6;
-  } else if (isOutboundEnablement && isRevenue) {
-    score += 5;
-  } else if (isRetention) {
-    score -= 4;
-  } else if (isOperational && isEfficiency) {
-    score -= 5;
-  }
-  
-  const hasLowProof = !proofLevel || ['none', 'weak'].includes(proofLevel);
-  if (hasLowProof && isRevenue) {
-    score -= 6;
-  }
-  
-  if (icpMaturity === 'pre_revenue') {
-    score -= 3;
-  }
-  if (icpMaturity === 'enterprise') {
-    score += 3;
-  }
-  
-  if (icpSize === 'solo_founder') {
-    score -= 3;
-  }
-  if (icpSize === '21_100_employees' || icpSize === '100_plus_employees') {
-    score += 3;
-  }
-  
-  return Math.max(0, Math.min(20, score));
+interface ChannelFitResult {
+  score: number; // 0–20
+  blocking: boolean;
+  reason?: string;
 }
+
+function deriveChannelFit(formData: DiagnosticFormData): ChannelFitResult {
+  const { offerType, fulfillmentComplexity, promise } = formData;
+
+  // 1. HARD OUTBOUND-COMPATIBLE CASES (DEFAULT PASS)
+  // These should NEVER score below 14/20 on channel fit
+  const outboundCompatibleOfferTypes = [
+    'demand_capture',
+    'demand_creation',
+    'outbound_sales_enablement',
+    'retention_monetization',
+  ];
+
+  if (offerType && outboundCompatibleOfferTypes.includes(offerType)) {
+    return {
+      score: 16,
+      blocking: false,
+    };
+  }
+
+  // 2. CONDITIONAL COMPATIBILITY (MINOR FRICTION, NOT BLOCKING)
+  if (
+    offerType === 'operational_enablement' &&
+    fulfillmentComplexity === 'package_based'
+  ) {
+    return {
+      score: 14,
+      blocking: false,
+    };
+  }
+
+  // 3. TRUE CHANNEL MISMATCH (RARE, STRUCTURAL ONLY)
+  // Note: We check for promises that are not directly triggerable via outbound
+  const outboundIncompatiblePromises = [
+    'brand_awareness_only',
+    'organic_growth_only',
+  ];
+
+  if (promise && outboundIncompatiblePromises.includes(promise)) {
+    return {
+      score: 6,
+      blocking: true,
+      reason: 'Promise is not directly triggerable via outbound',
+    };
+  }
+
+  // 4. DEFAULT SAFE FALLBACK (DO NOT OVER-PENALIZE)
+  return {
+    score: 12,
+    blocking: false,
+  };
+}
+
+// Wrapper for compatibility with existing calculateChannelFit signature
+function calculateChannelFit(formData: DiagnosticFormData): number {
+  return deriveChannelFit(formData).score;
+}
+
+// Export for use in viability gates
+export { deriveChannelFit };
 
 // ========== LATENT VARIABLE 6: ICP SPECIFICITY (0-20) ==========
 
