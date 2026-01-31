@@ -1736,6 +1736,48 @@ export type Database = {
         }
         Relationships: []
       }
+      offer_diagnostic_leads: {
+        Row: {
+          alignment_score: number | null
+          created_at: string
+          email: string
+          first_name: string | null
+          form_data: Json | null
+          id: string
+          latent_scores: Json | null
+          primary_bottleneck: string | null
+          readiness_label: string | null
+          recommendations_sent: boolean | null
+          source: string | null
+        }
+        Insert: {
+          alignment_score?: number | null
+          created_at?: string
+          email: string
+          first_name?: string | null
+          form_data?: Json | null
+          id?: string
+          latent_scores?: Json | null
+          primary_bottleneck?: string | null
+          readiness_label?: string | null
+          recommendations_sent?: boolean | null
+          source?: string | null
+        }
+        Update: {
+          alignment_score?: number | null
+          created_at?: string
+          email?: string
+          first_name?: string | null
+          form_data?: Json | null
+          id?: string
+          latent_scores?: Json | null
+          primary_bottleneck?: string | null
+          readiness_label?: string | null
+          recommendations_sent?: boolean | null
+          source?: string | null
+        }
+        Relationships: []
+      }
       offer_diagnostic_state: {
         Row: {
           ai_recommendations: Json | null

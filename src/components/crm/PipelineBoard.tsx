@@ -64,6 +64,7 @@ export function PipelineBoard({ deals, leads, onDealClick, onLeadClick, onConver
   const { currentWorkspace, isOwner } = useWorkspace();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
+  const [processingDealIds, setProcessingDealIds] = useState<Set<string>>(new Set());
 
   // Get leads that haven't been converted to deals yet
   const unconvertedLeads = leads.filter(lead => 
@@ -121,6 +122,10 @@ export function PipelineBoard({ deals, leads, onDealClick, onLeadClick, onConver
     const deal = deals.find(d => d.id === dealId);
 
     if (!deal || deal.stage === newStage || !user) return;
+    
+    // Prevent duplicate processing
+    if (processingDealIds.has(dealId)) return;
+    setProcessingDealIds(prev => new Set(prev).add(dealId));
 
     // Agencies can only move deals assigned to themselves, not SDR-assigned deals
     if (isOwner && deal.assigned_to !== user.id) {
@@ -129,6 +134,7 @@ export function PipelineBoard({ deals, leads, onDealClick, onLeadClick, onConver
         title: 'Cannot move deal',
         description: 'You can only move deals assigned to you. This deal is assigned to an SDR.',
       });
+      setProcessingDealIds(prev => { const n = new Set(prev); n.delete(dealId); return n; });
       return;
     }
 
@@ -179,6 +185,8 @@ export function PipelineBoard({ deals, leads, onDealClick, onLeadClick, onConver
         title: 'Error',
         description: error.message || 'Failed to update deal',
       });
+    } finally {
+      setProcessingDealIds(prev => { const n = new Set(prev); n.delete(dealId); return n; });
     }
   };
 
