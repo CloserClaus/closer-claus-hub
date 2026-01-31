@@ -450,6 +450,195 @@ function getOfferTypeContext(offerType: string | null, icpIndustry: string | nul
   return [offerContext, industryContext].filter(Boolean).join(' | ');
 }
 
+// ========== GENERATE RECOMMENDATIONS V2 (BOTTLENECK-DRIVEN) ==========
+
+/**
+ * Core principles:
+ * 1. Recommendations MUST be driven by the PRIMARY BOTTLENECK only
+ * 2. Recommendations MUST NOT contradict user-selected inputs
+ * 3. Recommendations MUST NOT loop between mutually exclusive actions
+ * 4. Recommendations MUST respect outboundReady flag
+ * 5. Recommendations MUST be conditional when input data is missing
+ */
+
+type BottleneckKey = 'EFI' | 'proofPromise' | 'fulfillmentScalability' | 'riskAlignment' | 'channelFit' | 'icpSpecificity';
+
+interface GeneratedRecommendation {
+  type: 'blocker' | 'primary' | 'confirmation';
+  headline: string;
+  body: string;
+  guidance?: string[];
+}
+
+export function generateRecommendationsV2(input: AIPrescriptionInput): GeneratedRecommendation[] {
+  const { 
+    alignmentScore, 
+    outboundReady, 
+    primaryBottleneck,
+    formData,
+  } = input;
+  
+  const bottleneck = primaryBottleneck.dimension as BottleneckKey;
+  const recommendations: GeneratedRecommendation[] = [];
+
+  // ------------------------------------------------------------------
+  // 1. GLOBAL SHORT-CIRCUIT: OUTBOUND READY GATE
+  // ------------------------------------------------------------------
+
+  if (!outboundReady) {
+    recommendations.push({
+      type: 'blocker',
+      headline: 'Outbound is not viable yet',
+      body:
+        'Based on your current offer configuration, outbound would struggle to convert predictably. Fix the primary bottleneck below before running outbound.',
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // 2. BOTTLENECK-DRIVEN RECOMMENDATIONS ONLY
+  // ------------------------------------------------------------------
+
+  switch (bottleneck) {
+    case 'EFI': {
+      recommendations.push({
+        type: 'primary',
+        headline: 'Fix economic feasibility before scaling outbound',
+        body:
+          'Your current pricing and ICP combination creates economic friction. This does not mean your offer is bad, but it does mean outbound will struggle unless the unit economics improve.',
+        guidance: [
+          'If you are not already doing this, consider increasing price OR shifting performance compensation closer to revenue impact',
+          'If you already price this way, tighten qualification to higher-LTV buyers',
+        ],
+      });
+      break;
+    }
+
+    case 'proofPromise': {
+      recommendations.push({
+        type: 'primary',
+        headline: 'Narrow your promise to match existing proof',
+        body:
+          'Your proof level does not yet support the breadth of the promise. This creates skepticism during outbound conversations.',
+        guidance: [
+          'If you are not already doing this, consider focusing the promise on the specific outcome you already have proof for',
+          'If you already do this, highlight fewer but stronger case studies in outbound',
+        ],
+      });
+      break;
+    }
+
+    case 'fulfillmentScalability': {
+      recommendations.push({
+        type: 'primary',
+        headline: 'Reduce delivery friction before scaling outbound',
+        body:
+          'Outbound increases deal velocity. If delivery depends heavily on manual effort, scale will break.',
+        guidance: [
+          'If fulfillment is already productized, clarify handoff and delivery timelines',
+          'If not, consider reducing custom work before increasing outbound volume',
+        ],
+      });
+      break;
+    }
+
+    case 'riskAlignment': {
+      recommendations.push({
+        type: 'primary',
+        headline: 'Align risk model with ICP cash sensitivity',
+        body:
+          'Your current risk model may create hesitation for this ICP in outbound conversations.',
+        guidance: [
+          'If you already offer conditional guarantees, clarify milestones and enforcement',
+          'If not, consider performance-based buffers instead of refunds',
+        ],
+      });
+      break;
+    }
+
+    case 'channelFit': {
+      recommendations.push({
+        type: 'primary',
+        headline: 'Adjust promise framing for outbound',
+        body:
+          'Your offer can work via outbound, but the way it is framed may reduce response rates.',
+        guidance: [
+          'If you are not already doing this, consider leading with buyer-triggered pain rather than abstract outcomes',
+          'If you already do this, refine targeting instead of changing the offer',
+        ],
+      });
+      break;
+    }
+
+    case 'icpSpecificity': {
+      recommendations.push({
+        type: 'primary',
+        headline: 'Narrow ICP to increase outbound relevance',
+        body:
+          'Broad ICPs dilute outbound effectiveness. Specific ICPs convert faster.',
+        guidance: [
+          'If you already target narrowly, reflect that explicitly in outbound messaging',
+          'Otherwise, pick one sub-segment where your results are strongest',
+        ],
+      });
+      break;
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // 3. NO PRESUMPTIVE LANGUAGE RULE
+  // ------------------------------------------------------------------
+
+  recommendations.forEach((rec) => {
+    rec.body = rec.body.replace(
+      /you should|you must|you need to/gi,
+      'if you are not already doing this, consider'
+    );
+  });
+
+  // ------------------------------------------------------------------
+  // 4. NO LOOPING GUARANTEE
+  // ------------------------------------------------------------------
+  // Do NOT recommend mutually exclusive actions based on the same input
+  // Filter out invalid recommendations based on current form state
+
+  const filteredRecs = recommendations.filter((rec) => {
+    // Don't recommend price increases if price tier is already high
+    const highPriceTiers = ['5k_plus', '10k_plus', 'over_30_percent', 'over_500_unit'];
+    const currentPriceTier = formData.recurringPriceTier || formData.oneTimePriceTier || formData.hybridRetainerTier || formData.performanceCompTier;
+    
+    if (rec.headline.toLowerCase().includes('increase price') && currentPriceTier && highPriceTiers.includes(currentPriceTier)) {
+      return false;
+    }
+    
+    // Don't recommend adding guarantee if already has one
+    if (rec.headline.toLowerCase().includes('add guarantee') && formData.riskModel && formData.riskModel !== 'no_guarantee') {
+      return false;
+    }
+    
+    // Don't recommend productization if already productized
+    if (rec.headline.toLowerCase().includes('productiz') && formData.fulfillmentComplexity && ['package_based', 'software_platform'].includes(formData.fulfillmentComplexity)) {
+      return false;
+    }
+    
+    return true;
+  });
+
+  // ------------------------------------------------------------------
+  // 5. FINAL OUTBOUND READY MESSAGE (ONLY IF TRUE)
+  // ------------------------------------------------------------------
+
+  if (outboundReady && alignmentScore >= 70) {
+    filteredRecs.push({
+      type: 'confirmation',
+      headline: 'Your offer is outbound-ready',
+      body:
+        'Based on your inputs, this offer should perform well in outbound provided execution is consistent.',
+    });
+  }
+
+  return filteredRecs;
+}
+
 // ========== FALLBACK RECOMMENDATIONS ==========
 
 function generateFallbackRecommendations(input: AIPrescriptionInput): AIRecommendation[] {

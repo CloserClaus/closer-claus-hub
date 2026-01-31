@@ -526,6 +526,6 @@ export const RISK_MODEL_OPTIONS = [
   { value: 'no_guarantee', label: 'No guarantee' },
   { value: 'conditional_guarantee', label: 'Conditional guarantee' },
   { value: 'full_guarantee', label: 'Full guarantee' },
-  { value: 'performance_only', label: 'Performance only' },
+  { value: 'performance_only', label: 'Performance based' },
   { value: 'pay_after_results', label: 'Pay after results' },
 ] as const;
