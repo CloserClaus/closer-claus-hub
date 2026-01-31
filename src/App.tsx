@@ -36,6 +36,8 @@ import NotFound from "./pages/NotFound";
 import Landing from "./pages/Landing";
 import Leads from "./pages/Leads";
 import OfferDiagnostic from "./pages/OfferDiagnostic";
+import PublicOfferDiagnostic from "./pages/PublicOfferDiagnostic";
+import PublicOfferDiagnosticResults from "./pages/PublicOfferDiagnosticResults";
 import ReferAndEarn from "./pages/ReferAndEarn";
 import { HelpWidget } from "@/components/help/HelpWidget";
 const queryClient = new QueryClient();
@@ -79,7 +81,9 @@ const App = () => (
                 <Route path="/feature-requests" element={<FeatureRequests />} />
                 <Route path="/changelog" element={<Changelog />} />
                 <Route path="/roadmap" element={<Roadmap />} />
-                <Route path="/offer-diagnostic" element={<OfferDiagnostic />} />
+                <Route path="/offer-diagnostic" element={<PublicOfferDiagnostic />} />
+                <Route path="/offer-diagnostic/results" element={<PublicOfferDiagnosticResults />} />
+                <Route path="/app/offer-diagnostic" element={<OfferDiagnostic />} />
                 <Route path="/refer" element={<ReferAndEarn />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
