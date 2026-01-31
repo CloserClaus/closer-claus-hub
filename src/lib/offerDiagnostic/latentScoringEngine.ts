@@ -1,6 +1,6 @@
 // ============= Latent Variable Scoring Engine =============
-// NEW: 5 latent variables, each 0-20, total alignment = sum of all 5 (0-100)
-// Implements deterministic gate-based scoring with NO averaging or normalization
+// NEW: 6 latent variables with HARD + SOFT viability gates
+// Implements deterministic gate-based scoring with score caps and decompression
 
 import type {
   DiagnosticFormData,
@@ -23,11 +23,20 @@ export interface LatentScores {
   fulfillmentScalability: number;   // 0-20: Fulfillment Scalability
   riskAlignment: number;            // 0-20: Risk Alignment
   channelFit: number;               // 0-20: Channel Fit
+  icpSpecificity: number;           // 0-20: ICP Specificity Strength
 }
 
 export type LatentBottleneckKey = keyof LatentScores;
 
 export type ReadinessLabel = 'Strong' | 'Moderate' | 'Weak';
+
+export type BottleneckSeverity = 'blocking' | 'constraining';
+
+export interface PrimaryBottleneck {
+  dimension: LatentBottleneckKey;
+  severity: BottleneckSeverity;
+  explanation: string;
+}
 
 export interface LatentScoringResult {
   alignmentScore: number;          // 0-100
@@ -35,26 +44,32 @@ export interface LatentScoringResult {
   latentScores: LatentScores;
   latentBottleneckKey: LatentBottleneckKey;
   outboundReady: boolean;
-  primaryBottleneck: string;
+  primaryBottleneck: PrimaryBottleneck;
+  triggeredHardGates: string[];
+  triggeredSoftGates: string[];
+  scoreCap: number | null;
 }
 
 // ========== CONSTANTS ==========
 
-// Viability gate thresholds (HARD GATES - PROMPT 2)
-const VIABILITY_THRESHOLDS = {
-  EFI: 6,              // Gate A: EFI < 6 = FAIL
-  proofPromise: 7,     // Gate B: proofPromise < 7 = FAIL
-  fulfillmentScalability: 8, // Gate C: fulfillmentScalability < 8 = FAIL
-  channelFit: 7,       // Additional check for channel fit
+// HARD VIABILITY GATE THRESHOLDS (from Prompt 1)
+// If ANY of these fail, outbound is BLOCKED
+const HARD_GATE_THRESHOLDS = {
+  EFI: 4,                    // EFI ≤ 4 = BLOCKED
+  proofPromise: 6,           // ProofToPromise ≤ 6 = BLOCKED
+  fulfillmentScalability: 6, // FulfillmentScalability ≤ 6 = BLOCKED
+  channelFit: 6,             // ChannelFit ≤ 6 = BLOCKED
 };
 
-// Bottleneck priority order for tie-breaking (PROMPT 4)
-const BOTTLENECK_PRIORITY_ORDER: LatentBottleneckKey[] = [
+// BOTTLENECK DOMINANCE ORDER (from Prompt 2)
+// Used for tie-breaking and hierarchy
+const BOTTLENECK_DOMINANCE_ORDER: LatentBottleneckKey[] = [
   'EFI',
   'proofPromise',
   'fulfillmentScalability',
-  'riskAlignment',
   'channelFit',
+  'riskAlignment',
+  'icpSpecificity',
 ];
 
 // Score labels for display
@@ -64,18 +79,17 @@ export const LATENT_SCORE_LABELS: Record<LatentBottleneckKey, string> = {
   fulfillmentScalability: 'Fulfillment Scalability',
   riskAlignment: 'Risk Alignment',
   channelFit: 'Channel Fit',
+  icpSpecificity: 'ICP Specificity',
 };
 
 // ========== LATENT VARIABLE 1: EFI (0-20) ==========
-// Economic Feasibility Index - measures whether pricing math works for ICP
 
 function calculateEFI(formData: DiagnosticFormData): number {
   const { pricingStructure, performanceBasis, icpSize, icpMaturity, riskModel } = formData;
   
-  // Base score by pricingStructure (PROMPT 3)
   let baseScore: number;
   switch (pricingStructure) {
-    case 'performance_only': baseScore = 16; break;  // Best for small ICPs
+    case 'performance_only': baseScore = 16; break;
     case 'hybrid': baseScore = 14; break;
     case 'recurring': baseScore = 11; break;
     case 'one_time': baseScore = 9; break;
@@ -85,23 +99,20 @@ function calculateEFI(formData: DiagnosticFormData): number {
   
   let modifier = 0;
   
-  // ICP Size modifiers (PROMPT 3)
+  // ICP Size modifiers
   switch (icpSize) {
     case 'solo_founder':
     case '1_5_employees':
-      // Small ICPs: retainer > $500 = penalty, performance = bonus
-      if (pricingStructure === 'recurring') modifier -= 3;
-      if (pricingStructure === 'performance_only') modifier += 2;
+      if (pricingStructure === 'recurring') modifier -= 4;
+      if (pricingStructure === 'performance_only') modifier += 3;
       if (pricingStructure === 'hybrid' && performanceBasis) modifier += 1;
       break;
     case '6_20_employees':
-      // Mid-size: more flexible
       if (pricingStructure === 'hybrid') modifier += 2;
       break;
     case '21_100_employees':
     case '100_plus_employees':
-      // Larger ICPs: can afford retainers
-      if (pricingStructure === 'recurring') modifier += 2;
+      if (pricingStructure === 'recurring') modifier += 3;
       break;
   }
   
@@ -109,44 +120,40 @@ function calculateEFI(formData: DiagnosticFormData): number {
   switch (icpMaturity) {
     case 'pre_revenue':
     case 'early_traction':
-      // Early stage: performance-only = bonus
-      if (pricingStructure === 'performance_only') modifier += 2;
-      if (pricingStructure === 'recurring') modifier -= 2;
+      if (pricingStructure === 'performance_only') modifier += 3;
+      if (pricingStructure === 'recurring') modifier -= 3;
       break;
     case 'scaling':
-      // Neutral
       break;
     case 'mature':
     case 'enterprise':
-      // Established: can afford retainers
-      if (pricingStructure === 'recurring') modifier += 1;
+      if (pricingStructure === 'recurring') modifier += 2;
       break;
   }
   
   // Performance basis adjustments
   if (performanceBasis) {
     switch (performanceBasis) {
-      case 'per_appointment': modifier += 1; break;
-      case 'per_opportunity': break;
+      case 'per_appointment': modifier += 2; break;
+      case 'per_opportunity': modifier += 1; break;
       case 'per_closed_deal': modifier -= 1; break;
-      case 'percent_revenue': modifier -= 2; break;
-      case 'percent_profit': modifier -= 2; break;
-      case 'percent_ad_spend': modifier -= 1; break;
+      case 'percent_revenue': modifier -= 3; break;
+      case 'percent_profit': modifier -= 3; break;
+      case 'percent_ad_spend': modifier -= 2; break;
     }
   }
   
   // Risk model impact on EFI
   if (riskModel === 'pay_after_results' || riskModel === 'performance_only') {
-    modifier += 2; // Lower friction
+    modifier += 3;
   } else if (riskModel === 'no_guarantee') {
-    modifier -= 1; // Higher friction
+    modifier -= 2;
   }
   
   return Math.max(0, Math.min(20, baseScore + modifier));
 }
 
 // ========== LATENT VARIABLE 2: PROOF-TO-PROMISE (0-20) ==========
-// Measures whether existing proof supports the promise being made
 
 const PROOF_STRENGTH: Record<ProofLevel, number> = {
   none: 0,
@@ -169,22 +176,22 @@ const PROMISE_DEMAND_LEVELS: Record<PromiseBucket, PromiseDemandLevel> = {
 function calculateProofPromise(formData: DiagnosticFormData): number {
   const { proofLevel, promise, icpSpecificity } = formData;
   
-  if (!proofLevel || !promise) return 10;
+  if (!proofLevel || !promise) return 8;
   
   const proofStrength = PROOF_STRENGTH[proofLevel];
   const demandLevel = PROMISE_DEMAND_LEVELS[promise];
   
-  let score = 10; // Baseline
+  let score = 10;
   
-  // Proof vs Promise matching
+  // Proof vs Promise matching with wider spread
   if (proofStrength >= demandLevel + 1) {
-    score += 6; // Proof exceeds promise
+    score += 8;
   } else if (proofStrength >= demandLevel) {
-    score += 3; // Proof matches promise
+    score += 4;
   } else if (proofStrength === demandLevel - 1) {
-    score -= 2; // Slight gap
+    score -= 4;
   } else {
-    score -= 6; // Major gap
+    score -= 8;
   }
   
   // Category killer bonus
@@ -194,117 +201,110 @@ function calculateProofPromise(formData: DiagnosticFormData): number {
   
   // ICP Specificity interaction
   if (icpSpecificity === 'broad' && ['none', 'weak'].includes(proofLevel)) {
-    score -= 4; // Broad ICP + weak proof = credibility problem
+    score -= 6;
   }
   if ((icpSpecificity === 'narrow' || icpSpecificity === 'exact') && proofStrength >= 2) {
-    score += 2; // Narrow ICP + good proof = amplification
+    score += 3;
   }
   
   return Math.max(0, Math.min(20, score));
 }
 
 // ========== LATENT VARIABLE 3: FULFILLMENT SCALABILITY (0-20) ==========
-// Measures how reliably the offer can be delivered repeatedly
 
 function calculateFulfillmentScalability(formData: DiagnosticFormData): number {
   const { fulfillmentComplexity, pricingStructure, icpSize } = formData;
   
-  if (!fulfillmentComplexity) return 10;
+  if (!fulfillmentComplexity) return 8;
   
-  let score = 10; // Baseline
+  let score = 10;
   
-  // Fulfillment type modifiers
   switch (fulfillmentComplexity) {
     case 'software_platform':
-      score += 8;
+      score += 10;
       break;
     case 'package_based':
-      score += 5;
+      score += 6;
       break;
     case 'coaching_advisory':
       score += 2;
       break;
     case 'custom_dfy':
-      score -= 4;
+      score -= 5;
       break;
     case 'staffing_placement':
-      score -= 6;
+      score -= 8;
       break;
   }
   
   // Pricing structure interaction
   if (pricingStructure === 'performance_only' && fulfillmentComplexity === 'custom_dfy') {
-    score -= 3; // High risk combo
+    score -= 4;
   }
   
   // ICP size interaction
   const largeSizes: ICPSize[] = ['21_100_employees', '100_plus_employees'];
   if (fulfillmentComplexity === 'custom_dfy' && icpSize && largeSizes.includes(icpSize)) {
-    score -= 3; // Large clients + custom = scaling nightmare
+    score -= 4;
   }
   
   const smallSizes: ICPSize[] = ['solo_founder', '1_5_employees'];
   if (fulfillmentComplexity === 'coaching_advisory' && icpSize && smallSizes.includes(icpSize)) {
-    score += 2; // Coaching scales well for small clients
+    score += 2;
   }
   
   return Math.max(0, Math.min(20, score));
 }
 
 // ========== LATENT VARIABLE 4: RISK ALIGNMENT (0-20) ==========
-// Measures whether risk exposure matches certainty
 
 function calculateRiskAlignment(formData: DiagnosticFormData): number {
   const { riskModel, proofLevel, pricingStructure, icpMaturity } = formData;
   
-  if (!riskModel || !proofLevel) return 10;
+  if (!riskModel || !proofLevel) return 8;
   
-  let score = 10; // Baseline
+  let score = 10;
   
   const hasStrongProof = ['strong', 'category_killer'].includes(proofLevel);
   const hasModerateProof = ['moderate', 'strong', 'category_killer'].includes(proofLevel);
   const hasWeakProof = ['none', 'weak'].includes(proofLevel);
   
-  // Risk model + proof combinations
   if (riskModel === 'no_guarantee' && hasStrongProof) {
-    score += 3; // Strong proof justifies no guarantee
+    score += 4;
   } else if (riskModel === 'no_guarantee' && hasWeakProof) {
-    score -= 4; // No proof + no guarantee = high friction
+    score -= 5;
   }
   
   if (riskModel === 'conditional_guarantee' && hasModerateProof) {
-    score += 4; // Good balance
+    score += 5;
   }
   
   if (riskModel === 'full_guarantee' && hasWeakProof) {
-    score -= 5; // Risky for provider
+    score -= 6;
   }
   
   if ((riskModel === 'performance_only' || riskModel === 'pay_after_results') && hasWeakProof) {
-    score -= 4; // High risk without proof
+    score -= 5;
   } else if ((riskModel === 'performance_only' || riskModel === 'pay_after_results') && hasStrongProof) {
-    score += 4; // Great combo
+    score += 5;
   }
   
-  // ICP maturity interaction
   if (icpMaturity === 'enterprise' && riskModel === 'no_guarantee') {
-    score -= 2; // Enterprise expects some guarantees
+    score -= 3;
   }
   
   return Math.max(0, Math.min(20, score));
 }
 
 // ========== LATENT VARIABLE 5: CHANNEL FIT (0-20) ==========
-// Measures whether outbound is the correct GTM channel
 
 function calculateChannelFit(formData: DiagnosticFormData): number {
   const { offerType, promise, proofLevel, icpMaturity, icpSize } = formData;
   
-  if (!offerType || !promise) return 10;
+  if (!offerType || !promise) return 8;
   
-  let score = 10; // Baseline
+  let score = 10;
   
-  // Offer type + promise combinations
   const isDemandCapture = offerType === 'demand_capture';
   const isOutboundEnablement = offerType === 'outbound_sales_enablement';
   const isDemandCreation = offerType === 'demand_creation';
@@ -315,139 +315,263 @@ function calculateChannelFit(formData: DiagnosticFormData): number {
   const isRevenue = promise === 'top_line_revenue';
   const isEfficiency = promise === 'efficiency_cost_savings' || promise === 'ops_compliance_outcomes';
   
-  // Best channel fit combinations
   if ((isDemandCapture || isOutboundEnablement) && isLeadsPipeline) {
-    score += 5; // Perfect for outbound
+    score += 6;
   } else if (isOutboundEnablement && isRevenue) {
-    score += 4;
+    score += 5;
   } else if (isRetention) {
-    score -= 3; // Retention is better for existing customers
+    score -= 4;
   } else if (isOperational && isEfficiency) {
-    score -= 4; // Operational offers harder to sell outbound
-  }
-  
-  // Low proof + revenue promise via outbound = poor fit
-  const hasLowProof = !proofLevel || ['none', 'weak'].includes(proofLevel);
-  if (hasLowProof && isRevenue) {
     score -= 5;
   }
   
-  // ICP maturity interaction
-  if (icpMaturity === 'pre_revenue') {
-    score -= 2; // Pre-revenue companies hard to reach outbound
-  }
-  if (icpMaturity === 'enterprise') {
-    score += 2; // Enterprise buying behavior suits outbound
+  const hasLowProof = !proofLevel || ['none', 'weak'].includes(proofLevel);
+  if (hasLowProof && isRevenue) {
+    score -= 6;
   }
   
-  // ICP size interaction
+  if (icpMaturity === 'pre_revenue') {
+    score -= 3;
+  }
+  if (icpMaturity === 'enterprise') {
+    score += 3;
+  }
+  
   if (icpSize === 'solo_founder') {
-    score -= 2; // Solo founders hard to reach
+    score -= 3;
   }
   if (icpSize === '21_100_employees' || icpSize === '100_plus_employees') {
-    score += 2; // Larger companies more receptive to outbound
+    score += 3;
   }
   
   return Math.max(0, Math.min(20, score));
 }
 
-// ========== VIABILITY GATES (PROMPT 2) ==========
-// Hard gates that MUST pass for outboundReady = true
+// ========== LATENT VARIABLE 6: ICP SPECIFICITY (0-20) ==========
 
-interface ViabilityGateResult {
-  passed: boolean;
-  failedGate: LatentBottleneckKey | null;
-  blockReason: string | null;
+function calculateICPSpecificity(formData: DiagnosticFormData): number {
+  const { icpSpecificity, proofLevel } = formData;
+  
+  if (!icpSpecificity) return 10;
+  
+  let score = 10;
+  
+  switch (icpSpecificity) {
+    case 'exact':
+      score += 8;
+      break;
+    case 'narrow':
+      score += 4;
+      break;
+    case 'broad':
+      score -= 4;
+      break;
+  }
+  
+  // Proof level interaction
+  if (icpSpecificity === 'broad' && proofLevel && ['none', 'weak'].includes(proofLevel)) {
+    score -= 4;
+  }
+  
+  if (icpSpecificity === 'exact' && proofLevel && ['strong', 'category_killer'].includes(proofLevel)) {
+    score += 2;
+  }
+  
+  return Math.max(0, Math.min(20, score));
 }
 
-function evaluateViabilityGates(latentScores: LatentScores): ViabilityGateResult {
-  // Gate A: Economic Feasibility
-  if (latentScores.EFI < VIABILITY_THRESHOLDS.EFI) {
-    return {
-      passed: false,
-      failedGate: 'EFI',
-      blockReason: 'Economic Feasibility',
-    };
+// ========== HARD VIABILITY GATES (PROMPT 1) ==========
+
+interface HardGateResult {
+  passed: boolean;
+  triggeredGates: string[];
+  failedDimension: LatentBottleneckKey | null;
+}
+
+function evaluateHardGates(latentScores: LatentScores, formData: DiagnosticFormData): HardGateResult {
+  const triggeredGates: string[] = [];
+  let firstFailedDimension: LatentBottleneckKey | null = null;
+  
+  // Gate 1: EFI ≤ 4
+  if (latentScores.EFI <= HARD_GATE_THRESHOLDS.EFI) {
+    triggeredGates.push('Economic Feasibility');
+    if (!firstFailedDimension) firstFailedDimension = 'EFI';
   }
   
-  // Gate B: Proof-to-Promise Credibility
-  if (latentScores.proofPromise < VIABILITY_THRESHOLDS.proofPromise) {
-    return {
-      passed: false,
-      failedGate: 'proofPromise',
-      blockReason: 'Proof-to-Promise Credibility',
-    };
+  // Gate 2: ProofToPromise ≤ 6
+  if (latentScores.proofPromise <= HARD_GATE_THRESHOLDS.proofPromise) {
+    triggeredGates.push('Proof-to-Promise Credibility');
+    if (!firstFailedDimension) firstFailedDimension = 'proofPromise';
   }
   
-  // Gate C: Fulfillment Scalability
-  if (latentScores.fulfillmentScalability < VIABILITY_THRESHOLDS.fulfillmentScalability) {
-    return {
-      passed: false,
-      failedGate: 'fulfillmentScalability',
-      blockReason: 'Fulfillment Scalability',
-    };
+  // Gate 3: FulfillmentScalability ≤ 6
+  if (latentScores.fulfillmentScalability <= HARD_GATE_THRESHOLDS.fulfillmentScalability) {
+    triggeredGates.push('Fulfillment Scalability');
+    if (!firstFailedDimension) firstFailedDimension = 'fulfillmentScalability';
   }
   
-  // All gates passed
+  // Gate 4: ChannelFit ≤ 6
+  if (latentScores.channelFit <= HARD_GATE_THRESHOLDS.channelFit) {
+    triggeredGates.push('Channel Fit');
+    if (!firstFailedDimension) firstFailedDimension = 'channelFit';
+  }
+  
+  // Gate 5: ICPSpecificity = Broad AND ProofLevel ≤ Moderate
+  if (formData.icpSpecificity === 'broad' && 
+      formData.proofLevel && ['none', 'weak', 'moderate'].includes(formData.proofLevel)) {
+    triggeredGates.push('ICP Specificity + Proof');
+    if (!firstFailedDimension) firstFailedDimension = 'icpSpecificity';
+  }
+  
   return {
-    passed: true,
-    failedGate: null,
-    blockReason: null,
+    passed: triggeredGates.length === 0,
+    triggeredGates,
+    failedDimension: firstFailedDimension,
   };
 }
 
-// ========== BOTTLENECK SELECTION (PROMPT 4) ==========
-// Short-circuit: if gate failed, that's the bottleneck
-// Otherwise: lowest latent score wins, with priority order for ties
+// ========== SOFT VIABILITY GATES (PROMPT 1) ==========
 
-function selectBottleneck(
-  latentScores: LatentScores,
-  gateResult: ViabilityGateResult
-): LatentBottleneckKey {
-  // If a gate failed, that's the bottleneck (SHORT-CIRCUIT)
-  if (!gateResult.passed && gateResult.failedGate) {
-    return gateResult.failedGate;
+interface SoftGateResult {
+  triggeredGates: string[];
+  scorePressure: number;
+}
+
+function evaluateSoftGates(latentScores: LatentScores, formData: DiagnosticFormData): SoftGateResult {
+  const triggeredGates: string[] = [];
+  let scorePressure = 0;
+  
+  // Soft Gate 1: EFI between 5–7 → minus 5
+  if (latentScores.EFI >= 5 && latentScores.EFI <= 7) {
+    triggeredGates.push('EFI in marginal range (5-7)');
+    scorePressure += 5;
   }
   
-  // Find lowest scoring latent
+  // Soft Gate 2: ProofLevel = Moderate AND PromiseType = VolumeBased → minus 5
+  if (formData.proofLevel === 'moderate' && formData.promise === 'top_of_funnel_volume') {
+    triggeredGates.push('Moderate proof with volume-based promise');
+    scorePressure += 5;
+  }
+  
+  // Soft Gate 3: HybridPricing AND ICPSegment size = 1–5 employees → minus 5
+  if (formData.pricingStructure === 'hybrid' && 
+      formData.icpSize && ['solo_founder', '1_5_employees'].includes(formData.icpSize)) {
+    triggeredGates.push('Hybrid pricing with small ICP');
+    scorePressure += 5;
+  }
+  
+  // Soft Gate 4: ConditionalGuarantee AND ProofLevel = Low → minus 5
+  if (formData.riskModel === 'conditional_guarantee' && 
+      formData.proofLevel && ['none', 'weak'].includes(formData.proofLevel)) {
+    triggeredGates.push('Conditional guarantee with low proof');
+    scorePressure += 5;
+  }
+  
+  return {
+    triggeredGates,
+    scorePressure,
+  };
+}
+
+// ========== SCORE CAPS (PROMPT 1) ==========
+
+function calculateScoreCap(
+  hardGateResult: HardGateResult,
+  softGateResult: SoftGateResult,
+  latentScores: LatentScores
+): number | null {
+  // Cap 1: Any HARD gate triggered → max score = 49
+  if (!hardGateResult.passed) {
+    return 49;
+  }
+  
+  // Cap 2: Three or more SOFT gates triggered → max score = 64
+  if (softGateResult.triggeredGates.length >= 3) {
+    return 64;
+  }
+  
+  // Cap 3: EFI ≤ 7 → max score = 69
+  if (latentScores.EFI <= 7) {
+    return 69;
+  }
+  
+  return null;
+}
+
+// ========== BOTTLENECK SELECTION WITH DOMINANCE (PROMPT 2) ==========
+
+function selectBottleneckWithDominance(
+  latentScores: LatentScores,
+  hardGateResult: HardGateResult
+): PrimaryBottleneck {
+  // RULE 1: If ANY hard gate failed, that's the bottleneck (SHORT-CIRCUIT)
+  if (!hardGateResult.passed && hardGateResult.failedDimension) {
+    return {
+      dimension: hardGateResult.failedDimension,
+      severity: 'blocking',
+      explanation: `Outbound is blocked due to ${LATENT_SCORE_LABELS[hardGateResult.failedDimension]}. This must be fixed before any other optimizations.`,
+    };
+  }
+  
+  // RULE 2: Find lowest score using dominance hierarchy for tie-breaking
   const entries = Object.entries(latentScores) as [LatentBottleneckKey, number][];
   const minScore = Math.min(...entries.map(([, score]) => score));
   
-  // Find all latents with the minimum score
+  // Find all latents at the minimum score
   const lowestLatents = entries
     .filter(([, score]) => score === minScore)
     .map(([key]) => key);
   
-  // Use priority order to break ties
-  for (const key of BOTTLENECK_PRIORITY_ORDER) {
+  // Use dominance order to break ties (higher in list = higher priority)
+  let selectedBottleneck: LatentBottleneckKey = lowestLatents[0];
+  for (const key of BOTTLENECK_DOMINANCE_ORDER) {
     if (lowestLatents.includes(key)) {
-      return key;
+      selectedBottleneck = key;
+      break;
     }
   }
   
-  // Fallback (should never reach here)
-  return 'EFI';
+  return {
+    dimension: selectedBottleneck,
+    severity: 'constraining',
+    explanation: `${LATENT_SCORE_LABELS[selectedBottleneck]} is your primary constraint limiting outbound effectiveness.`,
+  };
 }
 
-// ========== ALIGNMENT SCORE (PROMPT 5) ==========
-// Simple sum of all 5 latents, NO scaling, NO smoothing
+// ========== ALIGNMENT SCORE (DECOMPRESSED) ==========
 
-function calculateAlignmentScore(latentScores: LatentScores): number {
+function calculateAlignmentScore(
+  latentScores: LatentScores,
+  softGatePressure: number,
+  scoreCap: number | null
+): number {
+  // Base sum of all 6 latents (max 120)
   const sum = 
     latentScores.EFI +
     latentScores.proofPromise +
     latentScores.fulfillmentScalability +
     latentScores.riskAlignment +
-    latentScores.channelFit;
+    latentScores.channelFit +
+    latentScores.icpSpecificity;
   
-  // Sum is already 0-100 (5 latents × 20 max each)
-  return Math.max(0, Math.min(100, sum));
+  // Scale to 0-100 (120 max → 100)
+  let score = Math.round((sum / 120) * 100);
+  
+  // Apply soft gate pressure
+  score = Math.max(0, score - softGatePressure);
+  
+  // Apply score cap if present
+  if (scoreCap !== null) {
+    score = Math.min(score, scoreCap);
+  }
+  
+  return Math.max(0, Math.min(100, score));
 }
 
 // ========== READINESS LABEL ==========
 
 function getReadinessLabel(alignmentScore: number, outboundReady: boolean): ReadinessLabel {
-  if (!outboundReady) return 'Weak';
+  if (!outboundReady || alignmentScore < 50) return 'Weak';
   if (alignmentScore >= 75) return 'Strong';
   if (alignmentScore >= 50) return 'Moderate';
   return 'Weak';
@@ -458,17 +582,16 @@ function getReadinessLabel(alignmentScore: number, outboundReady: boolean): Read
 function isFormComplete(formData: DiagnosticFormData): boolean {
   const { 
     offerType, promise, icpIndustry, verticalSegment,
-    icpSize, icpMaturity, pricingStructure, riskModel, 
+    icpSize, icpMaturity, icpSpecificity, pricingStructure, riskModel, 
     fulfillmentComplexity, proofLevel
   } = formData;
   
   if (!offerType || !promise || !icpIndustry || !verticalSegment || 
-      !icpSize || !icpMaturity || !pricingStructure || !riskModel || 
+      !icpSize || !icpMaturity || !icpSpecificity || !pricingStructure || !riskModel || 
       !fulfillmentComplexity || !proofLevel) {
     return false;
   }
 
-  // Conditional validation for pricing structures
   if (pricingStructure === 'recurring' && !formData.recurringPriceTier) return false;
   if (pricingStructure === 'one_time' && !formData.oneTimePriceTier) return false;
   if (pricingStructure === 'usage_based' && (!formData.usageOutputType || !formData.usageVolumeTier)) return false;
@@ -492,40 +615,49 @@ export function calculateLatentScores(
     return null;
   }
   
-  // Calculate all 5 latent scores
+  // ========== STEP 1: Compute latent scores ==========
   const latentScores: LatentScores = {
     EFI: calculateEFI(formData),
     proofPromise: calculateProofPromise(formData),
     fulfillmentScalability: calculateFulfillmentScalability(formData),
     riskAlignment: calculateRiskAlignment(formData),
     channelFit: calculateChannelFit(formData),
+    icpSpecificity: calculateICPSpecificity(formData),
   };
   
-  // Evaluate viability gates
-  const gateResult = evaluateViabilityGates(latentScores);
+  // ========== STEP 2: Apply Viability Gates ==========
+  const hardGateResult = evaluateHardGates(latentScores, formData);
+  const softGateResult = evaluateSoftGates(latentScores, formData);
   
-  // Calculate alignment score (simple sum)
-  const alignmentScore = calculateAlignmentScore(latentScores);
+  // ========== STEP 3: Apply Score Caps ==========
+  const scoreCap = calculateScoreCap(hardGateResult, softGateResult, latentScores);
   
-  // Determine outbound readiness
-  const outboundReady = gateResult.passed;
+  // ========== STEP 4: Compute final Alignment Score ==========
+  const alignmentScore = calculateAlignmentScore(
+    latentScores, 
+    softGateResult.scorePressure,
+    scoreCap
+  );
   
-  // Select primary bottleneck
-  const latentBottleneckKey = selectBottleneck(latentScores, gateResult);
+  // ========== STEP 5: Output outboundReady boolean ==========
+  const outboundReady = hardGateResult.passed;
+  
+  // ========== STEP 6: Select Primary Bottleneck with Dominance ==========
+  const primaryBottleneck = selectBottleneckWithDominance(latentScores, hardGateResult);
   
   // Get readiness label
   const readinessLabel = getReadinessLabel(alignmentScore, outboundReady);
-  
-  // Get bottleneck label
-  const primaryBottleneck = LATENT_SCORE_LABELS[latentBottleneckKey];
   
   return {
     alignmentScore,
     readinessLabel,
     latentScores,
-    latentBottleneckKey,
+    latentBottleneckKey: primaryBottleneck.dimension,
     outboundReady,
     primaryBottleneck,
+    triggeredHardGates: hardGateResult.triggeredGates,
+    triggeredSoftGates: softGateResult.triggeredGates,
+    scoreCap,
   };
 }
 
@@ -545,4 +677,5 @@ export const BOTTLENECK_ALLOWED_CATEGORIES: Record<LatentBottleneckKey, AIRecomm
   fulfillmentScalability: ['fulfillment_shift'],
   riskAlignment: ['risk_shift'],
   channelFit: ['channel_shift'],
+  icpSpecificity: ['icp_shift'],
 };

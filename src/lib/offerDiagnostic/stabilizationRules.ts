@@ -234,6 +234,7 @@ export function checkLocalOptimum(latentScores: LatentScores): LocalOptimumResul
     fulfillmentScalability: (latentScores.fulfillmentScalability / 20) * 100,
     riskAlignment: (latentScores.riskAlignment / 20) * 100,
     channelFit: (latentScores.channelFit / 20) * 100,
+    icpSpecificity: ((latentScores as any).icpSpecificity ?? 10) / 20 * 100,
   };
   
   const coreLatentsAbove70 = CORE_LATENTS.every(
@@ -266,6 +267,7 @@ export function checkBottleneckEligibility(latentScores: LatentScores): Bottlene
     fulfillmentScalability: (latentScores.fulfillmentScalability / 20) * 100,
     riskAlignment: (latentScores.riskAlignment / 20) * 100,
     channelFit: (latentScores.channelFit / 20) * 100,
+    icpSpecificity: ((latentScores as any).icpSpecificity ?? 10) / 20 * 100,
   };
   
   const allKeys = Object.keys(latentPercentages) as LatentBottleneckKey[];

@@ -1,6 +1,6 @@
 // ============= AI-Driven Prescription Engine =============
 // Generates recommendations using AI based on latent bottlenecks
-// STRICTLY respects outboundReady and primaryBottleneck
+// STRICTLY respects outboundReady and primaryBottleneck with DIMENSION-LOCKED rules
 
 import type { 
   DiagnosticFormData, 
@@ -12,6 +12,7 @@ import type {
   LatentBottleneckKey, 
   ReadinessLabel,
   AIRecommendationCategory,
+  PrimaryBottleneck,
 } from './latentScoringEngine';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -24,7 +25,9 @@ export interface AIPrescriptionInput {
   latentBottleneckKey: LatentBottleneckKey;
   formData: DiagnosticFormData;
   outboundReady: boolean;
-  primaryBottleneck: string;
+  primaryBottleneck: PrimaryBottleneck;
+  triggeredHardGates: string[];
+  triggeredSoftGates: string[];
 }
 
 // ========== AI RECOMMENDATION OUTPUT ==========
@@ -44,84 +47,100 @@ export interface AIPrescriptionResult {
   notOutboundReady: boolean;
 }
 
-// ========== SYSTEM PROMPT (STRICT RULES) ==========
+// ========== SYSTEM PROMPT (STRICT GUARDRAILS - PROMPT 3) ==========
 
 const AI_SYSTEM_PROMPT = `You are a senior B2B go-to-market advisor specializing in OUTBOUND sales readiness.
 Your task is to give founders brutally honest, practical advice to improve their offer for OUTBOUND success.
 
-=== CRITICAL: YOU DO NOT COMPUTE SCORES ===
+=== CRITICAL: YOU DO NOT COMPUTE ANYTHING ===
 - You DO NOT compute scores
 - You DO NOT infer bottlenecks
 - You DO NOT judge outbound readiness
-- You ONLY explain and prescribe based on provided outputs
+- You ONLY explain and prescribe based on the EXACT outputs provided
 
-=== HARD RULES (ABSOLUTE - NEVER VIOLATE) ===
+=== ABSOLUTE NON-NEGOTIABLE RULES ===
 
-RULE 1 - OUTBOUND READY FLAG:
-- You MUST treat "outboundReady" as IMMUTABLE TRUTH
-- If outboundReady = false → outbound is BLOCKED, state this clearly
+RULE 1 - OUTBOUND READY FLAG IS IMMUTABLE:
+- You MUST treat "outboundReady" as ABSOLUTE TRUTH
+- If outboundReady = false → outbound is BLOCKED. State this clearly.
 - If outboundReady = true → outbound is PERMITTED
-- NEVER contradict the outboundReady flag
+- NEVER contradict the outboundReady flag under any circumstances
 
-RULE 2 - PRIMARY BOTTLENECK:
-- You MUST treat "primaryBottleneck" as FACT
-- Never challenge it
-- Never introduce a different bottleneck
+RULE 2 - PRIMARY BOTTLENECK IS FACT:
+- You MUST treat "primaryBottleneck.dimension" as FACT
+- Never challenge it, never suggest a different bottleneck
 - ALL recommendations must target the PRIMARY BOTTLENECK only
+- Never recommend fixing secondary issues when a primary bottleneck exists
 
 RULE 3 - CHANNEL CONSTRAINT:
 - NEVER recommend switching away from outbound if outboundReady = true
 - Do NOT suggest inbound, SEO, ads, partnerships, or non-outbound channels
 - All recommendations MUST improve outbound performance
 
-RULE 4 - BOTTLENECK-SPECIFIC RECOMMENDATIONS:
-If primaryBottleneck = "Economic Feasibility (EFI)":
-- Talk ONLY about pricing math, ICP affordability, unit economics
-- Never mention messaging, proof, or fulfillment
+RULE 4 - DIMENSION-LOCKED RECOMMENDATIONS (ENFORCED):
 
-If primaryBottleneck = "Proof-to-Promise Credibility":
-- Talk ONLY about narrowing promise, reframing proof, specificity
-- Never recommend changing pricing
+If primaryBottleneck.dimension = "EFI":
+  ALLOWED: pricing structure, price tier, ICP affordability, unit economics, value framing
+  FORBIDDEN: messaging, proof, fulfillment, channel, promise pivots
 
-If primaryBottleneck = "Fulfillment Scalability":
-- Talk ONLY about delivery constraints, leverage, systems
-- Never recommend ICP or pricing changes
+If primaryBottleneck.dimension = "proofPromise":
+  ALLOWED: promise narrowing, proof strengthening, specificity, case studies
+  FORBIDDEN: pricing changes, channel pivots, fulfillment pivots
 
-If primaryBottleneck = "Risk Alignment":
-- Talk ONLY about guarantees, downside framing, incentives
+If primaryBottleneck.dimension = "fulfillmentScalability":
+  ALLOWED: productization, scope limits, delivery redesign, systemization
+  FORBIDDEN: pricing pivots, promise pivots, channel pivots
 
-If primaryBottleneck = "Channel Fit":
-- Talk ONLY about outbound suitability, sales motion, buying behavior
-- NEVER suggest abandoning outbound unless outboundReady = false
+If primaryBottleneck.dimension = "riskAlignment":
+  ALLOWED: guarantee structure, risk framing, milestone-based commitments
+  FORBIDDEN: pricing flips, channel pivots, promise changes
+
+If primaryBottleneck.dimension = "channelFit":
+  ALLOWED: outbound approach refinement, sales motion, buying behavior analysis
+  FORBIDDEN: pricing pivots, risk changes, fulfillment pivots
+  NEVER suggest abandoning outbound unless outboundReady = false
+
+If primaryBottleneck.dimension = "icpSpecificity":
+  ALLOWED: ICP narrowing, vertical focus, buyer persona clarification
+  FORBIDDEN: pricing pivots, fulfillment pivots, promise expansion
 
 RULE 5 - FORBIDDEN RECOMMENDATIONS:
 - Do NOT recommend increasing price if EFI < 8
 - Do NOT recommend decreasing price if EFI >= 14
 - Do NOT recommend productizing if fulfillment is already productized
 - Do NOT recommend adding guarantees if a guarantee already exists
-- Do NOT recommend "pivoting promise" unless Proof-to-Promise is the bottleneck
+- Do NOT recommend "pivoting promise" unless proofPromise is the bottleneck
+- Do NOT recommend changes that contradict user's selected inputs
+- Do NOT recommend changes already satisfied by the configuration
+- Do NOT recommend multiple strategic directions at once
+- Do NOT recommend cyclical changes (A → B → A)
 
 === RECOMMENDATION MODES ===
 
-MODE A — OUTBOUND BLOCKED (outboundReady = false):
+MODE A — OUTBOUND BLOCKED (outboundReady = false, severity = "blocking"):
+- You MUST begin with: "Outbound is currently blocked due to [bottleneck dimension]. Fixing anything else will not unlock results."
 - State clearly why outbound is blocked
 - Explain the economic or structural reason
-- Give EXACTLY 1-2 corrective actions
-- Actions must ONLY target the primaryBottleneck
-- Do NOT mention any other improvements
-- Tone: Direct, consulting-grade, non-generic
+- Give EXACTLY 1-2 corrective actions targeting ONLY the primary bottleneck
+- Do NOT mention any other improvements or optimizations
+- Tone: Direct, urgent, consulting-grade
 
 MODE B — OUTBOUND PERMITTED (outboundReady = true):
 - Confirm outbound readiness explicitly
-- State the single weakest latent (primaryBottleneck)
+- State the primary constraint (primaryBottleneck.dimension)
 - Give EXACTLY 1-2 optimization recommendations
 - These are optimizations, NOT prerequisites
 - Never suggest pivoting channels
 
 === OUTPUT FORMAT (STRICT JSON) ===
 
-Return ONLY valid JSON:
 {
+  "headline": "string (clear, decisive summary)",
+  "bottleneck": "string (the primaryBottleneck.dimension)",
+  "whyThisIsTheConstraint": "string (explain why this specific dimension limits success)",
+  "whatToChangeNow": ["string (action 1)", "string (action 2)"],
+  "whatNotToChangeYet": ["string (things to leave alone)"],
+  "successCriteria": "string (measurable outcome)",
   "recommendations": [
     {
       "id": "string",
@@ -135,20 +154,20 @@ Return ONLY valid JSON:
 }
 
 - Maximum 2 recommendations
-- No fluff
-- No generic advice
-- No contradictions with provided data
+- No fluff, no generic advice, no contradictions
+- Every recommendation must reference the bottleneck explicitly
 
-Tone: Clear. Direct. Consulting-style. Outbound-focused.`;
+Tone: Clear. Direct. Senior consulting-style. Outbound-focused.`;
 
 // ========== BOTTLENECK TO FOCUS MAPPING ==========
 
 const BOTTLENECK_FOCUS_MAP: Record<LatentBottleneckKey, string> = {
-  EFI: 'Focus on pricing structure or ICP targeting. The current price may not match what the target market can afford.',
-  proofPromise: 'Focus on promise scope. The current promise may be too ambitious for the available proof.',
-  fulfillmentScalability: 'Focus on delivery model. The fulfillment approach may not scale reliably.',
-  riskAlignment: 'Focus on risk structure. The risk model may not match the proof level.',
-  channelFit: 'Focus on outbound approach. The channel may not be optimal for this offer type.',
+  EFI: 'Focus ONLY on pricing structure or ICP targeting. Talk about economic math, affordability, unit economics. Do NOT mention messaging, proof, or fulfillment.',
+  proofPromise: 'Focus ONLY on promise scope and proof credibility. Talk about narrowing claims, building evidence. Do NOT mention pricing or channel changes.',
+  fulfillmentScalability: 'Focus ONLY on delivery model scalability. Talk about productization, systemization. Do NOT mention pricing, promise, or ICP changes.',
+  riskAlignment: 'Focus ONLY on risk structure and guarantees. Talk about risk framing, milestone commitments. Do NOT mention pricing flips or channel pivots.',
+  channelFit: 'Focus ONLY on outbound approach refinement. Talk about sales motion and buying behavior. Do NOT suggest abandoning outbound.',
+  icpSpecificity: 'Focus ONLY on ICP narrowing and clarification. Talk about vertical focus, buyer personas. Do NOT mention pricing or fulfillment pivots.',
 };
 
 // ========== BUILD USER PROMPT ==========
@@ -158,15 +177,16 @@ function buildUserPrompt(input: AIPrescriptionInput): string {
     alignmentScore, 
     readinessLabel, 
     latentScores, 
-    latentBottleneckKey, 
+    primaryBottleneck, 
     formData, 
     outboundReady,
-    primaryBottleneck 
+    triggeredHardGates,
+    triggeredSoftGates,
   } = input;
   
-  const bottleneckFocus = BOTTLENECK_FOCUS_MAP[latentBottleneckKey];
+  const bottleneckFocus = BOTTLENECK_FOCUS_MAP[primaryBottleneck.dimension];
   
-  // Build constraints based on current config
+  // Build constraints based on current config (LOOP PREVENTION)
   const constraints: string[] = [];
   
   if (['moderate', 'strong', 'category_killer'].includes(formData.proofLevel || '')) {
@@ -185,14 +205,33 @@ function buildUserPrompt(input: AIPrescriptionInput): string {
     constraints.push('- Fulfillment is already productized. Do NOT recommend productization.');
   }
   
+  if (formData.icpSpecificity === 'exact') {
+    constraints.push('- ICP is already highly specific. Do NOT recommend narrowing further.');
+  }
+  
+  // Add EFI-specific constraints
+  if (latentScores.EFI < 8 && primaryBottleneck.dimension !== 'EFI') {
+    constraints.push('- EFI is low but not primary bottleneck. Do NOT recommend pricing increases.');
+  }
+  if (latentScores.EFI >= 14) {
+    constraints.push('- EFI is healthy. Do NOT recommend pricing decreases.');
+  }
+  
   const constraintsText = constraints.length > 0 
-    ? `\n\nCONSTRAINTS (do not violate):\n${constraints.join('\n')}`
+    ? `\n\nCONSTRAINTS — LOOP PREVENTION (NEVER violate these):\n${constraints.join('\n')}`
     : '';
   
-  // Critical outbound status
+  // Critical outbound status with blocking message
   const outboundStatus = outboundReady
-    ? '=== OUTBOUND STATUS: READY ===\nYou may provide optimization recommendations.'
-    : `=== CRITICAL: OUTBOUND IS BLOCKED ===\nFailed due to: ${primaryBottleneck}\nYou MUST start by acknowledging: "Outbound is blocked due to ${primaryBottleneck}."\nFocus ONLY on fixing this issue. Do NOT suggest scaling outbound.`;
+    ? '=== OUTBOUND STATUS: PERMITTED ===\nYou may provide optimization recommendations.'
+    : `=== CRITICAL: OUTBOUND IS BLOCKED ===
+Severity: ${primaryBottleneck.severity}
+Failed Hard Gates: ${triggeredHardGates.join(', ') || 'None'}
+
+You MUST begin your response with:
+"Outbound is currently blocked due to ${primaryBottleneck.dimension}. Fixing anything else will not unlock results."
+
+Focus ONLY on fixing the primary bottleneck. Do NOT suggest scaling outbound or optimizing other areas.`;
   
   return `Evaluate this offer for OUTBOUND SALES readiness and provide recommendations:
 
@@ -206,9 +245,15 @@ LATENT SCORES (each 0-20):
 - Fulfillment Scalability: ${latentScores.fulfillmentScalability}/20
 - Risk Alignment: ${latentScores.riskAlignment}/20
 - Channel Fit: ${latentScores.channelFit}/20
+- ICP Specificity: ${latentScores.icpSpecificity}/20
 
-PRIMARY BOTTLENECK: ${primaryBottleneck}
-${bottleneckFocus}
+PRIMARY BOTTLENECK: ${primaryBottleneck.dimension}
+Severity: ${primaryBottleneck.severity}
+Explanation: ${primaryBottleneck.explanation}
+
+DIMENSION LOCK: ${bottleneckFocus}
+
+${triggeredSoftGates.length > 0 ? `SOFT GATES TRIGGERED (warnings): ${triggeredSoftGates.join(', ')}` : ''}
 
 OFFER CONFIGURATION:
 - Offer Type: ${formData.offerType}
@@ -217,6 +262,7 @@ OFFER CONFIGURATION:
 - Vertical Segment: ${formData.verticalSegment}
 - ICP Size: ${formData.icpSize}
 - ICP Maturity: ${formData.icpMaturity}
+- ICP Specificity: ${formData.icpSpecificity}
 - Pricing Structure: ${formData.pricingStructure}
 - Price Tier: ${formData.recurringPriceTier || formData.oneTimePriceTier || formData.hybridRetainerTier || 'N/A'}
 - Risk Model: ${formData.riskModel}
@@ -224,17 +270,19 @@ OFFER CONFIGURATION:
 - Fulfillment: ${formData.fulfillmentComplexity}
 ${constraintsText}
 
-Provide 1-2 high-leverage recommendations focused on the PRIMARY BOTTLENECK.
+Provide 1-2 high-leverage recommendations focused ONLY on the PRIMARY BOTTLENECK (${primaryBottleneck.dimension}).
+
 REMEMBER: 
-- If outboundReady = false, focus ONLY on unblocking
-- If outboundReady = true, focus on optimization
-- Never suggest switching channels away from outbound`;
+- If outboundReady = false → focus ONLY on unblocking. Start with the required blocking statement.
+- If outboundReady = true → focus on optimization
+- Never suggest switching channels away from outbound
+- Never recommend changes outside the bottleneck dimension`;
 }
 
 // ========== FALLBACK RECOMMENDATIONS ==========
 
 function generateFallbackRecommendations(input: AIPrescriptionInput): AIRecommendation[] {
-  const { latentBottleneckKey, outboundReady, primaryBottleneck } = input;
+  const { primaryBottleneck, outboundReady } = input;
   
   // Category mapping for fallback
   const categoryMap: Record<LatentBottleneckKey, AIRecommendationCategory> = {
@@ -243,9 +291,10 @@ function generateFallbackRecommendations(input: AIPrescriptionInput): AIRecommen
     fulfillmentScalability: 'fulfillment_shift',
     riskAlignment: 'risk_shift',
     channelFit: 'channel_shift',
+    icpSpecificity: 'icp_shift',
   };
   
-  const category = categoryMap[latentBottleneckKey];
+  const category = categoryMap[primaryBottleneck.dimension];
   
   // Generate contextual fallback based on bottleneck
   const fallbacksByBottleneck: Record<LatentBottleneckKey, AIRecommendation> = {
@@ -309,23 +358,35 @@ function generateFallbackRecommendations(input: AIPrescriptionInput): AIRecommen
       desiredState: 'Outbound messaging resonates with how your buyers want to buy',
       category: 'channel_shift',
     },
+    icpSpecificity: {
+      id: 'fallback_icp',
+      headline: 'Narrow your target market focus',
+      plainExplanation: 'A broader ICP makes it harder to build compelling proof and messaging. Consider focusing on a specific vertical or buyer type.',
+      actionSteps: [
+        'Identify which segment has responded best so far',
+        'Build vertical-specific case studies',
+        'Tailor messaging to one buyer persona at a time',
+      ],
+      desiredState: 'You can name 10 specific companies that fit your exact ICP',
+      category: 'icp_shift',
+    },
   };
   
-  const fallback = fallbacksByBottleneck[latentBottleneckKey];
+  const fallback = fallbacksByBottleneck[primaryBottleneck.dimension];
   
   // Add a "blocked" message if not outbound ready
   if (!outboundReady) {
     return [
       {
         id: 'outbound_blocked',
-        headline: `Outbound is blocked: ${primaryBottleneck}`,
-        plainExplanation: `This offer cannot succeed with cold outreach until the ${primaryBottleneck} issue is resolved. Focus on the fix below before investing in outbound.`,
+        headline: `Outbound is blocked: ${primaryBottleneck.dimension}`,
+        plainExplanation: `Outbound is currently blocked due to ${primaryBottleneck.dimension}. Fixing anything else will not unlock results. This must be resolved before investing in outbound.`,
         actionSteps: [
           'Address the primary bottleneck first',
           'Do not scale outbound until this is fixed',
           'Consider warmer channels while fixing fundamentals',
         ],
-        desiredState: 'Offer passes basic viability gates for outbound',
+        desiredState: 'Offer passes viability gates for outbound',
         category,
       },
       fallback,

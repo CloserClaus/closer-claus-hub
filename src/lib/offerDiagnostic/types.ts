@@ -419,7 +419,7 @@ export interface ContextAwareFixStackResult {
   structuredRecommendations: StructuredRecommendation[]; // NEW: Founder-friendly recommendations
 }
 
-// ========== Latent Scoring Types (NEW: 5 latent variables) ==========
+// ========== Latent Scoring Types (NEW: 6 latent variables) ==========
 
 export interface LatentScores {
   EFI: number;                      // 0-20: Economic Feasibility Index
@@ -427,6 +427,7 @@ export interface LatentScores {
   fulfillmentScalability: number;   // 0-20: Fulfillment Scalability
   riskAlignment: number;            // 0-20: Risk Alignment
   channelFit: number;               // 0-20: Channel Fit
+  icpSpecificity: number;           // 0-20: ICP Specificity Strength
 }
 
 export type LatentBottleneckKey = keyof LatentScores;
