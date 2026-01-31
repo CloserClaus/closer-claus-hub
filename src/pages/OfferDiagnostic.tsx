@@ -175,13 +175,14 @@ function ScoreDisplayV2({ result }: { result: EvaluateOfferV2Result }) {
 // ============= LATENT SCORES TABLE (V2) =============
 
 function LatentScoresTable({ result }: { result: EvaluateOfferV2Result }) {
-  // NEW: 5 latent variables
+  // NEW: 6 latent variables
   const latentDimensions: { key: LatentBottleneckKey; label: string }[] = [
     { key: 'EFI', label: 'Economic Feasibility (EFI)' },
     { key: 'proofPromise', label: 'Proof-to-Promise Credibility' },
     { key: 'fulfillmentScalability', label: 'Fulfillment Scalability' },
     { key: 'riskAlignment', label: 'Risk Alignment' },
     { key: 'channelFit', label: 'Channel Fit' },
+    { key: 'icpSpecificity', label: 'ICP Specificity' },
   ];
 
   return (
@@ -212,13 +213,54 @@ function LatentScoresTable({ result }: { result: EvaluateOfferV2Result }) {
         </TableBody>
       </Table>
       
-      {/* Primary Bottleneck Line */}
-      <div className="flex items-center gap-2 text-sm p-2 rounded-md bg-muted/50 border border-muted">
-        <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-        <span className="text-muted-foreground">
-          Primary Bottleneck: <span className="font-medium text-foreground">{result.bottleneckLabel}</span> ({result.latentScores[result.latentBottleneckKey]}/20)
-        </span>
+      {/* Primary Bottleneck Line with Severity */}
+      <div className={`flex items-center gap-2 text-sm p-2 rounded-md border ${
+        result.primaryBottleneck.severity === 'blocking' 
+          ? 'bg-destructive/10 border-destructive/30' 
+          : 'bg-muted/50 border-muted'
+      }`}>
+        <AlertTriangle className={`h-4 w-4 shrink-0 ${
+          result.primaryBottleneck.severity === 'blocking' ? 'text-destructive' : 'text-amber-500'
+        }`} />
+        <div className="flex-1">
+          <span className="text-muted-foreground">
+            Primary Bottleneck: <span className="font-medium text-foreground">{result.bottleneckLabel}</span> ({result.latentScores[result.latentBottleneckKey]}/20)
+          </span>
+          {result.primaryBottleneck.severity === 'blocking' && (
+            <Badge variant="outline" className="ml-2 text-destructive border-destructive">Blocking</Badge>
+          )}
+        </div>
       </div>
+      
+      {/* Triggered Hard Gates */}
+      {result.triggeredHardGates.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {result.triggeredHardGates.map((gate, i) => (
+            <Badge key={i} variant="destructive" className="text-xs">
+              {gate}
+            </Badge>
+          ))}
+        </div>
+      )}
+      
+      {/* Triggered Soft Gates */}
+      {result.triggeredSoftGates.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {result.triggeredSoftGates.map((gate, i) => (
+            <Badge key={i} variant="outline" className="text-xs bg-amber-500/10 text-amber-700 border-amber-500/30">
+              {gate}
+            </Badge>
+          ))}
+        </div>
+      )}
+      
+      {/* Score Cap Indicator */}
+      {result.scoreCap !== null && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+          <Info className="h-3 w-3" />
+          Score capped at {result.scoreCap} due to viability gate constraints
+        </div>
+      )}
     </div>
   );
 }
@@ -350,15 +392,20 @@ function RecommendationsDisplayV2({ result }: { result: EvaluateOfferV2Result })
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Not outbound ready warning */}
+        {/* Not outbound ready warning with blocking context */}
         {result.notOutboundReady && (
           <div className="flex items-start gap-3 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
             <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
             <div>
-              <div className="font-medium text-destructive">Not Outbound Ready</div>
+              <div className="font-medium text-destructive">Outbound is Blocked</div>
               <div className="text-sm text-muted-foreground">
-                This offer has significant alignment issues. Focus on the recommendations below before investing in cold outreach.
+                {result.primaryBottleneck.explanation}
               </div>
+              {result.triggeredHardGates.length > 0 && (
+                <div className="text-xs text-muted-foreground mt-1">
+                  Failed gates: {result.triggeredHardGates.join(', ')}
+                </div>
+              )}
             </div>
           </div>
         )}

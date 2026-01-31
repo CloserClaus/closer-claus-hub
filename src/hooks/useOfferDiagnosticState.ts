@@ -4,11 +4,14 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import type { 
+  StructuredRecommendation,
+  ReadinessLabel as TypesReadinessLabel,
+} from '@/lib/offerDiagnostic/types';
+import type { 
   LatentScores, 
   LatentBottleneckKey, 
-  ReadinessLabel, 
-  StructuredRecommendation 
-} from '@/lib/offerDiagnostic/types';
+  ReadinessLabel,
+} from '@/lib/offerDiagnostic/latentScoringEngine';
 
 export interface OfferDiagnosticState {
   // Form data fields
@@ -131,7 +134,7 @@ export function useOfferDiagnosticState() {
     saveMutation.mutate(state);
   };
 
-  // Helper to save latent scores separately (NEW: 5 latent variables)
+  // Helper to save latent scores separately (NEW: 6 latent variables)
   const saveLatentScores = (data: LatentScoresSaveData) => {
     saveMutation.mutate({
       latent_economic_headroom: data.latentScores.EFI,
@@ -139,6 +142,7 @@ export function useOfferDiagnosticState() {
       latent_fulfillment_scalability: data.latentScores.fulfillmentScalability,
       latent_risk_alignment: data.latentScores.riskAlignment,
       latent_channel_fit: data.latentScores.channelFit,
+      // icpSpecificity is not stored separately in DB, but included in LatentScores
       latent_alignment_score: data.alignmentScore,
       latent_readiness_label: data.readinessLabel,
       latent_bottleneck_key: data.latentBottleneckKey,
@@ -146,7 +150,7 @@ export function useOfferDiagnosticState() {
     });
   };
 
-  // Get active offer context for Leads integration (NEW: 5 latent variables)
+  // Get active offer context for Leads integration (NEW: 6 latent variables)
   const getActiveOfferContext = () => {
     if (!savedState) return null;
     
@@ -157,6 +161,7 @@ export function useOfferDiagnosticState() {
         fulfillmentScalability: savedState.latent_fulfillment_scalability || 0,
         riskAlignment: savedState.latent_risk_alignment || 0,
         channelFit: savedState.latent_channel_fit || 0,
+        icpSpecificity: 10, // Default value when not stored
       } : null,
       latentBottleneckKey: savedState.latent_bottleneck_key,
       promise: savedState.promise,

@@ -1,7 +1,7 @@
 // ============= evaluateOfferV2 — SINGLE EXECUTION AUTHORITY =============
 // This is the ONLY function that produces scoring, bottleneck, and recommendation output.
 // All other engines are DISABLED.
-// Implements 5 latent variables with viability gates
+// Implements 6 latent variables with HARD + SOFT viability gates
 
 import type { 
   DiagnosticFormData, 
@@ -12,6 +12,8 @@ import {
   type LatentScores, 
   type LatentBottleneckKey, 
   type ReadinessLabel,
+  type PrimaryBottleneck,
+  type BottleneckSeverity,
   LATENT_SCORE_LABELS
 } from './latentScoringEngine';
 import { 
@@ -30,6 +32,13 @@ export interface EvaluateOfferV2Result {
   latentBottleneckKey: LatentBottleneckKey;
   bottleneckLabel: string;
   
+  // Primary Bottleneck with severity and explanation
+  primaryBottleneck: PrimaryBottleneck;
+  
+  // Triggered gates for UI display
+  triggeredHardGates: string[];
+  triggeredSoftGates: string[];
+  
   // AI-generated recommendations — ONLY SOURCE OF TRUTH
   recommendations: StructuredRecommendation[];
   
@@ -41,6 +50,9 @@ export interface EvaluateOfferV2Result {
   notOutboundReady: boolean;
   isLoading: boolean;
   
+  // Score cap applied (if any)
+  scoreCap: number | null;
+  
   // Execution verification
   _executionSource: 'evaluateOfferV2';
 }
@@ -50,12 +62,12 @@ export interface EvaluateOfferV2Result {
 function isFormCompleteForV2(formData: DiagnosticFormData): boolean {
   const { 
     offerType, promise, icpIndustry, verticalSegment,
-    icpSize, icpMaturity, pricingStructure, riskModel, 
+    icpSize, icpMaturity, icpSpecificity, pricingStructure, riskModel, 
     fulfillmentComplexity, proofLevel 
   } = formData;
   
   if (!offerType || !promise || !icpIndustry || !verticalSegment || 
-      !icpSize || !icpMaturity || !pricingStructure || !riskModel || 
+      !icpSize || !icpMaturity || !icpSpecificity || !pricingStructure || !riskModel || 
       !fulfillmentComplexity || !proofLevel) {
     return false;
   }
@@ -78,13 +90,14 @@ function isFormCompleteForV2(formData: DiagnosticFormData): boolean {
  * This function is the ONLY source of:
  * - alignmentScore (0-100)
  * - outboundReady (boolean) — MANDATORY
- * - primaryBottleneck — MANDATORY
+ * - primaryBottleneck — MANDATORY with severity
+ * - triggeredHardGates / triggeredSoftGates
  * - readiness label
  * - recommendations
  * 
  * NO OTHER FUNCTION may compute or modify these.
  * 
- * IMPLEMENTS: 5 latent variables with viability gates
+ * IMPLEMENTS: 6 latent variables with HARD + SOFT viability gates
  */
 export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<EvaluateOfferV2Result | null> {
   // Validation check
@@ -93,7 +106,7 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
     return null;
   }
   
-  // ========== STEP 1: LATENT SCORING ==========
+  // ========== STEP 1: LATENT SCORING WITH VIABILITY GATES ==========
   const latentResult = calculateLatentScores(formData);
   
   if (!latentResult) {
@@ -101,9 +114,12 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
     return null;
   }
   
-  console.log('[evaluateOfferV2] Latent scores computed:', latentResult);
+  console.log('[evaluateOfferV2] Latent scores computed:', latentResult.latentScores);
   console.log('[evaluateOfferV2] Outbound Ready:', latentResult.outboundReady);
   console.log('[evaluateOfferV2] Primary Bottleneck:', latentResult.primaryBottleneck);
+  console.log('[evaluateOfferV2] Hard Gates Triggered:', latentResult.triggeredHardGates);
+  console.log('[evaluateOfferV2] Soft Gates Triggered:', latentResult.triggeredSoftGates);
+  console.log('[evaluateOfferV2] Score Cap:', latentResult.scoreCap);
   
   // ========== STEP 2: AI RECOMMENDATIONS ==========
   const aiInput: AIPrescriptionInput = {
@@ -114,6 +130,8 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
     formData,
     outboundReady: latentResult.outboundReady,
     primaryBottleneck: latentResult.primaryBottleneck,
+    triggeredHardGates: latentResult.triggeredHardGates,
+    triggeredSoftGates: latentResult.triggeredSoftGates,
   };
   
   const aiResult = await generateAIPrescription(aiInput);
@@ -129,6 +147,13 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
     latentBottleneckKey: latentResult.latentBottleneckKey,
     bottleneckLabel: LATENT_SCORE_LABELS[latentResult.latentBottleneckKey],
     
+    // Primary Bottleneck with severity
+    primaryBottleneck: latentResult.primaryBottleneck,
+    
+    // Triggered gates
+    triggeredHardGates: latentResult.triggeredHardGates,
+    triggeredSoftGates: latentResult.triggeredSoftGates,
+    
     // AI-generated recommendations
     recommendations: convertToStructuredRecommendations(aiResult.recommendations),
     
@@ -140,6 +165,9 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
     notOutboundReady: !latentResult.outboundReady,
     isLoading: false,
     
+    // Score cap
+    scoreCap: latentResult.scoreCap,
+    
     // Execution verification — MANDATORY
     _executionSource: 'evaluateOfferV2',
   };
@@ -148,7 +176,7 @@ export async function evaluateOfferV2(formData: DiagnosticFormData): Promise<Eva
   console.log('[evaluateOfferV2] ✓ Evaluation complete. Source:', result._executionSource);
   console.log('[evaluateOfferV2] ✓ Alignment Score:', result.alignmentScore);
   console.log('[evaluateOfferV2] ✓ Outbound Ready:', result.outboundReady);
-  console.log('[evaluateOfferV2] ✓ Primary Bottleneck:', result.bottleneckLabel);
+  console.log('[evaluateOfferV2] ✓ Primary Bottleneck:', result.bottleneckLabel, `(${result.primaryBottleneck.severity})`);
   
   return result;
 }
@@ -182,6 +210,12 @@ export function assertEvaluateOfferV2Source(result: unknown): asserts result is 
   if (castResult.latentBottleneckKey === undefined) {
     throw new Error('[EXECUTION HALT] Missing primaryBottleneck in result');
   }
+  if (!Array.isArray(castResult.triggeredHardGates)) {
+    throw new Error('[EXECUTION HALT] Missing triggeredHardGates in result');
+  }
+  if (!Array.isArray(castResult.triggeredSoftGates)) {
+    throw new Error('[EXECUTION HALT] Missing triggeredSoftGates in result');
+  }
 }
 
 // ========== SYNC VERSION FOR IMMEDIATE LATENT SCORES ==========
@@ -197,6 +231,10 @@ export function getLatentScoresSync(formData: DiagnosticFormData): {
   latentBottleneckKey: LatentBottleneckKey;
   bottleneckLabel: string;
   outboundReady: boolean;
+  primaryBottleneck: PrimaryBottleneck;
+  triggeredHardGates: string[];
+  triggeredSoftGates: string[];
+  scoreCap: number | null;
 } | null {
   if (!isFormCompleteForV2(formData)) {
     return null;
@@ -212,5 +250,9 @@ export function getLatentScoresSync(formData: DiagnosticFormData): {
     latentBottleneckKey: latentResult.latentBottleneckKey,
     bottleneckLabel: LATENT_SCORE_LABELS[latentResult.latentBottleneckKey],
     outboundReady: latentResult.outboundReady,
+    primaryBottleneck: latentResult.primaryBottleneck,
+    triggeredHardGates: latentResult.triggeredHardGates,
+    triggeredSoftGates: latentResult.triggeredSoftGates,
+    scoreCap: latentResult.scoreCap,
   };
 }
