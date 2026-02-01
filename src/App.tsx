@@ -39,6 +39,7 @@ import OfferDiagnostic from "./pages/OfferDiagnostic";
 import PublicOfferDiagnostic from "./pages/PublicOfferDiagnostic";
 import PublicOfferDiagnosticResults from "./pages/PublicOfferDiagnosticResults";
 import ReferAndEarn from "./pages/ReferAndEarn";
+import DemoWalkthrough from "./pages/DemoWalkthrough";
 import { HelpWidget } from "@/components/help/HelpWidget";
 const queryClient = new QueryClient();
 
@@ -85,6 +86,7 @@ const App = () => (
                 <Route path="/offer-diagnostic/results" element={<PublicOfferDiagnosticResults />} />
                 <Route path="/app/offer-diagnostic" element={<OfferDiagnostic />} />
                 <Route path="/refer" element={<ReferAndEarn />} />
+                <Route path="/example" element={<DemoWalkthrough />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
