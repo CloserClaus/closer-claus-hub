@@ -4,8 +4,11 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Users, Phone, Target, Calendar } from 'lucide-react';
 
-export const DemoState3Team = () => {
-  const teamMembers = [
+interface DemoState3TeamProps {
+  subState?: string;
+}
+
+export const DemoState3Team = ({ subState = 'accepted' }: DemoState3TeamProps) => {
     { 
       name: 'Sarah Mitchell', 
       role: 'SDR', 

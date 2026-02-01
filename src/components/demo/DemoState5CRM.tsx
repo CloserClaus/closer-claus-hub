@@ -5,8 +5,11 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Building2, User } from 'lucide-react';
 
-export const DemoState5CRM = () => {
-  const stages = [
+interface DemoState5CRMProps {
+  subState?: string;
+}
+
+export const DemoState5CRM = ({ subState = 'imported' }: DemoState5CRMProps) => {
     { 
       name: 'New', 
       color: 'bg-blue-500',

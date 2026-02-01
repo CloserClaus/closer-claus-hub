@@ -4,7 +4,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Phone, Clock, User, Building2, PlayCircle, CheckCircle2, ThumbsUp } from 'lucide-react';
 
-export const DemoState7CallCompleted = () => {
+interface DemoState7CallCompletedProps {
+  subState?: string;
+}
+
+export const DemoState7CallCompleted = ({ subState = 'completed' }: DemoState7CallCompletedProps) => {
   return (
     <div className="flex h-full min-h-screen bg-background">
       <DemoSidebar activePage="dialer" />
