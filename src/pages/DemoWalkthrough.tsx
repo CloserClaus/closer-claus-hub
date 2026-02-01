@@ -3,62 +3,48 @@ import html2canvas from 'html2canvas';
 import { Button } from '@/components/ui/button';
 import { ChevronRight, ChevronLeft, Download } from 'lucide-react';
 
-// Import all demo states
-import { DemoState1Dashboard } from '@/components/demo/DemoState1Dashboard';
-import { DemoState2Jobs } from '@/components/demo/DemoState2Jobs';
-import { DemoState3Team } from '@/components/demo/DemoState3Team';
-import { DemoState4Leads } from '@/components/demo/DemoState4Leads';
-import { DemoState5CRM } from '@/components/demo/DemoState5CRM';
-import { DemoState6Dialer } from '@/components/demo/DemoState6Dialer';
-import { DemoState7CallCompleted } from '@/components/demo/DemoState7CallCompleted';
-import { DemoState8MeetingBooked } from '@/components/demo/DemoState8MeetingBooked';
-import { DemoState9DealClosed } from '@/components/demo/DemoState9DealClosed';
-import { DemoState10Contracts } from '@/components/demo/DemoState10Contracts';
-import { DemoState11Payouts } from '@/components/demo/DemoState11Payouts';
-import { DemoState12DashboardAfter } from '@/components/demo/DemoState12DashboardAfter';
+// Import all demo states - 19 distinct screenshots
+import { DemoStateJobPosted } from '@/components/demo/DemoStateJobPosted';
+import { DemoStateRepApplied } from '@/components/demo/DemoStateRepApplied';
+import { DemoStateRepAccepted } from '@/components/demo/DemoStateRepAccepted';
+import { DemoStateLeadFilters } from '@/components/demo/DemoStateLeadFilters';
+import { DemoStateLeadPreview } from '@/components/demo/DemoStateLeadPreview';
+import { DemoStateLeadImported } from '@/components/demo/DemoStateLeadImported';
+import { DemoStatePipelineEmpty } from '@/components/demo/DemoStatePipelineEmpty';
+import { DemoStatePipelinePopulated } from '@/components/demo/DemoStatePipelinePopulated';
+import { DemoStateDialerIdle } from '@/components/demo/DemoStateDialerIdle';
+import { DemoStateDialerActive } from '@/components/demo/DemoStateDialerActive';
+import { DemoStateCallEnded } from '@/components/demo/DemoStateCallEnded';
+import { DemoStateMeetingBooked } from '@/components/demo/DemoStateMeetingBooked';
+import { DemoStateDealClosed } from '@/components/demo/DemoStateDealClosed';
+import { DemoStateContractSent } from '@/components/demo/DemoStateContractSent';
+import { DemoStateContractSigned } from '@/components/demo/DemoStateContractSigned';
+import { DemoStateCommissionCalculated } from '@/components/demo/DemoStateCommissionCalculated';
+import { DemoStateCommissionPaid } from '@/components/demo/DemoStateCommissionPaid';
+import { DemoStateDashboardEarly } from '@/components/demo/DemoStateDashboardEarly';
+import { DemoStateDashboardScaled } from '@/components/demo/DemoStateDashboardScaled';
 
-// All 19 states as specified
+// All 19 states as specified - each visually distinct
 const STATES = [
-  // STATE 1: Baseline Dashboard (2 screenshots)
-  { id: '1a', title: 'Dashboard - Full Metrics', component: DemoState1Dashboard, subState: 'full' },
-  { id: '1b', title: 'Dashboard - After Minimal Activity', component: DemoState1Dashboard, subState: 'activity' },
-  
-  // STATE 2: Job Creation Flow (2 screenshots)
-  { id: '2a', title: 'Jobs - Before Posting', component: DemoState2Jobs, subState: 'before' },
-  { id: '2b', title: 'Jobs - With Applicants', component: DemoState2Jobs, subState: 'applicants' },
-  
-  // STATE 3: Rep Onboarding (2 screenshots)
-  { id: '3a', title: 'Team - Applicant Accepted', component: DemoState3Team, subState: 'accepted' },
-  { id: '3b', title: 'Team - Rep Active', component: DemoState3Team, subState: 'active' },
-  
-  // STATE 4: Lead Sourcing (2 screenshots)
-  { id: '4a', title: 'Leads - Filters Applied', component: DemoState4Leads, subState: 'filters' },
-  { id: '4b', title: 'Leads - Ready for Import', component: DemoState4Leads, subState: 'ready' },
-  
-  // STATE 5: CRM Ingestion (2 screenshots)
-  { id: '5a', title: 'CRM - Leads Imported', component: DemoState5CRM, subState: 'imported' },
-  { id: '5b', title: 'CRM - Pipeline Populated', component: DemoState5CRM, subState: 'populated' },
-  
-  // STATE 6: Dialer Execution (3 screenshots)
-  { id: '6a', title: 'Dialer - Queue Loaded', component: DemoState6Dialer, subState: 'idle' },
-  { id: '6b', title: 'Dialer - Active Call', component: DemoState6Dialer, subState: 'calling' },
-  { id: '6c', title: 'Dialer - Call Completed', component: DemoState7CallCompleted, subState: 'completed' },
-  
-  // STATE 7: Meeting Booked (1 screenshot)
-  { id: '7', title: 'CRM - Meeting Booked', component: DemoState8MeetingBooked, subState: 'booked' },
-  
-  // STATE 8: Deal Closed (1 screenshot)
-  { id: '8', title: 'CRM - Deal Closed Won', component: DemoState9DealClosed, subState: 'closed' },
-  
-  // STATE 9: Contract Sent (1 screenshot)
-  { id: '9', title: 'Contracts - Sent & Signed', component: DemoState10Contracts, subState: 'sent' },
-  
-  // STATE 10: Payouts (1 screenshot)
-  { id: '10', title: 'Commissions - Payout Visible', component: DemoState11Payouts, subState: 'payout' },
-  
-  // STATE 11: Performance Dashboard (2 screenshots)
-  { id: '11a', title: 'Dashboard - After Execution', component: DemoState12DashboardAfter, subState: 'after' },
-  { id: '11b', title: 'Dashboard - Revenue & Metrics', component: DemoState12DashboardAfter, subState: 'revenue' },
+  { id: '1', title: 'Job Posted (Live, 0 Applicants)', component: DemoStateJobPosted },
+  { id: '2', title: 'Sales Rep Applied', component: DemoStateRepApplied },
+  { id: '3', title: 'Sales Rep Accepted', component: DemoStateRepAccepted },
+  { id: '4', title: 'Lead Sourcing Filters Configured', component: DemoStateLeadFilters },
+  { id: '5', title: 'Leads Previewed (Pre-Import)', component: DemoStateLeadPreview },
+  { id: '6', title: 'Leads Imported to CRM', component: DemoStateLeadImported },
+  { id: '7', title: 'CRM Pipeline Empty', component: DemoStatePipelineEmpty },
+  { id: '8', title: 'Pipeline Populated with Deals', component: DemoStatePipelinePopulated },
+  { id: '9', title: 'Dialer Idle (Queue Loaded)', component: DemoStateDialerIdle },
+  { id: '10', title: 'Active Call in Progress', component: DemoStateDialerActive },
+  { id: '11', title: 'Call Ended + Logged', component: DemoStateCallEnded },
+  { id: '12', title: 'Meeting Booked', component: DemoStateMeetingBooked },
+  { id: '13', title: 'Deal Closed Won', component: DemoStateDealClosed },
+  { id: '14', title: 'Contract Sent', component: DemoStateContractSent },
+  { id: '15', title: 'Contract Signed', component: DemoStateContractSigned },
+  { id: '16', title: 'Commission Calculated', component: DemoStateCommissionCalculated },
+  { id: '17', title: 'Commission Paid', component: DemoStateCommissionPaid },
+  { id: '18', title: 'Performance Dashboard (Early)', component: DemoStateDashboardEarly },
+  { id: '19', title: 'Performance Dashboard (Scaled)', component: DemoStateDashboardScaled },
 ];
 
 const DemoWalkthrough = () => {
@@ -91,7 +77,7 @@ const DemoWalkthrough = () => {
       });
       
       const link = document.createElement('a');
-      link.download = `closer-claus-state-${STATES[currentState].id}-${STATES[currentState].title.toLowerCase().replace(/\s+/g, '-')}.png`;
+      link.download = `closer-claus-${String(currentState + 1).padStart(2, '0')}-${STATES[currentState].title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
     } catch (error) {
@@ -110,8 +96,8 @@ const DemoWalkthrough = () => {
       <div className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b border-border px-4 py-3">
         <div className="max-w-[1800px] mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">
-              Screenshot {currentState + 1} of {STATES.length}
+            <span className="text-sm text-muted-foreground font-mono">
+              {String(currentState + 1).padStart(2, '0')}/{STATES.length}
             </span>
             <span className="font-medium">{STATES[currentState].title}</span>
           </div>
@@ -126,17 +112,17 @@ const DemoWalkthrough = () => {
               <ChevronLeft className="h-4 w-4" />
             </Button>
             
-            <div className="flex gap-1 max-w-[400px] overflow-x-auto py-1">
-              {STATES.map((state, index) => (
+            <div className="flex gap-1 max-w-[500px] overflow-x-auto py-1">
+              {STATES.map((_, index) => (
                 <button
-                  key={state.id}
+                  key={index}
                   onClick={() => setCurrentState(index)}
                   className={`w-2.5 h-2.5 rounded-full transition-colors shrink-0 ${
                     index === currentState 
                       ? 'bg-primary' 
                       : 'bg-muted-foreground/30 hover:bg-muted-foreground/50'
                   }`}
-                  title={state.title}
+                  title={STATES[index].title}
                 />
               ))}
             </div>
@@ -168,7 +154,7 @@ const DemoWalkthrough = () => {
       {/* State Content */}
       <div className="flex-1 overflow-auto">
         <div ref={contentRef} className="min-h-[calc(100vh-60px)]">
-          <CurrentComponent subState={state.subState} />
+          <CurrentComponent />
         </div>
       </div>
     </div>
