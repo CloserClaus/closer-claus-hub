@@ -10,6 +10,7 @@ interface DemoState5CRMProps {
 }
 
 export const DemoState5CRM = ({ subState = 'imported' }: DemoState5CRMProps) => {
+  const stages = [
     { 
       name: 'New', 
       color: 'bg-blue-500',

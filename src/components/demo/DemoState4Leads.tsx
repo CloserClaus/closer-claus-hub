@@ -12,6 +12,7 @@ interface DemoState4LeadsProps {
 }
 
 export const DemoState4Leads = ({ subState = 'filters' }: DemoState4LeadsProps) => {
+  const leads = [
     { name: 'Michael Torres', company: 'CloudScale Inc', title: 'VP of Sales', industry: 'SaaS', size: '50-200', location: 'San Francisco, CA', enriched: true },
     { name: 'Jennifer Walsh', company: 'DataFlow Systems', title: 'Head of Growth', industry: 'SaaS', size: '50-200', location: 'Austin, TX', enriched: true },
     { name: 'Robert Kim', company: 'TechVenture Labs', title: 'Director of BD', industry: 'SaaS', size: '50-200', location: 'Seattle, WA', enriched: true },
