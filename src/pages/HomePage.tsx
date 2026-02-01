@@ -525,21 +525,21 @@ const HomePage = () => {
                 name: "Omega",
                 price: "$247",
                 description: "Perfect for solo agencies",
-                features: ["1 SDR seat", "Full CRM access", "Lead intelligence", "Manual dialer", "2% platform fee"],
+                features: ["1 SDR seat", "Full CRM access", "Lead intelligence", "Power dialer", "2% platform fee"],
                 popular: false
               },
               {
                 name: "Beta",
                 price: "$347",
                 description: "For growing teams",
-                features: ["2 SDR seats", "Everything in Omega", "Power dialer", "Priority support", "1.5% platform fee"],
+                features: ["2 SDR seats", "Everything in Omega", "Priority support", "Advanced analytics", "1.5% platform fee"],
                 popular: true
               },
               {
                 name: "Alpha",
                 price: "$497",
                 description: "For scaling agencies",
-                features: ["5 SDR seats", "Everything in Beta", "Dedicated success manager", "1% platform fee"],
+                features: ["5 SDR seats", "Everything in Beta", "Dedicated success manager", "Custom integrations", "1% platform fee"],
                 popular: false
               }
             ].map((plan, i) => (
