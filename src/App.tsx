@@ -33,7 +33,7 @@ import FeatureRequests from "./pages/FeatureRequests";
 import Changelog from "./pages/Changelog";
 import Roadmap from "./pages/Roadmap";
 import NotFound from "./pages/NotFound";
-import Landing from "./pages/Landing";
+import HomePage from "./pages/HomePage";
 import Leads from "./pages/Leads";
 import OfferDiagnostic from "./pages/OfferDiagnostic";
 import PublicOfferDiagnostic from "./pages/PublicOfferDiagnostic";
@@ -52,7 +52,7 @@ const App = () => (
             <Sonner />
             <BrowserRouter>
               <Routes>
-                <Route path="/" element={<Landing />} />
+                <Route path="/" element={<HomePage />} />
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/role-select" element={<RoleSelect />} />
                 <Route path="/onboarding" element={<Onboarding />} />
