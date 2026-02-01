@@ -9,6 +9,7 @@ interface DemoState3TeamProps {
 }
 
 export const DemoState3Team = ({ subState = 'accepted' }: DemoState3TeamProps) => {
+  const teamMembers = [
     { 
       name: 'Sarah Mitchell', 
       role: 'SDR', 
