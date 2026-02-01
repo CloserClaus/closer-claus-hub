@@ -7,8 +7,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Search, Filter, Download, CheckCircle2, Building2, Users, MapPin } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-export const DemoState4Leads = () => {
-  const leads = [
+interface DemoState4LeadsProps {
+  subState?: string;
+}
+
+export const DemoState4Leads = ({ subState = 'filters' }: DemoState4LeadsProps) => {
     { name: 'Michael Torres', company: 'CloudScale Inc', title: 'VP of Sales', industry: 'SaaS', size: '50-200', location: 'San Francisco, CA', enriched: true },
     { name: 'Jennifer Walsh', company: 'DataFlow Systems', title: 'Head of Growth', industry: 'SaaS', size: '50-200', location: 'Austin, TX', enriched: true },
     { name: 'Robert Kim', company: 'TechVenture Labs', title: 'Director of BD', industry: 'SaaS', size: '50-200', location: 'Seattle, WA', enriched: true },

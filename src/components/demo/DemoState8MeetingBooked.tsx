@@ -5,7 +5,11 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Building2, Calendar, Clock, Video } from 'lucide-react';
 
-export const DemoState8MeetingBooked = () => {
+interface DemoState8MeetingBookedProps {
+  subState?: string;
+}
+
+export const DemoState8MeetingBooked = ({ subState = 'booked' }: DemoState8MeetingBookedProps) => {
   const stages = [
     { 
       name: 'New', 

@@ -4,7 +4,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Phone, PhoneOff, Mic, MicOff, Clock, User, Building2, Mail, Pause } from 'lucide-react';
 
-export const DemoState6Dialer = () => {
+interface DemoState6DialerProps {
+  subState?: string;
+}
+
+export const DemoState6Dialer = ({ subState = 'idle' }: DemoState6DialerProps) => {
   return (
     <div className="flex h-full min-h-screen bg-background">
       <DemoSidebar activePage="dialer" />
