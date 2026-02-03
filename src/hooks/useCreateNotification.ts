@@ -7,7 +7,9 @@ type NotificationAction =
   | 'sdr_removed'
   | 'commission_paid'
   | 'conversation_started'
-  | 'video_call_started';
+  | 'video_call_started'
+  | 'callback_reminder'
+  | 'callback_daily_summary';
 
 interface DisputeCreatedParams {
   action: 'dispute_created';

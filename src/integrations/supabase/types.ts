@@ -175,6 +175,7 @@ export type Database = {
           caller_id: string
           callhippo_call_id: string | null
           created_at: string
+          disposition: string | null
           duration_seconds: number | null
           ended_at: string | null
           id: string
@@ -182,6 +183,7 @@ export type Database = {
           notes: string | null
           phone_number: string
           recording_url: string | null
+          tags: string[] | null
           twilio_call_sid: string | null
           workspace_id: string
         }
@@ -190,6 +192,7 @@ export type Database = {
           caller_id: string
           callhippo_call_id?: string | null
           created_at?: string
+          disposition?: string | null
           duration_seconds?: number | null
           ended_at?: string | null
           id?: string
@@ -197,6 +200,7 @@ export type Database = {
           notes?: string | null
           phone_number: string
           recording_url?: string | null
+          tags?: string[] | null
           twilio_call_sid?: string | null
           workspace_id: string
         }
@@ -205,6 +209,7 @@ export type Database = {
           caller_id?: string
           callhippo_call_id?: string | null
           created_at?: string
+          disposition?: string | null
           duration_seconds?: number | null
           ended_at?: string | null
           id?: string
@@ -212,6 +217,7 @@ export type Database = {
           notes?: string | null
           phone_number?: string
           recording_url?: string | null
+          tags?: string[] | null
           twilio_call_sid?: string | null
           workspace_id?: string
         }

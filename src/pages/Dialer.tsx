@@ -36,8 +36,9 @@ import { PurchaseTab } from "@/components/dialer/PurchaseTab";
 import { PowerDialer } from "@/components/dialer/PowerDialer";
 import { CallRecordingPlayer } from "@/components/dialer/CallRecordingPlayer";
 import { CallScriptManager } from "@/components/dialer/CallScriptManager";
-import { CallScriptDisplay } from "@/components/dialer/CallScriptDisplay";
+import { FloatingCallScript } from "@/components/dialer/FloatingCallScript";
 import { CallRecordingsTab } from "@/components/dialer/CallRecordingsTab";
+import { CallDispositionDialog, CallDisposition } from "@/components/dialer/CallDispositionDialog";
 
 interface Lead {
   id: string;
@@ -88,6 +89,9 @@ export default function Dialer() {
   const [selectedCallerId, setSelectedCallerId] = useState<string>("");
   const [isMuted, setIsMuted] = useState(false);
   const [activeTab, setActiveTab] = useState("dialer");
+  const [showFloatingScript, setShowFloatingScript] = useState(true);
+  const [showDispositionDialog, setShowDispositionDialog] = useState(false);
+  const [callDurationForDisposition, setCallDurationForDisposition] = useState(0);
 
   // Handle purchase success/cancel from Stripe redirect
   useEffect(() => {
@@ -309,6 +313,79 @@ export default function Dialer() {
   };
 
   const handleEndCall = async () => {
+    // Parse duration from formatted string (MM:SS)
+    const parts = formattedDuration.split(':');
+    const durationInSeconds = parseInt(parts[0] || '0') * 60 + parseInt(parts[1] || '0');
+    setCallDurationForDisposition(durationInSeconds);
+    setShowDispositionDialog(true);
+  };
+
+  const handleDispositionSubmit = async (data: { disposition: CallDisposition; notes: string; tags: string[]; scheduleCallback?: Date }) => {
+    setIsLoading(true);
+    setShowDispositionDialog(false);
+
+    try {
+      await endCall(data.notes);
+      
+      // Update call log with disposition, tags, and notes
+      if (currentCallLogId) {
+        await supabase
+          .from('call_logs')
+          .update({ 
+            notes: data.notes,
+            disposition: data.disposition,
+            tags: data.tags,
+          })
+          .eq('id', currentCallLogId);
+      }
+
+      // Update lead notes in CRM
+      if (selectedLead?.id && data.notes) {
+        const { data: existingLead } = await supabase
+          .from('leads')
+          .select('notes')
+          .eq('id', selectedLead.id)
+          .single();
+        
+        const newNote = `[${new Date().toLocaleDateString()}] ${data.disposition}: ${data.notes}`;
+        const updatedNotes = existingLead?.notes 
+          ? `${existingLead.notes}\n\n${newNote}`
+          : newNote;
+        
+        await supabase
+          .from('leads')
+          .update({ notes: updatedNotes })
+          .eq('id', selectedLead.id);
+      }
+
+      // Schedule callback if requested
+      if (data.scheduleCallback && user && currentWorkspace && selectedLead) {
+        await supabase
+          .from('scheduled_callbacks')
+          .insert({
+            workspace_id: currentWorkspace.id,
+            lead_id: selectedLead.id,
+            scheduled_for: data.scheduleCallback.toISOString(),
+            reason: data.disposition,
+            notes: data.notes || null,
+            created_by: user.id,
+          });
+        toast.success(`Follow-up scheduled for ${format(data.scheduleCallback, 'MMM d, h:mm a')}`);
+      }
+
+      toast.success("Call ended");
+    } catch (error) {
+      console.error('Error ending call:', error);
+    } finally {
+      setCurrentCallLogId(null);
+      setCallNotes("");
+      setIsLoading(false);
+      setIsMuted(false);
+    }
+  };
+
+  const handleSkipDisposition = async () => {
+    setShowDispositionDialog(false);
     setIsLoading(true);
 
     try {
@@ -618,11 +695,18 @@ export default function Dialer() {
 
                         {isCallActive ? (
                           <div className="space-y-4">
-                            {/* Call Script Display */}
-                            <CallScriptDisplay 
-                              workspaceId={currentWorkspace.id} 
-                              lead={selectedLead}
-                            />
+                            {/* Floating Script Toggle Button */}
+                            {!showFloatingScript && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowFloatingScript(true)}
+                                className="w-full"
+                              >
+                                <FileText className="h-4 w-4 mr-2" />
+                                Show Call Script
+                              </Button>
+                            )}
 
                             <div className="text-center py-4">
                               <div className="flex items-center justify-center gap-2 text-success mb-2">
@@ -825,6 +909,26 @@ export default function Dialer() {
             );
           })()}
         </div>
+
+        {/* Floating Call Script */}
+        <FloatingCallScript
+          workspaceId={currentWorkspace.id}
+          lead={selectedLead}
+          isVisible={showFloatingScript && isCallActive}
+          onClose={() => setShowFloatingScript(false)}
+        />
+
+        {/* Call Disposition Dialog */}
+        <CallDispositionDialog
+          open={showDispositionDialog}
+          onOpenChange={(open) => {
+            if (!open) handleSkipDisposition();
+          }}
+          leadName={selectedLead ? `${selectedLead.first_name} ${selectedLead.last_name}` : 'Unknown'}
+          callDuration={callDurationForDisposition}
+          existingNotes={callNotes}
+          onSubmit={handleDispositionSubmit}
+        />
       </main>
     </DashboardLayout>
   );
