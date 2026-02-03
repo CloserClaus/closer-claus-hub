@@ -61,7 +61,7 @@ interface CallLog {
   lead_id: string | null;
   twilio_call_sid?: string | null;
   recording_url?: string | null;
-  leads?: Lead;
+  leads?: { first_name: string | null; last_name: string | null } | null;
 }
 
 interface PhoneNumber {
@@ -254,7 +254,8 @@ export default function Dialer() {
         created_at,
         lead_id,
         recording_url,
-        twilio_call_sid
+        twilio_call_sid,
+        leads(first_name, last_name)
       `)
       .eq('workspace_id', currentWorkspace.id)
       .order('created_at', { ascending: false })
@@ -837,29 +838,39 @@ export default function Dialer() {
                                 No call history yet
                               </p>
                             ) : (
-                              callLogs.map((log) => (
-                                <div key={log.id} className="p-3 rounded-lg border border-border space-y-2">
-                                  <div className="flex items-center justify-between">
-                                    <p className="font-mono text-sm">{log.phone_number}</p>
-                                    {getCallStatusBadge(log.call_status)}
-                                  </div>
-                                  <div className="flex items-center justify-between text-sm text-muted-foreground">
-                                    <span>{format(new Date(log.created_at), 'MMM d, h:mm a')}</span>
-                                    {log.duration_seconds && log.duration_seconds > 0 && (
-                                      <span>{Math.floor(log.duration_seconds / 60)}:{(log.duration_seconds % 60).toString().padStart(2, '0')}</span>
+                              callLogs.map((log) => {
+                                const leadName = log.leads?.first_name || log.leads?.last_name
+                                  ? `${log.leads?.first_name || ''} ${log.leads?.last_name || ''}`.trim()
+                                  : null;
+                                return (
+                                  <div key={log.id} className="p-3 rounded-lg border border-border space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <div>
+                                        {leadName && (
+                                          <p className="font-medium text-sm">{leadName}</p>
+                                        )}
+                                        <p className="font-mono text-sm text-muted-foreground">{log.phone_number}</p>
+                                      </div>
+                                      {getCallStatusBadge(log.call_status)}
+                                    </div>
+                                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                                      <span>{format(new Date(log.created_at), 'MMM d, h:mm a')}</span>
+                                      {log.duration_seconds && log.duration_seconds > 0 && (
+                                        <span>{Math.floor(log.duration_seconds / 60)}:{(log.duration_seconds % 60).toString().padStart(2, '0')}</span>
+                                      )}
+                                    </div>
+                                    {log.recording_url && (
+                                      <CallRecordingPlayer 
+                                        recordingUrl={log.recording_url} 
+                                        callId={log.id} 
+                                      />
+                                    )}
+                                    {log.notes && (
+                                      <p className="text-sm text-muted-foreground line-clamp-2">{log.notes}</p>
                                     )}
                                   </div>
-                                  {log.recording_url && (
-                                    <CallRecordingPlayer 
-                                      recordingUrl={log.recording_url} 
-                                      callId={log.id} 
-                                    />
-                                  )}
-                                  {log.notes && (
-                                    <p className="text-sm text-muted-foreground line-clamp-2">{log.notes}</p>
-                                  )}
-                                </div>
-                              ))
+                                );
+                              })
                             )}
                           </div>
                         </ScrollArea>
