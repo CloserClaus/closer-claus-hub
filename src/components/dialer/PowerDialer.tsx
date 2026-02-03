@@ -46,11 +46,13 @@ import {
   BarChart3,
   CalendarClock,
   MessageSquarePlus,
-  X
+  X,
+  FileText
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
-import { CallScriptDisplay } from "./CallScriptDisplay";
+import { FloatingCallScript } from "./FloatingCallScript";
+import { CallDispositionDialog, CallDisposition } from "./CallDispositionDialog";
 import { SessionDispositionReport } from "./SessionDispositionReport";
 import { format, addHours, addDays, startOfTomorrow, setHours, setMinutes } from "date-fns";
 
@@ -186,6 +188,10 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
   const [sessionCallbacks, setSessionCallbacks] = useState<ScheduledCallback[]>([]);
   const [showCallbackDialog, setShowCallbackDialog] = useState(false);
   const [pendingOutcome, setPendingOutcome] = useState<CallOutcome | null>(null);
+  
+  // Disposition dialog state
+  const [showDispositionDialog, setShowDispositionDialog] = useState(false);
+  const [showFloatingScript, setShowFloatingScript] = useState(true);
   
   // Session tracking state
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -641,8 +647,15 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
     }
   }, [workspaceId]);
 
-  const handleCallOutcome = async (outcome: CallOutcome, skipCallbackPrompt = false) => {
+  const handleCallOutcome = async (outcome: CallOutcome, skipCallbackPrompt = false, dispositionData?: { disposition: CallDisposition; notes: string; tags: string[]; scheduleCallback?: Date }) => {
     if (!currentLead) return;
+
+    // For connected calls, show the disposition dialog first
+    if (outcome === 'connected' && !dispositionData) {
+      setPendingOutcome(outcome);
+      setShowDispositionDialog(true);
+      return;
+    }
 
     // For non-connected outcomes, show callback scheduling dialog (unless skipping)
     if (!skipCallbackPrompt && ['no_answer', 'busy', 'voicemail'].includes(outcome)) {
@@ -668,7 +681,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
                 action: 'end_call',
                 call_sid: currentTwilioCallSid,
                 call_log_id: currentCallLogId,
-                notes: callNotes,
+                notes: dispositionData?.notes || callNotes,
               }),
             }
           );
@@ -678,11 +691,57 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
       }
     }
 
+    // Update call log with disposition and tags if we have disposition data
+    if (currentCallLogId && dispositionData) {
+      await supabase
+        .from('call_logs')
+        .update({ 
+          notes: dispositionData.notes,
+          disposition: dispositionData.disposition,
+          tags: dispositionData.tags,
+        })
+        .eq('id', currentCallLogId);
+
+      // Also update the lead's notes in CRM
+      if (currentLead.id && dispositionData.notes) {
+        const { data: existingLead } = await supabase
+          .from('leads')
+          .select('notes')
+          .eq('id', currentLead.id)
+          .single();
+        
+        const newNote = `[${new Date().toLocaleDateString()}] ${dispositionData.disposition}: ${dispositionData.notes}`;
+        const updatedNotes = existingLead?.notes 
+          ? `${existingLead.notes}\n\n${newNote}`
+          : newNote;
+        
+        await supabase
+          .from('leads')
+          .update({ notes: updatedNotes })
+          .eq('id', currentLead.id);
+      }
+
+      // Schedule callback if requested from disposition dialog
+      if (dispositionData.scheduleCallback && user) {
+        await supabase
+          .from('scheduled_callbacks')
+          .insert({
+            workspace_id: workspaceId,
+            lead_id: currentLead.id,
+            scheduled_for: dispositionData.scheduleCallback.toISOString(),
+            reason: dispositionData.disposition,
+            notes: dispositionData.notes || null,
+            created_by: user.id,
+          });
+        toast.success(`Follow-up scheduled for ${format(dispositionData.scheduleCallback, 'MMM d, h:mm a')}`);
+      }
+    }
+
     // Record the outcome
     setDialedLeads(prev => [...prev, {
       ...currentLead,
       outcome,
-      notes: callNotes,
+      notes: dispositionData?.notes || callNotes,
       callDuration,
     }]);
 
@@ -699,6 +758,14 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
     } else {
       setDialerStatus('dialing');
       dialNextLead(selectedLeads, nextIndex);
+    }
+  };
+
+  const handleDispositionSubmit = (data: { disposition: CallDisposition; notes: string; tags: string[]; scheduleCallback?: Date }) => {
+    setShowDispositionDialog(false);
+    if (pendingOutcome) {
+      handleCallOutcome(pendingOutcome, true, data);
+      setPendingOutcome(null);
     }
   };
 
@@ -1359,15 +1426,17 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
                     </div>
                   </div>
 
-                  {/* Call Script Display - shows during active calls */}
-                  {(dialerStatus === 'in_call' || dialerStatus === 'dialing') && (
-                    <CallScriptDisplay 
-                      workspaceId={workspaceId} 
-                      lead={{
-                        ...currentLead,
-                        title: null // Power dialer leads don't have title in selection
-                      }} 
-                    />
+                  {/* Floating Script Button - shows during active calls */}
+                  {(dialerStatus === 'in_call' || dialerStatus === 'dialing') && !showFloatingScript && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowFloatingScript(true)}
+                      className="w-full"
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Show Call Script
+                    </Button>
                   )}
 
                   {/* Call Status */}
@@ -1616,6 +1685,24 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Floating Call Script */}
+      <FloatingCallScript
+        workspaceId={workspaceId}
+        lead={currentLead ? { ...currentLead, title: null } : null}
+        isVisible={showFloatingScript && (dialerStatus === 'in_call' || dialerStatus === 'dialing')}
+        onClose={() => setShowFloatingScript(false)}
+      />
+
+      {/* Call Disposition Dialog */}
+      <CallDispositionDialog
+        open={showDispositionDialog}
+        onOpenChange={setShowDispositionDialog}
+        leadName={currentLead ? `${currentLead.first_name} ${currentLead.last_name}` : 'Unknown'}
+        callDuration={callDuration}
+        existingNotes={callNotes}
+        onSubmit={handleDispositionSubmit}
+      />
     </div>
   );
 }
