@@ -33,6 +33,31 @@ serve(async (req) => {
     const recordingSid = webhookData.RecordingSid;
     const recordingUrl = webhookData.RecordingUrl;
     const recordingStatus = webhookData.RecordingStatus;
+    const toNumber = webhookData.To;
+    const fromNumber = webhookData.From;
+    const direction = webhookData.Direction;
+
+    // Handle outbound calls from browser (Voice SDK) - this is the initial request
+    // When a browser client initiates a call, Twilio sends a request to the TwiML app
+    // We need to return TwiML that dials the destination number
+    if (toNumber && direction === 'inbound' && webhookData.Caller?.startsWith('client:')) {
+      console.log(`Outbound browser call to ${toNumber} from ${fromNumber}`);
+      
+      // Return TwiML to connect the call to the destination
+      // The caller ID should be the workspace's provisioned number
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial callerId="${fromNumber}" record="record-from-answer-dual" timeout="60">
+    <Number>${toNumber}</Number>
+  </Dial>
+</Response>`;
+
+      console.log('Returning TwiML for outbound call:', twiml);
+
+      return new Response(twiml, {
+        headers: { ...corsHeaders, 'Content-Type': 'application/xml' },
+      });
+    }
 
     // Handle call status updates
     if (callSid && callStatus) {
@@ -89,8 +114,8 @@ serve(async (req) => {
       }
     }
 
-    // Return TwiML response if needed (for incoming calls)
-    if (webhookData.Direction === 'inbound') {
+    // Handle true inbound calls (not browser-initiated)
+    if (webhookData.Direction === 'inbound' && !webhookData.Caller?.startsWith('client:')) {
       // Simple response for inbound calls - can be customized
       const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
