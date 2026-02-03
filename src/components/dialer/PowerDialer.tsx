@@ -1187,6 +1187,12 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
                           {lead.company && (
                             <p className="text-sm text-muted-foreground truncate">{lead.company}</p>
                           )}
+                          {lead.last_contacted_at && (
+                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                              <Clock className="h-3 w-3" />
+                              Last called {format(new Date(lead.last_contacted_at), 'MMM d, h:mm a')}
+                            </p>
+                          )}
                         </div>
                         <p className="text-sm font-mono text-muted-foreground hidden sm:block">{lead.phone}</p>
                       </div>

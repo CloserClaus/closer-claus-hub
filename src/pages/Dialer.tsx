@@ -48,6 +48,7 @@ interface Lead {
   company: string | null;
   email: string | null;
   title: string | null;
+  last_contacted_at: string | null;
 }
 
 interface CallLog {
@@ -221,7 +222,7 @@ export default function Dialer() {
 
       const { data, error } = await supabase
         .from('leads')
-        .select('id, first_name, last_name, phone, company, email, title')
+        .select('id, first_name, last_name, phone, company, email, title, last_contacted_at')
         .eq('workspace_id', currentWorkspace.id)
         .not('phone', 'is', null)
         .order('last_contacted_at', { ascending: false, nullsFirst: false })
@@ -802,6 +803,12 @@ export default function Dialer() {
                                       <p className="font-medium">{lead.first_name} {lead.last_name}</p>
                                       {lead.company && (
                                         <p className="text-sm text-muted-foreground">{lead.company}</p>
+                                      )}
+                                      {lead.last_contacted_at && (
+                                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                          <Clock className="h-3 w-3" />
+                                          Last called {format(new Date(lead.last_contacted_at), 'MMM d, h:mm a')}
+                                        </p>
                                       )}
                                     </div>
                                     <p className="text-sm font-mono text-muted-foreground">{lead.phone}</p>
