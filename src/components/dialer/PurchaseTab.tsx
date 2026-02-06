@@ -78,6 +78,7 @@ interface MinutePackage {
   minutes: number;
   price: number;
   popular?: boolean;
+  bonus?: string;
 }
 
 interface TwilioAddon {
@@ -97,13 +98,12 @@ const TIER_FREE_NUMBERS: Record<string, number> = {
   alpha: 5,
 };
 
-// Dialer pricing with doubled costs for higher margins
-// Enterprise offers 20% more minutes for the money (6000 vs 5000)
+// Dialer pricing at ~$0.04/min base, with bonus minutes on higher tiers
 const minutePackages: MinutePackage[] = [
-  { id: 'starter', name: 'Starter', minutes: 100, price: 4 },
-  { id: 'growth', name: 'Growth', minutes: 500, price: 20, popular: true },
-  { id: 'pro', name: 'Pro', minutes: 1000, price: 40 },
-  { id: 'enterprise', name: 'Enterprise', minutes: 6000, price: 200 },
+  { id: 'starter', name: 'Starter', minutes: 1250, price: 50 },
+  { id: 'growth', name: 'Growth', minutes: 2500, price: 100, popular: true },
+  { id: 'pro', name: 'Pro', minutes: 4125, price: 150, bonus: '+10% extra minutes' },
+  { id: 'enterprise', name: 'Enterprise', minutes: 6000, price: 200, bonus: '+20% extra minutes' },
 ];
 
 // Add-ons with flat pricing for simplicity (Call Recording is included free for all accounts)
@@ -578,10 +578,20 @@ export function PurchaseTab({ workspaceId, subscriptionTier, onCreditsUpdated }:
                       Popular
                     </Badge>
                   )}
+                  {pkg.bonus && !pkg.popular && (
+                    <Badge variant="secondary" className="absolute -top-2 left-1/2 -translate-x-1/2 text-xs bg-success/10 text-success border-success/20">
+                      {pkg.bonus}
+                    </Badge>
+                  )}
                   <div className="text-center space-y-2">
                     <p className="font-semibold">{pkg.name}</p>
-                    <p className="text-2xl font-bold text-primary">{pkg.minutes}</p>
+                    <p className="text-2xl font-bold text-primary">{pkg.minutes.toLocaleString()}</p>
                     <p className="text-sm text-muted-foreground">minutes</p>
+                    {pkg.bonus && pkg.popular && (
+                      <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/20">
+                        {pkg.bonus}
+                      </Badge>
+                    )}
                     <p className="text-lg font-medium">${pkg.price}</p>
                     <Button 
                       size="sm" 
