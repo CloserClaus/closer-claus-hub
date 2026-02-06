@@ -39,7 +39,9 @@ const plans: Plan[] = [
     rakePercentage: 2,
     features: [
       'Full CRM access',
-      'Integrated dialer',
+      'Manual dialer',
+      '1 free phone number',
+      '1,000 free minutes/mo',
       'Contract e-signatures',
       'Priority support',
     ],
@@ -56,7 +58,9 @@ const plans: Plan[] = [
     rakePercentage: 1.5,
     features: [
       'Full CRM access',
-      'Integrated dialer',
+      'Power dialer',
+      '2 free phone numbers',
+      '1,000 free minutes/mo',
       'Contract e-signatures',
       'Priority support',
     ],
@@ -74,7 +78,9 @@ const plans: Plan[] = [
     rakePercentage: 1,
     features: [
       'Full CRM access',
-      'Integrated dialer',
+      'Power dialer',
+      '5 free phone numbers',
+      '1,000 free minutes/mo',
       'Contract e-signatures',
       'Dedicated account manager',
     ],
