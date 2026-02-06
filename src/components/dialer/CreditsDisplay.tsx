@@ -56,14 +56,15 @@ export function CreditsDisplay({ credits, freeMinutesRemaining = 0, isLoading }:
       </div>
 
       {/* Purchased Credits Display */}
-      <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary/50 border border-border">
+      <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary/50 border border-border flex-wrap">
         <Clock className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium">Purchased:</span>
         <Badge variant="outline" className="font-mono">
           {creditsToMinutes(credits)}
         </Badge>
+        <span className="text-xs text-muted-foreground">• Never expires</span>
         {!hasFreeMinutes && credits === 0 && (
-          <span className="text-xs text-destructive ml-2">Add minutes to continue calling</span>
+          <span className="text-xs text-destructive ml-1">— Add minutes to continue calling</span>
         )}
       </div>
     </div>
