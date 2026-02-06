@@ -567,12 +567,10 @@ export function PurchaseTab({ workspaceId, subscriptionTier, onCreditsUpdated }:
               {minutePackages.map((pkg) => (
                 <div
                   key={pkg.id}
-                  className={`relative p-4 pt-6 rounded-lg border transition-all ${
+                  className={`relative p-4 rounded-lg border transition-all ${
                     pkg.popular 
                       ? 'border-primary bg-primary/5' 
-                      : pkg.bonus
-                        ? 'border-success/30 bg-success/5'
-                        : 'border-border hover:border-primary/50'
+                      : 'border-border hover:border-primary/50'
                   }`}
                 >
                   {pkg.popular && (
@@ -580,15 +578,16 @@ export function PurchaseTab({ workspaceId, subscriptionTier, onCreditsUpdated }:
                       Popular
                     </Badge>
                   )}
-                  {pkg.bonus && !pkg.popular && (
-                    <Badge variant="secondary" className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-xs whitespace-nowrap z-10 bg-success/15 text-success border-success/30">
-                      {pkg.bonus}
-                    </Badge>
-                  )}
-                  <div className="text-center space-y-2">
+                  <div className={`text-center space-y-2 ${pkg.popular ? 'pt-2' : ''}`}>
                     <p className="font-semibold">{pkg.name}</p>
                     <p className="text-2xl font-bold text-primary">{pkg.minutes.toLocaleString()}</p>
                     <p className="text-sm text-muted-foreground">minutes</p>
+                    {pkg.bonus && (
+                      <p className="text-xs font-medium text-success flex items-center justify-center gap-1">
+                        <Gift className="h-3 w-3" />
+                        {pkg.bonus}
+                      </p>
+                    )}
                     <p className="text-lg font-medium">${pkg.price}</p>
                     <Button 
                       size="sm" 
