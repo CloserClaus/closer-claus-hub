@@ -94,6 +94,8 @@ interface PowerDialerProps {
   phoneNumbers: PhoneNumber[];
   selectedCallerId: string;
   onCallerIdChange: (callerId: string) => void;
+  makeCall: (toNumber: string, fromNumber: string, leadId?: string) => Promise<{ callLogId?: string; callSid?: string } | null>;
+  endTwilioCall: () => void;
 }
 
 type DialerStatus = 'idle' | 'dialing' | 'in_call' | 'paused' | 'completed';
@@ -158,7 +160,7 @@ const getStageLabel = (stage: string): string => {
   return found ? found.label : stage;
 };
 
-export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, phoneNumbers, selectedCallerId, onCallerIdChange }: PowerDialerProps) {
+export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, phoneNumbers, selectedCallerId, onCallerIdChange, makeCall, endTwilioCall }: PowerDialerProps) {
   const { user } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedLeads, setSelectedLeads] = useState<Lead[]>([]);
@@ -573,11 +575,10 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
     setCallDuration(0);
     setCallNotes("");
 
-    // Auto-dial the lead
+    // Auto-dial the lead using the single-call device.connect() flow
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast.error("Please log in to make calls");
+      if (!dialerAvailable) {
+        toast.error("Phone system is not ready. Please wait...");
         setDialerStatus('paused');
         return;
       }
@@ -592,52 +593,21 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
         return;
       }
 
-      const fromNumber = selectedCallerId;
+      const result = await makeCall(lead.phone!, selectedCallerId, lead.id);
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twilio`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'initiate_call',
-            to_number: lead.phone,
-            from_number: fromNumber,
-            workspace_id: workspaceId,
-            lead_id: lead.id,
-          }),
-        }
-      );
+      if (result) {
+        setCurrentCallLogId(result.callLogId || null);
+        setCurrentTwilioCallSid(result.callSid || null);
+        setDialerStatus('in_call');
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Show detailed error with Twilio code if available
-        const errorMsg = data.error || "Failed to initiate call";
-        if (data.twilio_code) {
-          console.error(`Twilio Error ${data.twilio_code}: ${data.twilio_message}`);
-        }
-        toast.error(errorMsg, {
-          duration: 8000, // Show longer for important errors
-          description: data.twilio_code ? `Error code: ${data.twilio_code}` : undefined,
-        });
+        // Update lead's last contacted time
+        await supabase
+          .from('leads')
+          .update({ last_contacted_at: new Date().toISOString() })
+          .eq('id', lead.id);
+      } else {
         handleCallOutcome('no_answer');
-        return;
       }
-
-      setCurrentCallLogId(data.call_log_id || null);
-      setCurrentTwilioCallSid(data.call_sid || null);
-      setDialerStatus('in_call');
-
-      // Update lead's last contacted time
-      await supabase
-        .from('leads')
-        .update({ last_contacted_at: new Date().toISOString() })
-        .eq('id', lead.id);
-
     } catch (error) {
       console.error('Error initiating call:', error);
       toast.error("Failed to initiate call");
@@ -645,7 +615,7 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
     } finally {
       setIsLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, dialerAvailable, selectedCallerId, makeCall]);
 
   const handleCallOutcome = async (outcome: CallOutcome, skipCallbackPrompt = false, dispositionData?: { disposition: CallDisposition; notes: string; tags: string[]; scheduleCallback?: Date }) => {
     if (!currentLead) return;
@@ -664,31 +634,21 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
       return;
     }
 
-    // End the call if still active
-    if (dialerStatus === 'in_call' && currentTwilioCallSid) {
+    // End the call if still active — use the browser device disconnect
+    if (dialerStatus === 'in_call') {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twilio`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${session.access_token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                action: 'end_call',
-                call_sid: currentTwilioCallSid,
-                call_log_id: currentCallLogId,
-                notes: dispositionData?.notes || callNotes,
-              }),
-            }
-          );
-        }
+        endTwilioCall();
       } catch (error) {
         console.error('Error ending call:', error);
       }
+    }
+
+    // Update call log with notes if we have them
+    if (currentCallLogId && (dispositionData?.notes || callNotes)) {
+      await supabase
+        .from('call_logs')
+        .update({ notes: dispositionData?.notes || callNotes })
+        .eq('id', currentCallLogId);
     }
 
     // Update call log with disposition and tags if we have disposition data
