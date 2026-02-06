@@ -2509,6 +2509,7 @@ export type Database = {
           city: string | null
           country_code: string
           created_at: string
+          forwarding_number: string | null
           id: string
           is_active: boolean
           monthly_cost: number
@@ -2523,6 +2524,7 @@ export type Database = {
           city?: string | null
           country_code?: string
           created_at?: string
+          forwarding_number?: string | null
           id?: string
           is_active?: boolean
           monthly_cost?: number
@@ -2537,6 +2539,7 @@ export type Database = {
           city?: string | null
           country_code?: string
           created_at?: string
+          forwarding_number?: string | null
           id?: string
           is_active?: boolean
           monthly_cost?: number
