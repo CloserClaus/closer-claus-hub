@@ -114,7 +114,7 @@ const agencyOwnerNav: NavItem[] = [{
   icon: LayoutDashboard
 }, {
   title: 'Offer Diagnostic',
-  url: '/offer-diagnostic',
+  url: '/app/offer-diagnostic',
   icon: ClipboardCheck
 }, {
   title: 'Jobs',
