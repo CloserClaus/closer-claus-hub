@@ -162,16 +162,6 @@ export default function Subscription() {
     );
   }
 
-  useEffect(() => {
-    if (!user) {
-      navigate('/auth');
-      return;
-    }
-    if (userRole !== 'agency_owner') {
-      navigate('/dashboard');
-    }
-  }, [user, userRole, navigate]);
-
   const validateCoupon = async () => {
     if (!couponCode.trim()) return;
     
