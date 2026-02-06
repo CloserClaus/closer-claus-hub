@@ -113,13 +113,58 @@ serve(async (req) => {
         updateData.ended_at = new Date().toISOString();
       }
 
-      const { error } = await supabase
+      const { error, data: updatedLog } = await supabase
         .from('call_logs')
         .update(updateData)
-        .eq('twilio_call_sid', callSid);
+        .eq('twilio_call_sid', callSid)
+        .select('workspace_id')
+        .maybeSingle();
 
       if (error) {
         console.error('Error updating call log:', error);
+      }
+
+      // Deduct minutes from workspace credits on call completion
+      if (callStatus === 'completed' && callDuration && updatedLog?.workspace_id) {
+        const durationSeconds = parseInt(callDuration);
+        const minutesUsed = Math.ceil(durationSeconds / 60);
+
+        if (minutesUsed > 0) {
+          const { data: credits } = await supabase
+            .from('workspace_credits')
+            .select('credits_balance, free_minutes_remaining')
+            .eq('workspace_id', updatedLog.workspace_id)
+            .single();
+
+          if (credits) {
+            let freeMinutes = credits.free_minutes_remaining ?? 1000;
+            let paidMinutes = credits.credits_balance || 0;
+            let remaining = minutesUsed;
+
+            const fromFree = Math.min(freeMinutes, remaining);
+            freeMinutes -= fromFree;
+            remaining -= fromFree;
+
+            if (remaining > 0) {
+              paidMinutes = Math.max(0, paidMinutes - remaining);
+            }
+
+            const { error: creditError } = await supabase
+              .from('workspace_credits')
+              .update({
+                free_minutes_remaining: freeMinutes,
+                credits_balance: paidMinutes,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('workspace_id', updatedLog.workspace_id);
+
+            if (creditError) {
+              console.error('Error deducting minutes:', creditError);
+            } else {
+              console.log(`Deducted ${minutesUsed} min from workspace ${updatedLog.workspace_id} (free: ${freeMinutes}, paid: ${paidMinutes})`);
+            }
+          }
+        }
       }
     }
 
