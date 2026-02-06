@@ -117,7 +117,8 @@ export default function Subscription() {
         .eq('id', workspaceId)
         .single();
       
-      setIsFirstSubscription(!data?.first_subscription_at);
+      // If they have first_subscription_at OR an active subscription, they're not first-time
+      setIsFirstSubscription(!data?.first_subscription_at && data?.subscription_status !== 'active');
       if (data?.subscription_status === 'active' && data?.subscription_tier) {
         setCurrentTier(data.subscription_tier);
       } else {
