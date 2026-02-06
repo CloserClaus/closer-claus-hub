@@ -563,23 +563,25 @@ export function PurchaseTab({ workspaceId, subscriptionTier, onCreditsUpdated }:
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4 pt-2">
               {minutePackages.map((pkg) => (
                 <div
                   key={pkg.id}
-                  className={`relative p-4 rounded-lg border transition-all ${
+                  className={`relative p-4 pt-6 rounded-lg border transition-all ${
                     pkg.popular 
                       ? 'border-primary bg-primary/5' 
-                      : 'border-border hover:border-primary/50'
+                      : pkg.bonus
+                        ? 'border-success/30 bg-success/5'
+                        : 'border-border hover:border-primary/50'
                   }`}
                 >
                   {pkg.popular && (
-                    <Badge className="absolute -top-2 left-1/2 -translate-x-1/2 text-xs">
+                    <Badge className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-xs whitespace-nowrap z-10">
                       Popular
                     </Badge>
                   )}
                   {pkg.bonus && !pkg.popular && (
-                    <Badge variant="secondary" className="absolute -top-2 left-1/2 -translate-x-1/2 text-xs bg-success/10 text-success border-success/20">
+                    <Badge variant="secondary" className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-xs whitespace-nowrap z-10 bg-success/15 text-success border-success/30">
                       {pkg.bonus}
                     </Badge>
                   )}
@@ -587,11 +589,6 @@ export function PurchaseTab({ workspaceId, subscriptionTier, onCreditsUpdated }:
                     <p className="font-semibold">{pkg.name}</p>
                     <p className="text-2xl font-bold text-primary">{pkg.minutes.toLocaleString()}</p>
                     <p className="text-sm text-muted-foreground">minutes</p>
-                    {pkg.bonus && pkg.popular && (
-                      <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/20">
-                        {pkg.bonus}
-                      </Badge>
-                    )}
                     <p className="text-lg font-medium">${pkg.price}</p>
                     <Button 
                       size="sm" 
