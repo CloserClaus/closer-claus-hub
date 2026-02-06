@@ -72,7 +72,7 @@ interface PhoneNumber {
 }
 
 export default function Dialer() {
-  const { currentWorkspace, loading: workspaceLoading } = useWorkspace();
+  const { currentWorkspace, loading: workspaceLoading, hasActiveSubscription } = useWorkspace();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -203,7 +203,7 @@ export default function Dialer() {
       }
 
       setCreditsBalance(data?.credits_balance || 0);
-      setFreeMinutesRemaining(data?.free_minutes_remaining ?? 1000);
+      setFreeMinutesRemaining(hasActiveSubscription ? (data?.free_minutes_remaining ?? 1000) : 0);
     } catch (error) {
       console.error('Error fetching credits:', error);
     } finally {
@@ -746,6 +746,28 @@ export default function Dialer() {
                             >
                               <PhoneOff className="h-5 w-5 mr-2" />
                               End Call
+                            </Button>
+                          </div>
+                        ) : !hasActiveSubscription ? (
+                          <div className="space-y-3">
+                            <Button
+                              size="lg"
+                              className="w-full"
+                              disabled
+                            >
+                              <Lock className="h-5 w-5 mr-2" />
+                              Subscription Required
+                            </Button>
+                            <p className="text-xs text-center text-muted-foreground">
+                              Activate a subscription to start making calls and unlock 1,000 free minutes/mo.
+                            </p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full"
+                              onClick={() => window.location.href = '/subscription'}
+                            >
+                              View Plans
                             </Button>
                           </div>
                         ) : (
