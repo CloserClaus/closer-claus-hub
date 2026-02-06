@@ -295,7 +295,7 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
     }
   }, [workspaceId, toast, onCallStatusChange, destroyDevice]);
 
-  // Make an outbound call
+  // Make an outbound call — single-leg flow via device.connect()
   const makeCall = useCallback(async (
     toNumber: string, 
     fromNumber: string,
@@ -323,32 +323,26 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
       setState(prev => ({ ...prev, callStatus: 'connecting' }));
       onCallStatusChange?.('connecting');
 
-      // First, initiate the call through our edge function to log it
-      const { data: initiateData, error: initiateError } = await supabase.functions.invoke('twilio', {
-        body: {
-          action: 'initiate_call',
-          to_number: toNumber,
-          from_number: fromNumber,
-          workspace_id: workspaceId,
-          lead_id: leadId,
-          record: true, // Enable server-side recording
-        },
-      });
-
-      if (initiateError || !initiateData?.success) {
-        // Use the detailed error message from the edge function
-        const errorMsg = initiateData?.error || initiateError?.message || 'Failed to initiate call';
-        throw new Error(errorMsg);
-      }
-
-      // Connect using the Twilio Device (for browser audio)
-      const callParams = {
+      // Connect using the Twilio Device (browser WebRTC).
+      // This triggers the TwiML App webhook which will:
+      //   1. Create the call log in the database
+      //   2. Return <Dial> TwiML to place exactly ONE outbound PSTN call
+      // No separate REST API call is made — one click = one call.
+      const callParams: Record<string, string> = {
         To: toNumber,
         From: fromNumber,
       };
+      if (workspaceId) {
+        callParams.WorkspaceId = workspaceId;
+      }
+      if (leadId) {
+        callParams.LeadId = leadId;
+      }
 
       const call = await deviceRef.current.connect({ params: callParams });
       callRef.current = call;
+
+      let resolvedCallLogId: string | undefined;
 
       // Set up call event handlers
       call.on('accept', () => {
@@ -399,9 +393,31 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
         cleanupCall();
       });
 
+      // After connect, log the call via edge function (non-blocking for audio).
+      // The call SID from the SDK is the parent call SID.
+      const callSid = (call as any).parameters?.CallSid;
+      if (callSid && workspaceId) {
+        supabase.functions.invoke('twilio', {
+          body: {
+            action: 'log_browser_call',
+            call_sid: callSid,
+            to_number: toNumber,
+            from_number: fromNumber,
+            workspace_id: workspaceId,
+            lead_id: leadId,
+          },
+        }).then(({ data }) => {
+          if (data?.call_log_id) {
+            resolvedCallLogId = data.call_log_id;
+          }
+        }).catch(err => {
+          console.error('Failed to log call:', err);
+        });
+      }
+
       return {
-        callLogId: initiateData.call_log_id,
-        callSid: initiateData.call_sid,
+        callLogId: resolvedCallLogId,
+        callSid: callSid,
       };
 
     } catch (err) {

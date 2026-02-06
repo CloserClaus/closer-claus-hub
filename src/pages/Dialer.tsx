@@ -910,6 +910,8 @@ export default function Dialer() {
                       phoneNumbers={workspacePhoneNumbers}
                       selectedCallerId={selectedCallerId}
                       onCallerIdChange={setSelectedCallerId}
+                      makeCall={makeCall}
+                      endTwilioCall={endCall}
                     />
                   ) : (
                     <Card className="border-primary/20">

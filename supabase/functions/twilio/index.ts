@@ -636,6 +636,55 @@ serve(async (req) => {
         );
       }
 
+      case 'log_browser_call': {
+        // Log a call initiated via browser device.connect() — no Twilio REST call created.
+        // The webhook handles TwiML; this just ensures we have a call_log record.
+        const { call_sid, to_number, from_number, workspace_id, lead_id } = params;
+
+        if (!call_sid || !workspace_id) {
+          return new Response(
+            JSON.stringify({ error: 'Missing call_sid or workspace_id' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Check if already logged by the webhook
+        const { data: existing } = await supabase
+          .from('call_logs')
+          .select('id')
+          .eq('twilio_call_sid', call_sid)
+          .maybeSingle();
+
+        if (existing) {
+          return new Response(
+            JSON.stringify({ success: true, call_log_id: existing.id }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const { data: callLog, error: logError } = await supabase
+          .from('call_logs')
+          .insert({
+            workspace_id,
+            caller_id: user.id,
+            phone_number: to_number,
+            lead_id: lead_id || null,
+            call_status: 'initiated',
+            twilio_call_sid: call_sid,
+          })
+          .select()
+          .single();
+
+        if (logError) {
+          console.error('Error logging browser call:', logError);
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, call_log_id: callLog?.id }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown action: ${action}` }),

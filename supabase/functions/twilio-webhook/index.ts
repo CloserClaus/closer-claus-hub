@@ -37,14 +37,40 @@ serve(async (req) => {
     const fromNumber = webhookData.From;
     const direction = webhookData.Direction;
 
-    // Handle outbound calls from browser (Voice SDK) - this is the initial request
-    // When a browser client initiates a call, Twilio sends a request to the TwiML app
-    // We need to return TwiML that dials the destination number
+    // Handle outbound calls from browser (Voice SDK) - this is the initial request.
+    // When a browser client initiates a call via device.connect(), Twilio sends a
+    // request to the TwiML app. We return <Dial> TwiML to place exactly ONE outbound
+    // PSTN call to the prospect. No separate REST API call is made — this is the
+    // single call path.
     if (toNumber && direction === 'inbound' && webhookData.Caller?.startsWith('client:')) {
       console.log(`Outbound browser call to ${toNumber} from ${fromNumber}`);
       
+      const workspaceId = webhookData.WorkspaceId;
+      const leadId = webhookData.LeadId;
+      const parentCallSid = callSid;
+
+      // Create call log entry for this single outbound call
+      if (workspaceId && parentCallSid) {
+        // Extract user ID from the client identity (Caller = "client:<user_id>")
+        const callerId = webhookData.Caller?.replace('client:', '') || null;
+
+        const { error: logError } = await supabase
+          .from('call_logs')
+          .insert({
+            workspace_id: workspaceId,
+            caller_id: callerId,
+            phone_number: toNumber,
+            lead_id: leadId || null,
+            call_status: 'initiated',
+            twilio_call_sid: parentCallSid,
+          });
+
+        if (logError) {
+          console.error('Error creating call log from webhook:', logError);
+        }
+      }
+
       // Return TwiML to connect the call to the destination
-      // The caller ID should be the workspace's provisioned number
       const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial callerId="${fromNumber}" record="record-from-answer-dual" timeout="60">
