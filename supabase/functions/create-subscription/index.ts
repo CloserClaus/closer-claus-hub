@@ -160,7 +160,10 @@ serve(async (req) => {
     }
 
     // Determine if we should charge 2 months upfront (first-time monthly subscribers only)
-    const shouldChargeTwoMonths = is_first_subscription && billing_period === 'monthly';
+    // Server-side check: only charge 2 months if workspace has never had a subscription before
+    const hasHadSubscriptionBefore = !!workspace.first_subscription_at;
+    const shouldChargeTwoMonths = !hasHadSubscriptionBefore && billing_period === 'monthly';
+    console.log(`First subscription check: first_subscription_at=${workspace.first_subscription_at}, hasHadBefore=${hasHadSubscriptionBefore}, shouldCharge2mo=${shouldChargeTwoMonths}`);
     
     // Build subscription_data with optional extra month charge
     const subscriptionData: any = {};
