@@ -38,6 +38,7 @@ import { CallRecordingPlayer } from "@/components/dialer/CallRecordingPlayer";
 import { CallScriptManager } from "@/components/dialer/CallScriptManager";
 import { FloatingCallScript } from "@/components/dialer/FloatingCallScript";
 import { CallRecordingsTab } from "@/components/dialer/CallRecordingsTab";
+import { DialerSettingsTab } from "@/components/dialer/DialerSettingsTab";
 import { CallDispositionDialog, CallDisposition } from "@/components/dialer/CallDispositionDialog";
 
 interface Lead {
@@ -564,6 +565,12 @@ export default function Dialer() {
                     <Mic className="h-4 w-4" />
                     Recordings
                   </TabsTrigger>
+                  {isOwner && (
+                    <TabsTrigger value="settings" className="flex items-center gap-2">
+                      <Phone className="h-4 w-4" />
+                      Dialer Settings
+                    </TabsTrigger>
+                  )}
                 </TabsList>
 
                 <TabsContent value="dialer" className="space-y-6">
@@ -946,6 +953,13 @@ export default function Dialer() {
 
                 <TabsContent value="recordings">
                   <CallRecordingsTab workspaceId={currentWorkspace.id} />
+                </TabsContent>
+
+                <TabsContent value="settings">
+                  <DialerSettingsTab 
+                    workspaceId={currentWorkspace.id}
+                    onNumbersUpdated={fetchPhoneNumbers}
+                  />
                 </TabsContent>
               </Tabs>
             );

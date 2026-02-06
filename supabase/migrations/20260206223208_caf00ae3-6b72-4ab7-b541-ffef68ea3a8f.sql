@@ -1,0 +1,1 @@
+ALTER TABLE public.workspace_phone_numbers ADD COLUMN forwarding_number text DEFAULT null;

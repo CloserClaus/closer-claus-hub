@@ -685,6 +685,53 @@ serve(async (req) => {
         );
       }
 
+      case 'update_forwarding': {
+        const { phone_number, forwarding_number, workspace_id } = params;
+
+        if (!phone_number || !workspace_id) {
+          return new Response(
+            JSON.stringify({ error: 'Missing required parameters' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Find the Twilio phone SID for this number
+        const { data: phoneRecord, error: phoneError } = await supabase
+          .from('workspace_phone_numbers')
+          .select('twilio_phone_sid')
+          .eq('workspace_id', workspace_id)
+          .eq('phone_number', phone_number)
+          .single();
+
+        if (phoneError || !phoneRecord?.twilio_phone_sid) {
+          console.error('Phone number not found:', phoneError);
+          return new Response(
+            JSON.stringify({ error: 'Phone number not found' }),
+            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Update the Twilio number's voice URL to point to our webhook
+        // so inbound calls hit our webhook and get forwarded
+        const webhookUrl = `${supabaseUrl}/functions/v1/twilio-webhook`;
+        const updateParams = new URLSearchParams();
+        updateParams.append('VoiceUrl', webhookUrl);
+        updateParams.append('VoiceMethod', 'POST');
+
+        const updateResult = await twilioFetch(
+          `/IncomingPhoneNumbers/${phoneRecord.twilio_phone_sid}.json`,
+          'POST',
+          updateParams
+        );
+
+        console.log('Updated Twilio number voice URL:', updateResult.sid ? 'success' : updateResult);
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown action: ${action}` }),

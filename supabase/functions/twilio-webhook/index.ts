@@ -140,15 +140,53 @@ serve(async (req) => {
       }
     }
 
-    // Handle true inbound calls (not browser-initiated)
+    // Handle true inbound calls (not browser-initiated) — forward to configured number
     if (webhookData.Direction === 'inbound' && !webhookData.Caller?.startsWith('client:')) {
-      // Simple response for inbound calls - can be customized
+      const calledNumber = webhookData.Called || webhookData.To;
+      console.log(`Inbound call from ${fromNumber} to ${calledNumber}`);
+
+      // Look up forwarding number for this phone number
+      let forwardingNumber: string | null = null;
+      if (calledNumber) {
+        const { data: phoneRecord } = await supabase
+          .from('workspace_phone_numbers')
+          .select('forwarding_number, workspace_id')
+          .eq('phone_number', calledNumber)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        forwardingNumber = phoneRecord?.forwarding_number || null;
+
+        // Log inbound call
+        if (phoneRecord?.workspace_id) {
+          await supabase.from('call_logs').insert({
+            workspace_id: phoneRecord.workspace_id,
+            phone_number: fromNumber || 'unknown',
+            call_status: 'initiated',
+            twilio_call_sid: callSid,
+            notes: `Inbound call${forwardingNumber ? ` → forwarded to ${forwardingNumber}` : ''}`,
+          });
+        }
+      }
+
+      if (forwardingNumber) {
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial callerId="${calledNumber}" timeout="30">
+    <Number>${forwardingNumber}</Number>
+  </Dial>
+</Response>`;
+        console.log('Forwarding inbound call to:', forwardingNumber);
+        return new Response(twiml, {
+          headers: { ...corsHeaders, 'Content-Type': 'application/xml' },
+        });
+      }
+
+      // No forwarding configured — play a message
       const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>Thank you for calling. Please hold while we connect you.</Say>
-  <Dial timeout="30">
-    <!-- Add routing logic here -->
-  </Dial>
+  <Say>Thank you for calling. This number is not currently accepting inbound calls. Please try again later.</Say>
+  <Hangup />
 </Response>`;
 
       return new Response(twiml, {
