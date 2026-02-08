@@ -36,6 +36,7 @@ import NotFound from "./pages/NotFound";
 import HomePage from "./pages/HomePage";
 import Leads from "./pages/Leads";
 import OfferDiagnostic from "./pages/OfferDiagnostic";
+import ScriptBuilder from "./pages/ScriptBuilder";
 import PublicOfferDiagnostic from "./pages/PublicOfferDiagnostic";
 import PublicOfferDiagnosticResults from "./pages/PublicOfferDiagnosticResults";
 import ReferAndEarn from "./pages/ReferAndEarn";
@@ -85,6 +86,7 @@ const App = () => (
                 <Route path="/offer-diagnostic" element={<PublicOfferDiagnostic />} />
                 <Route path="/offer-diagnostic/results" element={<PublicOfferDiagnosticResults />} />
                 <Route path="/app/offer-diagnostic" element={<OfferDiagnostic />} />
+                <Route path="/app/script-builder" element={<ScriptBuilder />} />
                 <Route path="/refer" element={<ReferAndEarn />} />
                 <Route path="/example" element={<DemoWalkthrough />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

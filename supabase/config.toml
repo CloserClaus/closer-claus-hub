@@ -137,3 +137,6 @@ verify_jwt = false
 
 [functions.evaluate-lead-readiness]
 verify_jwt = false
+
+[functions.generate-script]
+verify_jwt = false
