@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -430,9 +430,60 @@ export default function OfferDiagnostic() {
   // V2 RESULT — SINGLE SOURCE OF TRUTH
   const [evaluationResult, setEvaluationResult] = useState<EvaluateOfferV2Result | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const hasRestoredRef = useRef(false);
   
   // Hook for persisting offer diagnostic state
-  const { saveState: saveOfferState, saveLatentScores } = useOfferDiagnosticState();
+  const { savedState, isLoading: isLoadingState, saveFullDiagnostic, restoreFormData } = useOfferDiagnosticState();
+
+  // Restore form data and results from saved state on initial load
+  useEffect(() => {
+    if (hasRestoredRef.current || isLoadingState || !savedState) return;
+    hasRestoredRef.current = true;
+
+    const restoredForm = restoreFormData();
+    if (restoredForm) {
+      setFormData(restoredForm);
+    }
+
+    // Restore evaluation result from saved latent scores + recommendations
+    if (savedState.latent_alignment_score !== null && savedState.latent_bottleneck_key) {
+      const latentScores: Record<string, number> = {
+        EFI: savedState.latent_economic_headroom || 0,
+        proofPromise: savedState.latent_proof_to_promise || 0,
+        fulfillmentScalability: savedState.latent_fulfillment_scalability || 0,
+        riskAlignment: savedState.latent_risk_alignment || 0,
+        channelFit: savedState.latent_channel_fit || 0,
+        icpSpecificity: savedState.latent_icp_specificity || 10,
+      };
+
+      const bottleneckKey = savedState.latent_bottleneck_key;
+      const alignmentScore = savedState.latent_alignment_score;
+      const readinessLabel = savedState.latent_readiness_label || 'Weak';
+      const outboundReady = alignmentScore >= 50;
+
+      setEvaluationResult({
+        alignmentScore,
+        readinessLabel: readinessLabel as any,
+        latentScores: latentScores as any,
+        latentBottleneckKey: bottleneckKey as any,
+        bottleneckLabel: LATENT_SCORE_LABELS[bottleneckKey as LatentBottleneckKey] || bottleneckKey,
+        primaryBottleneck: {
+          dimension: bottleneckKey as any,
+          severity: outboundReady ? 'constraining' as const : 'blocking' as const,
+          explanation: `Primary constraint: ${LATENT_SCORE_LABELS[bottleneckKey as LatentBottleneckKey] || bottleneckKey}`,
+        },
+        triggeredHardGates: [],
+        triggeredSoftGates: [],
+        recommendations: savedState.ai_recommendations || [],
+        outboundReady,
+        isOptimizationLevel: alignmentScore >= 75 && outboundReady,
+        notOutboundReady: !outboundReady,
+        isLoading: false,
+        scoreCap: null,
+        _executionSource: 'evaluateOfferV2',
+      });
+    }
+  }, [isLoadingState, savedState]);
 
   const isFormComplete = useMemo(() => {
     const { offerType, promiseOutcome, promise, icpIndustry, verticalSegment, scoringSegment, icpSize, icpMaturity, icpSpecificity, pricingStructure, riskModel, fulfillmentComplexity, proofLevel } = formData;
@@ -557,21 +608,8 @@ export default function OfferDiagnostic() {
       // Set result — UI will ONLY render from this
       setEvaluationResult(result);
       
-      // Save state for lead evaluation context
-      saveOfferState({
-        offer_type: formData.offerType,
-        promise: formData.promise,
-        vertical_segment: formData.verticalSegment,
-        company_size: formData.icpSize,
-        pricing_structure: formData.pricingStructure,
-        price_tier: formData.recurringPriceTier || formData.oneTimePriceTier || formData.hybridRetainerTier || null,
-        proof_level: formData.proofLevel,
-        risk_model: formData.riskModel,
-        fulfillment: formData.fulfillmentComplexity,
-      });
-      
-      // Save latent scores for persistence
-      saveLatentScores({
+      // Save full form data + latent scores in one call
+      saveFullDiagnostic(formData, {
         latentScores: result.latentScores,
         alignmentScore: result.alignmentScore,
         readinessLabel: result.readinessLabel,
