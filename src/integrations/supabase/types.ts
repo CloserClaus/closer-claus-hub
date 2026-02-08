@@ -1790,22 +1790,35 @@ export type Database = {
           company_size: string | null
           created_at: string
           fulfillment: string | null
+          hybrid_retainer_tier: string | null
+          icp_industry: string | null
+          icp_maturity: string | null
+          icp_specificity: string | null
           id: string
           latent_alignment_score: number | null
           latent_bottleneck_key: string | null
           latent_channel_fit: number | null
           latent_economic_headroom: number | null
           latent_fulfillment_scalability: number | null
+          latent_icp_specificity: number | null
           latent_proof_to_promise: number | null
           latent_readiness_label: string | null
           latent_risk_alignment: number | null
           offer_type: string | null
+          one_time_price_tier: string | null
+          performance_basis: string | null
+          performance_comp_tier: string | null
           price_tier: string | null
           pricing_structure: string | null
           promise: string | null
+          promise_outcome: string | null
           proof_level: string | null
+          recurring_price_tier: string | null
           risk_model: string | null
+          scoring_segment: string | null
           updated_at: string
+          usage_output_type: string | null
+          usage_volume_tier: string | null
           user_id: string
           version: number | null
           vertical_segment: string | null
@@ -1816,22 +1829,35 @@ export type Database = {
           company_size?: string | null
           created_at?: string
           fulfillment?: string | null
+          hybrid_retainer_tier?: string | null
+          icp_industry?: string | null
+          icp_maturity?: string | null
+          icp_specificity?: string | null
           id?: string
           latent_alignment_score?: number | null
           latent_bottleneck_key?: string | null
           latent_channel_fit?: number | null
           latent_economic_headroom?: number | null
           latent_fulfillment_scalability?: number | null
+          latent_icp_specificity?: number | null
           latent_proof_to_promise?: number | null
           latent_readiness_label?: string | null
           latent_risk_alignment?: number | null
           offer_type?: string | null
+          one_time_price_tier?: string | null
+          performance_basis?: string | null
+          performance_comp_tier?: string | null
           price_tier?: string | null
           pricing_structure?: string | null
           promise?: string | null
+          promise_outcome?: string | null
           proof_level?: string | null
+          recurring_price_tier?: string | null
           risk_model?: string | null
+          scoring_segment?: string | null
           updated_at?: string
+          usage_output_type?: string | null
+          usage_volume_tier?: string | null
           user_id: string
           version?: number | null
           vertical_segment?: string | null
@@ -1842,22 +1868,35 @@ export type Database = {
           company_size?: string | null
           created_at?: string
           fulfillment?: string | null
+          hybrid_retainer_tier?: string | null
+          icp_industry?: string | null
+          icp_maturity?: string | null
+          icp_specificity?: string | null
           id?: string
           latent_alignment_score?: number | null
           latent_bottleneck_key?: string | null
           latent_channel_fit?: number | null
           latent_economic_headroom?: number | null
           latent_fulfillment_scalability?: number | null
+          latent_icp_specificity?: number | null
           latent_proof_to_promise?: number | null
           latent_readiness_label?: string | null
           latent_risk_alignment?: number | null
           offer_type?: string | null
+          one_time_price_tier?: string | null
+          performance_basis?: string | null
+          performance_comp_tier?: string | null
           price_tier?: string | null
           pricing_structure?: string | null
           promise?: string | null
+          promise_outcome?: string | null
           proof_level?: string | null
+          recurring_price_tier?: string | null
           risk_model?: string | null
+          scoring_segment?: string | null
           updated_at?: string
+          usage_output_type?: string | null
+          usage_volume_tier?: string | null
           user_id?: string
           version?: number | null
           vertical_segment?: string | null

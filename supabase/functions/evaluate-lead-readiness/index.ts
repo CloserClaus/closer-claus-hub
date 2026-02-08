@@ -27,6 +27,11 @@ interface OfferContext {
   proof_level: string | null;
   risk_model: string | null;
   fulfillment: string | null;
+  icp_industry: string | null;
+  icp_maturity: string | null;
+  icp_specificity: string | null;
+  alignment_score: number | null;
+  readiness_label: string | null;
 }
 
 interface EvaluationResult {
@@ -139,6 +144,11 @@ serve(async (req) => {
       proof_level: offerState?.proof_level || null,
       risk_model: offerState?.risk_model || null,
       fulfillment: offerState?.fulfillment || null,
+      icp_industry: offerState?.icp_industry || null,
+      icp_maturity: offerState?.icp_maturity || null,
+      icp_specificity: offerState?.icp_specificity || null,
+      alignment_score: offerState?.latent_alignment_score || null,
+      readiness_label: offerState?.latent_readiness_label || null,
     };
 
     // Get leads data
