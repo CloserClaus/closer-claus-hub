@@ -1,15 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useOfferDiagnosticState } from '@/hooks/useOfferDiagnosticState';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { FileText, BookOpen, Loader2, AlertTriangle, Copy, Check } from 'lucide-react';
+import { FileText, BookOpen, Loader2, AlertTriangle, Copy, Check, RefreshCw } from 'lucide-react';
 
 interface ScriptResult {
   script: string;
@@ -26,22 +29,65 @@ interface ScriptResult {
 
 export default function ScriptBuilder() {
   const { savedState, isLoading: isLoadingState } = useOfferDiagnosticState();
+  const { user } = useAuth();
+  const { currentWorkspace } = useWorkspace();
   const [result, setResult] = useState<ScriptResult | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
+  const [deliveryMechanism, setDeliveryMechanism] = useState('');
+  const [isRestored, setIsRestored] = useState(false);
+  const [needsRegeneration, setNeedsRegeneration] = useState(false);
 
   const hasEvaluation = savedState?.latent_alignment_score !== null && savedState?.latent_alignment_score !== undefined;
+  const canGenerate = hasEvaluation && deliveryMechanism.trim().length > 0;
+
+  // Restore persisted script on load
+  useEffect(() => {
+    if (isRestored || isLoadingState || !savedState || !currentWorkspace?.id || !user?.id) return;
+
+    const restoreScript = async () => {
+      const { data } = await supabase
+        .from('offer_diagnostic_state')
+        .select('delivery_mechanism, generated_script, generated_progression_rules, script_types, script_is_validation_mode, script_generated_at, script_diagnostic_version')
+        .eq('workspace_id', currentWorkspace.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (data) {
+        if ((data as any).delivery_mechanism) {
+          setDeliveryMechanism((data as any).delivery_mechanism);
+        }
+        if ((data as any).generated_script) {
+          setResult({
+            script: (data as any).generated_script,
+            progressionRules: (data as any).generated_progression_rules || null,
+            types: (data as any).script_types || { opener: '', bridge: '', discovery: '', frame: '', cta: '' },
+            isValidationMode: (data as any).script_is_validation_mode || false,
+          });
+          // Check if diagnostic changed since script was generated
+          const scriptVersion = (data as any).script_diagnostic_version;
+          if (scriptVersion && savedState?.version && scriptVersion < savedState.version) {
+            setNeedsRegeneration(true);
+          }
+        }
+      }
+      setIsRestored(true);
+    };
+
+    restoreScript();
+  }, [isLoadingState, savedState, currentWorkspace?.id, user?.id, isRestored]);
 
   const handleGenerate = async () => {
-    if (!savedState || !hasEvaluation) {
-      toast.error('Complete the Offer Diagnostic first');
+    if (!savedState || !hasEvaluation || !canGenerate) {
+      toast.error('Complete all required fields first');
       return;
     }
 
     setIsGenerating(true);
+    setNeedsRegeneration(false);
     try {
       const { data, error } = await supabase.functions.invoke('generate-script', {
-        body: { offerContext: savedState },
+        body: { offerContext: savedState, deliveryMechanism: deliveryMechanism.trim() },
       });
 
       if (error) throw error;
@@ -50,7 +96,27 @@ export default function ScriptBuilder() {
         return;
       }
 
-      setResult(data as ScriptResult);
+      const scriptResult = data as ScriptResult;
+      setResult(scriptResult);
+
+      // Persist the generated script
+      if (currentWorkspace?.id && user?.id) {
+        await supabase
+          .from('offer_diagnostic_state')
+          .update({
+            delivery_mechanism: deliveryMechanism.trim(),
+            generated_script: scriptResult.script,
+            generated_progression_rules: scriptResult.progressionRules,
+            script_types: scriptResult.types as any,
+            script_is_validation_mode: scriptResult.isValidationMode,
+            script_generated_at: new Date().toISOString(),
+            script_diagnostic_version: savedState.version || 1,
+          } as any)
+          .eq('workspace_id', currentWorkspace.id)
+          .eq('user_id', user.id);
+      }
+
+      toast.success('Script generated and saved');
     } catch (err: any) {
       console.error('Script generation error:', err);
       toast.error('Failed to generate script. Please try again.');
@@ -67,7 +133,6 @@ export default function ScriptBuilder() {
   };
 
   const renderMarkdown = (text: string) => {
-    // Simple markdown-like rendering
     return text.split('\n').map((line, i) => {
       if (line.startsWith('# ')) {
         return <h2 key={i} className="text-xl font-bold mt-6 mb-3 text-foreground">{line.slice(2)}</h2>;
@@ -90,7 +155,6 @@ export default function ScriptBuilder() {
       if (line.trim() === '') {
         return <div key={i} className="h-2" />;
       }
-      // Bold within text
       const parts = line.split(/(\*\*.*?\*\*)/g);
       return (
         <p key={i} className="text-muted-foreground leading-relaxed">
@@ -117,7 +181,7 @@ export default function ScriptBuilder() {
 
   return (
     <DashboardLayout>
-      <div className="max-w-4xl mx-auto space-y-6 p-4 md:p-6">
+      <div className="max-w-4xl mx-auto space-y-6 p-4 md:p-6 pb-24">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Script Builder</h1>
           <p className="text-muted-foreground mt-1">
@@ -133,14 +197,13 @@ export default function ScriptBuilder() {
                 <p className="font-medium text-foreground">Offer Diagnostic Required</p>
                 <p className="text-sm text-muted-foreground mt-1">
                   Complete and evaluate your offer in the Offer Diagnostic before generating a script.
-                  The script is built entirely from your diagnostic inputs and scores.
                 </p>
               </div>
             </CardContent>
           </Card>
         ) : (
           <>
-            {/* Summary of current diagnostic */}
+            {/* Offer Snapshot */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Current Offer Snapshot</CardTitle>
@@ -163,9 +226,46 @@ export default function ScriptBuilder() {
               </CardContent>
             </Card>
 
+            {/* Delivery Mechanism Input */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">How do you deliver this outcome?</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Textarea
+                  placeholder="In 1-2 sentences, describe the actual mechanism you use to create the promised result..."
+                  value={deliveryMechanism}
+                  onChange={(e) => setDeliveryMechanism(e.target.value)}
+                  className="min-h-[80px] resize-none"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Examples: SEO, paid ads, inbound call handling, automation, consulting, systems, AI assistants, or a custom process.
+                </p>
+                {!deliveryMechanism.trim() && (
+                  <p className="text-xs text-destructive">
+                    We need to understand how you deliver results before generating a script.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {needsRegeneration && result && (
+              <Card className="border-amber-500/30 bg-amber-500/5">
+                <CardContent className="flex items-start gap-3 pt-6">
+                  <RefreshCw className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-foreground">Offer Diagnostic Updated</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Your diagnostic inputs have changed since this script was generated. Click "Regenerate Script" to create an updated version.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <Button
               onClick={handleGenerate}
-              disabled={isGenerating}
+              disabled={isGenerating || !canGenerate}
               size="lg"
               className="w-full"
             >
@@ -175,7 +275,10 @@ export default function ScriptBuilder() {
                   Generating Script & Progression Rules...
                 </>
               ) : result ? (
-                'Regenerate Script'
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Regenerate Script
+                </>
               ) : (
                 'Generate Script'
               )}
@@ -201,7 +304,7 @@ export default function ScriptBuilder() {
                         <CardTitle className="text-base">Outbound Script</CardTitle>
                         <div className="flex gap-1.5 flex-wrap">
                           {result.isValidationMode && (
-                          <Badge variant="outline" className="text-destructive border-destructive/30 bg-destructive/5">
+                            <Badge variant="outline" className="text-destructive border-destructive/30 bg-destructive/5">
                               Validation Mode
                             </Badge>
                           )}
@@ -222,11 +325,9 @@ export default function ScriptBuilder() {
                     </CardHeader>
                     <Separator />
                     <CardContent className="pt-4">
-                      <ScrollArea className="max-h-[600px]">
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                          {renderMarkdown(result.script)}
-                        </div>
-                      </ScrollArea>
+                      <div className="prose prose-sm dark:prose-invert max-w-none">
+                        {renderMarkdown(result.script)}
+                      </div>
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -251,11 +352,9 @@ export default function ScriptBuilder() {
                       </CardHeader>
                       <Separator />
                       <CardContent className="pt-4">
-                        <ScrollArea className="max-h-[600px]">
-                          <div className="prose prose-sm dark:prose-invert max-w-none">
-                            {renderMarkdown(result.progressionRules)}
-                          </div>
-                        </ScrollArea>
+                        <div className="prose prose-sm dark:prose-invert max-w-none">
+                          {renderMarkdown(result.progressionRules)}
+                        </div>
                       </CardContent>
                     </Card>
                   )}

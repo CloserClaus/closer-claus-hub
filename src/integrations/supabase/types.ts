@@ -1789,7 +1789,10 @@ export type Database = {
           ai_recommendations: Json | null
           company_size: string | null
           created_at: string
+          delivery_mechanism: string | null
           fulfillment: string | null
+          generated_progression_rules: string | null
+          generated_script: string | null
           hybrid_retainer_tier: string | null
           icp_industry: string | null
           icp_maturity: string | null
@@ -1816,6 +1819,10 @@ export type Database = {
           recurring_price_tier: string | null
           risk_model: string | null
           scoring_segment: string | null
+          script_diagnostic_version: number | null
+          script_generated_at: string | null
+          script_is_validation_mode: boolean | null
+          script_types: Json | null
           updated_at: string
           usage_output_type: string | null
           usage_volume_tier: string | null
@@ -1828,7 +1835,10 @@ export type Database = {
           ai_recommendations?: Json | null
           company_size?: string | null
           created_at?: string
+          delivery_mechanism?: string | null
           fulfillment?: string | null
+          generated_progression_rules?: string | null
+          generated_script?: string | null
           hybrid_retainer_tier?: string | null
           icp_industry?: string | null
           icp_maturity?: string | null
@@ -1855,6 +1865,10 @@ export type Database = {
           recurring_price_tier?: string | null
           risk_model?: string | null
           scoring_segment?: string | null
+          script_diagnostic_version?: number | null
+          script_generated_at?: string | null
+          script_is_validation_mode?: boolean | null
+          script_types?: Json | null
           updated_at?: string
           usage_output_type?: string | null
           usage_volume_tier?: string | null
@@ -1867,7 +1881,10 @@ export type Database = {
           ai_recommendations?: Json | null
           company_size?: string | null
           created_at?: string
+          delivery_mechanism?: string | null
           fulfillment?: string | null
+          generated_progression_rules?: string | null
+          generated_script?: string | null
           hybrid_retainer_tier?: string | null
           icp_industry?: string | null
           icp_maturity?: string | null
@@ -1894,6 +1911,10 @@ export type Database = {
           recurring_price_tier?: string | null
           risk_model?: string | null
           scoring_segment?: string | null
+          script_diagnostic_version?: number | null
+          script_generated_at?: string | null
+          script_is_validation_mode?: boolean | null
+          script_types?: Json | null
           updated_at?: string
           usage_output_type?: string | null
           usage_volume_tier?: string | null
