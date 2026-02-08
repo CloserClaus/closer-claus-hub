@@ -25,6 +25,7 @@ import { MasterLeadsTable } from '@/components/admin/MasterLeadsTable';
 import { ReferralsTable } from '@/components/admin/ReferralsTable';
 import { PhoneNumbersTable } from '@/components/admin/PhoneNumbersTable';
 import { PurchasesSection } from '@/components/admin/PurchasesSection';
+import { OfferDiagnosticLeadsTable } from '@/components/admin/OfferDiagnosticLeadsTable';
 
 const tabTitles: Record<string, string> = {
   overview: 'Platform Overview',
@@ -49,6 +50,7 @@ const tabTitles: Record<string, string> = {
   bugs: 'Bug Reports',
   features: 'Feature Requests',
   referrals: 'Referrals',
+  diagnostic_leads: 'Diagnostic Leads',
   settings: 'Admin Controls',
 };
 
@@ -115,6 +117,8 @@ export default function AdminDashboard() {
         return <FeatureRequestsTable />;
       case 'referrals':
         return <ReferralsTable />;
+      case 'diagnostic_leads':
+        return <OfferDiagnosticLeadsTable />;
       case 'settings':
         return <AdminSettings />;
       default:

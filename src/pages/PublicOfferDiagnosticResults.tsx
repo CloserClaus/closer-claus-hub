@@ -140,7 +140,7 @@ export default function PublicOfferDiagnosticResults() {
     fetchRecommendations();
   }, [state?.formData]);
 
-  // Store lead data
+  // Store lead data and notify admin
   useEffect(() => {
     if (!state) return;
 
@@ -156,6 +156,22 @@ export default function PublicOfferDiagnosticResults() {
           latent_scores: state.latentResult.latentScores as any,
           form_data: state.formData as any,
         } as any);
+
+        // Notify platform admin
+        const ADMIN_USER_ID = 'ff0792cb-1296-40c2-94a4-e6b3e5af970f';
+        await supabase.from('notifications').insert({
+          user_id: ADMIN_USER_ID,
+          type: 'diagnostic_lead',
+          title: 'New Offer Diagnostic Lead',
+          message: `${state.firstName || 'Someone'} (${state.email}) completed the Offer Diagnostic. Score: ${state.latentResult.alignmentScore}/100 (${state.latentResult.readinessLabel}).`,
+          data: {
+            email: state.email,
+            first_name: state.firstName,
+            alignment_score: state.latentResult.alignmentScore,
+            readiness_label: state.latentResult.readinessLabel,
+            primary_bottleneck: state.latentResult.latentBottleneckKey,
+          },
+        });
       } catch (error) {
         console.error('Failed to store lead data:', error);
       }
