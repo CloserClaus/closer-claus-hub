@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, Users, Phone, MessageSquare, GraduationCap, FileText, DollarSign, Settings, Shield, Building2, LogOut, ChevronDown, CreditCard, AlertTriangle, Tag, UserCircle, Handshake, FileSignature, Bug, Lightbulb, Wallet, Search, Database, ClipboardCheck, Gift, Target } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, Phone, MessageSquare, GraduationCap, FileText, DollarSign, Settings, Shield, Building2, LogOut, ChevronDown, CreditCard, AlertTriangle, Tag, UserCircle, Handshake, FileSignature, Bug, Lightbulb, Wallet, Search, Database, ClipboardCheck, Gift, Target, ScrollText } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
 import { WorkspaceSwitcher } from '@/components/layout/WorkspaceSwitcher';
@@ -120,6 +120,10 @@ const agencyOwnerNav: NavItem[] = [{
   title: 'Offer Diagnostic',
   url: '/app/offer-diagnostic',
   icon: ClipboardCheck
+}, {
+  title: 'Script Builder',
+  url: '/app/script-builder',
+  icon: ScrollText
 }, {
   title: 'Jobs',
   url: '/jobs',
