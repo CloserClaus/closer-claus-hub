@@ -10,9 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { FileText, BookOpen, Loader2, AlertTriangle, Copy, Check, RefreshCw } from 'lucide-react';
+import { FileText, BookOpen, Loader2, AlertTriangle, Copy, Check, RefreshCw, Shield, ShieldAlert, ShieldCheck } from 'lucide-react';
 
 interface ScriptResult {
   script: string;
@@ -25,7 +24,32 @@ interface ScriptResult {
     cta: string;
   };
   isValidationMode: boolean;
+  confidenceBand: 'low' | 'medium' | 'high';
 }
+
+const confidenceBandConfig = {
+  low: {
+    label: 'Low Confidence',
+    description: 'Follow the script closely. Minimal improvisation.',
+    icon: ShieldAlert,
+    variant: 'destructive' as const,
+    bgClass: 'bg-destructive/5 border-destructive/20',
+  },
+  medium: {
+    label: 'Medium Confidence',
+    description: 'Use as a strong guide. Paraphrase while preserving intent.',
+    icon: Shield,
+    variant: 'secondary' as const,
+    bgClass: 'bg-amber-500/5 border-amber-500/20',
+  },
+  high: {
+    label: 'High Confidence',
+    description: 'Use as a reference framework. Customize freely.',
+    icon: ShieldCheck,
+    variant: 'default' as const,
+    bgClass: 'bg-emerald-500/5 border-emerald-500/20',
+  },
+};
 
 export default function ScriptBuilder() {
   const { savedState, isLoading: isLoadingState } = useOfferDiagnosticState();
@@ -58,13 +82,21 @@ export default function ScriptBuilder() {
           setDeliveryMechanism((data as any).delivery_mechanism);
         }
         if ((data as any).generated_script) {
+          // Derive confidence band from saved state
+          const score = savedState?.latent_alignment_score || 0;
+          const proof = savedState?.proof_level || 'none';
+          const maturity = savedState?.icp_maturity || 'early';
+          let band: 'low' | 'medium' | 'high' = 'medium';
+          if (score < 40 || ['none', 'weak'].includes(proof) || maturity === 'early') band = 'low';
+          else if (score >= 70 && ['strong', 'category_killer'].includes(proof) && ['scaling', 'mature', 'enterprise'].includes(maturity)) band = 'high';
+
           setResult({
             script: (data as any).generated_script,
             progressionRules: (data as any).generated_progression_rules || null,
             types: (data as any).script_types || { opener: '', bridge: '', discovery: '', frame: '', cta: '' },
             isValidationMode: (data as any).script_is_validation_mode || false,
+            confidenceBand: band,
           });
-          // Check if diagnostic changed since script was generated
           const scriptVersion = (data as any).script_diagnostic_version;
           if (scriptVersion && savedState?.version && scriptVersion < savedState.version) {
             setNeedsRegeneration(true);
@@ -134,38 +166,86 @@ export default function ScriptBuilder() {
 
   const renderMarkdown = (text: string) => {
     return text.split('\n').map((line, i) => {
-      if (line.startsWith('# ')) {
-        return <h2 key={i} className="text-xl font-bold mt-6 mb-3 text-foreground">{line.slice(2)}</h2>;
-      }
+      // Section headings
       if (line.startsWith('## ')) {
-        return <h3 key={i} className="text-lg font-semibold mt-5 mb-2 text-foreground">{line.slice(3)}</h3>;
+        return <h3 key={i} className="text-lg font-semibold mt-6 mb-3 text-foreground border-b border-border pb-1">{line.slice(3)}</h3>;
       }
       if (line.startsWith('### ')) {
         return <h4 key={i} className="text-base font-semibold mt-4 mb-2 text-foreground">{line.slice(4)}</h4>;
       }
+      // Rep lines — highlight distinctly
+      if (line.startsWith('**Rep:**') || line.startsWith('**Rep: **')) {
+        const content = line.replace(/^\*\*Rep:\s?\*\*\s*/, '');
+        return (
+          <div key={i} className="flex items-start gap-2 mt-3 mb-1 bg-primary/5 border-l-2 border-primary rounded-r-md px-3 py-2">
+            <span className="text-xs font-bold text-primary uppercase shrink-0 mt-0.5">Rep</span>
+            <span className="text-foreground font-medium">{renderInlineFormatting(content)}</span>
+          </div>
+        );
+      }
+      // Prospect lines
+      if (line.startsWith('**Prospect:**') || line.startsWith('**Prospect: **')) {
+        const content = line.replace(/^\*\*Prospect:\s?\*\*\s*/, '');
+        return (
+          <div key={i} className="flex items-start gap-2 mt-1 mb-1 bg-muted/50 border-l-2 border-muted-foreground/30 rounded-r-md px-3 py-2">
+            <span className="text-xs font-bold text-muted-foreground uppercase shrink-0 mt-0.5">Prospect</span>
+            <span className="text-muted-foreground italic">{renderInlineFormatting(content)}</span>
+          </div>
+        );
+      }
+      // Pause/pacing cues — special styling
+      if (line.trim().startsWith('*(') && line.trim().endsWith(')*')) {
+        const content = line.trim().slice(2, -2);
+        return (
+          <div key={i} className="text-xs text-amber-600 dark:text-amber-400 italic ml-4 my-1 flex items-center gap-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+            {content}
+          </div>
+        );
+      }
+      // Intent/Expected response cues
+      if (line.trim().startsWith('*Intent:') || line.trim().startsWith('*Expected response:')) {
+        const content = line.trim().slice(1, -1); // remove outer *
+        return (
+          <p key={i} className="text-xs text-muted-foreground/70 italic ml-4 my-0.5">{content}</p>
+        );
+      }
+      // Bold-only lines
       if (line.startsWith('**') && line.endsWith('**')) {
         return <p key={i} className="font-semibold text-foreground mt-3 mb-1">{line.slice(2, -2)}</p>;
       }
-      if (line.startsWith('- ')) {
-        return <li key={i} className="ml-4 text-muted-foreground list-disc">{line.slice(2)}</li>;
-      }
+      // Blockquotes (anti-robotic notice)
       if (line.startsWith('> ')) {
-        return <blockquote key={i} className="border-l-2 border-primary/30 pl-4 italic text-muted-foreground my-2">{line.slice(2)}</blockquote>;
+        return (
+          <blockquote key={i} className="border-l-2 border-amber-500/50 bg-amber-500/5 pl-4 py-2 italic text-muted-foreground my-3 rounded-r-md text-sm">
+            {line.slice(2)}
+          </blockquote>
+        );
       }
+      // List items
+      if (line.startsWith('- ')) {
+        return <li key={i} className="ml-4 text-muted-foreground list-disc text-sm leading-relaxed">{renderInlineFormatting(line.slice(2))}</li>;
+      }
+      // Empty lines
       if (line.trim() === '') {
         return <div key={i} className="h-2" />;
       }
-      const parts = line.split(/(\*\*.*?\*\*)/g);
+      // Default paragraph with inline formatting
       return (
-        <p key={i} className="text-muted-foreground leading-relaxed">
-          {parts.map((part, j) => {
-            if (part.startsWith('**') && part.endsWith('**')) {
-              return <strong key={j} className="text-foreground">{part.slice(2, -2)}</strong>;
-            }
-            return part;
-          })}
+        <p key={i} className="text-muted-foreground leading-relaxed text-sm">
+          {renderInlineFormatting(line)}
         </p>
       );
+    });
+  };
+
+  const renderInlineFormatting = (text: string) => {
+    const parts = text.split(/(\*\*.*?\*\*)/g);
+    return parts.map((part, j) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={j} className="text-foreground">{part.slice(2, -2)}</strong>;
+      }
+      return part;
     });
   };
 
@@ -179,13 +259,15 @@ export default function ScriptBuilder() {
     );
   }
 
+  const bandConfig = result ? confidenceBandConfig[result.confidenceBand] : null;
+
   return (
     <DashboardLayout>
       <div className="max-w-4xl mx-auto space-y-6 p-4 md:p-6 pb-24">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Script Builder</h1>
           <p className="text-muted-foreground mt-1">
-            Generate a structured outbound script from your Offer Diagnostic results.
+            Generate a structured, turn-based outbound script from your Offer Diagnostic results.
           </p>
         </div>
 
@@ -243,7 +325,7 @@ export default function ScriptBuilder() {
                 </p>
                 {!deliveryMechanism.trim() && (
                   <p className="text-xs text-destructive">
-                    We need to understand how you deliver results before generating a script.
+                    Please describe how you deliver this outcome so the script matches your real service.
                   </p>
                 )}
               </CardContent>
@@ -285,81 +367,99 @@ export default function ScriptBuilder() {
             </Button>
 
             {result && (
-              <Tabs defaultValue="script" className="w-full">
-                <TabsList className="w-full">
-                  <TabsTrigger value="script" className="flex-1 gap-2">
-                    <FileText className="h-4 w-4" />
-                    Script
-                  </TabsTrigger>
-                  <TabsTrigger value="progression" className="flex-1 gap-2" disabled={!result.progressionRules}>
-                    <BookOpen className="h-4 w-4" />
-                    Progression Rules
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="script">
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-3">
-                      <div className="space-y-1">
-                        <CardTitle className="text-base">Outbound Script</CardTitle>
-                        <div className="flex gap-1.5 flex-wrap">
-                          {result.isValidationMode && (
-                            <Badge variant="outline" className="text-destructive border-destructive/30 bg-destructive/5">
-                              Validation Mode
-                            </Badge>
-                          )}
-                          <Badge variant="outline" className="text-xs">Opener: {result.types.opener}</Badge>
-                          <Badge variant="outline" className="text-xs">Bridge: {result.types.bridge}</Badge>
-                          <Badge variant="outline" className="text-xs">Discovery: {result.types.discovery}</Badge>
-                          <Badge variant="outline" className="text-xs">Frame: {result.types.frame}</Badge>
-                          <Badge variant="outline" className="text-xs">CTA: {result.types.cta}</Badge>
+              <>
+                {/* Confidence Band Display */}
+                {bandConfig && (
+                  <Card className={bandConfig.bgClass}>
+                    <CardContent className="flex items-start gap-3 pt-6">
+                      <bandConfig.icon className="h-5 w-5 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-foreground">{bandConfig.label}</p>
+                          <Badge variant={bandConfig.variant} className="text-xs">{result.confidenceBand.toUpperCase()}</Badge>
                         </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToClipboard(result.script, 'script')}
-                      >
-                        {copiedSection === 'script' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                      </Button>
-                    </CardHeader>
-                    <Separator />
-                    <CardContent className="pt-4">
-                      <div className="prose prose-sm dark:prose-invert max-w-none">
-                        {renderMarkdown(result.script)}
+                        <p className="text-sm text-muted-foreground mt-1">{bandConfig.description}</p>
                       </div>
                     </CardContent>
                   </Card>
-                </TabsContent>
+                )}
 
-                <TabsContent value="progression">
-                  {result.progressionRules && (
+                <Tabs defaultValue="script" className="w-full">
+                  <TabsList className="w-full">
+                    <TabsTrigger value="script" className="flex-1 gap-2">
+                      <FileText className="h-4 w-4" />
+                      Script
+                    </TabsTrigger>
+                    <TabsTrigger value="progression" className="flex-1 gap-2" disabled={!result.progressionRules}>
+                      <BookOpen className="h-4 w-4" />
+                      Progression Rules
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="script">
                     <Card>
                       <CardHeader className="flex flex-row items-center justify-between pb-3">
                         <div className="space-y-1">
-                          <CardTitle className="text-base">Progression Rules</CardTitle>
-                          <p className="text-xs text-muted-foreground">
-                            How to navigate the conversation based on prospect responses
-                          </p>
+                          <CardTitle className="text-base">Outbound Script</CardTitle>
+                          <div className="flex gap-1.5 flex-wrap">
+                            {result.isValidationMode && (
+                              <Badge variant="outline" className="text-destructive border-destructive/30 bg-destructive/5">
+                                Validation Mode
+                              </Badge>
+                            )}
+                            <Badge variant="outline" className="text-xs">Opener: {result.types.opener}</Badge>
+                            <Badge variant="outline" className="text-xs">Bridge: {result.types.bridge}</Badge>
+                            <Badge variant="outline" className="text-xs">Discovery: {result.types.discovery}</Badge>
+                            <Badge variant="outline" className="text-xs">Frame: {result.types.frame}</Badge>
+                            <Badge variant="outline" className="text-xs">CTA: {result.types.cta}</Badge>
+                          </div>
                         </div>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => copyToClipboard(result.progressionRules!, 'progression')}
+                          onClick={() => copyToClipboard(result.script, 'script')}
                         >
-                          {copiedSection === 'progression' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                          {copiedSection === 'script' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                         </Button>
                       </CardHeader>
                       <Separator />
                       <CardContent className="pt-4">
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                          {renderMarkdown(result.progressionRules)}
+                        <div className="max-w-none">
+                          {renderMarkdown(result.script)}
                         </div>
                       </CardContent>
                     </Card>
-                  )}
-                </TabsContent>
-              </Tabs>
+                  </TabsContent>
+
+                  <TabsContent value="progression">
+                    {result.progressionRules && (
+                      <Card>
+                        <CardHeader className="flex flex-row items-center justify-between pb-3">
+                          <div className="space-y-1">
+                            <CardTitle className="text-base">Progression Rules</CardTitle>
+                            <p className="text-xs text-muted-foreground">
+                              How to navigate the conversation based on prospect responses
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(result.progressionRules!, 'progression')}
+                          >
+                            {copiedSection === 'progression' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                          </Button>
+                        </CardHeader>
+                        <Separator />
+                        <CardContent className="pt-4">
+                          <div className="max-w-none">
+                            {renderMarkdown(result.progressionRules)}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </>
             )}
           </>
         )}
