@@ -7,7 +7,6 @@ import { Separator } from '@/components/ui/separator';
 import { 
   AlertTriangle, 
   CheckCircle2, 
-  Clock, 
   Lock, 
   Unlock,
   ArrowRight,
@@ -22,6 +21,7 @@ import { LATENT_SCORE_LABELS } from '@/lib/offerDiagnostic/latentScoringEngine';
 import { evaluateOfferV2 } from '@/lib/offerDiagnostic/evaluateOfferV2';
 import { supabase } from '@/integrations/supabase/client';
 import { CATEGORY_LABELS } from '@/lib/offerDiagnostic/types';
+import { ProgressLoadingBar } from '@/components/ui/progress-loading-bar';
 
 interface LocationState {
   formData: DiagnosticFormData;
@@ -42,7 +42,8 @@ interface LocationState {
   source: string;
 }
 
-const UNLOCK_TIME_SECONDS = 150; // 2.5 minutes
+const SCORE_LOADING_MS = 10000; // ~10 seconds for score
+const RECS_LOADING_MS = 105000; // ~105 seconds for recommendations
 
 function getReadinessLabelColor(label: string) {
   switch (label) {
@@ -90,10 +91,15 @@ export default function PublicOfferDiagnosticResults() {
   const navigate = useNavigate();
   const state = location.state as LocationState | null;
 
-  const [timeRemaining, setTimeRemaining] = useState(UNLOCK_TIME_SECONDS);
-  const [isUnlocked, setIsUnlocked] = useState(false);
+  // Phase 1: Score reveal (loading bar ~10s)
+  const [scoreRevealed, setScoreRevealed] = useState(false);
+  const [scoreLoading, setScoreLoading] = useState(true);
+
+  // Phase 2: Recommendations (loading bar ~105s, fixed delay)
+  const [recsRevealed, setRecsRevealed] = useState(false);
+  const [recsTimerDone, setRecsTimerDone] = useState(false);
   const [recommendations, setRecommendations] = useState<StructuredRecommendation[]>([]);
-  const [isLoadingRecs, setIsLoadingRecs] = useState(true);
+  const [recsDataReady, setRecsDataReady] = useState(false);
 
   // Redirect if no state
   useEffect(() => {
@@ -102,25 +108,20 @@ export default function PublicOfferDiagnosticResults() {
     }
   }, [state, navigate]);
 
-  // Countdown timer
+  // Start score loading bar on mount
   useEffect(() => {
-    if (isUnlocked) return;
+    if (!state) return;
+    setScoreLoading(true);
+  }, [state]);
 
-    const interval = setInterval(() => {
-      setTimeRemaining(prev => {
-        if (prev <= 1) {
-          setIsUnlocked(true);
-          clearInterval(interval);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+  // When both timer and data are ready, reveal recommendations
+  useEffect(() => {
+    if (recsTimerDone && recsDataReady) {
+      setRecsRevealed(true);
+    }
+  }, [recsTimerDone, recsDataReady]);
 
-    return () => clearInterval(interval);
-  }, [isUnlocked]);
-
-  // Fetch recommendations in background
+  // Fetch recommendations in background immediately
   useEffect(() => {
     if (!state?.formData) return;
 
@@ -133,7 +134,7 @@ export default function PublicOfferDiagnosticResults() {
       } catch (error) {
         console.error('Failed to fetch recommendations:', error);
       } finally {
-        setIsLoadingRecs(false);
+        setRecsDataReady(true);
       }
     };
 
@@ -157,7 +158,6 @@ export default function PublicOfferDiagnosticResults() {
           form_data: state.formData as any,
         } as any);
 
-        // Notify platform admin
         const ADMIN_USER_ID = 'ff0792cb-1296-40c2-94a4-e6b3e5af970f';
         await supabase.from('notifications').insert({
           user_id: ADMIN_USER_ID,
@@ -185,11 +185,6 @@ export default function PublicOfferDiagnosticResults() {
   }
 
   const { latentResult, firstName } = state;
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -211,230 +206,245 @@ export default function PublicOfferDiagnosticResults() {
           </p>
         )}
 
-        {/* Score Display */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-col md:flex-row items-center gap-8">
-              {/* Score Circle */}
-              <div className="flex flex-col items-center gap-3">
-                <div className={`flex flex-col items-center justify-center w-32 h-32 rounded-full border-4 ${getReadinessLabelBg(latentResult.readinessLabel)}`}>
-                  <span className={`text-4xl font-bold ${getReadinessLabelColor(latentResult.readinessLabel)}`}>
-                    {latentResult.alignmentScore}
-                  </span>
-                  <span className="text-muted-foreground text-sm">/ 100</span>
-                </div>
-                <Badge variant="outline" className={`${getReadinessLabelBg(latentResult.readinessLabel)} ${getReadinessLabelColor(latentResult.readinessLabel)} border-current`}>
-                  {latentResult.readinessLabel}
-                </Badge>
-              </div>
+        {/* Phase 1: Score Loading → Score Display */}
+        {!scoreRevealed ? (
+          <Card>
+            <CardContent className="pt-8 pb-8">
+              <ProgressLoadingBar
+                isActive={scoreLoading}
+                durationMs={SCORE_LOADING_MS}
+                messages={[
+                  'Evaluating offer structure',
+                  'Checking economic headroom',
+                  'Analyzing risk alignment',
+                ]}
+                messageIntervalMs={3000}
+                onComplete={() => {
+                  setScoreRevealed(true);
+                  setScoreLoading(false);
+                }}
+              />
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            {/* Score Display */}
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex flex-col md:flex-row items-center gap-8">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className={`flex flex-col items-center justify-center w-32 h-32 rounded-full border-4 ${getReadinessLabelBg(latentResult.readinessLabel)}`}>
+                      <span className={`text-4xl font-bold ${getReadinessLabelColor(latentResult.readinessLabel)}`}>
+                        {latentResult.alignmentScore}
+                      </span>
+                      <span className="text-muted-foreground text-sm">/ 100</span>
+                    </div>
+                    <Badge variant="outline" className={`${getReadinessLabelBg(latentResult.readinessLabel)} ${getReadinessLabelColor(latentResult.readinessLabel)} border-current`}>
+                      {latentResult.readinessLabel}
+                    </Badge>
+                  </div>
 
-              {/* Interpretation */}
-              <div className="flex-1 space-y-4 text-center md:text-left">
-                <div>
-                  <h2 className="text-xl font-semibold mb-2 flex items-center gap-2 justify-center md:justify-start">
-                    <Gauge className="h-5 w-5 text-primary" />
-                    Alignment Score
-                  </h2>
-                  <p className="text-lg text-muted-foreground">
-                    {getScoreInterpretation(latentResult.alignmentScore)}
+                  <div className="flex-1 space-y-4 text-center md:text-left">
+                    <div>
+                      <h2 className="text-xl font-semibold mb-2 flex items-center gap-2 justify-center md:justify-start">
+                        <Gauge className="h-5 w-5 text-primary" />
+                        Alignment Score
+                      </h2>
+                      <p className="text-lg text-muted-foreground">
+                        {getScoreInterpretation(latentResult.alignmentScore)}
+                      </p>
+                    </div>
+
+                    <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg ${
+                      latentResult.outboundReady 
+                        ? 'bg-green-500/10 text-green-600' 
+                        : 'bg-destructive/10 text-destructive'
+                    }`}>
+                      {latentResult.outboundReady ? (
+                        <>
+                          <CheckCircle2 className="h-5 w-5" />
+                          <span className="font-medium">Outbound Ready</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="h-5 w-5" />
+                          <span className="font-medium">Outbound Blocked</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Primary Bottleneck */}
+            <Card className="border-l-4 border-l-destructive">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Target className="h-5 w-5 text-destructive" />
+                  Primary Constraint Limiting Outbound Performance
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <Badge variant="outline" className="text-base px-3 py-1">
+                      {latentResult.bottleneckLabel}
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      Score: {latentResult.latentScores[latentResult.latentBottleneckKey]}/20
+                    </span>
+                    {latentResult.primaryBottleneck.severity === 'blocking' && (
+                      <Badge variant="destructive">Blocking</Badge>
+                    )}
+                  </div>
+                  <p className="text-muted-foreground">
+                    {latentResult.primaryBottleneck.explanation}
                   </p>
                 </div>
+              </CardContent>
+            </Card>
 
-                {/* Outbound Status */}
-                <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg ${
-                  latentResult.outboundReady 
-                    ? 'bg-green-500/10 text-green-600' 
-                    : 'bg-destructive/10 text-destructive'
-                }`}>
-                  {latentResult.outboundReady ? (
-                    <>
-                      <CheckCircle2 className="h-5 w-5" />
-                      <span className="font-medium">Outbound Ready</span>
-                    </>
+            <Separator />
+
+            {/* VSL Section */}
+            <Card className="bg-muted/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Play className="h-5 w-5 text-primary" />
+                  How to Turn a Good Offer into a Scalable Outbound System
+                </CardTitle>
+                <CardDescription>
+                  This explains why offer quality determines whether outbound scales — before scripts, tools, or reps.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="aspect-video bg-muted rounded-lg flex items-center justify-center border border-dashed">
+                  <div className="text-center space-y-2">
+                    <Play className="h-12 w-12 mx-auto text-muted-foreground" />
+                    <p className="text-muted-foreground">Video coming soon</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Phase 2: Recommendations Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  {recsRevealed ? (
+                    <Unlock className="h-5 w-5 text-primary" />
                   ) : (
-                    <>
-                      <AlertTriangle className="h-5 w-5" />
-                      <span className="font-medium">Outbound Blocked</span>
-                    </>
+                    <Lock className="h-5 w-5 text-muted-foreground" />
                   )}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Primary Bottleneck */}
-        <Card className="border-l-4 border-l-destructive">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Target className="h-5 w-5 text-destructive" />
-              Primary Constraint Limiting Outbound Performance
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <Badge variant="outline" className="text-base px-3 py-1">
-                  {latentResult.bottleneckLabel}
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  Score: {latentResult.latentScores[latentResult.latentBottleneckKey]}/20
-                </span>
-                {latentResult.primaryBottleneck.severity === 'blocking' && (
-                  <Badge variant="destructive">Blocking</Badge>
-                )}
-              </div>
-              <p className="text-muted-foreground">
-                {latentResult.primaryBottleneck.explanation}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Separator />
-
-        {/* VSL Section */}
-        <Card className="bg-muted/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Play className="h-5 w-5 text-primary" />
-              How to Turn a Good Offer into a Scalable Outbound System
-            </CardTitle>
-            <CardDescription>
-              This explains why offer quality determines whether outbound scales — before scripts, tools, or reps.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="aspect-video bg-muted rounded-lg flex items-center justify-center border border-dashed">
-              <div className="text-center space-y-2">
-                <Play className="h-12 w-12 mx-auto text-muted-foreground" />
-                <p className="text-muted-foreground">Video coming soon</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Recommendations Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              {isUnlocked ? (
-                <Unlock className="h-5 w-5 text-primary" />
-              ) : (
-                <Lock className="h-5 w-5 text-muted-foreground" />
-              )}
-              What to Fix to Improve Outbound Performance
-            </CardTitle>
-            {!isUnlocked && (
-              <CardDescription className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                We're generating a detailed outbound-specific breakdown for your offer.
-              </CardDescription>
-            )}
-          </CardHeader>
-          <CardContent>
-            {!isUnlocked ? (
-              <div className="relative">
-                {/* Blurred preview */}
-                <div className="filter blur-md pointer-events-none select-none opacity-50">
-                  <div className="space-y-4">
-                    <div className="h-24 bg-muted rounded-lg" />
-                    <div className="h-24 bg-muted rounded-lg" />
-                  </div>
-                </div>
-
-                {/* Countdown overlay */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center space-y-4 bg-background/80 backdrop-blur-sm rounded-lg p-8">
-                    <div className="text-4xl font-bold text-primary">
-                      {formatTime(timeRemaining)}
+                  What to Fix to Improve Outbound Performance
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!recsRevealed ? (
+                  <div className="relative">
+                    {/* Blurred preview */}
+                    <div className="filter blur-md pointer-events-none select-none opacity-50">
+                      <div className="space-y-4">
+                        <div className="h-24 bg-muted rounded-lg" />
+                        <div className="h-24 bg-muted rounded-lg" />
+                      </div>
                     </div>
-                    <p className="text-muted-foreground">
-                      Generating your personalized recommendations...
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Watch the video above while you wait!
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : isLoadingRecs ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center space-y-3">
-                  <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full mx-auto" />
-                  <p className="text-muted-foreground">Loading recommendations...</p>
-                </div>
-              </div>
-            ) : recommendations.length === 0 ? (
-              <div className="flex items-center gap-3 text-primary p-4 bg-primary/10 rounded-lg">
-                <CheckCircle2 className="h-6 w-6" />
-                <div>
-                  <div className="font-semibold">Well Optimized</div>
-                  <div className="text-sm text-muted-foreground">No major issues detected. Your offer looks solid!</div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {recommendations.map((rec, index) => (
-                  <Card key={rec.id} className="border-l-4 border-l-primary">
-                    <CardContent className="pt-4 space-y-4">
-                      <div className="flex items-start gap-3">
-                        <span className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-sm font-semibold shrink-0">
-                          {index + 1}
-                        </span>
-                        <div className="space-y-2">
-                          <h4 className="font-semibold">{rec.headline}</h4>
-                          <Badge variant="outline" className={getCategoryColor(rec.category)}>
-                            {CATEGORY_LABELS[rec.category]}
-                          </Badge>
-                        </div>
-                      </div>
-                      
-                      <p className="text-sm text-muted-foreground">
-                        {rec.plainExplanation}
-                      </p>
-                      
-                      <div className="space-y-2">
-                        <div className="text-sm font-medium">What to do:</div>
-                        <ul className="space-y-1.5">
-                          {rec.actionSteps.map((step, stepIndex) => (
-                            <li key={stepIndex} className="flex items-start gap-2 text-sm">
-                              <ArrowRight className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                              <span>{step}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                      
-                      <div className="flex items-start gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-                        <Target className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-                        <div>
-                          <div className="text-xs font-medium text-green-600 mb-0.5">Goal</div>
-                          <span className="text-sm text-green-700">{rec.desiredState}</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
-        {/* Soft CTA */}
-        <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-          <CardContent className="pt-6 text-center space-y-4">
-            <p className="text-lg">
-              Want this executed instead of DIY?
-            </p>
-            <p className="text-muted-foreground">
-              Closer Claus exists for that.
-            </p>
-            <Button asChild variant="outline">
-              <Link to="/">Learn More</Link>
-            </Button>
-          </CardContent>
-        </Card>
+                    {/* Loading bar overlay — no countdown, no time estimate */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-full max-w-sm bg-background/80 backdrop-blur-sm rounded-lg p-8 space-y-4">
+                        <ProgressLoadingBar
+                          isActive={!recsRevealed}
+                          durationMs={RECS_LOADING_MS}
+                          messages={[
+                            'Generating recommendations',
+                            'Synthesizing improvement paths',
+                            'Mapping next steps',
+                            'Analyzing structural adjustments',
+                            'Evaluating optimization paths',
+                          ]}
+                          messageIntervalMs={8000}
+                          onComplete={() => setRecsTimerDone(true)}
+                        />
+                        <p className="text-sm text-muted-foreground text-center">
+                          Watch the video above while you wait!
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : recommendations.length === 0 ? (
+                  <div className="flex items-center gap-3 text-primary p-4 bg-primary/10 rounded-lg">
+                    <CheckCircle2 className="h-6 w-6" />
+                    <div>
+                      <div className="font-semibold">Well Optimized</div>
+                      <div className="text-sm text-muted-foreground">No major issues detected. Your offer looks solid!</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {recommendations.map((rec, index) => (
+                      <Card key={rec.id} className="border-l-4 border-l-primary">
+                        <CardContent className="pt-4 space-y-4">
+                          <div className="flex items-start gap-3">
+                            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-sm font-semibold shrink-0">
+                              {index + 1}
+                            </span>
+                            <div className="space-y-2">
+                              <h4 className="font-semibold">{rec.headline}</h4>
+                              <Badge variant="outline" className={getCategoryColor(rec.category)}>
+                                {CATEGORY_LABELS[rec.category]}
+                              </Badge>
+                            </div>
+                          </div>
+                          
+                          <p className="text-sm text-muted-foreground">
+                            {rec.plainExplanation}
+                          </p>
+                          
+                          <div className="space-y-2">
+                            <div className="text-sm font-medium">What to do:</div>
+                            <ul className="space-y-1.5">
+                              {rec.actionSteps.map((step, stepIndex) => (
+                                <li key={stepIndex} className="flex items-start gap-2 text-sm">
+                                  <ArrowRight className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                                  <span>{step}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          
+                          <div className="flex items-start gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                            <Target className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                            <div>
+                              <div className="text-xs font-medium text-green-600 mb-0.5">Goal</div>
+                              <span className="text-sm text-green-700">{rec.desiredState}</span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Soft CTA */}
+            <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+              <CardContent className="pt-6 text-center space-y-4">
+                <p className="text-lg">
+                  Want this executed instead of DIY?
+                </p>
+                <p className="text-muted-foreground">
+                  Closer Claus exists for that.
+                </p>
+                <Button asChild variant="outline">
+                  <Link to="/">Learn More</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </main>
     </div>
   );
