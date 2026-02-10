@@ -59,6 +59,8 @@ interface Lead {
   last_contacted_at: string | null;
   notes: string | null;
   readiness_segment: string | null;
+  latest_tags?: string[];
+  latest_disposition?: string | null;
 }
 
 interface CallLog {
@@ -253,7 +255,34 @@ export default function Dialer() {
         return;
       }
 
-      setLeads(data || []);
+      // Fetch latest call tags/disposition for each lead
+      const leadIds = (data || []).map(l => l.id);
+      let tagsByLead: Record<string, { tags: string[] | null; disposition: string | null }> = {};
+      
+      if (leadIds.length > 0) {
+        const { data: callData } = await supabase
+          .from('call_logs')
+          .select('lead_id, tags, disposition')
+          .in('lead_id', leadIds)
+          .not('tags', 'is', null)
+          .order('created_at', { ascending: false });
+
+        if (callData) {
+          for (const call of callData) {
+            if (call.lead_id && !tagsByLead[call.lead_id]) {
+              tagsByLead[call.lead_id] = { tags: call.tags, disposition: call.disposition };
+            }
+          }
+        }
+      }
+
+      const enrichedLeads = (data || []).map(lead => ({
+        ...lead,
+        latest_tags: tagsByLead[lead.id]?.tags || [],
+        latest_disposition: tagsByLead[lead.id]?.disposition || null,
+      }));
+
+      setLeads(enrichedLeads);
     };
 
     fetchLeads();
@@ -918,7 +947,22 @@ export default function Dialer() {
                                             {lead.readiness_segment}
                                           </Badge>
                                         )}
+                                        {lead.latest_disposition && (
+                                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">
+                                            {lead.latest_disposition.replace('_', ' ')}
+                                          </Badge>
+                                        )}
                                       </div>
+                                      {lead.latest_tags && lead.latest_tags.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-1">
+                                          {lead.latest_tags.map((tag) => (
+                                            <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0 bg-accent/50">
+                                              <Tag className="h-2 w-2 mr-0.5" />
+                                              {tag}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      )}
                                       {lead.company && (
                                         <p className="text-sm text-muted-foreground">{lead.company}</p>
                                       )}
