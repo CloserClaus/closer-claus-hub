@@ -133,25 +133,45 @@ Use ## headings for each beat. Under each beat, output:
 - Must be phrased as a choice between continuing briefly or stopping
 - Must NOT ask "Is this a good time?"
 
-## 4. First Question
-- Only ONE question
-- Question must feel safe to answer
-- Must not imply the prospect is doing something wrong
-- Must reveal relevance, not pain
-- Must allow the prospect to talk within 10 seconds
+## 4. Relevance Anchor (Read Verbatim)
+- This section sits BETWEEN the Permission Check and the first discovery question.
+- Purpose: link the prospect's likely current behavior to a hidden cost or missed outcome. Make them pause and mentally check if this applies to them.
+- It must be 1–2 sentences MAX.
+- It must be inferred from the Offer Diagnostic context and ICP — NOT generic.
+- It must reference a pattern ("what we usually see with [ICP type] at this stage") rather than a personal claim about them.
+- It must NOT accuse, exaggerate, or threaten.
+- It must end with a soft confirmation question that CANNOT be answered with a clean "no" without thought.
+- Example pattern (do NOT copy verbatim): "What we usually see with [ICP] at this stage is [common behavior], which quietly leads to [non-obvious cost]. I'm not sure if that's true for you yet."
+- This REPLACES any generic bridge or filler explanation.
 
-## 5. Directional Forks
-- Generate 2–3 possible rep follow-ups based on likely responses to the First Question
-- These are optional paths, not mandatory steps
-- Keep language simple and flexible
-- Each fork is one line max
+## 5. Test Question 1
+- Only ONE question that directly tests whether the Relevance Anchor is true for this prospect.
+- Must feel safe to answer.
+- Must not imply the prospect is doing something wrong.
+- Must allow the prospect to talk within 10 seconds.
+- Include 2–3 "If → then" branches based on likely responses.
 
-## 6. Soft Exit or Next Step
-- One line that either:
-  a) asks for a meeting (low-commitment)
-  b) suggests a follow-up
-  c) exits cleanly without friction
-- Must feel like a logical continuation, not a pitch
+## 6. Test Question 2 (optional)
+- Only include if it adds value. Max ONE additional question.
+- Must build on what was revealed by Test Question 1.
+- Must not stack or repeat.
+- Include 1–2 "If → then" branches.
+- If this question is not needed, skip this section entirely.
+
+## 7. Earned Next Step (Read Verbatim)
+- This is NOT a generic meeting ask. It is an "Earned Decision Frame."
+- Structure (all 3 parts mandatory):
+  1. **Reflection** (1 sentence): Reflect back something the prospect just confirmed. Start with "Based on what you said about [confirmed issue]…"
+  2. **Reason** (1 sentence): Connect that to a specific outcome or leverage point. "That's usually where teams see [specific outcome]."
+  3. **Choice** (1 question): Offer two valid paths — continue or park it. Example: "Does it make more sense to look at how this would work for your setup, or should we leave it here for now?"
+- The CTA must reference at least one confirmed insight from the Relevance Anchor or Test Questions.
+- Must NOT ask for a "meeting" or "demo" directly.
+- Must NOT use hype, urgency, or scarcity.
+- Must NOT re-explain the offer.
+- Branching:
+  - If they choose to continue → "We can walk through this in 10 minutes — would later today or tomorrow work better?"
+  - If they choose to park it → exit politely, no resistance, no reframing.
+  - If they override a "leave it" → do NOT override. Accept and exit.
 
 === QUALITY CONTROL (MANDATORY) ===
 
@@ -159,14 +179,16 @@ Before finalizing, verify the script passes ALL of these:
 
 1. Contains a concrete spoken opener line (not a placeholder)
 2. Contains a clear reason-for-calling line (one sentence, plain language, no jargon)
-3. Contains at least ONE discovery question (grounded in the context, not generic, answerable without thinking hard)
-4. Contains a natural conversational CTA (low pressure, feels earned)
-5. Tone is consistent throughout — no line sounds senior if others sound junior
-6. No line sounds like marketing copy or could appear in a blog post
-7. Every line survives interruption at any point
-8. Every line is speakable in one breath
-9. No stacked questions anywhere
-10. Total script feels intentionally incomplete — it earns time, nothing more
+3. Contains a Relevance Anchor that is specific to the ICP/industry, not generic
+4. Contains Test Question 1 that directly tests the Relevance Anchor
+5. Contains an Earned Next Step with Reflection + Reason + Choice structure
+6. Tone is consistent throughout — no line sounds senior if others sound junior
+7. No line sounds like marketing copy or could appear in a blog post
+8. Every line survives interruption at any point
+9. Every line is speakable in one breath
+10. No stacked questions anywhere
+11. No more than 2 discovery questions before offering the next step
+12. Total script feels intentionally incomplete — it earns time, nothing more
 
 If any check fails, rewrite the failing line before outputting.
 
@@ -180,7 +202,7 @@ When unsure whether to be more specific or more flexible:
 
 === FINAL OUTPUT RULES ===
 
-- Exactly 6 beats with ## headings
+- Use ## headings for each beat (7 max, 6 if Test Question 2 is skipped)
 - No explanations, no intent labels, no meta commentary, no "(pause)" instructions
 - No emojis, no hype, no sales fluff, no jargon
 - Output the script and nothing else.`;
@@ -229,7 +251,7 @@ Context: ${industry} businesses at ${maturity} stage. Delivery: "${deliveryMecha
 THE SCRIPT (for reference only — do NOT repeat script lines):
 ${scriptText}
 
-=== OUTPUT STRUCTURE (exactly 5 sections, use ## headings) ===
+=== OUTPUT STRUCTURE (exactly 6 sections, use ## headings) ===
 
 ## Primary Objective
 
@@ -270,6 +292,16 @@ ${scriptText}
 - If prospect engages with the question → stay curious, don't pitch
 - If prospect gives a short dismissive answer → offer to follow up another time
 
+## Why the Earned Next Step Works
+
+- Explain in 3–4 short bullets why the CTA in the script uses a Reflection + Reason + Choice structure.
+- Write for a beginner rep in plain language.
+- Key points to cover:
+  - Reflecting back what they said makes them feel heard
+  - Giving a reason makes the next step feel logical, not pushy
+  - Offering a choice gives them control, which reduces resistance
+  - If they say "leave it," accepting immediately builds trust for future contact
+
 === QUALITY CONTROL ===
 
 Before finalizing, verify:
@@ -278,10 +310,11 @@ Before finalizing, verify:
 3. No numeric thresholds or qualification criteria
 4. Every bullet is actionable by a nervous beginner
 5. A rep can scan this in 30 seconds and feel more confident
+6. The "Why the Earned Next Step Works" section is present and beginner-friendly
 
 === FINAL OUTPUT RULES ===
 
-- Exactly 5 sections with ## headings. No more.
+- Exactly 6 sections with ## headings. No more.
 - No preamble, no summary, no closing remarks.`;
 }
 
@@ -332,7 +365,7 @@ serve(async (req) => {
         model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: scriptSystemPrompt },
-          { role: "user", content: "Generate the cold call script now. Output only the 6 beats with ## headings. Include adaptive branches under each beat. No preamble. No extra sections." },
+          { role: "user", content: "Generate the cold call script now. Output the 7 beats (or 6 if Test Question 2 is skipped) with ## headings. Include adaptive branches under each beat. No preamble. No extra sections." },
         ],
         temperature: 0.3,
         max_tokens: 1000,
@@ -373,7 +406,7 @@ serve(async (req) => {
         model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: playbookPrompt },
-          { role: "user", content: "Generate the decision playbook now. Output only the 5 sections with headings. No preamble." },
+          { role: "user", content: "Generate the decision playbook now. Output only the 6 sections with headings. No preamble." },
         ],
         temperature: 0.3,
         max_tokens: 2000,
