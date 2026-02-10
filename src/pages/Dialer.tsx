@@ -46,6 +46,7 @@ import { FloatingCallScript } from "@/components/dialer/FloatingCallScript";
 import { CallRecordingsTab } from "@/components/dialer/CallRecordingsTab";
 import { DialerSettingsTab } from "@/components/dialer/DialerSettingsTab";
 import { CallDispositionDialog, CallDisposition } from "@/components/dialer/CallDispositionDialog";
+import { LeadDetailSidebar } from "@/components/crm/LeadDetailSidebar";
 
 interface Lead {
   id: string;
@@ -104,6 +105,8 @@ export default function Dialer() {
   const [showDispositionDialog, setShowDispositionDialog] = useState(false);
   const [callDurationForDisposition, setCallDurationForDisposition] = useState(0);
   const dispositionHandledRef = useRef(false);
+  const [crmLeadDetail, setCrmLeadDetail] = useState<any | null>(null);
+  const [showCrmSidebar, setShowCrmSidebar] = useState(false);
 
   // Handle purchase success/cancel from Stripe redirect
   useEffect(() => {
@@ -937,7 +940,18 @@ export default function Dialer() {
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          window.open(`/crm?search=${encodeURIComponent(lead.first_name + ' ' + lead.last_name)}`, '_blank');
+                                          // Fetch full lead data and open sidebar
+                                          (async () => {
+                                            const { data } = await supabase
+                                              .from('leads')
+                                              .select('*')
+                                              .eq('id', lead.id)
+                                              .single();
+                                            if (data) {
+                                              setCrmLeadDetail(data);
+                                              setShowCrmSidebar(true);
+                                            }
+                                          })();
                                         }}
                                         className="text-xs text-primary hover:underline flex items-center gap-1"
                                         title="View in CRM"
@@ -1099,6 +1113,16 @@ export default function Dialer() {
           callDuration={callDurationForDisposition}
           existingNotes={callNotes}
           onSubmit={handleDispositionSubmit}
+        />
+
+        {/* CRM Lead Detail Sidebar */}
+        <LeadDetailSidebar
+          lead={crmLeadDetail}
+          open={showCrmSidebar}
+          onClose={() => setShowCrmSidebar(false)}
+          onEdit={() => {}}
+          onDelete={() => {}}
+          isAgencyOwner={currentWorkspace?.owner_id === user?.id}
         />
       </main>
     </DashboardLayout>
