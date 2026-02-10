@@ -54,84 +54,135 @@ function buildSystemPrompt(ctx: OfferContext, deliveryMechanism: string): string
   const maturity = ctx.icp_maturity?.replace(/_/g, ' ') || 'unknown stage';
   const promiseOutcome = ctx.promise_outcome || ctx.promise || 'the promised result';
 
-  return `You are writing a cold call opening script for a beginner sales rep. They will read this VERBATIM on live calls.
+  return `You are writing a cold call script for a BEGINNER sales rep who will read this VERBATIM on live calls. This is their very first cold call.
 
-=== WHAT A SCRIPT IS ===
+=== WHAT THIS SCRIPT IS ===
 
-A script is NOT a full sales conversation.
-A script is ONLY the minimum language required to earn the next 10–20 seconds of attention.
-The script's ONLY objectives are:
-1. Reduce defensiveness
-2. Check relevance
-3. Ask permission to continue
+This script helps a nervous, beginner rep survive a cold call long enough to earn 2–3 minutes of attention and book a meeting.
 
-The script must feel intentionally incomplete. It must stop immediately after permission is asked. Total spoken time must be under 15 seconds.
+It is NOT a pitch, sales framework, qualification tool, or offer explanation.
 
-=== WHAT A SCRIPT MUST NEVER DO ===
+Success means ONE of these:
+- The prospect gives permission to continue for another 30–120 seconds
+- The prospect answers at least one real question
+- The prospect accepts a meeting
+- The rep exits cleanly without creating hostility
 
-- Diagnose problems
-- Assume pain
-- Explain the offer in detail
-- Qualify the prospect
+=== ASSUMPTIONS ABOUT THE PROSPECT ===
+
+- They are distracted, mildly irritated, and ready to hang up
+- They do not know who is calling or why
+- They will interrupt at any point
+
+=== ASSUMPTIONS ABOUT THE REP ===
+
+- They are nervous and speaking slightly fast
+- They may forget lines under pressure
+- They need lines that work even if read imperfectly
+
+=== WHAT THE SCRIPT MUST NEVER DO ===
+
+- Fully explain the offer
+- Convince or persuade the prospect
+- Diagnose problems deeply
+- Teach sales frameworks or theory
+- Assume pain, problems, or internal state
 - Mention databases, numbers, thresholds, margins, or systems
-- Include discovery questions
-- Include framing statements
-- Include value explanations
-- Include calls to action beyond asking permission
-- Include qualification logic
+- Sound rehearsed, consultant-like, or pitchy when read out loud
+- Include any line longer than one sentence
+- Include monologues or stacked questions
 
-=== RULES FOR EVERY LINE ===
-
-- One short sentence only
-- Speakable in one breath
-- Easy to interrupt
-- Must not sound like a salesperson
-- No emojis, no hype, no sales fluff, no jargon
-- No meta-commentary, no coaching text, no "(pause)" instructions
-
-=== CONTEXT (for calibration only — do NOT expose in script) ===
+=== CONTEXT (for calibration only — NEVER expose in script) ===
 
 - Industry: ${industry}${vertical ? ` (${vertical})` : ''}
 - Business Maturity: ${maturity}
 - Promise / Outcome: ${promiseOutcome}
 - Delivery Mechanism: "${deliveryMechanism}"
 
-=== OUTPUT STRUCTURE (exactly 3 sections, use ## headings) ===
+=== OUTPUT FORMAT ===
+
+Generate the script as a turn-based ADAPTIVE SKELETON — short base lines with branching follow-ups based on likely prospect responses.
+
+Use ## headings for each beat. Under each beat, output:
+- The exact line the rep says (as a bold **Rep:** prefix)
+- Then 2–3 short "If → then" branches for likely prospect responses
+
+=== BEATS (in this exact order) ===
 
 ## 1. Attention Capture
+- 1 short line only (under 7 seconds spoken)
+- Purpose: confirm you're speaking to the right person without triggering defensiveness
+- Must NOT ask "is this the owner?" or anything authority-threatening
+- Must sound natural when interrupted
+- Must NOT identify the company yet
+- Must end with a soft handoff, not a question that invites a hard "no"
+- Include: If prospect responds neutrally → next line. If rushed → fallback line. If confused → clarification line.
 
-- Purpose: Sound human and non-threatening.
-- Must be 1 short sentence.
-- Must NOT identify the company yet.
-- Must NOT ask a question that triggers defense.
-- Must NOT sound like a pitch.
-- Example patterns (do not copy verbatim): name confirmation, casual acknowledgment.
+## 2. Identity + Context
+- 1 short line
+- Purpose: give a vague, non-threatening reason for the call
+- No company explanation, no selling, no claims
+- Should feel like a reason, not a pitch
+- Must describe the category of problem, not the solution
+- Then immediately move to permission check
 
-## 2. Relevance Check
-
-- Purpose: Give a vague, non-threatening reason for the call.
-- Must be 1 short sentence.
-- Must describe the category of problem, not the solution.
-- Must avoid claims, outcomes, or mechanisms.
-- Must NOT assume they have a problem.
-- Must be interruptible without breaking flow.
-
-## 3. Permission to Continue
-
-- Purpose: Hand control to the prospect without giving them an easy "no."
-- Must be phrased as a choice between continuing briefly or stopping.
-- Must be time-bound (e.g. "20 seconds" or "quick question").
+## 3. Permission Check
+- Ask for time explicitly
+- Time request must be small (10–20 seconds)
+- Must include an easy out
+- Must be phrased as a choice between continuing briefly or stopping
 - Must NOT ask "Is this a good time?"
-- Must NOT invite evaluation of the offer.
-- Must be 1 sentence.
 
-=== FINAL CHECK ===
+## 4. First Question
+- Only ONE question
+- Question must feel safe to answer
+- Must not imply the prospect is doing something wrong
+- Must reveal relevance, not pain
+- Must allow the prospect to talk within 10 seconds
 
-- Exactly 3 sections. No more.
-- No section exceeds 1 sentence.
-- Total script is under 15 seconds of spoken time.
-- The script feels intentionally incomplete.
-- No discovery, no framing, no value props, no CTAs beyond permission.
+## 5. Directional Forks
+- Generate 2–3 possible rep follow-ups based on likely responses to the First Question
+- These are optional paths, not mandatory steps
+- Keep language simple and flexible
+- Each fork is one line max
+
+## 6. Soft Exit or Next Step
+- One line that either:
+  a) asks for a meeting (low-commitment)
+  b) suggests a follow-up
+  c) exits cleanly without friction
+- Must feel like a logical continuation, not a pitch
+
+=== QUALITY CONTROL (MANDATORY) ===
+
+Before finalizing, verify the script passes ALL of these:
+
+1. Contains a concrete spoken opener line (not a placeholder)
+2. Contains a clear reason-for-calling line (one sentence, plain language, no jargon)
+3. Contains at least ONE discovery question (grounded in the context, not generic, answerable without thinking hard)
+4. Contains a natural conversational CTA (low pressure, feels earned)
+5. Tone is consistent throughout — no line sounds senior if others sound junior
+6. No line sounds like marketing copy or could appear in a blog post
+7. Every line survives interruption at any point
+8. Every line is speakable in one breath
+9. No stacked questions anywhere
+10. Total script feels intentionally incomplete — it earns time, nothing more
+
+If any check fails, rewrite the failing line before outputting.
+
+=== ANTI-AI FILTER ===
+
+If any line sounds like marketing copy, uses abstract language, or could appear in a blog post → rewrite it into spoken, casual language.
+
+When unsure whether to be more specific or more flexible:
+→ More specific in language
+→ More flexible in flow
+
+=== FINAL OUTPUT RULES ===
+
+- Exactly 6 beats with ## headings
+- No explanations, no intent labels, no meta commentary, no "(pause)" instructions
+- No emojis, no hype, no sales fluff, no jargon
 - Output the script and nothing else.`;
 }
 
@@ -141,26 +192,35 @@ function buildPlaybookPrompt(ctx: OfferContext, scriptText: string, deliveryMech
   const industry = ctx.icp_industry?.replace(/_/g, ' ') || 'their industry';
   const maturity = ctx.icp_maturity?.replace(/_/g, ' ') || 'unknown stage';
 
-  return `You are writing a decision playbook for a beginner sales rep. They will read this BEFORE or DURING calls to guide their behavior.
+  return `You are writing a behavior guide for a BEGINNER sales rep. They will read this BEFORE or DURING cold calls.
 
 === PHILOSOPHY ===
 
 The goal of the call is NOT to qualify, diagnose, frame, or pitch.
-The only goal is to earn permission to continue the conversation.
+The only goal is to earn permission to continue the conversation — step by step, not all at once.
 
-This playbook exists to guide behavior, not decisions.
+This playbook guides BEHAVIOR, not decisions.
+It exists so the rep knows what to pay attention to and when to stop pushing.
+It is NOT required to run the call — the script alone should work.
+
+=== TONE RULES ===
+
+- Beginner-safe, calm, permission-first
+- No hype, no pressure language
+- No sales jargon or abstract theory
+- Simple language a first-time rep can scan in 30 seconds
 
 === ABSOLUTE RULES ===
 
-1. No sales jargon. No abstract theory. No long explanations.
-2. No confidence bands or confidence labels.
-3. No dialogue or script lines — those belong in the Script tab only.
-4. No numeric thresholds (e.g. 200 leads, 500 leads).
-5. No qualification criteria.
-6. No economic feasibility checks.
-7. No outcome promises.
-8. No CTA logic.
-9. No "Hard stop" rules based on assumptions.
+1. No confidence bands or confidence labels
+2. No dialogue or script lines — those belong in the Script tab only
+3. No numeric thresholds (e.g. 200 leads, 500 leads)
+4. No qualification criteria or economic feasibility checks
+5. No outcome promises or CTA logic
+6. No "Hard stop" rules based on assumptions
+7. No database size assumptions
+8. No pre-call goals that cannot be known on a cold call
+9. Nothing the rep cannot verify in real time
 10. Use short bullets. Everything must be scannable.
 11. No emojis, no filler.
 
@@ -181,36 +241,48 @@ ${scriptText}
 
 - List exactly 3 signals.
 - Signals must be conversational, not logical.
-- Examples: curiosity, neutral engagement, asking "what is this about?"
+- Focus on what the rep is trying to EARN next (time, attention, permission).
+- Examples: curiosity, neutral engagement, asking "what is this about?", prospect answering a question willingly.
 
 ## What Failure Looks Like
 
 - List exactly 3 signals.
 - Signals must be emotional, not analytical.
-- Examples: irritation, repeated "who is this?", silence, abrupt tone.
+- Focus on what resistance SOUNDS like.
+- Examples: irritation, repeated "who is this?", silence, abrupt tone, audible sigh.
 
 ## Rep Behavior Rules
 
 - Use short bullets.
-- Must include:
-  - Speak slower than feels natural.
-  - Stop talking the moment resistance appears.
-  - Never explain more when confused — ask permission instead.
-  - Never ask a question that advances the sale without permission.
+- Must include ALL of the following:
+  - Speak slower than feels natural
+  - Stop talking the moment resistance appears
+  - Never explain more when confused — ask permission instead
+  - Never ask a question that advances the sale without permission
+  - If a line sounds wrong in your mouth, skip it and move to the next beat
+  - When in doubt, hand control back to the prospect
 
 ## Next-Move Logic
 
-- If permission is granted → proceed to discovery (outside this script).
-- If permission is denied → exit politely.
-- If unclear → ask for permission again in a shorter form.
+- If permission is granted → proceed to discovery (outside this script)
+- If permission is denied → exit politely, no second attempt
+- If unclear → ask for permission again in a shorter form
+- If prospect engages with the question → stay curious, don't pitch
+- If prospect gives a short dismissive answer → offer to follow up another time
 
-=== FINAL CHECK ===
+=== QUALITY CONTROL ===
 
-- Exactly 5 sections. No more.
-- No script lines repeated.
-- No jargon or theory.
-- No numeric thresholds or qualification criteria.
-- A beginner can scan this in 30 seconds and feel prepared.`;
+Before finalizing, verify:
+1. No script lines are repeated from the Script tab
+2. No jargon or abstract theory
+3. No numeric thresholds or qualification criteria
+4. Every bullet is actionable by a nervous beginner
+5. A rep can scan this in 30 seconds and feel more confident
+
+=== FINAL OUTPUT RULES ===
+
+- Exactly 5 sections with ## headings. No more.
+- No preamble, no summary, no closing remarks.`;
 }
 
 serve(async (req) => {
@@ -260,7 +332,7 @@ serve(async (req) => {
         model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: scriptSystemPrompt },
-          { role: "user", content: "Generate the cold call opening script now. Output only the 3 sections with headings. No preamble. No extra sections." },
+          { role: "user", content: "Generate the cold call script now. Output only the 6 beats with ## headings. Include adaptive branches under each beat. No preamble. No extra sections." },
         ],
         temperature: 0.3,
         max_tokens: 1000,

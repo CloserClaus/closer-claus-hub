@@ -258,7 +258,7 @@ export default function ScriptBuilder() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Script Builder</h1>
           <p className="text-muted-foreground mt-1">
-            Generate the minimum language required to earn the next 10–20 seconds of attention.
+            Generate a beginner-safe cold call script designed to earn 2–3 minutes of attention and book a meeting.
           </p>
         </div>
 
@@ -375,7 +375,7 @@ export default function ScriptBuilder() {
                     <Card>
                       <CardHeader className="flex flex-row items-center justify-between pb-3">
                         <div className="space-y-1">
-                          <CardTitle className="text-base">Opening Script</CardTitle>
+                          <CardTitle className="text-base">What to Say — Read This Verbatim</CardTitle>
                           {result.isValidationMode && (
                             <Badge variant="outline" className="text-destructive border-destructive/30 bg-destructive/5">
                               Exploration Mode
