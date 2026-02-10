@@ -7,7 +7,7 @@ interface UseTwilioDeviceOptions {
   workspaceId: string | null;
   onCallStatusChange?: (status: string) => void;
   onCallConnected?: (call: Call) => void;
-  onCallDisconnected?: () => void;
+  onCallDisconnected?: (finalDuration?: number) => void;
 }
 
 interface TwilioDeviceState {
@@ -373,9 +373,12 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
       });
 
       call.on('disconnect', () => {
-        console.log('Call disconnected');
+        const finalDuration = callStartTimeRef.current
+          ? Math.floor((Date.now() - callStartTimeRef.current) / 1000)
+          : 0;
+        console.log('Call disconnected, duration:', finalDuration);
         cleanupCall();
-        onCallDisconnected?.();
+        onCallDisconnected?.(finalDuration);
       });
 
       call.on('cancel', () => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -27,7 +27,13 @@ import {
   Lock,
   Mic,
   MicOff,
-  FileText
+  FileText,
+  PhoneOutgoing,
+  PhoneIncoming,
+  PhoneMissed,
+  ExternalLink,
+  Tag,
+  MessageSquare
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -50,6 +56,8 @@ interface Lead {
   email: string | null;
   title: string | null;
   last_contacted_at: string | null;
+  notes: string | null;
+  readiness_segment: string | null;
 }
 
 interface CallLog {
@@ -62,6 +70,7 @@ interface CallLog {
   lead_id: string | null;
   twilio_call_sid?: string | null;
   recording_url?: string | null;
+  disposition?: string | null;
   leads?: { first_name: string | null; last_name: string | null } | null;
 }
 
@@ -94,6 +103,7 @@ export default function Dialer() {
   const [showFloatingScript, setShowFloatingScript] = useState(true);
   const [showDispositionDialog, setShowDispositionDialog] = useState(false);
   const [callDurationForDisposition, setCallDurationForDisposition] = useState(0);
+  const dispositionHandledRef = useRef(false);
 
   // Handle purchase success/cancel from Stripe redirect
   useEffect(() => {
@@ -137,9 +147,15 @@ export default function Dialer() {
     onCallStatusChange: (status) => {
       console.log('Call status changed:', status);
     },
-    onCallDisconnected: () => {
+    onCallDisconnected: (finalDuration?: number) => {
       // Refresh call logs when call ends
       fetchCallLogs();
+      // Show disposition dialog if the recipient ended the call (not user-initiated)
+      if (!dispositionHandledRef.current && (finalDuration ?? 0) > 0) {
+        setCallDurationForDisposition(finalDuration || 0);
+        setShowDispositionDialog(true);
+      }
+      dispositionHandledRef.current = false;
     },
   });
 
@@ -223,7 +239,7 @@ export default function Dialer() {
 
       const { data, error } = await supabase
         .from('leads')
-        .select('id, first_name, last_name, phone, company, email, title, last_contacted_at')
+        .select('id, first_name, last_name, phone, company, email, title, last_contacted_at, notes, readiness_segment')
         .eq('workspace_id', currentWorkspace.id)
         .not('phone', 'is', null)
         .order('last_contacted_at', { ascending: false, nullsFirst: false })
@@ -244,19 +260,20 @@ export default function Dialer() {
   const fetchCallLogs = async () => {
     if (!currentWorkspace?.id) return;
 
-    const { data, error } = await supabase
-      .from('call_logs')
-      .select(`
-        id,
-        phone_number,
-        call_status,
-        duration_seconds,
-        notes,
-        created_at,
-        lead_id,
-        recording_url,
-        twilio_call_sid,
-        leads(first_name, last_name)
+      const { data, error } = await supabase
+        .from('call_logs')
+        .select(`
+          id,
+          phone_number,
+          call_status,
+          duration_seconds,
+          notes,
+          created_at,
+          lead_id,
+          recording_url,
+          twilio_call_sid,
+          disposition,
+          leads(first_name, last_name)
       `)
       .eq('workspace_id', currentWorkspace.id)
       .order('created_at', { ascending: false })
@@ -316,6 +333,8 @@ export default function Dialer() {
   };
 
   const handleEndCall = async () => {
+    // Mark as user-initiated so onCallDisconnected doesn't show a duplicate dialog
+    dispositionHandledRef.current = true;
     // Parse duration from formatted string (MM:SS)
     const parts = formattedDuration.split(':');
     const durationInSeconds = parseInt(parts[0] || '0') * 60 + parseInt(parts[1] || '0');
@@ -444,26 +463,82 @@ export default function Dialer() {
     );
   });
 
-  const getCallStatusBadge = (status: string) => {
+  const getCallStatusBadge = (status: string, durationSeconds?: number | null) => {
+    // Determine if call was actually picked up based on status + duration
+    const wasPickedUp = (status === 'completed' || status === 'in-progress' || status === 'in_progress') && (durationSeconds ?? 0) > 0;
+    
+    if (wasPickedUp) {
+      return (
+        <Badge variant="outline" className="bg-success/10 text-success border-success/20 gap-1">
+          <PhoneCall className="h-3 w-3" />
+          Picked Up
+        </Badge>
+      );
+    }
+
     switch (status) {
       case 'completed':
-        return <Badge variant="outline" className="bg-success/10 text-success border-success/20">Completed</Badge>;
+        return (
+          <Badge variant="outline" className="bg-success/10 text-success border-success/20 gap-1">
+            <PhoneOutgoing className="h-3 w-3" />
+            Completed
+          </Badge>
+        );
       case 'initiated':
       case 'ringing':
-        return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">Ringing</Badge>;
+        return (
+          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 gap-1">
+            <PhoneOutgoing className="h-3 w-3" />
+            Attempted
+          </Badge>
+        );
       case 'in-progress':
       case 'in_progress':
-        return <Badge variant="outline" className="bg-success/10 text-success border-success/20">In Progress</Badge>;
+        return (
+          <Badge variant="outline" className="bg-success/10 text-success border-success/20 gap-1">
+            <PhoneCall className="h-3 w-3" />
+            In Progress
+          </Badge>
+        );
       case 'busy':
-        return <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">Busy</Badge>;
+        return (
+          <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20 gap-1">
+            <PhoneOff className="h-3 w-3" />
+            Busy
+          </Badge>
+        );
       case 'no-answer':
+      case 'no_answer':
+        return (
+          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 gap-1">
+            <PhoneMissed className="h-3 w-3" />
+            No Answer
+          </Badge>
+        );
       case 'missed':
-        return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">No Answer</Badge>;
+        return (
+          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 gap-1">
+            <PhoneIncoming className="h-3 w-3" />
+            Missed
+          </Badge>
+        );
       case 'failed':
-        return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">Failed</Badge>;
+        return (
+          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 gap-1">
+            <AlertCircle className="h-3 w-3" />
+            Failed
+          </Badge>
+        );
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
+  };
+
+  const formatCallDuration = (seconds: number | null) => {
+    if (!seconds || seconds === 0) return null;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const getCallStatusDisplay = () => {
@@ -818,21 +893,37 @@ export default function Dialer() {
                               </p>
                             ) : (
                               filteredLeads.map((lead) => (
-                                <button
+                                <div
                                   key={lead.id}
-                                  onClick={() => handleSelectLead(lead)}
                                   className={`w-full text-left p-3 rounded-lg border transition-colors ${
                                     selectedLead?.id === lead.id
                                       ? 'border-primary bg-primary/5'
                                       : 'border-border hover:border-primary/50 hover:bg-accent/50'
                                   }`}
-                                  disabled={isCallActive}
                                 >
                                   <div className="flex items-center justify-between">
-                                    <div>
-                                      <p className="font-medium">{lead.first_name} {lead.last_name}</p>
+                                    <button
+                                      onClick={() => handleSelectLead(lead)}
+                                      disabled={isCallActive}
+                                      className="flex-1 text-left"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <p className="font-medium">{lead.first_name} {lead.last_name}</p>
+                                        {lead.readiness_segment && (
+                                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 gap-1">
+                                            <Tag className="h-2.5 w-2.5" />
+                                            {lead.readiness_segment}
+                                          </Badge>
+                                        )}
+                                      </div>
                                       {lead.company && (
                                         <p className="text-sm text-muted-foreground">{lead.company}</p>
+                                      )}
+                                      {lead.notes && (
+                                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1 line-clamp-1">
+                                          <MessageSquare className="h-3 w-3 shrink-0" />
+                                          {lead.notes.split('\n').pop()?.substring(0, 60)}
+                                        </p>
                                       )}
                                       {lead.last_contacted_at && (
                                         <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
@@ -840,10 +931,23 @@ export default function Dialer() {
                                           Last called {format(new Date(lead.last_contacted_at), 'MMM d, h:mm a')}
                                         </p>
                                       )}
+                                    </button>
+                                    <div className="flex flex-col items-end gap-1 ml-2">
+                                      <p className="text-sm font-mono text-muted-foreground">{lead.phone}</p>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          window.open(`/crm?search=${encodeURIComponent(lead.first_name + ' ' + lead.last_name)}`, '_blank');
+                                        }}
+                                        className="text-xs text-primary hover:underline flex items-center gap-1"
+                                        title="View in CRM"
+                                      >
+                                        <ExternalLink className="h-3 w-3" />
+                                        CRM
+                                      </button>
                                     </div>
-                                    <p className="text-sm font-mono text-muted-foreground">{lead.phone}</p>
                                   </div>
-                                </button>
+                                </div>
                               ))
                             )}
                           </div>
@@ -880,13 +984,24 @@ export default function Dialer() {
                                         )}
                                         <p className="font-mono text-sm text-muted-foreground">{log.phone_number}</p>
                                       </div>
-                                      {getCallStatusBadge(log.call_status)}
+                                      <div className="flex flex-col items-end gap-1">
+                                        {getCallStatusBadge(log.call_status, log.duration_seconds)}
+                                        {log.disposition && (
+                                          <span className="text-xs text-muted-foreground capitalize">
+                                            {log.disposition.replace('_', ' ')}
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                     <div className="flex items-center justify-between text-sm text-muted-foreground">
-                                      <span>{format(new Date(log.created_at), 'MMM d, h:mm a')}</span>
-                                      {log.duration_seconds && log.duration_seconds > 0 && (
-                                        <span>{Math.floor(log.duration_seconds / 60)}:{(log.duration_seconds % 60).toString().padStart(2, '0')}</span>
-                                      )}
+                                      <div className="flex items-center gap-2">
+                                        <PhoneOutgoing className="h-3 w-3" />
+                                        <span>{format(new Date(log.created_at), 'MMM d, h:mm a')}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <Clock className="h-3 w-3" />
+                                        <span>{formatCallDuration(log.duration_seconds) || '0:00'}</span>
+                                      </div>
                                     </div>
                                     {log.recording_url && (
                                       <CallRecordingPlayer 

@@ -71,9 +71,11 @@ serve(async (req) => {
       }
 
       // Return TwiML to connect the call to the destination
+      // Include action URL for dial status and recordingStatusCallback for recordings
+      const webhookUrl = `${supabaseUrl}/functions/v1/twilio-webhook`;
       const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial callerId="${fromNumber}" record="record-from-answer-dual" timeout="60">
+  <Dial callerId="${fromNumber}" record="record-from-answer-dual" timeout="60" action="${webhookUrl}" recordingStatusCallback="${webhookUrl}" recordingStatusCallbackEvent="completed">
     <Number>${toNumber}</Number>
   </Dial>
 </Response>`;
@@ -85,8 +87,93 @@ serve(async (req) => {
       });
     }
 
-    // Handle call status updates
-    if (callSid && callStatus) {
+    // Handle <Dial> action callback — this tells us the actual outcome of the dialed number
+    const dialCallStatus = webhookData.DialCallStatus;
+    if (dialCallStatus && callSid) {
+      console.log(`Dial action callback for ${callSid}: DialCallStatus=${dialCallStatus}, DialCallDuration=${webhookData.DialCallDuration}`);
+
+      const dialStatusMap: Record<string, string> = {
+        'completed': 'completed',
+        'busy': 'busy',
+        'no-answer': 'no-answer',
+        'failed': 'failed',
+        'canceled': 'canceled',
+      };
+
+      const mappedDialStatus = dialStatusMap[dialCallStatus] || dialCallStatus;
+      const dialDuration = webhookData.DialCallDuration ? parseInt(webhookData.DialCallDuration) : 0;
+
+      const updateData: Record<string, any> = {
+        call_status: mappedDialStatus,
+      };
+
+      if (dialDuration > 0) {
+        updateData.duration_seconds = dialDuration;
+        updateData.ended_at = new Date().toISOString();
+      }
+
+      const { error, data: updatedLog } = await supabase
+        .from('call_logs')
+        .update(updateData)
+        .eq('twilio_call_sid', callSid)
+        .select('workspace_id')
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error updating call log from dial action:', error);
+      }
+
+      // Deduct minutes from workspace credits on call completion
+      if (dialCallStatus === 'completed' && dialDuration > 0 && updatedLog?.workspace_id) {
+        const minutesUsed = Math.ceil(dialDuration / 60);
+
+        if (minutesUsed > 0) {
+          const { data: credits } = await supabase
+            .from('workspace_credits')
+            .select('credits_balance, free_minutes_remaining')
+            .eq('workspace_id', updatedLog.workspace_id)
+            .single();
+
+          if (credits) {
+            let freeMinutes = credits.free_minutes_remaining ?? 1000;
+            let paidMinutes = credits.credits_balance || 0;
+            let remaining = minutesUsed;
+
+            const fromFree = Math.min(freeMinutes, remaining);
+            freeMinutes -= fromFree;
+            remaining -= fromFree;
+
+            if (remaining > 0) {
+              paidMinutes = Math.max(0, paidMinutes - remaining);
+            }
+
+            const { error: creditError } = await supabase
+              .from('workspace_credits')
+              .update({
+                free_minutes_remaining: freeMinutes,
+                credits_balance: paidMinutes,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('workspace_id', updatedLog.workspace_id);
+
+            if (creditError) {
+              console.error('Error deducting minutes:', creditError);
+            } else {
+              console.log(`Deducted ${minutesUsed} min from workspace ${updatedLog.workspace_id} (free: ${freeMinutes}, paid: ${paidMinutes})`);
+            }
+          }
+        }
+      }
+
+      // Return empty TwiML after handling dial action
+      return new Response(
+        `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`,
+        { headers: { ...corsHeaders, 'Content-Type': 'application/xml' } }
+      );
+    }
+
+    // Handle call status updates (fallback for non-dial status callbacks)
+    if (callSid && callStatus && !dialCallStatus) {
       console.log(`Call ${callSid} status: ${callStatus}`);
 
       // Map Twilio status to our status
