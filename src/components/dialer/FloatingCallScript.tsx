@@ -45,31 +45,41 @@ export function FloatingCallScript({ workspaceId, lead, isVisible, onClose }: Fl
   const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
 
+  const prevVisibleRef = useRef(false);
+
+  const fetchScripts = async () => {
+    const { data, error } = await supabase
+      .from('call_scripts')
+      .select('id, title, content, is_default')
+      .eq('workspace_id', workspaceId)
+      .order('is_default', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching scripts:', error);
+      return;
+    }
+
+    setScripts(data || []);
+    
+    const defaultScript = data?.find(s => s.is_default);
+    if (defaultScript) {
+      setSelectedScriptId(defaultScript.id);
+    } else if (data && data.length > 0) {
+      setSelectedScriptId(data[0].id);
+    }
+  };
+
   useEffect(() => {
-    const fetchScripts = async () => {
-      const { data, error } = await supabase
-        .from('call_scripts')
-        .select('id, title, content, is_default')
-        .eq('workspace_id', workspaceId)
-        .order('is_default', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching scripts:', error);
-        return;
-      }
-
-      setScripts(data || []);
-      
-      const defaultScript = data?.find(s => s.is_default);
-      if (defaultScript) {
-        setSelectedScriptId(defaultScript.id);
-      } else if (data && data.length > 0) {
-        setSelectedScriptId(data[0].id);
-      }
-    };
-
     fetchScripts();
   }, [workspaceId]);
+
+  // Refetch scripts when floating script becomes visible (e.g. call starts)
+  useEffect(() => {
+    if (isVisible && !prevVisibleRef.current) {
+      fetchScripts();
+    }
+    prevVisibleRef.current = isVisible;
+  }, [isVisible]);
 
   const selectedScript = scripts.find(s => s.id === selectedScriptId);
 
