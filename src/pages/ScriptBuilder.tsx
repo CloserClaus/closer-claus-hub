@@ -258,7 +258,7 @@ export default function ScriptBuilder() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Script Builder</h1>
           <p className="text-muted-foreground mt-1">
-            Generate a structured, turn-based outbound script from your Offer Diagnostic results.
+            Generate the minimum language required to earn the next 10–20 seconds of attention.
           </p>
         </div>
 
@@ -345,7 +345,7 @@ export default function ScriptBuilder() {
               {isGenerating ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Generating Script & Progression Rules...
+                  Generating Opening Script & Playbook...
                 </>
               ) : result ? (
                 <>
@@ -375,7 +375,7 @@ export default function ScriptBuilder() {
                     <Card>
                       <CardHeader className="flex flex-row items-center justify-between pb-3">
                         <div className="space-y-1">
-                          <CardTitle className="text-base">Talk Track</CardTitle>
+                          <CardTitle className="text-base">Opening Script</CardTitle>
                           {result.isValidationMode && (
                             <Badge variant="outline" className="text-destructive border-destructive/30 bg-destructive/5">
                               Exploration Mode
@@ -406,7 +406,7 @@ export default function ScriptBuilder() {
                           <div className="space-y-1">
                             <CardTitle className="text-base">Decision Playbook</CardTitle>
                             <p className="text-xs text-muted-foreground">
-                              How to navigate the conversation
+                              Behavior guide — not decisions, just how to act
                             </p>
                           </div>
                           <Button

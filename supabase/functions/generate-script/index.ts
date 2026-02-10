@@ -36,8 +36,6 @@ interface OfferContext {
   latent_icp_specificity: number | null;
 }
 
-// ========== CALIBRATION HELPERS ==========
-
 function getConfidenceBand(ctx: OfferContext): 'low' | 'medium' | 'high' {
   const score = ctx.latent_alignment_score || 0;
   const proof = ctx.proof_level || 'none';
@@ -48,340 +46,171 @@ function getConfidenceBand(ctx: OfferContext): 'low' | 'medium' | 'high' {
   return 'medium';
 }
 
-function getConfidenceBandExplanation(band: 'low' | 'medium' | 'high'): string {
-  switch (band) {
-    case 'low':
-      return `**CONFIDENCE BAND: LOW — Follow the script closely**
+// ========== SCRIPT SYSTEM PROMPT ==========
 
-Script adherence is strict. Follow the wording closely with minimal improvisation. Progression rules are mandatory. This offer needs more proof or refinement before reps can safely go off-script.`;
-    case 'medium':
-      return `**CONFIDENCE BAND: MEDIUM — Use the script as a strong guide**
-
-The script is a strong guide, not a word-for-word mandate. Reps can paraphrase as long as the intent of each line is preserved. Progression rules are recommended but flexible.`;
-    case 'high':
-      return `**CONFIDENCE BAND: HIGH — Use the script as a reference framework**
-
-This offer has strong proof and clear positioning. Reps can customize language freely while keeping the structure. Progression rules act as guardrails, not requirements.`;
-  }
-}
-
-function getToneCalibration(confidence: 'low' | 'medium' | 'high'): string {
-  switch (confidence) {
-    case 'low':
-      return 'Tone: exploratory, curious, diagnostic. Ask before asserting. Use phrases like "I\'m curious whether..." and "Some teams we talk to find that...". Never assume pain — uncover it.';
-    case 'medium':
-      return 'Tone: informed, conversational, purposeful. You can reference patterns you\'ve seen but still validate with the prospect. Use phrases like "What we often see is..." and "Does that resonate?"';
-    case 'high':
-      return 'Tone: direct, confident, specific. Reference concrete outcomes. Use phrases like "We\'ve helped [type] achieve [result]" and "The biggest lever we see is...". Be assertive but not aggressive.';
-  }
-}
-
-function getDiscoveryCalibration(confidence: 'low' | 'medium' | 'high', bottleneck: string): string {
-  if (confidence === 'low') {
-    return `Discovery must be exploratory and diagnostic, not aggressive. The caller is learning whether this prospect fits, not assuming they do. Questions should gently probe the prospect's current situation around ${bottleneck} without presupposing pain.`;
-  }
-  if (confidence === 'high') {
-    return `Discovery should emphasize cost of inaction and missed leverage. The caller has earned the right to be direct because the offer has strong proof. Questions should make the gap between current state and potential tangible, especially around ${bottleneck}.`;
-  }
-  return `Discovery should balance curiosity with insight. Ask questions that demonstrate understanding of their likely situation around ${bottleneck}, but validate rather than assume.`;
-}
-
-// ========== TYPE SELECTION LOGIC ==========
-
-function selectOpenerType(ctx: OfferContext): string {
-  const proof = ctx.proof_level || 'none';
-  const specificity = ctx.icp_specificity || 'broad';
-  const maturity = ctx.icp_maturity || 'scaling';
-  const risk = ctx.risk_model || 'no_guarantee';
-
-  if (specificity === 'broad' && ['none', 'weak'].includes(proof)) return 'pattern-interrupt';
-  if (['strong', 'category_killer'].includes(proof) || specificity === 'exact') return 'context-based';
-  if (['mature', 'enterprise'].includes(maturity) || ['conditional_guarantee', 'full_guarantee'].includes(risk)) return 'permission-based';
-  return 'permission-based';
-}
-
-function selectBridgeType(ctx: OfferContext): string {
-  const proof = ctx.proof_level || 'none';
-  const risk = ctx.risk_model || 'no_guarantee';
-
-  if (['strong', 'category_killer'].includes(proof)) return 'credibility-anchoring';
-  if (['conditional_guarantee', 'full_guarantee', 'performance_only', 'pay_after_results'].includes(risk)) return 'outcome-alignment';
-  return 'problem-acknowledgment';
-}
-
-function selectDiscoveryType(ctx: OfferContext): string {
-  const bottleneck = ctx.latent_bottleneck_key || 'EFI';
-  const confidence = getConfidenceBand(ctx);
-
-  if (confidence === 'low') return 'problem-first';
-  if (bottleneck === 'EFI') return 'cost-of-inaction';
-  if (['proofPromise', 'fulfillmentScalability'].includes(bottleneck)) return 'gap-based';
-  return 'problem-first';
-}
-
-function selectFrameType(ctx: OfferContext): string {
-  const bottleneck = ctx.latent_bottleneck_key || 'EFI';
-  const risk = ctx.risk_model || 'no_guarantee';
-
-  if (bottleneck === 'riskAlignment' || ['performance_only', 'pay_after_results'].includes(risk)) return 'reframe-around-risk';
-  if (['channelFit', 'icpSpecificity'].includes(bottleneck)) return 'reframe-around-timing';
-  return 'reframe-around-leverage';
-}
-
-function selectCTAType(ctx: OfferContext): string {
-  const confidence = getConfidenceBand(ctx);
-  const isOutboundReady = ctx.latent_readiness_label !== 'Weak';
-
-  if (!isOutboundReady) return 'soft';
-  if (confidence === 'low') return 'soft';
-  if (confidence === 'high') return 'direct';
-  return 'conditional';
-}
-
-// ========== ALIGNMENT CHECK ==========
-
-function runAlignmentCheck(ctx: OfferContext, types: {
-  opener: string; bridge: string; discovery: string; frame: string; cta: string;
-}): { opener: string; bridge: string; discovery: string; frame: string; cta: string } {
-  const adjusted = { ...types };
-  const isOutboundReady = ctx.latent_readiness_label !== 'Weak';
-  const bottleneck = ctx.latent_bottleneck_key || 'EFI';
-  const specificity = ctx.icp_specificity || 'broad';
-
-  if (!isOutboundReady) adjusted.cta = 'soft';
-  if (specificity === 'broad' && adjusted.opener === 'context-based') adjusted.opener = 'pattern-interrupt';
-  if (bottleneck === 'EFI' && adjusted.discovery !== 'cost-of-inaction' && getConfidenceBand(ctx) !== 'low') {
-    adjusted.discovery = 'cost-of-inaction';
-  }
-  if (!isOutboundReady && adjusted.cta === 'direct') adjusted.cta = 'soft';
-
-  return adjusted;
-}
-
-// ========== SYSTEM PROMPT BUILDER ==========
-
-function buildSystemPrompt(ctx: OfferContext, types: {
-  opener: string; bridge: string; discovery: string; frame: string; cta: string;
-}, deliveryMechanism: string): string {
-  const isOutboundReady = ctx.latent_readiness_label !== 'Weak';
-  const bottleneck = ctx.latent_bottleneck_key || 'EFI';
-  const bottleneckLabels: Record<string, string> = {
-    EFI: 'Economic Feasibility',
-    proofPromise: 'Proof-to-Promise Credibility',
-    fulfillmentScalability: 'Fulfillment Scalability',
-    riskAlignment: 'Risk Alignment',
-    channelFit: 'Channel Fit',
-    icpSpecificity: 'ICP Specificity',
-  };
-
+function buildSystemPrompt(ctx: OfferContext, deliveryMechanism: string): string {
   const industry = ctx.icp_industry?.replace(/_/g, ' ') || 'their industry';
   const vertical = ctx.vertical_segment?.replace(/_/g, ' ') || '';
   const maturity = ctx.icp_maturity?.replace(/_/g, ' ') || 'unknown stage';
   const promiseOutcome = ctx.promise_outcome || ctx.promise || 'the promised result';
 
-  const modeStatement = !isOutboundReady
-    ? 'This offer is NOT outbound-ready. The script is for exploration and learning. The CTA must be low-commitment. Do NOT push a close.'
-    : 'This offer is outbound-ready. The script should be confident and purposeful.';
+  return `You are writing a cold call opening script for a beginner sales rep. They will read this VERBATIM on live calls.
 
-  return `You are writing a cold call talk track for a beginner sales rep. They will read this VERBATIM on live calls.
+=== WHAT A SCRIPT IS ===
 
-=== ABSOLUTE RULES ===
+A script is NOT a full sales conversation.
+A script is ONLY the minimum language required to earn the next 10–20 seconds of attention.
+The script's ONLY objectives are:
+1. Reduce defensiveness
+2. Check relevance
+3. Ask permission to continue
 
-1. Output ONLY what the rep should say out loud. Nothing else.
-2. NO intent labels, NO "(pause)" instructions, NO "wait for response" cues, NO coaching text, NO expected responses, NO confidence bands.
-3. Each line must be ONE sentence max. Short. Conversational. Interruptible.
-4. Leave a BLANK LINE between each rep line — this is where the prospect naturally responds. Do not write prospect lines.
-5. The script must feel human and slightly incomplete — NOT polished, NOT memorized-sounding.
-6. Write like a good SDR talks, not like a sales trainer explains.
-7. No flow control, no branching logic, no objection handling in the script.
-8. No emojis, no hype, no sales fluff, no jargon.
-9. Each section should have 2-4 short lines max. No paragraphs.
-10. If delivery mechanism is vague, keep language outcome-focused. Do not invent specifics.
+The script must feel intentionally incomplete. It must stop immediately after permission is asked. Total spoken time must be under 15 seconds.
 
-${modeStatement}
+=== WHAT A SCRIPT MUST NEVER DO ===
 
-DELIVERY MECHANISM: "${deliveryMechanism}"
-Mirror this language. Do NOT assume details beyond what is stated.
+- Diagnose problems
+- Assume pain
+- Explain the offer in detail
+- Qualify the prospect
+- Mention databases, numbers, thresholds, margins, or systems
+- Include discovery questions
+- Include framing statements
+- Include value explanations
+- Include calls to action beyond asking permission
+- Include qualification logic
 
-OFFER CONTEXT:
-- Offer Type: ${ctx.offer_type?.replace(/_/g, ' ') || 'Not specified'}
-- Promise / Outcome: ${promiseOutcome}
+=== RULES FOR EVERY LINE ===
+
+- One short sentence only
+- Speakable in one breath
+- Easy to interrupt
+- Must not sound like a salesperson
+- No emojis, no hype, no sales fluff, no jargon
+- No meta-commentary, no coaching text, no "(pause)" instructions
+
+=== CONTEXT (for calibration only — do NOT expose in script) ===
+
 - Industry: ${industry}${vertical ? ` (${vertical})` : ''}
-- Company Size: ${ctx.company_size?.replace(/_/g, ' ') || 'Not specified'}
 - Business Maturity: ${maturity}
-- Pricing: ${ctx.pricing_structure?.replace(/_/g, ' ') || 'Not specified'}
-- Risk Model: ${ctx.risk_model?.replace(/_/g, ' ') || 'Not specified'}
-- Proof Level: ${ctx.proof_level?.replace(/_/g, ' ') || 'Not specified'}
-- Primary Constraint: ${bottleneckLabels[bottleneck] || bottleneck}
+- Promise / Outcome: ${promiseOutcome}
+- Delivery Mechanism: "${deliveryMechanism}"
 
-=== SCRIPT STRUCTURE (exactly 5 sections, use ## headings) ===
+=== OUTPUT STRUCTURE (exactly 3 sections, use ## headings) ===
 
-## 1. Opener (Type: ${types.opener})
+## 1. Attention Capture
 
-2-3 short lines max. First line confirms the person. Second line gives one sentence of context. Third line asks one question.
-${types.opener === 'permission-based' ? 'Respectful, non-intrusive. The question is genuine.' : ''}
-${types.opener === 'context-based' ? `Reference something relevant about ${industry} at ${maturity} stage.` : ''}
-${types.opener === 'pattern-interrupt' ? 'Break the usual cold call pattern — curious, not gimmicky.' : ''}
+- Purpose: Sound human and non-threatening.
+- Must be 1 short sentence.
+- Must NOT identify the company yet.
+- Must NOT ask a question that triggers defense.
+- Must NOT sound like a pitch.
+- Example patterns (do not copy verbatim): name confirmation, casual acknowledgment.
 
-## 2. Bridge (Type: ${types.bridge})
+## 2. Relevance Check
 
-1-2 lines that connect to a problem or outcome. No pitching.
-${types.bridge === 'problem-acknowledgment' ? `Acknowledge a problem ${industry} businesses at ${maturity} stage face related to ${promiseOutcome}.` : ''}
-${types.bridge === 'outcome-alignment' ? `Connect delivery mechanism to an outcome relevant to ${industry}.` : ''}
-${types.bridge === 'credibility-anchoring' ? `Reference a proof point for ${industry}. Brief, no bragging.` : ''}
+- Purpose: Give a vague, non-threatening reason for the call.
+- Must be 1 short sentence.
+- Must describe the category of problem, not the solution.
+- Must avoid claims, outcomes, or mechanisms.
+- Must NOT assume they have a problem.
+- Must be interruptible without breaking flow.
 
-## 3. Discovery (Type: ${types.discovery})
+## 3. Permission to Continue
 
-2-3 questions the rep asks. Each question is one line. Leave blank lines between them for prospect responses.
-Questions must relate to ${promiseOutcome} and ${bottleneckLabels[bottleneck] || bottleneck}.
-Questions must reference the prospect's stage (${maturity}) and industry (${industry}).
-No generic business questions. Be specific to this offer.
-
-## 4. Frame (Type: ${types.frame})
-
-1-2 lines that help the prospect see their situation differently. No pitching.
-${types.frame === 'reframe-around-risk' ? `Help them see their current approach to ${promiseOutcome} as the riskier option.` : ''}
-${types.frame === 'reframe-around-leverage' ? `Point out an underutilized lever in ${industry} related to ${promiseOutcome}.` : ''}
-${types.frame === 'reframe-around-timing' ? `Create urgency through insight, not pressure, for ${industry} at ${maturity} stage.` : ''}
-
-## 5. Call to Action (Type: ${types.cta})
-
-One line. Clear next step.
-${types.cta === 'soft' ? 'Low-commitment: offer a resource, breakdown, or quick no-obligation chat. Do NOT ask for a meeting.' : ''}
-${types.cta === 'conditional' ? 'Suggest a next step based on what was discussed. Keep it natural.' : ''}
-${types.cta === 'direct' ? 'Ask for a specific next step. Confident, not pushy.' : ''}
+- Purpose: Hand control to the prospect without giving them an easy "no."
+- Must be phrased as a choice between continuing briefly or stopping.
+- Must be time-bound (e.g. "20 seconds" or "quick question").
+- Must NOT ask "Is this a good time?"
+- Must NOT invite evaluation of the offer.
+- Must be 1 sentence.
 
 === FINAL CHECK ===
-- Every line must be speakable in one breath
-- No meta-commentary whatsoever
-- No teaching, explaining, or stage-setting
-- Output the script and nothing else`;
+
+- Exactly 3 sections. No more.
+- No section exceeds 1 sentence.
+- Total script is under 15 seconds of spoken time.
+- The script feels intentionally incomplete.
+- No discovery, no framing, no value props, no CTAs beyond permission.
+- Output the script and nothing else.`;
 }
 
-function buildProgressionPrompt(ctx: OfferContext, scriptText: string, types: {
-  opener: string; bridge: string; discovery: string; frame: string; cta: string;
-}, deliveryMechanism: string): string {
-  const isOutboundReady = ctx.latent_readiness_label !== 'Weak';
-  const bottleneck = ctx.latent_bottleneck_key || 'EFI';
-  const bottleneckLabels: Record<string, string> = {
-    EFI: 'Economic Feasibility',
-    proofPromise: 'Proof-to-Promise Credibility',
-    fulfillmentScalability: 'Fulfillment Scalability',
-    riskAlignment: 'Risk Alignment',
-    channelFit: 'Channel Fit',
-    icpSpecificity: 'ICP Specificity',
-  };
+// ========== DECISION PLAYBOOK PROMPT ==========
 
+function buildPlaybookPrompt(ctx: OfferContext, scriptText: string, deliveryMechanism: string): string {
   const industry = ctx.icp_industry?.replace(/_/g, ' ') || 'their industry';
   const maturity = ctx.icp_maturity?.replace(/_/g, ' ') || 'unknown stage';
-  const promiseOutcome = ctx.promise_outcome || ctx.promise || 'the promised result';
-  const riskModel = ctx.risk_model?.replace(/_/g, ' ') || 'no guarantee';
-  const proofLevel = ctx.proof_level?.replace(/_/g, ' ') || 'none';
 
-  const readinessNote = !isOutboundReady
-    ? '⚠️ This offer is NOT outbound-ready. Rules must emphasize early exits and learning. Do NOT push a close.'
-    : '';
+  return `You are writing a decision playbook for a beginner sales rep. They will read this BEFORE or DURING calls to guide their behavior.
 
-  // Context-aware practical guidance
-  const contextGuidance: string[] = [];
-  if (['none', 'weak'].includes(ctx.proof_level || 'none')) {
-    contextGuidance.push('Prospect may ask for proof or references. Be honest — focus on the process and logic, not results you can\'t back up yet.');
-  }
-  if (['full_guarantee', 'conditional_guarantee'].includes(ctx.risk_model || '')) {
-    contextGuidance.push('You have a guarantee to lean on. Use it if the prospect seems hesitant about risk.');
-  }
-  if (ctx.risk_model === 'no_guarantee') {
-    contextGuidance.push('Prospect may be skeptical of guarantees. Emphasize control and optionality instead.');
-  }
-  if (ctx.icp_maturity === 'early') {
-    contextGuidance.push('This prospect is likely early-stage. They may not have a defined process for this yet. Be exploratory, not prescriptive.');
-  }
-  if (['mature', 'enterprise'].includes(ctx.icp_maturity || '')) {
-    contextGuidance.push('This prospect likely has existing vendors or processes. Acknowledge that — position as complement or upgrade, not replacement.');
-  }
+=== PHILOSOPHY ===
 
-  return `You are writing a decision playbook for a beginner sales rep. They will read this BEFORE or DURING calls to know how to navigate conversations.
+The goal of the call is NOT to qualify, diagnose, frame, or pitch.
+The only goal is to earn permission to continue the conversation.
 
-${readinessNote}
+This playbook exists to guide behavior, not decisions.
 
 === ABSOLUTE RULES ===
 
 1. No sales jargon. No abstract theory. No long explanations.
 2. No confidence bands or confidence labels.
 3. No dialogue or script lines — those belong in the Script tab only.
-4. Use short bullets and simple conditional phrasing: "If they say X → do Y"
-5. No dense paragraphs. Everything must be scannable.
-6. No emojis, no filler.
+4. No numeric thresholds (e.g. 200 leads, 500 leads).
+5. No qualification criteria.
+6. No economic feasibility checks.
+7. No outcome promises.
+8. No CTA logic.
+9. No "Hard stop" rules based on assumptions.
+10. Use short bullets. Everything must be scannable.
+11. No emojis, no filler.
 
-Context: ${industry} businesses at ${maturity} stage. Delivery: "${deliveryMechanism}". Primary constraint: ${bottleneckLabels[bottleneck] || bottleneck}. Proof level: ${proofLevel}. Risk model: ${riskModel}.
-
-${contextGuidance.length > 0 ? `PRACTICAL CONTEXT:\n${contextGuidance.map(g => `- ${g}`).join('\n')}` : ''}
+Context: ${industry} businesses at ${maturity} stage. Delivery: "${deliveryMechanism}".
 
 THE SCRIPT (for reference only — do NOT repeat script lines):
 ${scriptText}
 
-=== OUTPUT STRUCTURE (use ## headings) ===
+=== OUTPUT STRUCTURE (exactly 5 sections, use ## headings) ===
 
-## Before You Call
+## Primary Objective
 
-3-4 bullets max:
-- Who this script is for (specific ICP: ${industry}, ${maturity} stage)
-- What a good call sounds like (tied to ${promiseOutcome})
-- When to keep going vs. when to stop
+- One sentence only.
+- Objective: Get verbal permission to continue past the first 30 seconds.
+- Must NOT mention leads, databases, numbers, or outcomes.
 
-## Opener Rules
+## What Success Looks Like
 
-For each opener line in the script, define signal ranges:
-- **Strong signal:** They engage, ask a question back, or acknowledge → Keep going
-- **Weak signal:** Short answers, distracted, noncommittal → Try one more line, then gauge
-- **Disqualifying signal:** Hostile, immediate "not interested," wrong person → Exit politely
+- List exactly 3 signals.
+- Signals must be conversational, not logical.
+- Examples: curiosity, neutral engagement, asking "what is this about?"
 
-What must be true before moving to Bridge:
-- State it as: "Move forward only if ___"
+## What Failure Looks Like
 
-## Discovery Rules
+- List exactly 3 signals.
+- Signals must be emotional, not analytical.
+- Examples: irritation, repeated "who is this?", silence, abrupt tone.
 
-For each discovery question, define:
-- **Why you're asking this** (one sentence)
-- **Strong signal:** What a good answer sounds like → What to do next
-- **Weak signal:** Vague or unclear answer → Try once more or rephrase
-- **Disqualifying signal:** Clear mismatch → Exit politely
-- **If already answered:** Skip and confirm what you heard
+## Rep Behavior Rules
 
-What must be true before moving to Frame:
-- "Move forward only if ___"
+- Use short bullets.
+- Must include:
+  - Speak slower than feels natural.
+  - Stop talking the moment resistance appears.
+  - Never explain more when confused — ask permission instead.
+  - Never ask a question that advances the sale without permission.
 
-## Framing Rules
+## Next-Move Logic
 
-For the frame section:
-- **What you're trying to shift** (one sentence)
-- **If this lands cleanly** → Continue to CTA
-- **If this creates resistance** → Soften once, then let it go
-- **If they push back hard** → Do not force it. Exit gracefully.
-
-## Close Decision
-
-Do NOT script objections. Define thresholds:
-- **Go to CTA if:** [conditions]
-- **Suggest follow-up instead if:** [conditions]
-- **End the call if:** [conditions]
-
-Frame every exit as professional, not failure: "This is a correct exit."
-
-## Hard Stops
-
-List 4-5 scenarios where the rep should NOT continue:
-For each:
-- What it looks like
-- What to do (exit / tag as nurture / defer)
-- A simple exit phrase
+- If permission is granted → proceed to discovery (outside this script).
+- If permission is denied → exit politely.
+- If unclear → ask for permission again in a shorter form.
 
 === FINAL CHECK ===
-- No script lines repeated
-- No confidence labels
-- No jargon or theory
-- Every rule reads like: "If X → do Y"
-- A beginner can scan this in 60 seconds and feel prepared`;
+
+- Exactly 5 sections. No more.
+- No script lines repeated.
+- No jargon or theory.
+- No numeric thresholds or qualification criteria.
+- A beginner can scan this in 30 seconds and feel prepared.`;
 }
 
 serve(async (req) => {
@@ -418,21 +247,8 @@ serve(async (req) => {
     console.log("Generating script with confidence band:", confidence);
     console.log("Delivery mechanism:", deliveryMechanism);
 
-    // Step 1: Select types
-    const rawTypes = {
-      opener: selectOpenerType(offerContext),
-      bridge: selectBridgeType(offerContext),
-      discovery: selectDiscoveryType(offerContext),
-      frame: selectFrameType(offerContext),
-      cta: selectCTAType(offerContext),
-    };
-
-    // Step 2: Run alignment check
-    const types = runAlignmentCheck(offerContext, rawTypes);
-    console.log("Selected types after alignment:", JSON.stringify(types));
-
-    // Step 3: Generate script
-    const scriptSystemPrompt = buildSystemPrompt(offerContext, types, deliveryMechanism);
+    // Step 1: Generate script (3 sections only)
+    const scriptSystemPrompt = buildSystemPrompt(offerContext, deliveryMechanism);
 
     const scriptResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -444,10 +260,10 @@ serve(async (req) => {
         model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: scriptSystemPrompt },
-          { role: "user", content: "Generate the outbound sales script now. Output only the script with section headings. Follow the turn-taking format exactly. No preamble." },
+          { role: "user", content: "Generate the cold call opening script now. Output only the 3 sections with headings. No preamble. No extra sections." },
         ],
         temperature: 0.3,
-        max_tokens: 4000,
+        max_tokens: 1000,
       }),
     });
 
@@ -472,10 +288,10 @@ serve(async (req) => {
       throw new Error("No script content returned");
     }
 
-    // Step 4: Generate progression rules
-    const progressionPrompt = buildProgressionPrompt(offerContext, scriptText, types, deliveryMechanism);
+    // Step 2: Generate decision playbook
+    const playbookPrompt = buildPlaybookPrompt(offerContext, scriptText, deliveryMechanism);
 
-    const progressionResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const playbookResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${LOVABLE_API_KEY}`,
@@ -484,26 +300,35 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          { role: "system", content: progressionPrompt },
-          { role: "user", content: "Generate the progression rules now. Output only the rules with section headings. No preamble." },
+          { role: "system", content: playbookPrompt },
+          { role: "user", content: "Generate the decision playbook now. Output only the 5 sections with headings. No preamble." },
         ],
         temperature: 0.3,
-        max_tokens: 4000,
+        max_tokens: 2000,
       }),
     });
 
-    let progressionText: string | null = null;
-    if (progressionResponse.ok) {
-      const progressionData = await progressionResponse.json();
-      progressionText = progressionData.choices?.[0]?.message?.content || null;
+    let playbookText: string | null = null;
+    if (playbookResponse.ok) {
+      const playbookData = await playbookResponse.json();
+      playbookText = playbookData.choices?.[0]?.message?.content || null;
     } else {
-      console.error("Progression rules error:", progressionResponse.status);
+      console.error("Playbook generation error:", playbookResponse.status);
     }
+
+    // Types kept for backward compat but simplified
+    const types = {
+      opener: 'attention-capture',
+      bridge: 'relevance-check',
+      discovery: 'permission',
+      frame: 'n/a',
+      cta: 'n/a',
+    };
 
     return new Response(
       JSON.stringify({
         script: scriptText,
-        progressionRules: progressionText,
+        progressionRules: playbookText,
         types,
         isValidationMode: offerContext.latent_readiness_label === 'Weak',
         confidenceBand: confidence,
