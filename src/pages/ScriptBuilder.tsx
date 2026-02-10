@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { FileText, BookOpen, Loader2, AlertTriangle, Copy, Check, RefreshCw } from 'lucide-react';
+import { ProgressLoadingBar } from '@/components/ui/progress-loading-bar';
 
 interface ScriptResult {
   script: string;
@@ -336,26 +337,41 @@ export default function ScriptBuilder() {
               </Card>
             )}
 
-            <Button
-              onClick={handleGenerate}
-              disabled={isGenerating || !canGenerate}
-              size="lg"
-              className="w-full"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Generating Opening Script & Playbook...
-                </>
-              ) : result ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Regenerate Script
-                </>
-              ) : (
-                'Generate Script'
-              )}
-            </Button>
+            {isGenerating ? (
+              <Card>
+                <CardContent className="pt-6 pb-6">
+                  <ProgressLoadingBar
+                    isActive={isGenerating}
+                    durationMs={30000}
+                    messages={[
+                      'Mapping script structure',
+                      'Aligning opener with offer context',
+                      'Generating discovery and progression logic',
+                      'Building adaptive conversation flow',
+                      'Calibrating decision playbook',
+                      'Finalizing script output',
+                    ]}
+                    messageIntervalMs={4500}
+                  />
+                </CardContent>
+              </Card>
+            ) : (
+              <Button
+                onClick={handleGenerate}
+                disabled={!canGenerate}
+                size="lg"
+                className="w-full"
+              >
+                {result ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Regenerate Script
+                  </>
+                ) : (
+                  'Generate Script'
+                )}
+              </Button>
+            )}
 
             {result && (
               <>

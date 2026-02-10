@@ -39,6 +39,7 @@ import {
   Check,
   Loader2,
 } from 'lucide-react';
+import { ProgressLoadingBar } from '@/components/ui/progress-loading-bar';
 import type {
   DiagnosticFormData,
   OfferType,
@@ -867,21 +868,34 @@ export default function OfferDiagnostic() {
           </Card>
 
           {/* Submit Button */}
-          <Button
-            size="lg"
-            onClick={handleSubmit}
-            disabled={!isFormComplete || isEvaluating}
-            className="w-full"
-          >
-            {isEvaluating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Evaluating...
-              </>
-            ) : (
-              'Evaluate Offer'
-            )}
-          </Button>
+          {isEvaluating ? (
+            <Card>
+              <CardContent className="pt-6 pb-6">
+                <ProgressLoadingBar
+                  isActive={isEvaluating}
+                  durationMs={22000}
+                  messages={[
+                    'Evaluating offer structure',
+                    'Checking economic headroom',
+                    'Analyzing risk alignment',
+                    'Identifying bottlenecks',
+                    'Scoring latent dimensions',
+                    'Generating recommendations',
+                  ]}
+                  messageIntervalMs={3500}
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            <Button
+              size="lg"
+              onClick={handleSubmit}
+              disabled={!isFormComplete}
+              className="w-full"
+            >
+              Evaluate Offer
+            </Button>
+          )}
 
           {/* ============= RESULTS SECTION — V2 ONLY ============= */}
           {evaluationResult && (
