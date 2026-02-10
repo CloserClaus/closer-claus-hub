@@ -11,7 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { FileText, BookOpen, Loader2, AlertTriangle, Copy, Check, RefreshCw, Shield, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { FileText, BookOpen, Loader2, AlertTriangle, Copy, Check, RefreshCw } from 'lucide-react';
 
 interface ScriptResult {
   script: string;
@@ -27,29 +27,6 @@ interface ScriptResult {
   confidenceBand: 'low' | 'medium' | 'high';
 }
 
-const confidenceBandConfig = {
-  low: {
-    label: 'Low Confidence',
-    description: 'Follow the script closely. Minimal improvisation.',
-    icon: ShieldAlert,
-    variant: 'destructive' as const,
-    bgClass: 'bg-destructive/5 border-destructive/20',
-  },
-  medium: {
-    label: 'Medium Confidence',
-    description: 'Use as a strong guide. Paraphrase while preserving intent.',
-    icon: Shield,
-    variant: 'secondary' as const,
-    bgClass: 'bg-amber-500/5 border-amber-500/20',
-  },
-  high: {
-    label: 'High Confidence',
-    description: 'Use as a reference framework. Customize freely.',
-    icon: ShieldCheck,
-    variant: 'default' as const,
-    bgClass: 'bg-emerald-500/5 border-emerald-500/20',
-  },
-};
 
 export default function ScriptBuilder() {
   const { savedState, isLoading: isLoadingState } = useOfferDiagnosticState();
@@ -164,73 +141,87 @@ export default function ScriptBuilder() {
     setTimeout(() => setCopiedSection(null), 2000);
   };
 
-  const renderMarkdown = (text: string) => {
-    return text.split('\n').map((line, i) => {
-      // Section headings
+  // Filter out meta lines from script content for clean display
+  const cleanScriptText = (text: string): string => {
+    return text.split('\n').filter(line => {
+      const trimmed = line.trim();
+      // Remove intent labels, expected response, pause cues, confidence bands, coaching
+      if (trimmed.startsWith('*Intent:')) return false;
+      if (trimmed.startsWith('*Expected response:')) return false;
+      if (trimmed.startsWith('*(') && trimmed.endsWith(')*')) return false;
+      if (trimmed.startsWith('**Prospect:**') || trimmed.startsWith('**Prospect: **')) return false;
+      if (/^>\s*This is not meant to be read/i.test(trimmed)) return false;
+      if (/CONFIDENCE BAND/i.test(trimmed)) return false;
+      if (/REP FREEDOM/i.test(trimmed)) return false;
+      if (/ANTI-ROBOTIC/i.test(trimmed)) return false;
+      return true;
+    }).join('\n');
+  };
+
+  const renderScriptMarkdown = (text: string) => {
+    const cleaned = cleanScriptText(text);
+    return cleaned.split('\n').map((line, i) => {
       if (line.startsWith('## ')) {
         return <h3 key={i} className="text-lg font-semibold mt-6 mb-3 text-foreground border-b border-border pb-1">{line.slice(3)}</h3>;
       }
       if (line.startsWith('### ')) {
         return <h4 key={i} className="text-base font-semibold mt-4 mb-2 text-foreground">{line.slice(4)}</h4>;
       }
-      // Rep lines — highlight distinctly
+      // Rep lines — clean, just the spoken text
       if (line.startsWith('**Rep:**') || line.startsWith('**Rep: **')) {
         const content = line.replace(/^\*\*Rep:\s?\*\*\s*/, '');
         return (
-          <div key={i} className="flex items-start gap-2 mt-3 mb-1 bg-primary/5 border-l-2 border-primary rounded-r-md px-3 py-2">
-            <span className="text-xs font-bold text-primary uppercase shrink-0 mt-0.5">Rep</span>
-            <span className="text-foreground font-medium">{renderInlineFormatting(content)}</span>
+          <div key={i} className="mt-2 mb-1 bg-primary/5 border-l-2 border-primary rounded-r-md px-3 py-2">
+            <span className="text-foreground font-medium text-sm">{renderInlineFormatting(content)}</span>
           </div>
         );
       }
-      // Prospect lines
-      if (line.startsWith('**Prospect:**') || line.startsWith('**Prospect: **')) {
-        const content = line.replace(/^\*\*Prospect:\s?\*\*\s*/, '');
-        return (
-          <div key={i} className="flex items-start gap-2 mt-1 mb-1 bg-muted/50 border-l-2 border-muted-foreground/30 rounded-r-md px-3 py-2">
-            <span className="text-xs font-bold text-muted-foreground uppercase shrink-0 mt-0.5">Prospect</span>
-            <span className="text-muted-foreground italic">{renderInlineFormatting(content)}</span>
-          </div>
-        );
-      }
-      // Pause/pacing cues — special styling
-      if (line.trim().startsWith('*(') && line.trim().endsWith(')*')) {
-        const content = line.trim().slice(2, -2);
-        return (
-          <div key={i} className="text-xs text-amber-600 dark:text-amber-400 italic ml-4 my-1 flex items-center gap-1">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-            {content}
-          </div>
-        );
-      }
-      // Intent/Expected response cues
-      if (line.trim().startsWith('*Intent:') || line.trim().startsWith('*Expected response:')) {
-        const content = line.trim().slice(1, -1); // remove outer *
-        return (
-          <p key={i} className="text-xs text-muted-foreground/70 italic ml-4 my-0.5">{content}</p>
-        );
-      }
-      // Bold-only lines
+      // Bold-only lines (sub-headers like "Step 1")
       if (line.startsWith('**') && line.endsWith('**')) {
-        return <p key={i} className="font-semibold text-foreground mt-3 mb-1">{line.slice(2, -2)}</p>;
+        return <p key={i} className="font-semibold text-foreground mt-4 mb-1 text-sm">{line.slice(2, -2)}</p>;
       }
-      // Blockquotes (anti-robotic notice)
+      if (line.startsWith('> ')) {
+        return null; // Skip blockquotes in script view
+      }
+      if (line.startsWith('- ')) {
+        return <li key={i} className="ml-4 text-muted-foreground list-disc text-sm leading-relaxed">{renderInlineFormatting(line.slice(2))}</li>;
+      }
+      if (line.trim() === '') {
+        return <div key={i} className="h-2" />;
+      }
+      // Regular text — treat as speakable line
+      return (
+        <div key={i} className="mt-1.5 mb-1 bg-primary/5 border-l-2 border-primary rounded-r-md px-3 py-2">
+          <span className="text-foreground font-medium text-sm">{renderInlineFormatting(line)}</span>
+        </div>
+      );
+    });
+  };
+
+  const renderRulesMarkdown = (text: string) => {
+    return text.split('\n').map((line, i) => {
+      if (line.startsWith('## ')) {
+        return <h3 key={i} className="text-lg font-semibold mt-6 mb-3 text-foreground border-b border-border pb-1">{line.slice(3)}</h3>;
+      }
+      if (line.startsWith('### ')) {
+        return <h4 key={i} className="text-base font-semibold mt-4 mb-2 text-foreground">{line.slice(4)}</h4>;
+      }
+      if (line.startsWith('**') && line.endsWith('**')) {
+        return <p key={i} className="font-semibold text-foreground mt-3 mb-1 text-sm">{line.slice(2, -2)}</p>;
+      }
+      if (line.startsWith('- ')) {
+        return <li key={i} className="ml-4 text-muted-foreground list-disc text-sm leading-relaxed">{renderInlineFormatting(line.slice(2))}</li>;
+      }
       if (line.startsWith('> ')) {
         return (
-          <blockquote key={i} className="border-l-2 border-amber-500/50 bg-amber-500/5 pl-4 py-2 italic text-muted-foreground my-3 rounded-r-md text-sm">
+          <blockquote key={i} className="border-l-2 border-amber-500/50 bg-amber-500/5 pl-4 py-2 italic text-muted-foreground my-2 rounded-r-md text-sm">
             {line.slice(2)}
           </blockquote>
         );
       }
-      // List items
-      if (line.startsWith('- ')) {
-        return <li key={i} className="ml-4 text-muted-foreground list-disc text-sm leading-relaxed">{renderInlineFormatting(line.slice(2))}</li>;
-      }
-      // Empty lines
       if (line.trim() === '') {
         return <div key={i} className="h-2" />;
       }
-      // Default paragraph with inline formatting
       return (
         <p key={i} className="text-muted-foreground leading-relaxed text-sm">
           {renderInlineFormatting(line)}
@@ -259,7 +250,7 @@ export default function ScriptBuilder() {
     );
   }
 
-  const bandConfig = result ? confidenceBandConfig[result.confidenceBand] : null;
+  
 
   return (
     <DashboardLayout>
@@ -368,31 +359,15 @@ export default function ScriptBuilder() {
 
             {result && (
               <>
-                {/* Confidence Band Display */}
-                {bandConfig && (
-                  <Card className={bandConfig.bgClass}>
-                    <CardContent className="flex items-start gap-3 pt-6">
-                      <bandConfig.icon className="h-5 w-5 shrink-0 mt-0.5" />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-semibold text-foreground">{bandConfig.label}</p>
-                          <Badge variant={bandConfig.variant} className="text-xs">{result.confidenceBand.toUpperCase()}</Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground mt-1">{bandConfig.description}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
                 <Tabs defaultValue="script" className="w-full">
                   <TabsList className="w-full">
                     <TabsTrigger value="script" className="flex-1 gap-2">
                       <FileText className="h-4 w-4" />
-                      Script
+                      What to Say
                     </TabsTrigger>
                     <TabsTrigger value="progression" className="flex-1 gap-2" disabled={!result.progressionRules}>
                       <BookOpen className="h-4 w-4" />
-                      Progression Rules
+                      How to Think
                     </TabsTrigger>
                   </TabsList>
 
@@ -400,19 +375,12 @@ export default function ScriptBuilder() {
                     <Card>
                       <CardHeader className="flex flex-row items-center justify-between pb-3">
                         <div className="space-y-1">
-                          <CardTitle className="text-base">Outbound Script</CardTitle>
-                          <div className="flex gap-1.5 flex-wrap">
-                            {result.isValidationMode && (
-                              <Badge variant="outline" className="text-destructive border-destructive/30 bg-destructive/5">
-                                Validation Mode
-                              </Badge>
-                            )}
-                            <Badge variant="outline" className="text-xs">Opener: {result.types.opener}</Badge>
-                            <Badge variant="outline" className="text-xs">Bridge: {result.types.bridge}</Badge>
-                            <Badge variant="outline" className="text-xs">Discovery: {result.types.discovery}</Badge>
-                            <Badge variant="outline" className="text-xs">Frame: {result.types.frame}</Badge>
-                            <Badge variant="outline" className="text-xs">CTA: {result.types.cta}</Badge>
-                          </div>
+                          <CardTitle className="text-base">Talk Track</CardTitle>
+                          {result.isValidationMode && (
+                            <Badge variant="outline" className="text-destructive border-destructive/30 bg-destructive/5">
+                              Exploration Mode
+                            </Badge>
+                          )}
                         </div>
                         <Button
                           variant="ghost"
@@ -425,7 +393,7 @@ export default function ScriptBuilder() {
                       <Separator />
                       <CardContent className="pt-4">
                         <div className="max-w-none">
-                          {renderMarkdown(result.script)}
+                          {renderScriptMarkdown(result.script)}
                         </div>
                       </CardContent>
                     </Card>
@@ -436,9 +404,9 @@ export default function ScriptBuilder() {
                       <Card>
                         <CardHeader className="flex flex-row items-center justify-between pb-3">
                           <div className="space-y-1">
-                            <CardTitle className="text-base">Progression Rules</CardTitle>
+                            <CardTitle className="text-base">Decision Playbook</CardTitle>
                             <p className="text-xs text-muted-foreground">
-                              How to navigate the conversation based on prospect responses
+                              How to navigate the conversation
                             </p>
                           </div>
                           <Button
@@ -452,7 +420,7 @@ export default function ScriptBuilder() {
                         <Separator />
                         <CardContent className="pt-4">
                           <div className="max-w-none">
-                            {renderMarkdown(result.progressionRules)}
+                            {renderRulesMarkdown(result.progressionRules)}
                           </div>
                         </CardContent>
                       </Card>
