@@ -145,11 +145,40 @@ Always ground language in the specific industry reality. Never use generic busin
 
 === OUTPUT FORMAT ===
 
-Generate the script as a turn-based ADAPTIVE SKELETON with short base lines and branching follow-ups based on likely prospect responses.
+Generate the script as a turn-based ADAPTIVE SKELETON with short base lines and MANDATORY branching guardrails under every beat.
 
 Use ## headings for each beat. Under each beat, output:
 - The exact line the rep says (as a bold **Rep:** prefix)
-- Then 2-3 short "If -> then" branches for likely prospect responses
+- Then MANDATORY response branches using this format:
+
+**GUARDRAILS (required under EVERY beat):**
+- "If they respond normally:" -> next line
+- "If they interrupt:" -> stop talking immediately, then say: [specific short recovery line]
+- "If they push back or sound annoyed:" -> [specific clean exit line]
+- "If they say no twice:" -> exit immediately: "No worries at all. Appreciate your time, {{first_name}}."
+
+Every beat must have these guardrails. No exceptions. A beginner rep must never be left wondering "what do I say now?"
+
+=== CONVERSATION WIN CONDITION (output this FIRST, before Beat 1) ===
+
+Output a section called ## Win Condition at the very top of the script with exactly this structure:
+
+**You win if:**
+- The prospect answers one real question about their business
+- The prospect agrees to look at something (not necessarily a meeting)
+- You exit without the prospect feeling annoyed or pressured
+
+**You lose if:**
+- You explain the offer before they confirm the problem
+- You ask for a meeting before they say the problem matters
+- You keep talking after they say no twice
+- The prospect hangs up irritated
+
+**Exit immediately if:**
+- They say "not interested" or "no" twice
+- Their tone gets sharp or short
+- They ask to be removed from the list
+- You hear silence for more than 5 seconds after a question
 
 === BEATS (in this exact order) ===
 
@@ -160,7 +189,7 @@ Use ## headings for each beat. Under each beat, output:
 - Must sound natural when interrupted
 - Must NOT identify the company yet
 - Must end with a soft handoff, not a question that invites a hard "no"
-- Include: If prospect responds neutrally -> next line. If rushed -> fallback line. If confused -> clarification line.
+- GUARDRAILS: If they respond neutrally -> next line. If rushed -> "Totally get it, I'll be super quick." If confused -> "Sorry, I'm looking for the person who handles [industry-specific thing]." If annoyed -> "No worries, bad timing. Have a good one."
 
 ## 2. Identity + Context
 - 1 short line
@@ -169,6 +198,7 @@ Use ## headings for each beat. Under each beat, output:
 - Should feel like a reason, not a pitch
 - Must describe the category of problem using a micro-scenario, not abstract language
 - Then immediately move to permission check
+- GUARDRAILS: If they interrupt with "what's this about?" -> give the one-line reason again, shorter. If they say "not interested" -> "Totally fair. Have a good day, {{first_name}}." If they stay silent -> move to permission check anyway.
 
 ## 3. Permission Check
 - Ask for time explicitly
@@ -176,87 +206,76 @@ Use ## headings for each beat. Under each beat, output:
 - Must include an easy out
 - Must be phrased as a choice between continuing briefly or stopping
 - Must NOT ask "Is this a good time?"
+- GUARDRAILS: If they say yes -> proceed. If they say "I'm busy" -> "When would be less crazy? I can call back." If they say no -> "No problem. Appreciate it." and hang up. Do NOT try to convince them.
 
 ## 4. Relevance Anchor (Read Verbatim)
 - This section sits BETWEEN the Permission Check and the first discovery question.
-- Purpose: link the prospect's likely current behavior to a hidden cost or missed outcome using a SPECIFIC micro-scenario from their industry.
+- Purpose: link the prospect's likely current behavior to a hidden cost using a SPECIFIC micro-scenario from their industry.
 - It must be 1-2 sentences MAX.
 - It MUST use a concrete, industry-specific scenario. NOT generic business language.
 - It must reference a pattern ("what we usually see with [specific ICP type] at this stage is [specific thing that happens]") rather than a personal claim about them.
-- The scenario must describe a moment the prospect has actually lived through. Something they can picture.
-- It MUST include light uncertainty. The rep should NOT sound like they already know the prospect's situation. Use phrasing like "I might be off" or "not sure if that's true for you" or "could be different in your case."
-- It must NOT accuse, exaggerate, or threaten.
+- It MUST include light uncertainty. Use phrasing like "I might be off" or "not sure if that's true for you."
 - It must end with a soft check that invites them to confirm or deny without pressure.
-- BANNED in this section: "increase revenue", "get more value", "old leads", "untapped potential", any abstract benefit language.
-- Good example for roofing: "What we usually see with guys running 3-4 crews is there's a pile of estimates from last month that nobody followed up on. Not because they forgot, just ran out of day. I might be totally off, but does that sound like your world at all?"
-- Good example for SaaS: "What we usually hear from teams your size is there are demo requests sitting in the CRM from two weeks ago that nobody called back. Could be different for you, but is that something you've run into?"
+- BANNED: "increase revenue", "get more value", "old leads", "untapped potential", any abstract benefit language.
+- GUARDRAILS: If they confirm -> proceed to Ownership Trigger. If they say "not really" -> "Got it. What does your situation look like instead?" If they push back -> "Fair enough. Sounds like you've got that handled. Appreciate your time."
 
 ## 5. Ownership Trigger Question
 - ONE question that makes the prospect describe what currently happens in their business.
 - This question must NOT be yes/no. It must force them to explain their current reality.
-- It should make them verbalize what they currently do (or don't do) about the situation from the Relevance Anchor.
-- It should feel safe and curious, not interrogative.
 - Structure: "What usually happens when [specific situation from Relevance Anchor]?"
-- Example for roofing: "What usually happens to someone who asked for a quote but never called back?"
-- Example for dental: "What usually happens to a patient who cancels their cleaning and doesn't reschedule?"
-- Example for SaaS: "What usually happens to a trial user who signed up but stopped logging in after day two?"
-- Include 2-3 "If -> then" branches based on likely responses.
+- GUARDRAILS: If they give a real answer -> listen, then proceed to Micro-Commitment. If they give a short dismissive answer -> "Makes sense. Is that something that bugs you or is it just part of the deal?" If they say "I don't know" -> "Totally fair. Most people we talk to say [common answer]. Does that sound about right?" If they get annoyed -> exit: "I hear you. Appreciate you taking the call, {{first_name}}."
 
 ## 6. Test Question 2 (optional)
 - Only include if it adds value. Max ONE additional question.
 - Must build on what was revealed by the Ownership Trigger Question.
 - Must not stack or repeat.
-- Include 1-2 "If -> then" branches.
-- If this question is not needed, skip this section entirely.
+- GUARDRAILS: If they engage -> proceed. If tone shortens -> skip directly to Micro-Commitment. Never force this beat.
 
 ## 7. Micro-Commitment Step
-- This beat sits BETWEEN the discovery questions and the meeting ask. It is MANDATORY.
-- Purpose: get the prospect to confirm TWO things before you ever suggest a meeting:
-  1. They have the problem (already confirmed by now).
-  2. They care enough about fixing it to look at something.
-- This is a SMALLER ask than a meeting. It tests intent without commitment.
-- The question should feel like a natural "is this even worth your time" check.
+- This beat is MANDATORY before any meeting suggestion.
+- Purpose: confirm the prospect cares enough to look at a fix. This is SMALLER than asking for a meeting.
+- CRITICAL RULE: NEVER suggest a meeting before this step gets a positive response.
 - It must NOT mention meetings, demos, calls, or scheduling.
 - Example structures:
   - "Would it even be worth looking at how that gets fixed, or is it just one of those things you live with?"
-  - "Is that something you'd want to clean up if there was a simple way, or is it not really a priority right now?"
   - "If there was a way to catch those before they disappear, would that even matter to you right now?"
-- Include branches:
-  - If they say yes or show interest -> proceed to Earned Next Step
-  - If they say "not really" or "we're fine" -> exit politely. Do NOT push.
-  - If they're unsure -> rephrase once, then offer to follow up later.
+- GUARDRAILS: If they say yes -> proceed to Earned Next Step. If they say "not really" or "we're fine" -> "Totally get it. I'll leave you to it. Have a good one, {{first_name}}." Do NOT push. If they're unsure -> rephrase once: "No pressure either way. Just checking if it's even on your radar." If still unsure -> offer to follow up later and exit.
 
 ## 8. Earned Next Step (Read Verbatim)
-- This is NOT a generic meeting ask. It is an "Earned Decision Frame."
 - ONLY reach this beat if the Micro-Commitment Step got a positive or curious response.
 - Structure (all 3 parts mandatory):
-  1. **Reflection** (1 sentence): Reflect back something the prospect just confirmed. Start with "Based on what you said about [confirmed issue]..."
-  2. **Reason** (1 sentence): Connect that to a specific outcome. "That's usually where [ICP type] see [specific thing improve]."
-  3. **Time-Boxed Choice** (1 question): Offer TWO specific time options, not open-ended. NEVER say "would you be open to a chat" or "can we schedule something."
+  1. **Reflection** (1 sentence): "Based on what you said about [confirmed issue]..."
+  2. **Reason** (1 sentence): "That's usually where [ICP type] see [specific thing improve]."
+  3. **Time-Boxed Choice** (1 question): Offer TWO specific time options. NEVER open-ended.
      - Correct: "If it makes sense, we can walk through how that works in about 10 minutes. Would later today or tomorrow morning be easier?"
-     - Correct: "We can show you exactly how that part works. Would Thursday or Friday afternoon be better?"
-     - BANNED: "Would you be open to a quick call?" / "Can we set up a meeting?" / "Do you have time this week?"
-- The CTA must reference at least one confirmed insight from the conversation.
-- Must NOT use hype, urgency, or scarcity.
-- Must NOT re-explain the offer.
-- Branching:
-  - If they pick a time -> confirm and exit. "Perfect. I'll send over a quick invite. Talk to you then."
-  - If they choose to park it -> exit politely, no resistance, no reframing.
-  - If they say "just send me an email" -> go to Email Fallback branch below.
+     - BANNED: "Would you be open to a quick call?" / "Can we set up a meeting?"
+- GUARDRAILS:
+  - If they pick a time -> "Perfect. I'll send over a quick invite. Talk to you then, {{first_name}}."
+  - If they say "leave it" -> "No problem at all. If anything changes, you've got my number. Have a good one."
+  - If they say "just send me an email" -> go to Email Fallback.
+  - NEVER argue with "leave it." Accept it instantly.
 
 ## 8b. Email Fallback Branch
-- This is a sub-branch of the Earned Next Step, triggered when the prospect says "just send me an email" or "email me something."
-- Do NOT treat this as a rejection. Treat it as a soft redirect.
-- Structure (3 steps):
-  1. **Confirm email**: "Sure, happy to. Is {{email}} still the best one to use?"
-  2. **Ask for angle**: "What would be most useful to see? The way it works on the [specific scenario from Relevance Anchor] side, or more of the numbers behind it?"
-  3. **Clean exit**: "Got it. I'll send that over today. If it looks interesting, we can always jump on a quick call from there. Appreciate your time, {{first_name}}."
-- This branch must feel like a natural, respectful close. Not a last-ditch pitch attempt.
-- The angle question serves two purposes: it makes the email more relevant AND it gives the rep intel for the follow-up.
+- Triggered when prospect says "just send me an email."
+- Do NOT treat as rejection. Treat as redirect.
+- Structure:
+  1. "Sure, happy to. Is {{email}} still the best one to use?"
+  2. "What would be most useful to see? The way it works on the [scenario] side, or more of the numbers behind it?"
+  3. "Got it. I'll send that over today. If it looks interesting, we can always jump on a quick call from there. Appreciate your time, {{first_name}}."
+
+=== HARD RULES FOR BEGINNER REPS ===
+
+These rules must be EMBEDDED in the script flow, not just stated:
+1. NEVER ask for a meeting before confirming they have the problem (Micro-Commitment Step must come first).
+2. NEVER argue with a prospect. If they push back, agree and exit.
+3. If they say "no" twice on anything, exit immediately. No third attempt.
+4. If their tone gets sharp, shorten your next response to one sentence max.
+5. If you don't know what to say, say: "That makes sense. Let me not take up more of your time. Appreciate it, {{first_name}}."
+6. Every exit must include their first name and "appreciate your time" or similar.
 
 === VARIABLE FORMAT ===
 
-Use these dynamic variables throughout the script where appropriate:
+Use these dynamic variables throughout the script:
 - {{first_name}} for the prospect's first name
 - {{last_name}} for the prospect's last name
 - {{company}} for the prospect's company name
@@ -264,49 +283,43 @@ Use these dynamic variables throughout the script where appropriate:
 - {{email}} for the prospect's email
 - {{phone}} for the prospect's phone number
 
-These variables are compatible with the Dialer system. Use them naturally in the script. Do not wrap them in brackets like [Name].
+These are Dialer-compatible. Use them naturally. Never use [Name] or [Company] bracket format.
 
 === QUALITY CONTROL (MANDATORY) ===
 
-Before finalizing, verify the script passes ALL of these:
+Before finalizing, verify ALL of these:
 
-1. Contains a concrete spoken opener line (not a placeholder)
-2. Contains a clear reason-for-calling line (one sentence, plain language, no jargon)
-3. Contains a Relevance Anchor with a SPECIFIC micro-scenario from ${industry}, not generic benefit language
-4. The Relevance Anchor includes light uncertainty ("I might be off", "not sure if that's true for you")
-5. Contains an Ownership Trigger Question that forces the prospect to describe their current reality (not yes/no)
-6. Contains a Micro-Commitment Step that tests intent BEFORE suggesting a meeting
-7. Contains an Earned Next Step with Reflection + Reason + Time-Boxed Choice (two specific time options)
-8. Contains an Email Fallback Branch with email confirm + angle question + clean exit
-9. Tone is consistent throughout. No line sounds senior if others sound junior
-10. No line sounds like marketing copy or could appear in a blog post or LinkedIn post
-11. Every line survives interruption at any point
-12. Every line is speakable in one breath
-13. No stacked questions anywhere
-14. No more than 2 discovery questions before the Micro-Commitment Step
-15. Total script feels intentionally incomplete. It earns time, nothing more
-16. Zero em dashes anywhere in the output
-17. Zero instances of "we specialize", "increase revenue", "get more value", "unlock", "leverage", "optimize"
-18. Every scenario references something specific to ${industry} businesses
-19. The meeting ask uses two specific time options, never open-ended
-20. Dynamic variables use {{variable}} format, never [Variable] format
+1. Win Condition section appears FIRST before any beats
+2. Every single beat has GUARDRAILS with interrupt, pushback, and exit branches
+3. Relevance Anchor includes light uncertainty phrasing
+4. Ownership Trigger Question forces prospect to describe reality (not yes/no)
+5. Micro-Commitment Step appears BEFORE any meeting suggestion
+6. Earned Next Step uses two specific time options, never open-ended
+7. Email Fallback Branch has email confirm + angle question + clean exit
+8. No line sounds like marketing copy
+9. Every line is speakable in one breath
+10. No stacked questions
+11. Zero em dashes
+12. Zero instances of "we specialize", "increase revenue", "get more value"
+13. Every scenario is specific to ${industry}
+14. Dynamic variables use {{variable}} format
+15. Every exit line includes {{first_name}} and a respectful close
+16. The script can be pasted directly into a Dialer with zero edits
 
-If any check fails, rewrite the failing line before outputting.
+If any check fails, rewrite before outputting.
 
 === ANTI-AI FILTER ===
 
 Read every line out loud. If it sounds like something a marketer wrote, rewrite it until it sounds like something a person would say while leaning against a truck or sitting in a break room.
 
-When unsure whether to be more specific or more flexible:
 -> More specific in language
 -> More flexible in flow
 
 === FINAL OUTPUT RULES ===
 
-- Use ## headings for each beat (8 max including Email Fallback, fewer if Test Question 2 is skipped)
-- No explanations, no intent labels, no meta commentary, no "(pause)" instructions
-- No emojis, no hype, no sales fluff, no jargon
-- No em dashes
+- Start with ## Win Condition, then ## beats in order
+- No explanations, no intent labels, no meta commentary
+- No emojis, no hype, no sales fluff, no jargon, no em dashes
 - Output the script and nothing else.`;
 }
 
@@ -316,108 +329,128 @@ function buildPlaybookPrompt(ctx: OfferContext, scriptText: string, deliveryMech
   const industry = ctx.icp_industry?.replace(/_/g, ' ') || 'their industry';
   const maturity = ctx.icp_maturity?.replace(/_/g, ' ') || 'unknown stage';
 
-  return `You are writing a behavior guide for a BEGINNER sales rep. They will read this BEFORE or DURING cold calls.
+  return `You are writing a tactical behavior manual for a BEGINNER sales rep who has never made a cold call before. They will read this BEFORE or DURING calls.
 
-=== PHILOSOPHY ===
+=== WHAT THIS IS ===
 
-The goal of the call is NOT to qualify, diagnose, frame, or pitch.
-The only goal is to earn permission to continue the conversation — step by step, not all at once.
+This is a battlefield manual. Not a philosophy document. Not a training course.
 
-This playbook guides BEHAVIOR, not decisions.
-It exists so the rep knows what to pay attention to and when to stop pushing.
-It is NOT required to run the call — the script alone should work.
+Every line must answer: "What exactly do I do when X happens?"
+
+If a beginner rep reads this in 60 seconds, they should feel less nervous and know exactly what to do in the 5 most common situations.
 
 === TONE RULES ===
 
-- Beginner-safe, calm, permission-first
-- No hype, no pressure language
-- No sales jargon or abstract theory
-- Simple language a first-time rep can scan in 30 seconds
+- Direct. Short. No fluff.
+- Write like you're texting a nervous friend before their first call.
+- No sales jargon, no theory, no abstract concepts.
+- No "earn the right to continue." Instead: "Your only goal in the first 20 seconds is to avoid being hung up on."
+- No philosophy. Only instructions.
 
 === ABSOLUTE RULES ===
 
 1. No confidence bands or confidence labels
-2. No dialogue or script lines — those belong in the Script tab only
-3. No numeric thresholds (e.g. 200 leads, 500 leads)
-4. No qualification criteria or economic feasibility checks
-5. No outcome promises or CTA logic
-6. No "Hard stop" rules based on assumptions
-7. No database size assumptions
-8. No pre-call goals that cannot be known on a cold call
-9. Nothing the rep cannot verify in real time
-10. Use short bullets. Everything must be scannable.
-11. No emojis, no filler.
+2. No dialogue or script lines (those belong in the Script tab only)
+3. No numeric thresholds
+4. No qualification criteria
+5. No outcome promises
+6. No abstract theory or frameworks
+7. Nothing the rep cannot act on immediately
+8. Every bullet must be a specific instruction, not a concept
+9. No emojis, no filler
+10. Everything must be scannable in under 60 seconds
 
 Context: ${industry} businesses at ${maturity} stage. Delivery: "${deliveryMechanism}".
 
-THE SCRIPT (for reference only — do NOT repeat script lines):
+THE SCRIPT (for reference only, do NOT repeat script lines):
 ${scriptText}
 
-=== OUTPUT STRUCTURE (exactly 6 sections, use ## headings) ===
+=== OUTPUT STRUCTURE (exactly 7 sections, use ## headings) ===
 
-## Primary Objective
+## Conversation Win Condition
 
-- One sentence only.
-- Objective: Get verbal permission to continue past the first 30 seconds.
-- Must NOT mention leads, databases, numbers, or outcomes.
+- State in plain language what a "win" looks like on this call. Not a closed deal. Not a qualified lead. Just a small win.
+- Use this format:
+  - **You win if:** [3 specific things, e.g. "They answer one real question about their business"]
+  - **You lose if:** [3 specific things, e.g. "You explain the offer before they confirm the problem"]
+  - **Exit immediately if:** [3 triggers, e.g. "They say no twice", "Tone gets sharp", "Silence after your question"]
 
-## What Success Looks Like
+## Tone and Pacing
 
-- List exactly 3 signals.
-- Signals must be conversational, not logical.
-- Focus on what the rep is trying to EARN next (time, attention, permission).
-- Examples: curiosity, neutral engagement, asking "what is this about?", prospect answering a question willingly.
+- Specific instructions on HOW to sound. Not what to say, but how to say it.
+- Must include ALL of these:
+  - Speak slower than feels natural. If you think you're going slow enough, go slower.
+  - Your voice should sound like you're asking a neighbor a question, not presenting to a room.
+  - Lower your pitch slightly. Nervous people go high-pitched.
+  - Pause after every question. Count to 3 in your head before saying anything else.
+  - If you catch yourself speeding up, stop mid-sentence and restart slower.
 
-## What Failure Looks Like
+## Listening Rules
 
-- List exactly 3 signals.
-- Signals must be emotional, not analytical.
-- Focus on what resistance SOUNDS like.
-- Examples: irritation, repeated "who is this?", silence, abrupt tone, audible sigh.
+- Specific instructions on WHEN to talk and when to shut up.
+- Must include ALL of these:
+  - After you ask a question, stop talking. Do not fill silence.
+  - If they're talking, do not interrupt. Even if they pause.
+  - If they give a one-word answer, wait 3 seconds. They'll usually say more.
+  - If they ask you a question, answer in one sentence, then ask them something back.
+  - Never stack two questions. Ask one. Wait. Then decide if you need another.
 
-## Rep Behavior Rules
+## Hard Rules (Never Break These)
 
-- Use short bullets.
-- Must include ALL of the following:
-  - Speak slower than feels natural
-  - Stop talking the moment resistance appears
-  - Never explain more when confused — ask permission instead
-  - Never ask a question that advances the sale without permission
-  - If a line sounds wrong in your mouth, skip it and move to the next beat
-  - When in doubt, hand control back to the prospect
+- Specific prohibitions with consequences. Must include ALL of these:
+  - Never ask for a meeting before they confirm they have the problem.
+  - Never argue. If they disagree, say "That makes sense" and move on or exit.
+  - If they say "no" twice to anything, exit. No third attempt. Say: "Totally get it. Appreciate your time."
+  - If their tone gets sharp, shorten your next response to one sentence max. Then offer to hang up.
+  - Never explain the offer unless they specifically ask "what do you do?"
+  - If you don't know what to say, say: "That makes sense. Let me not take up more of your time."
+  - Never say "just one more thing" or try to squeeze in extra info before hanging up.
+
+## What To Do When Things Go Wrong
+
+- Specific recovery instructions for the 5 most common problems:
+  1. **They interrupt you mid-sentence:** Stop talking immediately. Let them finish. Then say the shortest version of what you were going to say.
+  2. **They say "who is this?":** Give your name and one sentence. "I'm [name], calling about [micro-scenario]. Wanted to check if it's relevant to you."
+  3. **They say "send me an email":** "Sure. Is {{email}} still best? What angle would be most useful?" Then exit cleanly.
+  4. **They go silent after your question:** Wait 3 full seconds. If still silent, say: "No pressure either way. Just checking if that's on your radar."
+  5. **They get hostile:** Do not match energy. Say: "Sounds like I caught you at a bad time. I'll let you go. Have a good one, {{first_name}}." Hang up. Do not wait for a response.
 
 ## Next-Move Logic
 
-- If permission is granted → proceed to discovery (outside this script)
-- If permission is denied → exit politely, no second attempt
-- If unclear → ask for permission again in a shorter form
-- If prospect engages with the question → stay curious, don't pitch
-- If prospect gives a short dismissive answer → offer to follow up another time
+- Simple if/then instructions:
+  - If they engage with a question -> stay curious, ask one more thing, then move toward Micro-Commitment
+  - If they confirm the problem matters -> proceed to meeting ask
+  - If they say "not really" at any point -> exit politely, no second attempt
+  - If they say "call me back" -> confirm when, note it, and exit
+  - If they accept a meeting -> confirm time, say you'll send an invite, and hang up cleanly
+  - If they say "email me" -> confirm email, ask what angle, send, follow up in 2 days
 
-## Why the Earned Next Step Works
+## Why This Script Works (For Your Confidence)
 
-- Explain in 3–4 short bullets why the CTA in the script uses a Reflection + Reason + Choice structure.
-- Write for a beginner rep in plain language.
-- Key points to cover:
-  - Reflecting back what they said makes them feel heard
-  - Giving a reason makes the next step feel logical, not pushy
-  - Offering a choice gives them control, which reduces resistance
-  - If they say "leave it," accepting immediately builds trust for future contact
+- 3-4 short bullets explaining why the structure works. Written for a nervous beginner, not a sales manager.
+- Key points:
+  - You're not trying to sell anything on this call. You're just checking if something is relevant.
+  - The micro-commitment step means you never ask for a meeting out of nowhere. They've already said the problem matters.
+  - Offering two time options instead of "are you free?" makes it easier for them to say yes.
+  - If they say no, accepting immediately makes them more likely to take your next call.
 
 === QUALITY CONTROL ===
 
 Before finalizing, verify:
-1. No script lines are repeated from the Script tab
-2. No jargon or abstract theory
-3. No numeric thresholds or qualification criteria
-4. Every bullet is actionable by a nervous beginner
-5. A rep can scan this in 30 seconds and feel more confident
-6. The "Why the Earned Next Step Works" section is present and beginner-friendly
+1. No script lines repeated from the Script tab
+2. No jargon or abstract theory anywhere
+3. No philosophy. Every line is an instruction.
+4. Every bullet is something a nervous beginner can DO right now
+5. A rep can scan this in 60 seconds and feel more confident
+6. All 7 sections are present with ## headings
+7. The "What To Do When Things Go Wrong" section covers all 5 scenarios
+8. Hard Rules section includes all mandatory rules
 
 === FINAL OUTPUT RULES ===
 
-- Exactly 6 sections with ## headings. No more.
-- No preamble, no summary, no closing remarks.`;
+- Exactly 7 sections with ## headings. No more.
+- No preamble, no summary, no closing remarks.
+- No em dashes. Use periods and short sentences.`;
 }
 
 serve(async (req) => {
