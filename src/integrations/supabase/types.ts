@@ -175,6 +175,7 @@ export type Database = {
           caller_id: string
           callhippo_call_id: string | null
           created_at: string
+          direction: string
           disposition: string | null
           duration_seconds: number | null
           ended_at: string | null
@@ -192,6 +193,7 @@ export type Database = {
           caller_id: string
           callhippo_call_id?: string | null
           created_at?: string
+          direction?: string
           disposition?: string | null
           duration_seconds?: number | null
           ended_at?: string | null
@@ -209,6 +211,7 @@ export type Database = {
           caller_id?: string
           callhippo_call_id?: string | null
           created_at?: string
+          direction?: string
           disposition?: string | null
           duration_seconds?: number | null
           ended_at?: string | null
