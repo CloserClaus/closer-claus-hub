@@ -1047,18 +1047,22 @@ export default function Dialer() {
                                         )}
                                         <p className="font-mono text-sm text-muted-foreground">{log.phone_number}</p>
                                       </div>
-                                      <div className="flex flex-col items-end gap-1">
-                                        {getCallStatusBadge(log.call_status, log.duration_seconds, log.disposition)}
-                                        {log.disposition && (
-                                          <span className="text-xs text-muted-foreground capitalize">
-                                            {log.disposition.replace('_', ' ')}
-                                          </span>
+                                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                        {(log as any).direction === 'inbound' ? (
+                                          <>
+                                            <PhoneIncoming className="h-3.5 w-3.5 text-primary" />
+                                            <span>Incoming</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <PhoneOutgoing className="h-3.5 w-3.5 text-success" />
+                                            <span>Outgoing</span>
+                                          </>
                                         )}
                                       </div>
                                     </div>
                                     <div className="flex items-center justify-between text-sm text-muted-foreground">
                                       <div className="flex items-center gap-2">
-                                        <PhoneOutgoing className="h-3 w-3" />
                                         <span>{format(new Date(log.created_at), 'MMM d, h:mm a')}</span>
                                       </div>
                                       <div className="flex items-center gap-1">

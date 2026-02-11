@@ -63,6 +63,7 @@ serve(async (req) => {
             lead_id: leadId || null,
             call_status: 'initiated',
             twilio_call_sid: parentCallSid,
+            direction: 'outbound',
           });
 
         if (logError) {
@@ -296,6 +297,7 @@ serve(async (req) => {
             phone_number: fromNumber || 'unknown',
             call_status: 'initiated',
             twilio_call_sid: callSid,
+            direction: 'inbound',
             notes: `Inbound call${forwardingNumber ? ` → forwarded to ${forwardingNumber}` : ''}`,
           });
         }
