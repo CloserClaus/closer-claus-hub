@@ -79,7 +79,9 @@ function buildSystemPrompt(ctx: OfferContext, deliveryMechanism: string): string
   const readinessLabel = fmt(ctx.latent_readiness_label) || 'unknown';
   const performanceBasis = fmt(ctx.performance_basis);
 
-  return `You are generating a cold call script for an agency.
+  return `You are generating a cold call script for a beginner-to-intermediate SDR (1-5 years experience).
+
+CRITICAL: Follow the EXACT structure below. Do not change beat order. Do not merge sections. Do not remove beats. Do not move "Conversation Win Condition" into WHAT TO SAY. Do not explain the reason for calling before the Permission Check.
 
 ================================
 DIAGNOSTIC INPUTS (MANDATORY)
@@ -87,7 +89,6 @@ DIAGNOSTIC INPUTS (MANDATORY)
 
 You MUST use ALL of these inputs. You are NOT allowed to guess. You are NOT allowed to default to generic language. Everything must map to the actual inputs below.
 
-STRUCTURED INPUTS:
 - Offer Type: ${offerType}
 - Promise / Outcome: ${promiseOutcome}
 - Industry: ${industry}${vertical ? ` (Vertical: ${vertical})` : ''}
@@ -160,143 +161,132 @@ Every single line must sound like something a real person would say on a phone c
 OUTPUT FORMAT (STRICT)
 ================================
 
-You must output EXACTLY TWO SECTIONS. DO NOT merge them. DO NOT bleed content between them. DO NOT shorten excessively. DO NOT stop mid-script. Generate fully.
+You must output ONLY SECTION 1: WHAT TO SAY. DO NOT include Section 2. DO NOT shorten excessively. DO NOT stop mid-script. Generate fully.
 
-================================
-SECTION 1: WHAT TO SAY
-================================
-
-Structure this in 8 numbered beats using ## headings.
-
-Each beat must contain:
-- The primary line the rep says (bold **Rep:** prefix)
-- Conditional branches formatted as:
-  - "If they say ___" -> Rep says ___ -> Move to Beat X
-  - "If they resist" -> Rep says ___ -> Move to Beat X
-  - "If they interrupt" -> Rep says ___ -> Move to Beat X
-
-MANDATORY BRANCHES to include across the script:
-- "Who is this?" branch
-- "What are you selling?" branch
-- Early "Not interested" branch
-- "Send me an email" branch
-- Silence branch
-- Qualified -> Meeting branch
-- Disqualified -> Clean exit branch
-
-The meeting ask must ONLY happen AFTER:
-1. A problem is acknowledged
-2. A consequence is surfaced
-3. The prospect confirms it matters (Micro-Commitment)
-
-CRM placeholders to use naturally: {{first_name}}, {{company}}, {{email}}, {{title}}, {{last_name}}, {{phone}}
-
-No long monologues. Short controlled lines. Every beat must earn the next one.
-
-BEAT ORDER:
+The script must contain exactly these 8 beats PLUS an Email Fallback Branch in this EXACT order. Do not reorder. Do not skip. Do not add extra beats.
 
 ## 1. Attention Capture
-- 1 short line only (under 7 seconds spoken)
-- Confirm you're speaking to the right person without triggering defensiveness
-- Must NOT fake familiarity
-- GUARDRAILS for: neutral response, rushed response, confusion, annoyance
+Short. Calm. Neutral. Under 7 seconds spoken.
+Confirm you're speaking to the right person without triggering defensiveness.
+Must NOT fake familiarity.
+Example pattern: "Hi {{first_name}}, it's [Rep Name]. Quick question for you."
+Include branches for:
+- "Who is this?"
+- "I'm busy"
+- "Not interested" immediately
+- Silence
 
-## 2. Identity + Context
-- 1 short line. Vague, non-threatening reason for the call.
-- Must describe the category of problem using a micro-scenario derived from ${deliveryMechanism} and ${industry}.
-- No company explanation, no selling, no claims.
-- GUARDRAILS for: "what's this about?", "not interested", silence
+## 2. Permission Check
+This MUST happen BEFORE explaining the problem or reason for calling.
+Ask for 10-20 seconds explicitly.
+Include an easy out as a choice.
+Must NOT ask "Is this a good time?"
+Example pattern: "Do you have 20 seconds for me to explain why I called, and you can decide if it is even relevant?"
+Include branches:
+- Yes / Go ahead -> Move to Beat 3
+- "I'm busy" -> Offer callback or exit
+- Hard no -> Exit cleanly
 
-## 3. Permission Check
-- Ask for 10-20 seconds explicitly
-- Include an easy out as a choice
-- Must NOT ask "Is this a good time?"
-- GUARDRAILS for: yes, "I'm busy", hard no
+## 3. Identity + Context
+One sentence only. Name + agency + neutral context.
+No hard claims. No company explanation. No selling.
+Describe the category of problem using a micro-scenario derived from ${deliveryMechanism} and ${industry}.
+Include branches for:
+- "What's this about?" -> brief clarification, move to Beat 4
+- "Not interested" -> acknowledge, exit cleanly
+- Silence -> pause 3 seconds, then soft redirect
 
-## 4. Relevance Anchor
-- 1-2 sentences MAX describing a common pattern for ${industry} businesses at ${maturity} stage that directly relates to ${deliveryMechanism}
-- Must include light uncertainty: "I might be off" or "not sure if that's true for you"
-- Must end with a soft check
-- Must NOT use abstract benefit language
-- The scenario must be SPECIFIC to the delivery mechanism. If mechanism is "lead reactivation" -> talk about old leads going cold. If mechanism is "AI call answering" -> talk about missed calls. Etc.
-- GUARDRAILS for: confirmation, "not really", pushback
+## 4. Relevance Hypothesis (Niche-Specific)
+This is where diagnostic inputs are used.
+1-2 sentences MAX describing a common pattern for ${industry} businesses at ${maturity} stage that directly relates to ${deliveryMechanism}.
+Must include light uncertainty: "I might be off here" or "not sure if that's true for you"
+Must end with a soft check: "Is that something you are seeing right now?"
+Must NOT use abstract benefit language.
+The scenario must be SPECIFIC to the delivery mechanism.
+Structure: "I might be off here, but usually when companies like {{company}} [insert niche pattern], there is [insert specific leak/symptom]."
+Include 3 branches:
+- Yes / confirmation -> Move to Beat 5
+- "We already handle that" -> acknowledge, ask one clarifying question, then exit or continue
+- "Not really" -> "Fair enough. Appreciate your time, {{first_name}}." Exit cleanly.
 
 ## 5. Ownership Trigger Question
-- ONE open-ended question that makes the prospect describe what currently happens
-- Must NOT be yes/no
-- Must force them to explain their current reality related to the delivery mechanism
-- Structure: "What usually happens when [specific situation from Relevance Anchor]?"
-- GUARDRAILS for: real answer, dismissive answer, "I don't know", annoyance
+ONE open-ended question that makes the prospect describe what currently happens.
+Must NOT be yes/no.
+Must force them to explain their current reality related to the delivery mechanism.
+Structure: "What usually happens when [specific situation from Relevance Anchor]?"
+Include branches:
+- Real answer with detail -> Move to Beat 6
+- Dismissive answer -> "Got it. No worries. Appreciate your time, {{first_name}}."
+- "I don't know" -> reframe simpler, or exit cleanly
+- Annoyance / sharp tone -> shorten and exit
 
-## 6. Test Question 2 (optional)
-- Only include if it adds value. Max ONE additional question.
-- Must build on what was revealed by Beat 5.
-- GUARDRAILS for: engagement, shortened tone
+## 6. Micro-Commitment Step
+MANDATORY before any meeting suggestion.
+Confirm the prospect cares enough to look at a fix.
+Must NOT mention meetings, demos, calls, or scheduling.
+Example: "Would it even be worth looking at how that gets fixed, or is it just one of those things you live with?"
+Include branches:
+- Yes -> Move to Beat 7
+- "Not really" -> "Totally fair. Appreciate you being straight with me, {{first_name}}. Have a good one."
+- "How does it work?" -> Give a 1-sentence answer referencing the delivery mechanism, then redirect to Beat 7
+- Unsure -> "No pressure. If it comes up again, happy to chat. Appreciate your time."
 
-## 7. Micro-Commitment Step
-- MANDATORY before any meeting suggestion
-- Confirm the prospect cares enough to look at a fix
-- Must NOT mention meetings, demos, calls, or scheduling
-- Example: "Would it even be worth looking at how that gets fixed, or is it just one of those things you live with?"
-- GUARDRAILS for: yes, "not really", unsure
+## 7. Earned Next Step
+ONLY if Micro-Commitment got a positive response.
+Structure:
+1. Reflection: "Based on what you said about [confirmed issue]..."
+2. Reason: "That's usually where [ICP type] see [specific improvement related to ${deliveryMechanism}]."
+3. Time-Boxed Choice: Offer TWO specific time options. NEVER open-ended.
+   Correct: "Would later today or tomorrow morning be easier?"
+   BANNED: "Would you be open to a quick call?"
+4. Calendar confirmation with {{email}}: "I'll send a quick invite to {{email}}. That still the best one?"
+Include branches:
+- Picks a time -> Confirm, send invite, exit warmly
+- "Leave it" / hesitation -> "No problem at all. If timing changes, happy to revisit. Appreciate it, {{first_name}}."
+- "Send me an email" -> Move to Beat 8
 
-## 8. Earned Next Step
-- ONLY if Micro-Commitment got a positive response
-- Structure:
-  1. Reflection: "Based on what you said about [confirmed issue]..."
-  2. Reason: "That's usually where [ICP type] see [specific improvement related to ${deliveryMechanism}]."
-  3. Time-Boxed Choice: Offer TWO specific time options. NEVER open-ended.
-     Correct: "Would later today or tomorrow morning be easier?"
-     BANNED: "Would you be open to a quick call?"
-- GUARDRAILS for: picks time, "leave it", "send me an email"
-
-## 8b. Email Fallback Branch
-- Triggered when prospect says "just send me an email"
-- Structure:
-  1. Confirm email: "Sure, happy to. Is {{email}} still the best one?"
-  2. Ask angle: "What would be most useful to see? The way it works on the [scenario] side, or more of the numbers?"
-  3. Clean exit: "Got it. I'll send that over today. If it looks interesting, we can always jump on a quick call from there. Appreciate your time, {{first_name}}."
-
-AT THE END OF SECTION 1, include:
-
-## Conversation Win Condition
-- **Qualification signals:** (bullet list of what signals a qualified prospect)
-- **Disqualification signals:** (bullet list of what signals disqualification)
-- **Meeting criteria:** (what must be true before asking for a meeting)
-- **Exit criteria:** (when to exit immediately)
+## 8. Email Fallback Branch
+Triggered when prospect says "just send me an email" at ANY point.
+Structure:
+1. Confirm email: "Sure, happy to. Is {{email}} still the best one?"
+2. Ask angle: "What would be most useful to see? The way it works on the [mechanism-specific scenario] side, or more of the numbers?"
+3. Clean exit: "Got it. I'll send that over today. If it looks interesting, we can always jump on a quick call from there. Appreciate your time, {{first_name}}."
 
 ================================
 HARD RULES FOR REPS (embed in script flow)
 ================================
 
-1. NEVER ask for a meeting before the Micro-Commitment Step gets a positive response.
-2. NEVER argue. If they push back, agree and exit.
-3. If they say "no" twice, exit immediately. No third attempt.
-4. If tone gets sharp, shorten your next response to one sentence max.
-5. If you don't know what to say: "That makes sense. Let me not take up more of your time. Appreciate it, {{first_name}}."
-6. Every exit must include {{first_name}} and "appreciate your time" or similar.
+1. Permission Check MUST happen BEFORE explaining the problem. Do NOT explain the reason for calling before Beat 2 is complete.
+2. NEVER ask for a meeting before the Micro-Commitment Step (Beat 6) gets a positive response.
+3. NEVER argue. If they push back, agree and exit.
+4. If they say "no" twice, exit immediately. No third attempt.
+5. If tone gets sharp, shorten your next response to one sentence max.
+6. If you don't know what to say: "That makes sense. Let me not take up more of your time. Appreciate it, {{first_name}}."
+7. Every exit must include {{first_name}} and "appreciate your time" or similar.
 
 ================================
 QUALITY CONTROL (verify before outputting)
 ================================
 
-1. Every scenario references the ACTUAL delivery mechanism: "${deliveryMechanism}"
-2. Every scenario is specific to ${industry} at ${maturity} stage
-3. Economic framing matches pricing tier: ${priceTier}
-4. Confidence of claims matches proof level: ${proofLevel}
-5. Win Condition section appears after the beats
-6. Every beat has GUARDRAILS
-7. Micro-Commitment appears BEFORE meeting ask
-8. Email Fallback has email confirm + angle + clean exit
-9. No banned phrases anywhere
-10. Every line is speakable in one breath
-11. Zero em dashes
-12. All CRM variables use {{variable}} format
-13. Script can be pasted into a Dialer with zero edits
-14. Script is COMPLETE. Do not truncate or stop early.
+1. Beat order is EXACTLY: Attention Capture, Permission Check, Identity + Context, Relevance Hypothesis, Ownership Trigger, Micro-Commitment, Earned Next Step, Email Fallback
+2. Permission Check (Beat 2) comes BEFORE Identity + Context (Beat 3). The reason for calling is NOT explained before Permission Check.
+3. Every scenario references the ACTUAL delivery mechanism: "${deliveryMechanism}"
+4. Every scenario is specific to ${industry} at ${maturity} stage
+5. Economic framing matches pricing tier: ${priceTier}
+6. Confidence of claims matches proof level: ${proofLevel}
+7. Every beat has conditional branches / GUARDRAILS
+8. Micro-Commitment (Beat 6) appears BEFORE meeting ask (Beat 7)
+9. Email Fallback has email confirm + angle + clean exit
+10. No banned phrases anywhere
+11. Every line is speakable in one breath
+12. Zero em dashes
+13. All CRM variables use {{variable}} format
+14. Script can be pasted into a Dialer with zero edits
+15. Script is COMPLETE. All 8 beats fully generated. Do not truncate or stop early.
+16. Do NOT include Conversation Win Condition in this section. It belongs in Section 2.
 
 ================================
-END. Generate ONLY Section 1 now.
+END. Generate ONLY Section 1 now. No preamble. No closing remarks.
 ================================`;
 }
 
@@ -308,10 +298,11 @@ function buildPlaybookPrompt(ctx: OfferContext, scriptText: string, deliveryMech
   const offerType = fmt(ctx.offer_type) || 'the service';
   const proofLevel = fmt(ctx.proof_level) || 'unknown';
   const priceTier = resolvePriceTier(ctx);
+  const promiseOutcome = ctx.promise_outcome || ctx.promise || 'the promised result';
 
   return `You are writing SECTION 2: HOW TO THINK for a cold call script.
 
-This is SDR training. A tactical behavior manual for a beginner-to-intermediate rep.
+This is SDR training. A tactical behavior manual. NOT a script. No dialogue. No CRM placeholders. No branching. No execution lines.
 
 ================================
 CONTEXT
@@ -320,6 +311,7 @@ CONTEXT
 - Industry: ${industry}
 - Business Maturity: ${maturity}
 - Offer Type: ${offerType}
+- Promise / Outcome: ${promiseOutcome}
 - Delivery Mechanism: "${deliveryMechanism}"
 - Proof Level: ${proofLevel}
 - Pricing Tier: ${priceTier}
@@ -332,7 +324,7 @@ RULES
 ================================
 
 - No dialogue or script lines (those belong in Section 1 only)
-- No CRM placeholders
+- No CRM placeholders like {{first_name}} or {{company}}
 - No branching or execution lines
 - No philosophy or abstract theory
 - Every line must be a specific instruction a rep can act on immediately
@@ -340,10 +332,20 @@ RULES
 - No em dashes. Use periods and short sentences.
 
 ================================
-OUTPUT (exactly 5 sections with ## headings)
+OUTPUT (exactly 6 sections with ## headings)
 ================================
 
-## 1. Tone and Pacing Guidance
+## 1. Conversation Win Condition
+
+Define clearly:
+- **Success looks like:** (3-4 bullet points of what a winning call produces. Be specific to ${industry} and ${deliveryMechanism}.)
+- **Failure looks like:** (3-4 bullet points. Not "they hung up" but specific behavioral signals.)
+- **Qualification signals:** (bullet list of signals that mean this prospect is worth pursuing)
+- **Disqualification signals:** (bullet list of signals that mean stop and exit)
+- **Meeting criteria:** (what must be true before asking for a meeting. Reference the Micro-Commitment step.)
+- **Exit criteria:** (when to exit immediately, no negotiation)
+
+## 2. Tone and Pacing Rules
 
 Specific instructions on HOW to sound:
 - Speak slower than feels natural. If you think you're slow enough, go slower.
@@ -351,53 +353,63 @@ Specific instructions on HOW to sound:
 - Lower your pitch slightly. Nervous reps go high-pitched.
 - Pause after every question. Count to 3 before saying anything else.
 - If you catch yourself speeding up, stop mid-sentence and restart slower.
+- Never talk over the prospect. If they start talking, you stop.
+- Silence is not awkward. Silence means they're thinking. Let them think.
 
-## 2. How to Handle Interruptions
-
-Specific instructions for the 5 most common disruptions:
-1. They interrupt you mid-sentence: Stop immediately. Let them finish. Say the shortest version of what you were going to say.
-2. They say "who is this?": Give your name and one sentence. Move on.
-3. They say "send me an email": Confirm email, ask what angle, exit cleanly.
-4. They go silent: Wait 3 full seconds. If still silent: "No pressure either way."
-5. They get hostile: Do not match energy. Exit: "Sounds like I caught you at a bad time. Have a good one." Hang up.
-
-## 3. What Green Lights Look Like
+## 3. Green Lights
 
 Specific signals that mean the prospect is engaged. Relate these to ${industry} and ${deliveryMechanism}:
 - They ask a follow-up question
-- They describe their current process
+- They describe their current process in detail
 - They mention a specific frustration related to the delivery mechanism
 - They say "yeah" or "actually" before answering
-- They stay on the line past 30 seconds
+- They stay on the line past 30 seconds without trying to end the call
+- They mention a number, a timeline, or a person by name
+- Add 2-3 more specific to this ICP and mechanism
 
-## 4. What Red Flags Look Like
+## 4. Red Flags
 
 Specific signals that mean exit:
 - One-word answers getting shorter
 - Tone getting sharper or faster
 - They say "I'm good" or "we're fine" twice
 - They ask "is this a sales call?" with an edge
-- Silence after your question with no re-engagement
+- Silence after your question with no re-engagement after 5 seconds
+- They interrupt you to ask you to get to the point more than once
+- Add 2-3 more specific to this ICP
 
-## 5. Why This Script Works for THIS Offer and ICP
+## 5. Hard Exit Rules
 
-This section MUST reference the actual delivery mechanism ("${deliveryMechanism}") and ICP context (${industry} at ${maturity} stage). Explain in 4-5 short bullets:
-- Why the relevance anchor works for this specific ICP
+Non-negotiable rules for when to stop:
+- If they say "no" twice in any form, exit. No third attempt ever.
+- If tone turns hostile or sarcastic, exit immediately. Do not try to recover.
+- If they ask you to stop calling, exit and note it. No callback.
+- Never argue with a prospect. If they disagree, agree with them and exit.
+- If you feel the urge to convince them, that is the signal to stop.
+- If they say "send me an email" and you've already asked your questions, just send the email. Don't try to re-pitch.
+- Your only goal in the first 20 seconds is to avoid being hung up on. Not to sell.
+
+## 6. Why This Script Works for THIS Offer and ICP
+
+This section MUST reference the actual delivery mechanism ("${deliveryMechanism}") and ICP context (${industry} at ${maturity} stage). Explain in 5-6 short bullets:
+- Why the relevance hypothesis works for this specific ICP at this maturity stage
+- Why the permission-first flow reduces hang-ups for ${industry} prospects
 - Why the micro-commitment step matters for this pricing tier (${priceTier})
-- Why the discovery questions connect to the actual mechanism
+- Why the discovery questions connect to the actual mechanism ("${deliveryMechanism}")
 - Why the proof level (${proofLevel}) affects how directly you can frame results
-- Why this structure works better than a standard pitch for this offer type
+- Why this structure works better than a standard pitch for this offer type (${offerType})
 
 ================================
 QUALITY CONTROL
 ================================
 
 1. No script lines repeated from Section 1
-2. No jargon or abstract theory
+2. No dialogue, no CRM placeholders, no branching
 3. Every bullet is actionable
-4. Section 5 references the actual mechanism and ICP, not generic advice
-5. All 5 sections present with ## headings
-6. A rep can scan this in 60 seconds and feel more confident
+4. Section 6 references the actual mechanism and ICP, not generic advice
+5. All 6 sections present with ## headings
+6. Conversation Win Condition is in THIS section, not in Section 1
+7. A rep can scan this in 90 seconds and feel more confident
 
 ================================
 END. Generate Section 2 now. No preamble. No closing remarks.
