@@ -2335,6 +2335,7 @@ export type Database = {
       }
       training_materials: {
         Row: {
+          content: string | null
           content_type: string
           created_at: string
           created_by: string
@@ -2349,6 +2350,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          content?: string | null
           content_type?: string
           created_at?: string
           created_by: string
@@ -2363,6 +2365,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          content?: string | null
           content_type?: string
           created_at?: string
           created_by?: string

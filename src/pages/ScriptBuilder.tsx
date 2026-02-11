@@ -11,8 +11,10 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { FileText, BookOpen, Loader2, AlertTriangle, Copy, Check, RefreshCw } from 'lucide-react';
+import { FileText, BookOpen, Loader2, AlertTriangle, Copy, Check, RefreshCw, Download, Send } from 'lucide-react';
 import { ProgressLoadingBar } from '@/components/ui/progress-loading-bar';
+import { SendToSDRDialog } from '@/components/scripts/SendToSDRDialog';
+import { format } from 'date-fns';
 
 interface ScriptResult {
   script: string;
@@ -39,6 +41,8 @@ export default function ScriptBuilder() {
   const [deliveryMechanism, setDeliveryMechanism] = useState('');
   const [isRestored, setIsRestored] = useState(false);
   const [needsRegeneration, setNeedsRegeneration] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [sendToSDROpen, setSendToSDROpen] = useState(false);
 
   const hasEvaluation = savedState?.latent_alignment_score !== null && savedState?.latent_alignment_score !== undefined;
   const canGenerate = hasEvaluation && deliveryMechanism.trim().length > 0;
@@ -107,6 +111,11 @@ export default function ScriptBuilder() {
       }
 
       const scriptResult = data as ScriptResult;
+      // Auto-standardize placeholders for Dialer compatibility
+      scriptResult.script = standardizePlaceholders(scriptResult.script);
+      if (scriptResult.progressionRules) {
+        scriptResult.progressionRules = standardizePlaceholders(scriptResult.progressionRules);
+      }
       setResult(scriptResult);
 
       // Persist the generated script
@@ -140,6 +149,56 @@ export default function ScriptBuilder() {
     setCopiedSection(section);
     toast.success('Copied to clipboard');
     setTimeout(() => setCopiedSection(null), 2000);
+  };
+
+  // Standardize AI-generated placeholders to Dialer-compatible dynamic variables
+  const standardizePlaceholders = (text: string): string => {
+    return text
+      .replace(/\[Name\]/gi, '{{first_name}}')
+      .replace(/\[First Name\]/gi, '{{first_name}}')
+      .replace(/\[Last Name\]/gi, '{{last_name}}')
+      .replace(/\[Company\]/gi, '{{company}}')
+      .replace(/\[Company Name\]/gi, '{{company}}')
+      .replace(/\[Title\]/gi, '{{title}}')
+      .replace(/\[Job Title\]/gi, '{{title}}')
+      .replace(/\[Email\]/gi, '{{email}}')
+      .replace(/\[Phone\]/gi, '{{phone}}')
+      .replace(/\[Phone Number\]/gi, '{{phone}}');
+  };
+
+  const generateScriptTitle = (): string => {
+    const offerType = savedState?.offer_type?.replace(/_/g, ' ') || 'Script';
+    const icp = savedState?.icp_industry?.replace(/_/g, ' ') || 'General';
+    const timestamp = format(new Date(), 'MMM d, h:mm a');
+    return `${offerType} – ${icp} – ${timestamp}`;
+  };
+
+  const handleImportToDialer = async () => {
+    if (!result || !currentWorkspace?.id || !user?.id) return;
+
+    setIsImporting(true);
+    try {
+      const title = generateScriptTitle();
+      const content = standardizePlaceholders(result.script);
+
+      const { error } = await supabase
+        .from('call_scripts')
+        .insert({
+          workspace_id: currentWorkspace.id,
+          title,
+          content,
+          is_default: false,
+          created_by: user.id,
+        });
+
+      if (error) throw error;
+      toast.success('Script imported to Dialer');
+    } catch (err) {
+      console.error('Import error:', err);
+      toast.error('Failed to import script');
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   // Filter out meta lines from script content for clean display
@@ -443,6 +502,39 @@ export default function ScriptBuilder() {
                     )}
                   </TabsContent>
                 </Tabs>
+
+                {/* Action Buttons */}
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={handleImportToDialer}
+                    disabled={isImporting}
+                    className="gap-2"
+                  >
+                    {isImporting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    Import to Dialer
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setSendToSDROpen(true)}
+                    className="gap-2"
+                  >
+                    <Send className="h-4 w-4" />
+                    Send to SDR
+                  </Button>
+                </div>
+
+                <SendToSDRDialog
+                  open={sendToSDROpen}
+                  onOpenChange={setSendToSDROpen}
+                  scriptTitle={generateScriptTitle()}
+                  scriptContent={standardizePlaceholders(result.script)}
+                  playbookContent={result.progressionRules ? standardizePlaceholders(result.progressionRules) : null}
+                />
               </>
             )}
           </>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,8 +29,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { FileText, Plus, Edit2, Trash2, Star, Info } from "lucide-react";
+import { FileText, Plus, Edit2, Trash2, Star, Info, Send } from "lucide-react";
 import { toast } from "sonner";
+import { SendToSDRDialog } from "@/components/scripts/SendToSDRDialog";
 
 interface CallScript {
   id: string;
@@ -54,6 +56,7 @@ const PLACEHOLDER_HINTS = [
 
 export function CallScriptManager({ workspaceId }: CallScriptManagerProps) {
   const { user } = useAuth();
+  const { currentWorkspace, isOwner } = useWorkspace();
   const [scripts, setScripts] = useState<CallScript[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -62,6 +65,7 @@ export function CallScriptManager({ workspaceId }: CallScriptManagerProps) {
   const [formContent, setFormContent] = useState("");
   const [formIsDefault, setFormIsDefault] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [sendToSDRScript, setSendToSDRScript] = useState<CallScript | null>(null);
   
   // Ref for the textarea to track cursor position
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -359,6 +363,17 @@ export function CallScriptManager({ workspaceId }: CallScriptManagerProps) {
                           <Star className="h-4 w-4" />
                         </Button>
                       )}
+                      {isOwner && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => setSendToSDRScript(script)}
+                          title="Send to SDR"
+                        >
+                          <Send className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -403,6 +418,15 @@ export function CallScriptManager({ workspaceId }: CallScriptManagerProps) {
           </ScrollArea>
         )}
       </CardContent>
+
+      {sendToSDRScript && (
+        <SendToSDRDialog
+          open={!!sendToSDRScript}
+          onOpenChange={(open) => !open && setSendToSDRScript(null)}
+          scriptTitle={sendToSDRScript.title}
+          scriptContent={sendToSDRScript.content}
+        />
+      )}
     </Card>
   );
 }
