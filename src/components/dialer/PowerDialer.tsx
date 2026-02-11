@@ -125,16 +125,6 @@ const RECENTLY_CALLED_OPTIONS = [
   { value: '7d', label: 'Not called in 7 days' },
 ];
 
-const QUICK_NOTES = [
-  { label: 'Left voicemail', text: 'Left voicemail with callback request.' },
-  { label: 'Not interested', text: 'Not interested at this time.' },
-  { label: 'Call back later', text: 'Requested callback at a later time.' },
-  { label: 'Wrong number', text: 'Wrong number / invalid contact.' },
-  { label: 'Interested', text: 'Showed interest, follow up needed.' },
-  { label: 'Meeting booked', text: 'Meeting scheduled successfully.' },
-  { label: 'Needs info', text: 'Requested more information via email.' },
-  { label: 'Gatekeeper', text: 'Spoke with gatekeeper, need to call back.' },
-];
 
 const CALLBACK_OPTIONS = [
   { label: 'In 1 hour', getValue: () => addHours(new Date(), 1) },
@@ -797,9 +787,6 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
     }
   };
 
-  const insertQuickNote = (text: string) => {
-    setCallNotes(prev => prev ? `${prev}\n${text}` : text);
-  };
 
   const dialScheduledCallback = (callback: ScheduledCallback) => {
     if (!callback.lead) return;
@@ -1425,26 +1412,6 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
                     </div>
                   )}
 
-                  {/* Quick Notes */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <MessageSquarePlus className="h-4 w-4" />
-                      <span>Quick Notes</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {QUICK_NOTES.map((note) => (
-                        <Button
-                          key={note.label}
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => insertQuickNote(note.text)}
-                        >
-                          {note.label}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
 
                   {/* Notes */}
                   <Textarea

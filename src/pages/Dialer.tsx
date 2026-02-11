@@ -495,9 +495,14 @@ export default function Dialer() {
     );
   });
 
-  const getCallStatusBadge = (status: string, durationSeconds?: number | null) => {
-    // Determine if call was actually picked up based on status + duration
-    const wasPickedUp = (status === 'completed' || status === 'in-progress' || status === 'in_progress') && (durationSeconds ?? 0) > 0;
+  const getCallStatusBadge = (status: string, durationSeconds?: number | null, disposition?: string | null) => {
+    // Only show "Picked Up" when a real human conversation occurred
+    // Use disposition to distinguish: interested, not_interested, meeting_booked, callback = real human
+    // left_voicemail, gatekeeper, no_answer, wrong_number = NOT a real pickup
+    const humanDispositions = ['interested', 'not_interested', 'meeting_booked', 'callback'];
+    const wasPickedUp = disposition 
+      ? humanDispositions.includes(disposition)
+      : (status === 'completed' || status === 'in-progress' || status === 'in_progress') && (durationSeconds ?? 0) > 120;
     
     if (wasPickedUp) {
       return (
@@ -1043,7 +1048,7 @@ export default function Dialer() {
                                         <p className="font-mono text-sm text-muted-foreground">{log.phone_number}</p>
                                       </div>
                                       <div className="flex flex-col items-end gap-1">
-                                        {getCallStatusBadge(log.call_status, log.duration_seconds)}
+                                        {getCallStatusBadge(log.call_status, log.duration_seconds, log.disposition)}
                                         {log.disposition && (
                                           <span className="text-xs text-muted-foreground capitalize">
                                             {log.disposition.replace('_', ' ')}
@@ -1066,9 +1071,6 @@ export default function Dialer() {
                                         recordingUrl={log.recording_url} 
                                         callId={log.id} 
                                       />
-                                    )}
-                                    {log.notes && (
-                                      <p className="text-sm text-muted-foreground line-clamp-2">{log.notes}</p>
                                     )}
                                   </div>
                                 );
