@@ -315,11 +315,40 @@ export default function ScriptBuilder() {
   return (
     <DashboardLayout>
       <div className="max-w-4xl mx-auto space-y-6 p-4 md:p-6 pb-24">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Script Builder</h1>
-          <p className="text-muted-foreground mt-1">
-            Generate a beginner-safe cold call script designed to earn 2–3 minutes of attention and book a meeting.
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Script Builder</h1>
+            <p className="text-muted-foreground mt-1">
+              Generate a beginner-safe cold call script designed to earn 2–3 minutes of attention and book a meeting.
+            </p>
+          </div>
+          {result && (
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleImportToDialer}
+                disabled={isImporting}
+                className="gap-2"
+              >
+                {isImporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                Import to Dialer
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSendToSDROpen(true)}
+                className="gap-2"
+              >
+                <Send className="h-4 w-4" />
+                Send to SDR
+              </Button>
+            </div>
+          )}
         </div>
 
         {!hasEvaluation ? (
@@ -502,31 +531,6 @@ export default function ScriptBuilder() {
                     )}
                   </TabsContent>
                 </Tabs>
-
-                {/* Action Buttons */}
-                <div className="flex flex-wrap gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={handleImportToDialer}
-                    disabled={isImporting}
-                    className="gap-2"
-                  >
-                    {isImporting ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Download className="h-4 w-4" />
-                    )}
-                    Import to Dialer
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setSendToSDROpen(true)}
-                    className="gap-2"
-                  >
-                    <Send className="h-4 w-4" />
-                    Send to SDR
-                  </Button>
-                </div>
 
                 <SendToSDRDialog
                   open={sendToSDROpen}
