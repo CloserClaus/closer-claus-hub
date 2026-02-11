@@ -52,18 +52,24 @@ function buildSystemPrompt(ctx: OfferContext, deliveryMechanism: string): string
   const industry = ctx.icp_industry?.replace(/_/g, ' ') || 'their industry';
   const vertical = ctx.vertical_segment?.replace(/_/g, ' ') || '';
   const maturity = ctx.icp_maturity?.replace(/_/g, ' ') || 'unknown stage';
+  const offerType = ctx.offer_type?.replace(/_/g, ' ') || 'the service';
   const promiseOutcome = ctx.promise_outcome || ctx.promise || 'the promised result';
+  const proofLevel = ctx.proof_level?.replace(/_/g, ' ') || 'unknown';
+  const riskModel = ctx.risk_model?.replace(/_/g, ' ') || 'unknown';
+  const fulfillment = ctx.fulfillment?.replace(/_/g, ' ') || 'unknown';
+  const pricingStructure = ctx.pricing_structure?.replace(/_/g, ' ') || 'unknown';
+  const bottleneck = ctx.latent_bottleneck_key?.replace(/_/g, ' ') || '';
 
   return `You are writing a cold call script for a BEGINNER sales rep who will read this VERBATIM on live calls. This is their very first cold call.
 
 === WHAT THIS SCRIPT IS ===
 
-This script helps a nervous, beginner rep survive a cold call long enough to earn 2–3 minutes of attention and book a meeting.
+This script helps a nervous, beginner rep survive a cold call long enough to earn 2-3 minutes of attention and book a meeting.
 
 It is NOT a pitch, sales framework, qualification tool, or offer explanation.
 
 Success means ONE of these:
-- The prospect gives permission to continue for another 30–120 seconds
+- The prospect gives permission to continue for another 30-120 seconds
 - The prospect answers at least one real question
 - The prospect accepts a meeting
 - The rep exits cleanly without creating hostility
@@ -80,6 +86,30 @@ Success means ONE of these:
 - They may forget lines under pressure
 - They need lines that work even if read imperfectly
 
+=== LANGUAGE RULES (CRITICAL) ===
+
+Every single line MUST sound like something a real person would say on a phone call. Read each line out loud before including it.
+
+BANNED phrases and patterns (never use any of these):
+- "increase revenue" / "boost revenue" / "drive revenue"
+- "get more value" / "maximize value" / "unlock value"
+- "we specialize in" / "we help companies" / "our solution"
+- "leverage" / "optimize" / "streamline" / "scale"
+- "pain points" / "challenges" / "opportunities"
+- Any sentence with an em dash
+- Any sentence that could appear in a LinkedIn post or marketing email
+- Any phrase that sounds like a consultant wrote it
+
+REQUIRED language style:
+- Short sentences. One idea per sentence.
+- Use "you know when..." or "you know those..." to introduce scenarios.
+- Use micro-scenarios: describe a specific moment the prospect has lived through.
+- Reference real situations from ${industry} businesses, not abstract benefits.
+- Sound like a human talking to another human over coffee, not a sales rep reading a pitch.
+
+Example of BANNED language: "We help ${industry} companies get more value from their existing leads."
+Example of CORRECT language: "You know those quotes that went out last month and nobody ever replied back?"
+
 === WHAT THE SCRIPT MUST NEVER DO ===
 
 - Fully explain the offer
@@ -91,21 +121,35 @@ Success means ONE of these:
 - Sound rehearsed, consultant-like, or pitchy when read out loud
 - Include any line longer than one sentence
 - Include monologues or stacked questions
+- Use corporate phrasing or jargon of any kind
 
-=== CONTEXT (for calibration only — NEVER expose in script) ===
+=== CONTEXT (use to calibrate scenarios and language - NEVER expose directly) ===
 
 - Industry: ${industry}${vertical ? ` (${vertical})` : ''}
 - Business Maturity: ${maturity}
+- Offer Type: ${offerType}
 - Promise / Outcome: ${promiseOutcome}
 - Delivery Mechanism: "${deliveryMechanism}"
+- Proof Level: ${proofLevel}
+- Risk Model: ${riskModel}
+- Fulfillment: ${fulfillment}
+- Pricing: ${pricingStructure}
+${bottleneck ? `- Primary Bottleneck: ${bottleneck}` : ''}
+
+Use these inputs to generate SPECIFIC micro-scenarios. For example:
+- If industry is "roofing" and maturity is "scaling": reference homeowners who got an estimate but ghosted, or jobs where the crew showed up but the customer cancelled last minute.
+- If industry is "SaaS" and offer type is "lead gen": reference demo requests that sat in the CRM for two weeks, or trial users who signed up and never logged back in.
+- If industry is "dental" and maturity is "early": reference patients who called for pricing but never booked, or hygiene patients who haven't been back in 18 months.
+
+Always ground language in the specific industry reality. Never use generic business language.
 
 === OUTPUT FORMAT ===
 
-Generate the script as a turn-based ADAPTIVE SKELETON — short base lines with branching follow-ups based on likely prospect responses.
+Generate the script as a turn-based ADAPTIVE SKELETON with short base lines and branching follow-ups based on likely prospect responses.
 
 Use ## headings for each beat. Under each beat, output:
 - The exact line the rep says (as a bold **Rep:** prefix)
-- Then 2–3 short "If → then" branches for likely prospect responses
+- Then 2-3 short "If -> then" branches for likely prospect responses
 
 === BEATS (in this exact order) ===
 
@@ -116,62 +160,68 @@ Use ## headings for each beat. Under each beat, output:
 - Must sound natural when interrupted
 - Must NOT identify the company yet
 - Must end with a soft handoff, not a question that invites a hard "no"
-- Include: If prospect responds neutrally → next line. If rushed → fallback line. If confused → clarification line.
+- Include: If prospect responds neutrally -> next line. If rushed -> fallback line. If confused -> clarification line.
 
 ## 2. Identity + Context
 - 1 short line
 - Purpose: give a vague, non-threatening reason for the call
 - No company explanation, no selling, no claims
 - Should feel like a reason, not a pitch
-- Must describe the category of problem, not the solution
+- Must describe the category of problem using a micro-scenario, not abstract language
 - Then immediately move to permission check
 
 ## 3. Permission Check
 - Ask for time explicitly
-- Time request must be small (10–20 seconds)
+- Time request must be small (10-20 seconds)
 - Must include an easy out
 - Must be phrased as a choice between continuing briefly or stopping
 - Must NOT ask "Is this a good time?"
 
 ## 4. Relevance Anchor (Read Verbatim)
 - This section sits BETWEEN the Permission Check and the first discovery question.
-- Purpose: link the prospect's likely current behavior to a hidden cost or missed outcome. Make them pause and mentally check if this applies to them.
-- It must be 1–2 sentences MAX.
-- It must be inferred from the Offer Diagnostic context and ICP — NOT generic.
-- It must reference a pattern ("what we usually see with [ICP type] at this stage") rather than a personal claim about them.
+- Purpose: link the prospect's likely current behavior to a hidden cost or missed outcome using a SPECIFIC micro-scenario from their industry.
+- It must be 1-2 sentences MAX.
+- It MUST use a concrete, industry-specific scenario. NOT generic business language.
+- It must reference a pattern ("what we usually see with [specific ICP type] at this stage is [specific thing that happens]") rather than a personal claim about them.
+- The scenario must describe a moment the prospect has actually lived through. Something they can picture.
 - It must NOT accuse, exaggerate, or threaten.
 - It must end with a soft confirmation question that CANNOT be answered with a clean "no" without thought.
-- Example pattern (do NOT copy verbatim): "What we usually see with [ICP] at this stage is [common behavior], which quietly leads to [non-obvious cost]. I'm not sure if that's true for you yet."
-- This REPLACES any generic bridge or filler explanation.
+- BANNED in this section: "increase revenue", "get more value", "old leads", "untapped potential", any abstract benefit language.
+- Good example for roofing: "What we usually see with guys running 3-4 crews is there's a pile of estimates from last month that nobody followed up on. Not because they forgot, just ran out of day. Sound familiar?"
+- Good example for SaaS: "What we usually hear from teams your size is there are demo requests sitting in the CRM from two weeks ago that nobody called back. Not because they don't care, just got buried. That ring a bell?"
 
-## 5. Test Question 1
-- Only ONE question that directly tests whether the Relevance Anchor is true for this prospect.
-- Must feel safe to answer.
-- Must not imply the prospect is doing something wrong.
-- Must allow the prospect to talk within 10 seconds.
-- Include 2–3 "If → then" branches based on likely responses.
+## 5. Ownership Trigger Question
+- ONE question that makes the prospect describe what currently happens in their business.
+- This question must NOT be yes/no. It must force them to explain their current reality.
+- It should make them verbalize what they currently do (or don't do) about the situation from the Relevance Anchor.
+- It should feel safe and curious, not interrogative.
+- Structure: "What usually happens when [specific situation from Relevance Anchor]?"
+- Example for roofing: "What usually happens to someone who asked for a quote but never called back?"
+- Example for dental: "What usually happens to a patient who cancels their cleaning and doesn't reschedule?"
+- Example for SaaS: "What usually happens to a trial user who signed up but stopped logging in after day two?"
+- Include 2-3 "If -> then" branches based on likely responses.
 
 ## 6. Test Question 2 (optional)
 - Only include if it adds value. Max ONE additional question.
-- Must build on what was revealed by Test Question 1.
+- Must build on what was revealed by the Ownership Trigger Question.
 - Must not stack or repeat.
-- Include 1–2 "If → then" branches.
+- Include 1-2 "If -> then" branches.
 - If this question is not needed, skip this section entirely.
 
 ## 7. Earned Next Step (Read Verbatim)
 - This is NOT a generic meeting ask. It is an "Earned Decision Frame."
 - Structure (all 3 parts mandatory):
-  1. **Reflection** (1 sentence): Reflect back something the prospect just confirmed. Start with "Based on what you said about [confirmed issue]…"
+  1. **Reflection** (1 sentence): Reflect back something the prospect just confirmed. Start with "Based on what you said about [confirmed issue]..."
   2. **Reason** (1 sentence): Connect that to a specific outcome or leverage point. "That's usually where teams see [specific outcome]."
-  3. **Choice** (1 question): Offer two valid paths — continue or park it. Example: "Does it make more sense to look at how this would work for your setup, or should we leave it here for now?"
-- The CTA must reference at least one confirmed insight from the Relevance Anchor or Test Questions.
+  3. **Choice** (1 question): Offer two valid paths. Example: "Does it make more sense to look at how this would work for your setup, or should we leave it here for now?"
+- The CTA must reference at least one confirmed insight from the Relevance Anchor or Ownership Trigger Question.
 - Must NOT ask for a "meeting" or "demo" directly.
 - Must NOT use hype, urgency, or scarcity.
 - Must NOT re-explain the offer.
 - Branching:
-  - If they choose to continue → "We can walk through this in 10 minutes — would later today or tomorrow work better?"
-  - If they choose to park it → exit politely, no resistance, no reframing.
-  - If they override a "leave it" → do NOT override. Accept and exit.
+  - If they choose to continue -> "We can walk through this in 10 minutes. Would later today or tomorrow work better?"
+  - If they choose to park it -> exit politely, no resistance, no reframing.
+  - If they override a "leave it" -> do NOT override. Accept and exit.
 
 === QUALITY CONTROL (MANDATORY) ===
 
@@ -179,32 +229,36 @@ Before finalizing, verify the script passes ALL of these:
 
 1. Contains a concrete spoken opener line (not a placeholder)
 2. Contains a clear reason-for-calling line (one sentence, plain language, no jargon)
-3. Contains a Relevance Anchor that is specific to the ICP/industry, not generic
-4. Contains Test Question 1 that directly tests the Relevance Anchor
+3. Contains a Relevance Anchor with a SPECIFIC micro-scenario from ${industry}, not generic benefit language
+4. Contains an Ownership Trigger Question that forces the prospect to describe their current reality (not yes/no)
 5. Contains an Earned Next Step with Reflection + Reason + Choice structure
-6. Tone is consistent throughout — no line sounds senior if others sound junior
-7. No line sounds like marketing copy or could appear in a blog post
+6. Tone is consistent throughout. No line sounds senior if others sound junior
+7. No line sounds like marketing copy or could appear in a blog post or LinkedIn post
 8. Every line survives interruption at any point
 9. Every line is speakable in one breath
 10. No stacked questions anywhere
 11. No more than 2 discovery questions before offering the next step
-12. Total script feels intentionally incomplete — it earns time, nothing more
+12. Total script feels intentionally incomplete. It earns time, nothing more
+13. Zero em dashes anywhere in the output
+14. Zero instances of "we specialize", "increase revenue", "get more value", "unlock", "leverage", "optimize"
+15. Every scenario references something specific to ${industry} businesses
 
 If any check fails, rewrite the failing line before outputting.
 
 === ANTI-AI FILTER ===
 
-If any line sounds like marketing copy, uses abstract language, or could appear in a blog post → rewrite it into spoken, casual language.
+Read every line out loud. If it sounds like something a marketer wrote, rewrite it until it sounds like something a person would say while leaning against a truck or sitting in a break room.
 
 When unsure whether to be more specific or more flexible:
-→ More specific in language
-→ More flexible in flow
+-> More specific in language
+-> More flexible in flow
 
 === FINAL OUTPUT RULES ===
 
 - Use ## headings for each beat (7 max, 6 if Test Question 2 is skipped)
 - No explanations, no intent labels, no meta commentary, no "(pause)" instructions
 - No emojis, no hype, no sales fluff, no jargon
+- No em dashes
 - Output the script and nothing else.`;
 }
 
