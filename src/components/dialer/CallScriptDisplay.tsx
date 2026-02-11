@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/select";
 import { FileText, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isStructuredScript } from "./scriptParser";
+import { ScriptExecutionMode } from "./ScriptExecutionMode";
 
 interface Lead {
   id: string;
@@ -130,74 +132,36 @@ export function CallScriptDisplay({ workspaceId, lead }: CallScriptDisplayProps)
       </CardHeader>
       {!isCollapsed && selectedScript && (
         <CardContent className="pt-0">
-          <ScrollArea className="h-[200px]">
-            <div className="text-sm whitespace-pre-wrap leading-relaxed">
-              {interpolateScript(selectedScript.content, lead).split('\n').map((line, index) => {
-                // Highlight interpolated values
-                const parts = line.split(/(\[.*?\])/g);
-                return (
-                  <p key={index} className="mb-2">
-                    {parts.map((part, partIndex) => {
-                      if (part.startsWith('[') && part.endsWith(']')) {
-                        return (
-                          <span
-                            key={partIndex}
-                            className="px-1 py-0.5 rounded bg-warning/20 text-warning-foreground font-medium"
-                          >
-                            {part}
-                          </span>
-                        );
-                      }
-                      // Check if part contains actual lead data (not placeholder)
-                      const leadValues = lead ? [
-                        lead.first_name,
-                        lead.last_name,
-                        lead.company,
-                        lead.title,
-                        lead.email,
-                        lead.phone
-                      ].filter(Boolean) : [];
-                      
-                      let result = part;
-                      leadValues.forEach(value => {
-                        if (value && result.includes(value)) {
-                          result = result.split(value).join(`__HIGHLIGHT__${value}__ENDHIGHLIGHT__`);
-                        }
-                      });
-                      
-                      if (result.includes('__HIGHLIGHT__')) {
-                        const segments = result.split(/(__HIGHLIGHT__|__ENDHIGHLIGHT__)/g);
-                        let inHighlight = false;
-                        return segments.map((seg, segIndex) => {
-                          if (seg === '__HIGHLIGHT__') {
-                            inHighlight = true;
-                            return null;
-                          }
-                          if (seg === '__ENDHIGHLIGHT__') {
-                            inHighlight = false;
-                            return null;
-                          }
-                          if (inHighlight) {
-                            return (
-                              <span
-                                key={segIndex}
-                                className="px-1 py-0.5 rounded bg-success/20 text-success font-medium"
-                              >
-                                {seg}
-                              </span>
-                            );
-                          }
-                          return seg;
-                        });
-                      }
-                      
-                      return part;
-                    })}
-                  </p>
-                );
-              })}
+          {isStructuredScript(selectedScript.content) ? (
+            <div className="min-h-[200px]">
+              <ScriptExecutionMode content={selectedScript.content} lead={lead} />
             </div>
-          </ScrollArea>
+          ) : (
+            <ScrollArea className="h-[200px]">
+              <div className="text-sm whitespace-pre-wrap leading-relaxed">
+                {interpolateScript(selectedScript.content, lead).split('\n').map((line, index) => {
+                  const parts = line.split(/(\[.*?\])/g);
+                  return (
+                    <p key={index} className="mb-2">
+                      {parts.map((part, partIndex) => {
+                        if (part.startsWith('[') && part.endsWith(']')) {
+                          return (
+                            <span
+                              key={partIndex}
+                              className="px-1 py-0.5 rounded bg-warning/20 text-warning-foreground font-medium"
+                            >
+                              {part}
+                            </span>
+                          );
+                        }
+                        return part;
+                      })}
+                    </p>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          )}
           {lead && (
             <div className="mt-3 pt-3 border-t border-border">
               <p className="text-xs text-muted-foreground">
