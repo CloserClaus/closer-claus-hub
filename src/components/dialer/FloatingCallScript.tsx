@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/select";
 import { FileText, GripHorizontal, Minimize2, Maximize2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { isStructuredScript } from "./scriptParser";
+import { ScriptExecutionMode } from "./ScriptExecutionMode";
 
 interface Lead {
   id: string;
@@ -209,72 +211,38 @@ export function FloatingCallScript({ workspaceId, lead, isVisible, onClose }: Fl
             </Select>
 
             {selectedScript && (
-              <ScrollArea className="h-[250px] pr-2">
-                <div className="text-sm whitespace-pre-wrap leading-relaxed space-y-2">
-                  {interpolateScript(selectedScript.content, lead).split('\n').map((line, index) => {
-                    const parts = line.split(/(\[.*?\])/g);
-                    return (
-                      <p key={index}>
-                        {parts.map((part, partIndex) => {
-                          if (part.startsWith('[') && part.endsWith(']')) {
-                            return (
-                              <span
-                                key={partIndex}
-                                className="px-1 py-0.5 rounded bg-warning/20 text-warning-foreground font-medium"
-                              >
-                                {part}
-                              </span>
-                            );
-                          }
-                          const leadValues = lead ? [
-                            lead.first_name,
-                            lead.last_name,
-                            lead.company,
-                            lead.title,
-                            lead.email,
-                            lead.phone
-                          ].filter(Boolean) : [];
-                          
-                          let result = part;
-                          leadValues.forEach(value => {
-                            if (value && result.includes(value)) {
-                              result = result.split(value).join(`__HIGHLIGHT__${value}__ENDHIGHLIGHT__`);
-                            }
-                          });
-                          
-                          if (result.includes('__HIGHLIGHT__')) {
-                            const segments = result.split(/(__HIGHLIGHT__|__ENDHIGHLIGHT__)/g);
-                            let inHighlight = false;
-                            return segments.map((seg, segIndex) => {
-                              if (seg === '__HIGHLIGHT__') {
-                                inHighlight = true;
-                                return null;
-                              }
-                              if (seg === '__ENDHIGHLIGHT__') {
-                                inHighlight = false;
-                                return null;
-                              }
-                              if (inHighlight) {
+              <>
+                {isStructuredScript(selectedScript.content) ? (
+                  <div className="h-[280px] overflow-y-auto pr-1">
+                    <ScriptExecutionMode content={selectedScript.content} lead={lead} />
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[250px] pr-2">
+                    <div className="text-sm whitespace-pre-wrap leading-relaxed space-y-2">
+                      {interpolateScript(selectedScript.content, lead).split('\n').map((line, index) => {
+                        const parts = line.split(/(\[.*?\])/g);
+                        return (
+                          <p key={index}>
+                            {parts.map((part, partIndex) => {
+                              if (part.startsWith('[') && part.endsWith(']')) {
                                 return (
                                   <span
-                                    key={segIndex}
-                                    className="px-1 py-0.5 rounded bg-success/20 text-success font-medium"
+                                    key={partIndex}
+                                    className="px-1 py-0.5 rounded bg-warning/20 text-warning-foreground font-medium"
                                   >
-                                    {seg}
+                                    {part}
                                   </span>
                                 );
                               }
-                              return seg;
-                            });
-                          }
-                          
-                          return part;
-                        })}
-                      </p>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
+                              return part;
+                            })}
+                          </p>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                )}
+              </>
             )}
 
             {lead && (
