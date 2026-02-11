@@ -184,11 +184,12 @@ Use ## headings for each beat. Under each beat, output:
 - It MUST use a concrete, industry-specific scenario. NOT generic business language.
 - It must reference a pattern ("what we usually see with [specific ICP type] at this stage is [specific thing that happens]") rather than a personal claim about them.
 - The scenario must describe a moment the prospect has actually lived through. Something they can picture.
+- It MUST include light uncertainty. The rep should NOT sound like they already know the prospect's situation. Use phrasing like "I might be off" or "not sure if that's true for you" or "could be different in your case."
 - It must NOT accuse, exaggerate, or threaten.
-- It must end with a soft confirmation question that CANNOT be answered with a clean "no" without thought.
+- It must end with a soft check that invites them to confirm or deny without pressure.
 - BANNED in this section: "increase revenue", "get more value", "old leads", "untapped potential", any abstract benefit language.
-- Good example for roofing: "What we usually see with guys running 3-4 crews is there's a pile of estimates from last month that nobody followed up on. Not because they forgot, just ran out of day. Sound familiar?"
-- Good example for SaaS: "What we usually hear from teams your size is there are demo requests sitting in the CRM from two weeks ago that nobody called back. Not because they don't care, just got buried. That ring a bell?"
+- Good example for roofing: "What we usually see with guys running 3-4 crews is there's a pile of estimates from last month that nobody followed up on. Not because they forgot, just ran out of day. I might be totally off, but does that sound like your world at all?"
+- Good example for SaaS: "What we usually hear from teams your size is there are demo requests sitting in the CRM from two weeks ago that nobody called back. Could be different for you, but is that something you've run into?"
 
 ## 5. Ownership Trigger Question
 - ONE question that makes the prospect describe what currently happens in their business.
@@ -208,20 +209,62 @@ Use ## headings for each beat. Under each beat, output:
 - Include 1-2 "If -> then" branches.
 - If this question is not needed, skip this section entirely.
 
-## 7. Earned Next Step (Read Verbatim)
+## 7. Micro-Commitment Step
+- This beat sits BETWEEN the discovery questions and the meeting ask. It is MANDATORY.
+- Purpose: get the prospect to confirm TWO things before you ever suggest a meeting:
+  1. They have the problem (already confirmed by now).
+  2. They care enough about fixing it to look at something.
+- This is a SMALLER ask than a meeting. It tests intent without commitment.
+- The question should feel like a natural "is this even worth your time" check.
+- It must NOT mention meetings, demos, calls, or scheduling.
+- Example structures:
+  - "Would it even be worth looking at how that gets fixed, or is it just one of those things you live with?"
+  - "Is that something you'd want to clean up if there was a simple way, or is it not really a priority right now?"
+  - "If there was a way to catch those before they disappear, would that even matter to you right now?"
+- Include branches:
+  - If they say yes or show interest -> proceed to Earned Next Step
+  - If they say "not really" or "we're fine" -> exit politely. Do NOT push.
+  - If they're unsure -> rephrase once, then offer to follow up later.
+
+## 8. Earned Next Step (Read Verbatim)
 - This is NOT a generic meeting ask. It is an "Earned Decision Frame."
+- ONLY reach this beat if the Micro-Commitment Step got a positive or curious response.
 - Structure (all 3 parts mandatory):
   1. **Reflection** (1 sentence): Reflect back something the prospect just confirmed. Start with "Based on what you said about [confirmed issue]..."
-  2. **Reason** (1 sentence): Connect that to a specific outcome or leverage point. "That's usually where teams see [specific outcome]."
-  3. **Choice** (1 question): Offer two valid paths. Example: "Does it make more sense to look at how this would work for your setup, or should we leave it here for now?"
-- The CTA must reference at least one confirmed insight from the Relevance Anchor or Ownership Trigger Question.
-- Must NOT ask for a "meeting" or "demo" directly.
+  2. **Reason** (1 sentence): Connect that to a specific outcome. "That's usually where [ICP type] see [specific thing improve]."
+  3. **Time-Boxed Choice** (1 question): Offer TWO specific time options, not open-ended. NEVER say "would you be open to a chat" or "can we schedule something."
+     - Correct: "If it makes sense, we can walk through how that works in about 10 minutes. Would later today or tomorrow morning be easier?"
+     - Correct: "We can show you exactly how that part works. Would Thursday or Friday afternoon be better?"
+     - BANNED: "Would you be open to a quick call?" / "Can we set up a meeting?" / "Do you have time this week?"
+- The CTA must reference at least one confirmed insight from the conversation.
 - Must NOT use hype, urgency, or scarcity.
 - Must NOT re-explain the offer.
 - Branching:
-  - If they choose to continue -> "We can walk through this in 10 minutes. Would later today or tomorrow work better?"
+  - If they pick a time -> confirm and exit. "Perfect. I'll send over a quick invite. Talk to you then."
   - If they choose to park it -> exit politely, no resistance, no reframing.
-  - If they override a "leave it" -> do NOT override. Accept and exit.
+  - If they say "just send me an email" -> go to Email Fallback branch below.
+
+## 8b. Email Fallback Branch
+- This is a sub-branch of the Earned Next Step, triggered when the prospect says "just send me an email" or "email me something."
+- Do NOT treat this as a rejection. Treat it as a soft redirect.
+- Structure (3 steps):
+  1. **Confirm email**: "Sure, happy to. Is {{email}} still the best one to use?"
+  2. **Ask for angle**: "What would be most useful to see? The way it works on the [specific scenario from Relevance Anchor] side, or more of the numbers behind it?"
+  3. **Clean exit**: "Got it. I'll send that over today. If it looks interesting, we can always jump on a quick call from there. Appreciate your time, {{first_name}}."
+- This branch must feel like a natural, respectful close. Not a last-ditch pitch attempt.
+- The angle question serves two purposes: it makes the email more relevant AND it gives the rep intel for the follow-up.
+
+=== VARIABLE FORMAT ===
+
+Use these dynamic variables throughout the script where appropriate:
+- {{first_name}} for the prospect's first name
+- {{last_name}} for the prospect's last name
+- {{company}} for the prospect's company name
+- {{title}} for the prospect's job title
+- {{email}} for the prospect's email
+- {{phone}} for the prospect's phone number
+
+These variables are compatible with the Dialer system. Use them naturally in the script. Do not wrap them in brackets like [Name].
 
 === QUALITY CONTROL (MANDATORY) ===
 
@@ -230,18 +273,23 @@ Before finalizing, verify the script passes ALL of these:
 1. Contains a concrete spoken opener line (not a placeholder)
 2. Contains a clear reason-for-calling line (one sentence, plain language, no jargon)
 3. Contains a Relevance Anchor with a SPECIFIC micro-scenario from ${industry}, not generic benefit language
-4. Contains an Ownership Trigger Question that forces the prospect to describe their current reality (not yes/no)
-5. Contains an Earned Next Step with Reflection + Reason + Choice structure
-6. Tone is consistent throughout. No line sounds senior if others sound junior
-7. No line sounds like marketing copy or could appear in a blog post or LinkedIn post
-8. Every line survives interruption at any point
-9. Every line is speakable in one breath
-10. No stacked questions anywhere
-11. No more than 2 discovery questions before offering the next step
-12. Total script feels intentionally incomplete. It earns time, nothing more
-13. Zero em dashes anywhere in the output
-14. Zero instances of "we specialize", "increase revenue", "get more value", "unlock", "leverage", "optimize"
-15. Every scenario references something specific to ${industry} businesses
+4. The Relevance Anchor includes light uncertainty ("I might be off", "not sure if that's true for you")
+5. Contains an Ownership Trigger Question that forces the prospect to describe their current reality (not yes/no)
+6. Contains a Micro-Commitment Step that tests intent BEFORE suggesting a meeting
+7. Contains an Earned Next Step with Reflection + Reason + Time-Boxed Choice (two specific time options)
+8. Contains an Email Fallback Branch with email confirm + angle question + clean exit
+9. Tone is consistent throughout. No line sounds senior if others sound junior
+10. No line sounds like marketing copy or could appear in a blog post or LinkedIn post
+11. Every line survives interruption at any point
+12. Every line is speakable in one breath
+13. No stacked questions anywhere
+14. No more than 2 discovery questions before the Micro-Commitment Step
+15. Total script feels intentionally incomplete. It earns time, nothing more
+16. Zero em dashes anywhere in the output
+17. Zero instances of "we specialize", "increase revenue", "get more value", "unlock", "leverage", "optimize"
+18. Every scenario references something specific to ${industry} businesses
+19. The meeting ask uses two specific time options, never open-ended
+20. Dynamic variables use {{variable}} format, never [Variable] format
 
 If any check fails, rewrite the failing line before outputting.
 
@@ -255,7 +303,7 @@ When unsure whether to be more specific or more flexible:
 
 === FINAL OUTPUT RULES ===
 
-- Use ## headings for each beat (7 max, 6 if Test Question 2 is skipped)
+- Use ## headings for each beat (8 max including Email Fallback, fewer if Test Question 2 is skipped)
 - No explanations, no intent labels, no meta commentary, no "(pause)" instructions
 - No emojis, no hype, no sales fluff, no jargon
 - No em dashes
