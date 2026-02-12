@@ -302,7 +302,7 @@ export default function Commissions() {
     return (
       <DashboardLayout>
         <DashboardHeader title="Commissions" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-3 md:p-6">
           <div className="flex items-center justify-center h-96">
             <div className="animate-pulse text-muted-foreground">Loading workspace...</div>
           </div>
@@ -315,7 +315,7 @@ export default function Commissions() {
     return (
       <DashboardLayout>
         <DashboardHeader title="Commissions" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-3 md:p-6">
           <div className="flex items-center justify-center h-96">
             <p className="text-muted-foreground">Please select a workspace to view commissions.</p>
           </div>
@@ -328,7 +328,7 @@ export default function Commissions() {
     return (
       <DashboardLayout>
         <DashboardHeader title="My Earnings" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-3 md:p-6">
           <div className="space-y-6">
             {/* Header */}
             <div>
@@ -542,7 +542,7 @@ export default function Commissions() {
   return (
     <DashboardLayout>
       <DashboardHeader title="Commissions" />
-      <main className="flex-1 p-6">
+      <main className="flex-1 p-3 md:p-6">
         <div className="space-y-6">
           {/* Header */}
           <div>

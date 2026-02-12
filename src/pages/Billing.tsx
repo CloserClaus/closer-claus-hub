@@ -415,7 +415,7 @@ export default function Billing() {
   return (
     <DashboardLayout>
       <DashboardHeader title="Billing" />
-      <main className="flex-1 p-6">
+      <main className="flex-1 p-3 md:p-6">
         <div className="max-w-4xl mx-auto space-y-8">
           {/* Header */}
           <div>

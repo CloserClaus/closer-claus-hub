@@ -271,7 +271,7 @@ export default function Training() {
     return (
       <DashboardLayout>
         <DashboardHeader title="Training" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-3 md:p-6">
           <div className="flex items-center justify-center h-96">
             <div className="animate-pulse text-muted-foreground">Loading workspace...</div>
           </div>
@@ -284,7 +284,7 @@ export default function Training() {
     return (
       <DashboardLayout>
         <DashboardHeader title="Training" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-3 md:p-6">
           <div className="flex flex-col items-center justify-center h-96 text-center">
             <GraduationCap className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">No Workspace Selected</h3>
@@ -308,7 +308,7 @@ export default function Training() {
   return (
     <DashboardLayout>
       <DashboardHeader title="Training" />
-      <main className="flex-1 p-6">
+      <main className="flex-1 p-3 md:p-6">
         <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>

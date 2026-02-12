@@ -4,7 +4,7 @@ import {
   Home, Users, Phone, MessageSquare, Settings, MoreHorizontal,
   Briefcase, GraduationCap, DollarSign, FileText, Building2,
   AlertTriangle, Tag, Shield, UserCircle, Handshake, FileSignature,
-  CreditCard
+  CreditCard, ClipboardCheck, ScrollText, Search, Gift
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -52,11 +52,15 @@ const agencyOwnerPrimary: NavItem[] = [
 ];
 
 const agencyOwnerMore: NavItem[] = [
+  { icon: ClipboardCheck, label: "Offer Diagnostic", path: "/app/offer-diagnostic" },
+  { icon: ScrollText, label: "Script Builder", path: "/app/script-builder" },
   { icon: Briefcase, label: "Jobs", path: "/jobs" },
   { icon: Users, label: "Team", path: "/team" },
+  { icon: Search, label: "Leads", path: "/leads" },
   { icon: GraduationCap, label: "Trainings", path: "/trainings" },
   { icon: FileSignature, label: "Contracts", path: "/contracts" },
   { icon: DollarSign, label: "Commissions", path: "/commissions" },
+  { icon: Gift, label: "Refer & Earn", path: "/refer" },
   { icon: Tag, label: "Subscription", path: "/subscription" },
   { icon: CreditCard, label: "Billing", path: "/billing" },
   { icon: Settings, label: "Settings", path: "/settings" },
@@ -71,7 +75,9 @@ const sdrPrimary: NavItem[] = [
 
 const sdrMore: NavItem[] = [
   { icon: Briefcase, label: "Find Jobs", path: "/jobs" },
+  { icon: Search, label: "Leads", path: "/leads" },
   { icon: GraduationCap, label: "Trainings", path: "/trainings" },
+  { icon: FileSignature, label: "Contracts", path: "/contracts" },
   { icon: DollarSign, label: "My Earnings", path: "/earnings" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];

@@ -318,7 +318,7 @@ export default function TeamManagement() {
     return (
       <DashboardLayout>
         <DashboardHeader title="My Companies" />
-        <main className="flex-1 p-6 space-y-6">
+        <main className="flex-1 p-3 md:p-6 space-y-6">
           <div>
             <h1 className="text-2xl font-bold mb-1">My Companies</h1>
             <p className="text-muted-foreground">
@@ -529,7 +529,7 @@ export default function TeamManagement() {
     return (
       <DashboardLayout>
         <DashboardHeader title="Team Management" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-3 md:p-6">
           <Card className="border-dashed">
             <CardContent className="p-12 text-center">
               <AlertTriangle className="h-12 w-12 mx-auto text-warning mb-4" />
@@ -548,7 +548,7 @@ export default function TeamManagement() {
     return (
       <DashboardLayout>
         <DashboardHeader title="Team Management" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-3 md:p-6">
           <Card className="border-dashed">
             <CardContent className="p-12 text-center">
               <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -567,7 +567,7 @@ export default function TeamManagement() {
     <DashboardLayout>
       <DashboardHeader title="Team Management" />
       <SubscriptionGuard feature="team">
-        <main className="flex-1 p-6 space-y-6">
+        <main className="flex-1 p-3 md:p-6 space-y-6">
           <div>
             <h1 className="text-2xl font-bold mb-1">Your Team</h1>
             <p className="text-muted-foreground">

@@ -110,7 +110,7 @@ export default function ReferAndEarn() {
   return (
     <DashboardLayout>
       <DashboardHeader title="Refer & Earn" />
-      <main className="flex-1 p-6">
+      <main className="flex-1 p-3 md:p-6">
         <div className="space-y-6 max-w-4xl mx-auto">
           {/* Hero Section */}
           <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-primary/10">
