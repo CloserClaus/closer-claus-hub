@@ -417,7 +417,7 @@ export default function Contracts() {
     return (
       <DashboardLayout>
         <DashboardHeader title="Contracts" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-3 md:p-6">
           <div className="flex items-center justify-center h-96">
             <div className="animate-pulse text-muted-foreground">Loading workspace...</div>
           </div>
@@ -430,7 +430,7 @@ export default function Contracts() {
     return (
       <DashboardLayout>
         <DashboardHeader title="Contracts" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-3 md:p-6">
           <div className="flex items-center justify-center h-96">
             <p className="text-muted-foreground">Please select a workspace to manage contracts.</p>
           </div>
@@ -442,7 +442,7 @@ export default function Contracts() {
   return (
     <DashboardLayout>
       <DashboardHeader title="Contracts" />
-      <main className="flex-1 p-6">
+      <main className="flex-1 p-3 md:p-6">
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>

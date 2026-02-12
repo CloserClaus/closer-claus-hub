@@ -417,7 +417,7 @@ export default function Settings() {
   return (
     <DashboardLayout>
       <DashboardHeader title="Settings" />
-      <main className="flex-1 p-6">
+      <main className="flex-1 p-3 md:p-6">
         <div className="max-w-4xl">
           <h1 className="text-2xl font-bold mb-6">Settings</h1>
 

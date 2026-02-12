@@ -595,7 +595,7 @@ export default function Dialer() {
     return (
       <DashboardLayout>
         <DashboardHeader title="Dialer" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-3 md:p-6">
           <div className="flex items-center justify-center h-96">
             <div className="animate-pulse text-muted-foreground">Loading workspace...</div>
           </div>
@@ -609,7 +609,7 @@ export default function Dialer() {
     return (
       <DashboardLayout>
         <DashboardHeader title="Dialer" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-3 md:p-6">
           <div className="flex flex-col items-center justify-center h-96 text-center">
             <Phone className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">No Workspace Selected</h3>
@@ -629,12 +629,12 @@ export default function Dialer() {
   return (
     <DashboardLayout>
       <DashboardHeader title="Dialer" />
-      <main className="flex-1 p-6">
+      <main className="flex-1 p-3 md:p-6">
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
-              <h1 className="text-3xl font-bold">Dialer</h1>
-              <p className="text-muted-foreground">Make outbound calls to your leads</p>
+              <h1 className="text-xl md:text-3xl font-bold">Dialer</h1>
+              <p className="text-sm md:text-base text-muted-foreground">Make outbound calls to your leads</p>
             </div>
             <CreditsDisplay 
               credits={creditsBalance} 
@@ -649,14 +649,14 @@ export default function Dialer() {
             const isOwner = currentWorkspace?.owner_id === user?.id;
             return (
               <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                <TabsList>
-                  <TabsTrigger value="dialer" className="flex items-center gap-2">
+                <TabsList className="overflow-x-auto scrollbar-hide w-full justify-start">
+                  <TabsTrigger value="dialer" className="flex items-center gap-2 whitespace-nowrap">
                     <Phone className="h-4 w-4" />
-                    Manual Dialer
+                    <span className="hidden sm:inline">Manual</span> Dialer
                   </TabsTrigger>
                   <TabsTrigger 
                     value="power-dialer" 
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-2 whitespace-nowrap"
                     disabled={!hasPowerDialer}
                   >
                     <Zap className="h-4 w-4" />
@@ -664,21 +664,21 @@ export default function Dialer() {
                     {!hasPowerDialer && <Lock className="h-3 w-3 ml-1" />}
                   </TabsTrigger>
                   {isOwner && (
-                    <TabsTrigger value="purchase" className="flex items-center gap-2">
+                    <TabsTrigger value="purchase" className="flex items-center gap-2 whitespace-nowrap">
                       <ShoppingCart className="h-4 w-4" />
                       Purchase
                     </TabsTrigger>
                   )}
-                  <TabsTrigger value="scripts" className="flex items-center gap-2">
+                  <TabsTrigger value="scripts" className="flex items-center gap-2 whitespace-nowrap">
                     <FileText className="h-4 w-4" />
                     Scripts
                   </TabsTrigger>
-                  <TabsTrigger value="recordings" className="flex items-center gap-2">
+                  <TabsTrigger value="recordings" className="flex items-center gap-2 whitespace-nowrap">
                     <Mic className="h-4 w-4" />
                     Recordings
                   </TabsTrigger>
                   {isOwner && (
-                    <TabsTrigger value="settings" className="flex items-center gap-2">
+                    <TabsTrigger value="settings" className="flex items-center gap-2 whitespace-nowrap">
                       <Phone className="h-4 w-4" />
                       Dialer Settings
                     </TabsTrigger>
