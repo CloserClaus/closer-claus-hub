@@ -10,15 +10,30 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
-import { FileText, BookOpen, Loader2, AlertTriangle, Copy, Check, RefreshCw, Download, Send } from 'lucide-react';
+import { FileText, BookOpen, Loader2, AlertTriangle, Copy, Check, RefreshCw, Download, Send, ShieldAlert, ChevronDown, ChevronRight } from 'lucide-react';
 import { ProgressLoadingBar } from '@/components/ui/progress-loading-bar';
 import { SendToSDRDialog } from '@/components/scripts/SendToSDRDialog';
 import { format } from 'date-fns';
 
+interface ObjectionItem {
+  category: string;
+  phase: string;
+  objection: string;
+  meaning: string;
+  understanding: string;
+  strategy: string;
+  what_to_say: string;
+  if_they_resist: string;
+  if_they_engage: string;
+  return_to_beat: string;
+}
+
 interface ScriptResult {
   script: string;
   progressionRules: string | null;
+  objectionPlaybook: ObjectionItem[] | null;
   types: {
     opener: string;
     bridge: string;
@@ -30,6 +45,175 @@ interface ScriptResult {
   confidenceBand: 'low' | 'medium' | 'high';
 }
 
+const OBJECTION_CATEGORIES = [
+  'Brush-Off Resistance',
+  'Authority Resistance',
+  'Timing Resistance',
+  'Skepticism Resistance',
+  'Status Quo Resistance',
+  'Pricing Resistance',
+] as const;
+
+const PHASES = [
+  'Likely First Objections',
+  'Common Mid-Call Objections',
+  'Late-Stage Objections',
+] as const;
+
+const CATEGORY_COLORS: Record<string, string> = {
+  'Brush-Off Resistance': 'bg-muted text-muted-foreground border-border',
+  'Authority Resistance': 'bg-primary/10 text-primary border-primary/20',
+  'Timing Resistance': 'bg-muted text-foreground border-border',
+  'Skepticism Resistance': 'bg-muted text-muted-foreground border-border',
+  'Status Quo Resistance': 'bg-secondary text-secondary-foreground border-border',
+  'Pricing Resistance': 'bg-muted text-foreground border-border',
+};
+
+function ObjectionCard({ item, index }: { item: ObjectionItem; index: number }) {
+  const [open, setOpen] = useState(false);
+  const categoryColor = CATEGORY_COLORS[item.category] || 'bg-muted text-muted-foreground border-border';
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button className="w-full text-left">
+          <div className="flex items-start gap-3 p-4 rounded-lg border border-border bg-card hover:bg-muted/30 transition-colors">
+            <div className="mt-0.5 shrink-0">
+              {open ? (
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <Badge variant="outline" className={`text-xs shrink-0 ${categoryColor}`}>
+                  {item.category}
+                </Badge>
+              </div>
+              <p className="text-sm font-medium text-foreground leading-snug">
+                "{item.objection}"
+              </p>
+            </div>
+          </div>
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mx-1 mb-2 border border-t-0 border-border rounded-b-lg bg-card overflow-hidden">
+          <div className="divide-y divide-border">
+            {/* Meaning */}
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">What This Really Means</p>
+              <p className="text-sm text-foreground leading-relaxed">{item.meaning}</p>
+            </div>
+
+            {/* What Rep Should Understand */}
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">What You Should Understand</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">{item.understanding}</p>
+            </div>
+
+            {/* Strategy */}
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Recommended Strategy</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">{item.strategy}</p>
+            </div>
+
+            {/* What To Say */}
+            <div className="px-4 py-3 bg-primary/5">
+              <p className="text-xs font-semibold text-primary uppercase tracking-wide mb-2">What To Say</p>
+              <p className="text-sm font-medium text-foreground leading-relaxed">"{item.what_to_say}"</p>
+            </div>
+
+            {/* If They Resist / If They Engage */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-border">
+              <div className="px-4 py-3">
+                <p className="text-xs font-semibold text-destructive/70 uppercase tracking-wide mb-1">If They Resist</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">"{item.if_they_resist}"</p>
+              </div>
+              <div className="px-4 py-3">
+                <p className="text-xs font-semibold text-primary uppercase tracking-wide mb-1">If They Engage</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">"{item.if_they_engage}"</p>
+              </div>
+            </div>
+
+            {/* Return to Beat */}
+            <div className="px-4 py-2.5 bg-muted/30">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold">Return To Script Step:</span>{' '}
+                <span className="text-foreground">{item.return_to_beat}</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function ObjectionPlaybookTab({ objections }: { objections: ObjectionItem[] }) {
+  // Group by phase
+  const byPhase: Record<string, ObjectionItem[]> = {};
+  for (const phase of PHASES) {
+    byPhase[phase] = objections.filter(o => o.phase === phase);
+  }
+
+  const totalCount = objections.length;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-base flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-primary" />
+              Objection Playbook
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {totalCount} contextual objection{totalCount !== 1 ? 's' : ''} — tap to expand. Acknowledge, reframe, ask.
+            </p>
+          </div>
+        </div>
+      </CardHeader>
+      <Separator />
+      <CardContent className="pt-4 space-y-6">
+        {PHASES.map(phase => {
+          const items = byPhase[phase] || [];
+          if (items.length === 0) return null;
+          return (
+            <div key={phase}>
+              <div className="flex items-center gap-2 mb-3">
+                <h4 className="text-sm font-semibold text-foreground">{phase}</h4>
+                <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">{items.length}</span>
+              </div>
+              <div className="space-y-2">
+                {items.map((item, idx) => (
+                  <ObjectionCard key={`${phase}-${idx}`} item={item} index={idx} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Fallback: uncategorized by phase */}
+        {objections.filter(o => !PHASES.includes(o.phase as any)).length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <h4 className="text-sm font-semibold text-foreground">Other Objections</h4>
+            </div>
+            <div className="space-y-2">
+              {objections
+                .filter(o => !PHASES.includes(o.phase as any))
+                .map((item, idx) => (
+                  <ObjectionCard key={`other-${idx}`} item={item} index={idx} />
+                ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function ScriptBuilder() {
   const { savedState, isLoading: isLoadingState } = useOfferDiagnosticState();
@@ -64,7 +248,6 @@ export default function ScriptBuilder() {
           setDeliveryMechanism((data as any).delivery_mechanism);
         }
         if ((data as any).generated_script) {
-          // Derive confidence band from saved state
           const score = savedState?.latent_alignment_score || 0;
           const proof = savedState?.proof_level || 'none';
           const maturity = savedState?.icp_maturity || 'early';
@@ -72,9 +255,18 @@ export default function ScriptBuilder() {
           if (score < 40 || ['none', 'weak'].includes(proof) || maturity === 'early') band = 'low';
           else if (score >= 70 && ['strong', 'category_killer'].includes(proof) && ['scaling', 'mature', 'enterprise'].includes(maturity)) band = 'high';
 
+          // Try to restore objection playbook from localStorage (it's not persisted in DB)
+          let restoredObjections: ObjectionItem[] | null = null;
+          try {
+            const key = `objection_playbook_${currentWorkspace.id}_${user.id}`;
+            const stored = localStorage.getItem(key);
+            if (stored) restoredObjections = JSON.parse(stored);
+          } catch {}
+
           setResult({
             script: (data as any).generated_script,
             progressionRules: (data as any).generated_progression_rules || null,
+            objectionPlaybook: restoredObjections,
             types: (data as any).script_types || { opener: '', bridge: '', discovery: '', frame: '', cta: '' },
             isValidationMode: (data as any).script_is_validation_mode || false,
             confidenceBand: band,
@@ -118,7 +310,15 @@ export default function ScriptBuilder() {
       }
       setResult(scriptResult);
 
-      // Persist the generated script
+      // Persist objection playbook to localStorage (not in DB schema)
+      if (scriptResult.objectionPlaybook && currentWorkspace?.id && user?.id) {
+        try {
+          const key = `objection_playbook_${currentWorkspace.id}_${user.id}`;
+          localStorage.setItem(key, JSON.stringify(scriptResult.objectionPlaybook));
+        } catch {}
+      }
+
+      // Persist the generated script to DB
       if (currentWorkspace?.id && user?.id) {
         await supabase
           .from('offer_diagnostic_state')
@@ -151,7 +351,6 @@ export default function ScriptBuilder() {
     setTimeout(() => setCopiedSection(null), 2000);
   };
 
-  // Standardize AI-generated placeholders to Dialer-compatible dynamic variables
   const standardizePlaceholders = (text: string): string => {
     return text
       .replace(/\[Name\]/gi, '{{first_name}}')
@@ -201,11 +400,9 @@ export default function ScriptBuilder() {
     }
   };
 
-  // Filter out meta lines from script content for clean display
   const cleanScriptText = (text: string): string => {
     return text.split('\n').filter(line => {
       const trimmed = line.trim();
-      // Remove intent labels, expected response, pause cues, confidence bands, coaching
       if (trimmed.startsWith('*Intent:')) return false;
       if (trimmed.startsWith('*Expected response:')) return false;
       if (trimmed.startsWith('*(') && trimmed.endsWith(')*')) return false;
@@ -227,7 +424,6 @@ export default function ScriptBuilder() {
       if (line.startsWith('### ')) {
         return <h4 key={i} className="text-base font-semibold mt-4 mb-2 text-foreground">{line.slice(4)}</h4>;
       }
-      // Rep lines — clean, just the spoken text
       if (line.startsWith('**Rep:**') || line.startsWith('**Rep: **')) {
         const content = line.replace(/^\*\*Rep:\s?\*\*\s*/, '');
         return (
@@ -236,12 +432,11 @@ export default function ScriptBuilder() {
           </div>
         );
       }
-      // Bold-only lines (sub-headers like "Step 1")
       if (line.startsWith('**') && line.endsWith('**')) {
         return <p key={i} className="font-semibold text-foreground mt-4 mb-1 text-sm">{line.slice(2, -2)}</p>;
       }
       if (line.startsWith('> ')) {
-        return null; // Skip blockquotes in script view
+        return null;
       }
       if (line.startsWith('- ')) {
         return <li key={i} className="ml-4 text-muted-foreground list-disc text-sm leading-relaxed">{renderInlineFormatting(line.slice(2))}</li>;
@@ -249,7 +444,6 @@ export default function ScriptBuilder() {
       if (line.trim() === '') {
         return <div key={i} className="h-2" />;
       }
-      // Regular text — treat as speakable line
       return (
         <div key={i} className="mt-1.5 mb-1 bg-primary/5 border-l-2 border-primary rounded-r-md px-3 py-2">
           <span className="text-foreground font-medium text-sm">{renderInlineFormatting(line)}</span>
@@ -274,7 +468,7 @@ export default function ScriptBuilder() {
       }
       if (line.startsWith('> ')) {
         return (
-          <blockquote key={i} className="border-l-2 border-amber-500/50 bg-amber-500/5 pl-4 py-2 italic text-muted-foreground my-2 rounded-r-md text-sm">
+          <blockquote key={i} className="border-l-2 border-border bg-muted/40 pl-4 py-2 italic text-muted-foreground my-2 rounded-r-md text-sm">
             {line.slice(2)}
           </blockquote>
         );
@@ -310,8 +504,6 @@ export default function ScriptBuilder() {
     );
   }
 
-  
-
   return (
     <DashboardLayout>
       <div className="max-w-4xl mx-auto space-y-6 p-4 md:p-6 pb-24">
@@ -323,7 +515,7 @@ export default function ScriptBuilder() {
             </p>
           </div>
           {result && (
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
               <Button
                 variant="outline"
                 size="sm"
@@ -412,9 +604,9 @@ export default function ScriptBuilder() {
             </Card>
 
             {needsRegeneration && result && (
-              <Card className="border-amber-500/30 bg-amber-500/5">
+              <Card className="border-border bg-muted/30">
                 <CardContent className="flex items-start gap-3 pt-6">
-                  <RefreshCw className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                  <RefreshCw className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
                   <div>
                     <p className="font-medium text-foreground">Offer Diagnostic Updated</p>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -430,16 +622,18 @@ export default function ScriptBuilder() {
                 <CardContent className="pt-6 pb-6">
                   <ProgressLoadingBar
                     isActive={isGenerating}
-                    durationMs={30000}
+                    durationMs={45000}
                     messages={[
                       'Mapping script structure',
                       'Aligning opener with offer context',
                       'Generating discovery and progression logic',
                       'Building adaptive conversation flow',
                       'Calibrating decision playbook',
-                      'Finalizing script output',
+                      'Generating objection playbook',
+                      'Mapping contextual objections to ICP',
+                      'Finalizing all three sections',
                     ]}
-                    messageIntervalMs={4500}
+                    messageIntervalMs={5000}
                   />
                 </CardContent>
               </Card>
@@ -465,13 +659,20 @@ export default function ScriptBuilder() {
               <>
                 <Tabs defaultValue="script" className="w-full">
                   <TabsList className="w-full">
-                    <TabsTrigger value="script" className="flex-1 gap-2">
-                      <FileText className="h-4 w-4" />
-                      What to Say
+                    <TabsTrigger value="script" className="flex-1 gap-1.5 text-xs sm:text-sm">
+                      <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      <span className="hidden xs:inline">What to Say</span>
+                      <span className="xs:hidden">Say</span>
                     </TabsTrigger>
-                    <TabsTrigger value="progression" className="flex-1 gap-2" disabled={!result.progressionRules}>
-                      <BookOpen className="h-4 w-4" />
-                      How to Think
+                    <TabsTrigger value="progression" className="flex-1 gap-1.5 text-xs sm:text-sm" disabled={!result.progressionRules}>
+                      <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      <span className="hidden xs:inline">How to Think</span>
+                      <span className="xs:hidden">Think</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="objections" className="flex-1 gap-1.5 text-xs sm:text-sm" disabled={!result.objectionPlaybook}>
+                      <ShieldAlert className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      <span className="hidden xs:inline">Objection Playbook</span>
+                      <span className="xs:hidden">Objections</span>
                     </TabsTrigger>
                   </TabsList>
 
@@ -530,6 +731,23 @@ export default function ScriptBuilder() {
                       </Card>
                     )}
                   </TabsContent>
+
+                  <TabsContent value="objections">
+                    {result.objectionPlaybook && result.objectionPlaybook.length > 0 ? (
+                      <ObjectionPlaybookTab objections={result.objectionPlaybook} />
+                    ) : (
+                      <Card>
+                        <CardContent className="flex items-center justify-center py-12">
+                          <div className="text-center">
+                            <ShieldAlert className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                            <p className="text-sm text-muted-foreground">
+                              Regenerate the script to generate your Objection Playbook.
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </TabsContent>
                 </Tabs>
 
                 <SendToSDRDialog
@@ -538,6 +756,7 @@ export default function ScriptBuilder() {
                   scriptTitle={generateScriptTitle()}
                   scriptContent={standardizePlaceholders(result.script)}
                   playbookContent={result.progressionRules ? standardizePlaceholders(result.progressionRules) : null}
+                  objectionPlaybook={result.objectionPlaybook}
                 />
               </>
             )}
