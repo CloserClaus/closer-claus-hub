@@ -22,12 +22,26 @@ interface SDRMember {
   email: string;
 }
 
+interface ObjectionItem {
+  category: string;
+  phase: string;
+  objection: string;
+  meaning: string;
+  understanding: string;
+  strategy: string;
+  what_to_say: string;
+  if_they_resist: string;
+  if_they_engage: string;
+  return_to_beat: string;
+}
+
 interface SendToSDRDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   scriptTitle: string;
   scriptContent: string;
   playbookContent?: string | null;
+  objectionPlaybook?: ObjectionItem[] | null;
 }
 
 export function SendToSDRDialog({
@@ -36,6 +50,7 @@ export function SendToSDRDialog({
   scriptTitle,
   scriptContent,
   playbookContent,
+  objectionPlaybook,
 }: SendToSDRDialogProps) {
   const { user } = useAuth();
   const { currentWorkspace } = useWorkspace();
@@ -121,10 +136,28 @@ export function SendToSDRDialog({
         return;
       }
 
-      // 2. Create training material with both sections
-      let trainingContent = `## What to Say\n\n${scriptContent}`;
-      if (playbookContent) {
-        trainingContent += `\n\n---\n\n## How to Think\n\n${playbookContent}`;
+      // 2. Create training material: Strategy context -> Conversation flow -> Objection handling
+      let trainingContent = `## 1. Strategy Context (How to Think)\n\n`;
+      trainingContent += playbookContent || 'No strategy content available.';
+      trainingContent += `\n\n---\n\n## 2. Conversation Flow (What to Say)\n\n${scriptContent}`;
+      if (objectionPlaybook && objectionPlaybook.length > 0) {
+        trainingContent += `\n\n---\n\n## 3. Objection Handling\n\n`;
+        const phases = ['Likely First Objections', 'Common Mid-Call Objections', 'Late-Stage Objections'];
+        for (const phase of phases) {
+          const items = objectionPlaybook.filter(o => o.phase === phase);
+          if (items.length === 0) continue;
+          trainingContent += `### ${phase}\n\n`;
+          for (const item of items) {
+            trainingContent += `**"${item.objection}"**\n`;
+            trainingContent += `- *Category:* ${item.category}\n`;
+            trainingContent += `- *What this means:* ${item.meaning}\n`;
+            trainingContent += `- *Strategy:* ${item.strategy}\n`;
+            trainingContent += `- *What to say:* "${item.what_to_say}"\n`;
+            trainingContent += `- *If they resist:* "${item.if_they_resist}"\n`;
+            trainingContent += `- *If they engage:* "${item.if_they_engage}"\n`;
+            trainingContent += `- *Return to:* ${item.return_to_beat}\n\n`;
+          }
+        }
       }
 
       const { error: trainingError } = await supabase
@@ -149,8 +182,8 @@ export function SendToSDRDialog({
       const scriptNotifications = selectedSdrIds.map((sdrId) => ({
         user_id: sdrId,
         workspace_id: currentWorkspace.id,
-        title: "New Script Assigned",
-        message: `New script assigned by ${workspaceName}: "${scriptTitle}"`,
+        title: "New Call Script Assigned",
+        message: `New call script assigned by ${workspaceName}: "${scriptTitle}"`,
         type: "script_assigned",
         is_read: false,
       }));
@@ -159,7 +192,7 @@ export function SendToSDRDialog({
         user_id: sdrId,
         workspace_id: currentWorkspace.id,
         title: "New Training Material",
-        message: `New training material assigned: "${scriptTitle}"`,
+        message: `New training assigned: script, strategy & objection playbook for "${scriptTitle}"`,
         type: "training_assigned",
         is_read: false,
       }));

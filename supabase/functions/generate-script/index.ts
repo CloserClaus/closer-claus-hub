@@ -416,6 +416,209 @@ END. Generate Section 2 now. No preamble. No closing remarks.
 ================================`;
 }
 
+// ========== SECTION 3: OBJECTION PLAYBOOK PROMPT ==========
+
+function buildObjectionPlaybookPrompt(ctx: OfferContext, scriptText: string, deliveryMechanism: string): string {
+  const industry = fmt(ctx.icp_industry) || 'their industry';
+  const vertical = fmt(ctx.vertical_segment);
+  const maturity = fmt(ctx.icp_maturity) || 'unknown stage';
+  const companySize = fmt(ctx.company_size) || 'unknown size';
+  const offerType = fmt(ctx.offer_type) || 'the service';
+  const proofLevel = fmt(ctx.proof_level) || 'unknown';
+  const riskModel = fmt(ctx.risk_model) || 'unknown';
+  const fulfillment = fmt(ctx.fulfillment) || 'unknown';
+  const pricingStructure = fmt(ctx.pricing_structure) || 'unknown';
+  const priceTier = resolvePriceTier(ctx);
+  const icpSpecificity = fmt(ctx.icp_specificity) || 'unknown';
+  const alignmentScore = ctx.latent_alignment_score ?? 0;
+  const proofScore = ctx.latent_proof_to_promise ?? 0;
+  const channelFit = ctx.latent_channel_fit ?? 0;
+  const icpScore = ctx.latent_icp_specificity ?? 0;
+  const promiseOutcome = ctx.promise_outcome || ctx.promise || 'the promised result';
+
+  // Derive tone from ICP maturity and specificity
+  let icpToneHint = 'professional concise';
+  if (maturity.includes('early') || maturity.includes('startup')) icpToneHint = 'peer-to-peer, founder-friendly';
+  else if (maturity.includes('enterprise') || companySize.includes('enterprise')) icpToneHint = 'professional concise';
+  else if (industry.includes('local') || companySize.includes('small')) icpToneHint = 'simple conversational';
+  else if (industry.includes('tech') || industry.includes('software')) icpToneHint = 'precise and direct';
+
+  // Derive which objection types are most likely
+  const likelyBrushOff = true; // Always common
+  const likelyAuthority = companySize.includes('mid') || companySize.includes('enterprise') || companySize.includes('large');
+  const likelyTiming = maturity.includes('growing') || maturity.includes('scaling');
+  const likelySkepticism = proofScore < 10;
+  const likelyStatusQuo = maturity.includes('mature') || maturity.includes('enterprise');
+  const likelyPricing = priceTier.includes('high') || priceTier.includes('premium') || pricingStructure.includes('performance');
+
+  return `You are writing SECTION 3: OBJECTION PLAYBOOK for a cold call training system.
+
+This is a real-time decision support tool for beginner-to-intermediate SDRs. It is NOT a list of comeback lines. It is a structured recovery guide.
+
+================================
+OFFER CONTEXT (USE ALL OF THIS)
+================================
+
+- Offer Type: ${offerType}
+- Promise / Outcome: ${promiseOutcome}
+- Delivery Mechanism: "${deliveryMechanism}"
+- Industry: ${industry}${vertical ? ` (Vertical: ${vertical})` : ''}
+- Company Size: ${companySize}
+- Business Maturity: ${maturity}
+- ICP Specificity: ${icpSpecificity}
+- Pricing Structure: ${pricingStructure}
+- Pricing Tier: ${priceTier}
+- Market Proof Level: ${proofLevel}
+- Risk Model: ${riskModel}
+- Fulfillment Complexity: ${fulfillment}
+- Alignment Score: ${alignmentScore}/100
+- Proof Score: ${proofScore}/20
+- Channel Fit Score: ${channelFit}/16
+- ICP Specificity Score: ${icpScore}/16
+
+ICP TONE PROFILE: ${icpToneHint}
+
+LIKELY OBJECTION PROFILE:
+- Brush-off resistance: always common
+- Authority resistance: ${likelyAuthority ? 'HIGH PROBABILITY - ICP company size suggests decision-making layers' : 'moderate probability'}
+- Timing resistance: ${likelyTiming ? 'HIGH PROBABILITY - ICP at growth stage often pushes timing objections' : 'moderate probability'}
+- Skepticism resistance: ${likelySkepticism ? 'HIGH PROBABILITY - proof level is low, expect trust objections' : 'moderate probability'}
+- Status quo resistance: ${likelyStatusQuo ? 'HIGH PROBABILITY - mature/enterprise ICP tends to defend current state' : 'moderate probability'}
+- Pricing resistance: ${likelyPricing ? 'HIGH PROBABILITY - pricing tier or model suggests ROI justification objections' : 'moderate probability'}
+
+THE SCRIPT (for reference, to derive beat names for Return To Script Step):
+${scriptText.substring(0, 2000)}
+
+================================
+INTELLIGENCE RULES
+================================
+
+Objections must be INFERRED from the offer context:
+- If ICP is early-stage founders: expect cash flow objections, skepticism about results, "we'll do it ourselves" resistance
+- If proof level is low/none: expect trust objections, "I've never heard of you" resistance
+- If price is premium/high-ticket: expect ROI justification, "we already use someone" resistance
+- If mechanism is unfamiliar: expect confusion objections, "how is this different" resistance
+- If fulfillment is complex: expect "sounds complicated" resistance
+- If maturity is mature/enterprise: expect status quo defense, committee/approval objections
+- If risk model is performance: expect skepticism about performance claims
+
+OBJECTION SELECTION: Generate objections that are most likely to occur for THIS specific offer and ICP.
+Do NOT generate generic objections like "I'm not interested" unless the offer type makes them highly probable.
+Generate mechanism-specific objections that reflect real misunderstandings about "${deliveryMechanism}".
+
+================================
+RESPONSE FORMULA (MANDATORY)
+================================
+
+Every "What To Say" response MUST follow: Acknowledge -> Reframe -> Micro-Question
+
+NOT: Argue -> Explain -> Pitch
+
+Rules for every response:
+- Under 2 sentences total
+- Spoken language only
+- No jargon
+- No buzzwords
+- No marketing language
+- No pressure tactics
+- No urgency manipulation
+- No fake scarcity
+- No guilt language
+- Tonally neutral
+- Beginner-safe
+- Goal is recovery and continuation, not winning
+
+Tone must match ICP type: ${icpToneHint}
+
+================================
+STRICT PROHIBITIONS
+================================
+
+NEVER generate:
+- Pressure tactics
+- Urgency manipulation
+- Fake scarcity language
+- Guilt language
+- Dominance frames
+- False claims about results
+- Fabricated statistics
+- Assumed outcomes
+
+If you lack info to generate a precise response, use: "Quick question -- is this more like X or Y?" to keep the conversation alive.
+
+================================
+OUTPUT FORMAT (STRICT JSON)
+================================
+
+You MUST output ONLY valid JSON. No preamble. No explanation. No markdown fences. Start with [ and end with ].
+
+Output a JSON array of objection objects. Each object has this EXACT structure:
+
+{
+  "category": "Brush-Off Resistance",
+  "phase": "Likely First Objections",
+  "objection": "The exact words the prospect says",
+  "meaning": "What this objection really means beneath the surface (1 sentence)",
+  "understanding": "What the rep needs to understand about this moment (1-2 sentences)",
+  "strategy": "The tactical approach to take (1 sentence)",
+  "what_to_say": "Exact spoken response following Acknowledge->Reframe->Micro-Question formula (under 2 sentences)",
+  "if_they_resist": "What to say if they push back again (1 sentence, beginner-safe)",
+  "if_they_engage": "What to say if they soften and engage (1 sentence, bridge back to script)",
+  "return_to_beat": "Beat 2: Permission Check"
+}
+
+CATEGORIES (use exactly these strings):
+- "Brush-Off Resistance"
+- "Authority Resistance"
+- "Timing Resistance"
+- "Skepticism Resistance"
+- "Status Quo Resistance"
+- "Pricing Resistance"
+
+PHASE ORDER (order all objections by this priority):
+- "Likely First Objections" = objections that appear in first 30 seconds (brush-offs, permission denials)
+- "Common Mid-Call Objections" = objections that appear after opening (authority, timing, skepticism)
+- "Late-Stage Objections" = objections that appear near meeting ask (pricing, status quo, ROI)
+
+BEAT NAMES for return_to_beat field (use exactly these):
+- "Beat 1: Attention Capture"
+- "Beat 2: Permission Check"
+- "Beat 3: Identity + Context"
+- "Beat 4: Relevance Hypothesis"
+- "Beat 5: Ownership Trigger"
+- "Beat 6: Micro-Commitment"
+- "Beat 7: Earned Next Step"
+- "Beat 8: Email Fallback"
+
+REQUIREMENTS:
+- Generate 2-3 objections per category (all 6 categories must be present)
+- Total: 12-18 objections
+- Order all objections by phase: Likely First -> Common Mid-Call -> Late-Stage
+- Within each phase, order by probability of occurring (most likely first)
+- Every objection must be specific to "${deliveryMechanism}" and ${industry}
+- Never generate a generic objection that could apply to any offer
+- The what_to_say field must sound like something a nervous 25-year-old would actually say
+- The if_they_resist field must be a clean exit if recovery fails
+- The if_they_engage field must smoothly bridge back to the script
+
+================================
+QUALITY CONTROL
+================================
+
+1. All 6 categories present
+2. All 3 phases present
+3. Every objection is mechanism-specific
+4. Every what_to_say follows Acknowledge->Reframe->Micro-Question
+5. No responses exceed 2 sentences
+6. No pressure tactics anywhere
+7. All return_to_beat values use exact beat names listed above
+8. Output is valid JSON array only
+
+================================
+END. Output JSON array now. Start with [
+================================`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -449,7 +652,6 @@ serve(async (req) => {
     const confidence = getConfidenceBand(offerContext);
     console.log("Generating script with confidence band:", confidence);
     console.log("Delivery mechanism:", deliveryMechanism);
-    console.log("Offer context keys:", Object.keys(offerContext).filter(k => (offerContext as any)[k] != null).join(', '));
 
     // Step 1: Generate Section 1 (What to Say)
     const scriptSystemPrompt = buildSystemPrompt(offerContext, deliveryMechanism);
@@ -492,25 +694,44 @@ serve(async (req) => {
       throw new Error("No script content returned");
     }
 
-    // Step 2: Generate Section 2 (How to Think)
+    // Step 2 & 3: Generate How to Think and Objection Playbook in parallel
     const playbookPrompt = buildPlaybookPrompt(offerContext, scriptText, deliveryMechanism);
+    const objectionPrompt = buildObjectionPlaybookPrompt(offerContext, scriptText, deliveryMechanism);
 
-    const playbookResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: playbookPrompt },
-          { role: "user", content: "Generate Section 2: HOW TO THINK now. All 5 sections. Complete output. Do not truncate." },
-        ],
-        temperature: 0.3,
-        max_tokens: 3000,
+    const [playbookResponse, objectionResponse] = await Promise.all([
+      fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: [
+            { role: "system", content: playbookPrompt },
+            { role: "user", content: "Generate Section 2: HOW TO THINK now. All 5 sections. Complete output. Do not truncate." },
+          ],
+          temperature: 0.3,
+          max_tokens: 3000,
+        }),
       }),
-    });
+      fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: [
+            { role: "system", content: objectionPrompt },
+            { role: "user", content: "Generate the objection playbook JSON array now. Start with [. Complete output. No markdown. No preamble." },
+          ],
+          temperature: 0.2,
+          max_tokens: 4000,
+        }),
+      }),
+    ]);
 
     let playbookText: string | null = null;
     if (playbookResponse.ok) {
@@ -518,6 +739,25 @@ serve(async (req) => {
       playbookText = playbookData.choices?.[0]?.message?.content || null;
     } else {
       console.error("Playbook generation error:", playbookResponse.status);
+    }
+
+    let objectionPlaybook: object[] | null = null;
+    if (objectionResponse.ok) {
+      const objectionData = await objectionResponse.json();
+      const rawObjection = objectionData.choices?.[0]?.message?.content || null;
+      if (rawObjection) {
+        try {
+          // Strip markdown fences if present
+          const cleaned = rawObjection.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          objectionPlaybook = JSON.parse(cleaned);
+          console.log("Objection playbook generated:", objectionPlaybook?.length, "objections");
+        } catch (e) {
+          console.error("Failed to parse objection playbook JSON:", e);
+          console.error("Raw content:", rawObjection?.substring(0, 500));
+        }
+      }
+    } else {
+      console.error("Objection playbook generation error:", objectionResponse.status);
     }
 
     const types = {
@@ -532,6 +772,7 @@ serve(async (req) => {
       JSON.stringify({
         script: scriptText,
         progressionRules: playbookText,
+        objectionPlaybook,
         types,
         isValidationMode: offerContext.latent_readiness_label === 'Weak',
         confidenceBand: confidence,
