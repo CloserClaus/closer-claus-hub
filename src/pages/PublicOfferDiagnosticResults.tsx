@@ -440,20 +440,25 @@ export default function PublicOfferDiagnosticResults() {
               </CardContent>
             </Card>
 
-            {/* Soft CTA */}
-            <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-              <CardContent className="pt-6 text-center space-y-4">
-                <p className="text-lg">
-                  Want this executed instead of DIY?
-                </p>
-                <p className="text-muted-foreground">
-                  Closer Claus exists for that.
-                </p>
-                <Button asChild variant="outline">
-                  <Link to="/">Learn More</Link>
-                </Button>
-              </CardContent>
-            </Card>
+            {/* Book a Call CTA */}
+            {recsRevealed && (
+              <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+                <CardContent className="pt-6 text-center space-y-4">
+                  <p className="text-lg font-semibold">
+                    Want help fixing this?
+                  </p>
+                  <p className="text-muted-foreground">
+                    Book a free 30-minute strategy call and we'll walk through your results together.
+                  </p>
+                  <Button asChild>
+                    <a href="https://calendly.com/closer_claus/30-minute-meeting" target="_blank" rel="noopener noreferrer">
+                      Book a Call
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </a>
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
           </>
         )}
       </main>
