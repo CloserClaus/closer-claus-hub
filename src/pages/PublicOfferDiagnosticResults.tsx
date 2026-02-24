@@ -319,11 +319,14 @@ export default function PublicOfferDiagnosticResults() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="aspect-video bg-muted rounded-lg flex items-center justify-center border border-dashed">
-                  <div className="text-center space-y-2">
-                    <Play className="h-12 w-12 mx-auto text-muted-foreground" />
-                    <p className="text-muted-foreground">Video coming soon</p>
-                  </div>
+                <div className="aspect-video rounded-lg overflow-hidden">
+                  <iframe
+                    className="w-full h-full"
+                    src="https://www.youtube.com/embed/OVW-SNpv2Hk"
+                    title="How to Turn a Good Offer into a Scalable Outbound System"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
                 </div>
               </CardContent>
             </Card>
