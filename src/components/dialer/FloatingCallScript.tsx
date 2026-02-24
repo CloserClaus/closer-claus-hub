@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FileText, GripHorizontal, Minimize2, Maximize2, X } from "lucide-react";
+import { FileText, GripHorizontal, Minimize2, Maximize2, X, ShieldAlert, ChevronRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { isStructuredScript } from "./scriptParser";
 import { ScriptExecutionMode } from "./ScriptExecutionMode";
@@ -30,7 +30,30 @@ interface CallScript {
   title: string;
   content: string;
   is_default: boolean;
+  objection_playbook: ObjectionItem[] | null;
 }
+
+interface ObjectionItem {
+  category: string;
+  phase: string;
+  objection: string;
+  meaning: string;
+  understanding: string;
+  strategy: string;
+  what_to_say: string;
+  if_they_resist: string;
+  if_they_engage: string;
+  return_to_beat: string;
+}
+
+const OBJECTION_CATEGORIES = [
+  'Brush-Off Resistance',
+  'Authority Resistance',
+  'Timing Resistance',
+  'Skepticism Resistance',
+  'Status Quo Resistance',
+  'Pricing Resistance',
+] as const;
 
 interface FloatingCallScriptProps {
   workspaceId: string;
@@ -39,10 +62,92 @@ interface FloatingCallScriptProps {
   onClose: () => void;
 }
 
+function ObjectionAssistPanel({ objections }: { objections: ObjectionItem[] }) {
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+  const byCategory: Record<string, ObjectionItem[]> = {};
+  for (const cat of OBJECTION_CATEGORIES) {
+    const items = objections.filter(o => o.category === cat);
+    if (items.length > 0) byCategory[cat] = items;
+  }
+
+  const shortLabel = (cat: string) => cat.replace(' Resistance', '');
+
+  if (activeCategory && byCategory[activeCategory]) {
+    const items = byCategory[activeCategory];
+    return (
+      <div className="space-y-1">
+        <button
+          onClick={() => setActiveCategory(null)}
+          className="text-[10px] text-primary font-medium mb-1 flex items-center gap-1"
+        >
+          ← Back
+        </button>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+          {activeCategory}
+        </p>
+        {items.map((item, idx) => (
+          <ObjectionQuickCard key={idx} item={item} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+        Quick Objection Assist
+      </p>
+      <div className="grid grid-cols-2 gap-1">
+        {Object.keys(byCategory).map(cat => (
+          <button
+            key={cat}
+            onClick={() => setActiveCategory(cat)}
+            className="text-left rounded border border-border hover:border-primary/40 hover:bg-accent/50 px-2 py-1.5 transition-colors"
+          >
+            <span className="text-[11px] font-medium text-foreground">{shortLabel(cat)}</span>
+            <span className="text-[10px] text-muted-foreground ml-1">({byCategory[cat].length})</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ObjectionQuickCard({ item }: { item: ObjectionItem }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <button
+      onClick={() => setExpanded(!expanded)}
+      className="w-full text-left rounded border border-border hover:border-primary/30 p-2 transition-colors"
+    >
+      <p className="text-[11px] font-medium text-foreground leading-snug">"{item.objection}"</p>
+      {expanded ? (
+        <div className="mt-1.5 space-y-1">
+          <div className="bg-primary/5 rounded px-2 py-1">
+            <p className="text-[10px] font-bold text-primary uppercase">Say this</p>
+            <p className="text-[11px] text-foreground">"{item.what_to_say}"</p>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            <span className="font-semibold">Return to:</span> {item.return_to_beat}
+          </p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1 mt-0.5">
+          <ChevronRight className="h-2.5 w-2.5 text-muted-foreground" />
+          <span className="text-[10px] text-muted-foreground">Tap for response</span>
+        </div>
+      )}
+    </button>
+  );
+}
+
 export function FloatingCallScript({ workspaceId, lead, isVisible, onClose }: FloatingCallScriptProps) {
   const [scripts, setScripts] = useState<CallScript[]>([]);
   const [selectedScriptId, setSelectedScriptId] = useState<string>("");
   const [isMinimized, setIsMinimized] = useState(false);
+  const [showObjections, setShowObjections] = useState(false);
   const [position, setPosition] = useState({ x: 20, y: 100 });
   const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
@@ -52,7 +157,7 @@ export function FloatingCallScript({ workspaceId, lead, isVisible, onClose }: Fl
   const fetchScripts = async () => {
     const { data, error } = await supabase
       .from('call_scripts')
-      .select('id, title, content, is_default')
+      .select('id, title, content, is_default, objection_playbook')
       .eq('workspace_id', workspaceId)
       .order('is_default', { ascending: false });
 
@@ -61,7 +166,10 @@ export function FloatingCallScript({ workspaceId, lead, isVisible, onClose }: Fl
       return;
     }
 
-    setScripts(data || []);
+    setScripts((data || []).map(s => ({
+      ...s,
+      objection_playbook: s.objection_playbook as unknown as ObjectionItem[] | null,
+    })));
     
     const defaultScript = data?.find(s => s.is_default);
     if (defaultScript) {
@@ -79,11 +187,13 @@ export function FloatingCallScript({ workspaceId, lead, isVisible, onClose }: Fl
   useEffect(() => {
     if (isVisible && !prevVisibleRef.current) {
       fetchScripts();
+      setShowObjections(false);
     }
     prevVisibleRef.current = isVisible;
   }, [isVisible]);
 
   const selectedScript = scripts.find(s => s.id === selectedScriptId);
+  const hasObjections = selectedScript?.objection_playbook && selectedScript.objection_playbook.length > 0;
 
   const interpolateScript = (content: string, lead: Lead | null): string => {
     if (!lead) return content;
@@ -159,11 +269,30 @@ export function FloatingCallScript({ workspaceId, lead, isVisible, onClose }: Fl
             <div className="flex items-center gap-2">
               <GripHorizontal className="h-4 w-4 text-muted-foreground" />
               <CardTitle className="text-sm flex items-center gap-2">
-                <FileText className="h-4 w-4 text-primary" />
-                Script
+                {showObjections ? (
+                  <ShieldAlert className="h-4 w-4 text-primary" />
+                ) : (
+                  <FileText className="h-4 w-4 text-primary" />
+                )}
+                {showObjections ? 'Objections' : 'Script'}
               </CardTitle>
             </div>
             <div className="flex items-center gap-1">
+              {hasObjections && !isMinimized && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => setShowObjections(!showObjections)}
+                  title={showObjections ? 'Show script' : 'Show objection assist'}
+                >
+                  {showObjections ? (
+                    <FileText className="h-3 w-3" />
+                  ) : (
+                    <ShieldAlert className="h-3 w-3" />
+                  )}
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -190,7 +319,10 @@ export function FloatingCallScript({ workspaceId, lead, isVisible, onClose }: Fl
         
         {!isMinimized && (
           <CardContent className="pt-0 space-y-3">
-            <Select value={selectedScriptId} onValueChange={setSelectedScriptId}>
+            <Select value={selectedScriptId} onValueChange={(val) => {
+              setSelectedScriptId(val);
+              setShowObjections(false);
+            }}>
               <SelectTrigger className="h-8 text-xs">
                 <SelectValue placeholder="Select script" />
               </SelectTrigger>
@@ -204,13 +336,16 @@ export function FloatingCallScript({ workspaceId, lead, isVisible, onClose }: Fl
                           Default
                         </Badge>
                       )}
+                      {script.objection_playbook && script.objection_playbook.length > 0 && (
+                        <ShieldAlert className="h-3 w-3 text-primary" />
+                      )}
                     </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
-            {selectedScript && (
+            {selectedScript && !showObjections && (
               <>
                 {isStructuredScript(selectedScript.content) ? (
                   <div className="h-[280px] overflow-y-auto pr-1">
@@ -243,6 +378,12 @@ export function FloatingCallScript({ workspaceId, lead, isVisible, onClose }: Fl
                   </ScrollArea>
                 )}
               </>
+            )}
+
+            {selectedScript && showObjections && hasObjections && (
+              <ScrollArea className="h-[280px] pr-1">
+                <ObjectionAssistPanel objections={selectedScript.objection_playbook!} />
+              </ScrollArea>
             )}
 
             {lead && (

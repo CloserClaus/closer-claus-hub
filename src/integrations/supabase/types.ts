@@ -248,6 +248,7 @@ export type Database = {
           created_by: string
           id: string
           is_default: boolean
+          objection_playbook: Json | null
           title: string
           updated_at: string
           workspace_id: string
@@ -258,6 +259,7 @@ export type Database = {
           created_by: string
           id?: string
           is_default?: boolean
+          objection_playbook?: Json | null
           title: string
           updated_at?: string
           workspace_id: string
@@ -268,6 +270,7 @@ export type Database = {
           created_by?: string
           id?: string
           is_default?: boolean
+          objection_playbook?: Json | null
           title?: string
           updated_at?: string
           workspace_id?: string
