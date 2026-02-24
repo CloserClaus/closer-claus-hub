@@ -330,7 +330,7 @@ export default function PublicOfferDiagnosticResults() {
                 <div className="aspect-video rounded-lg overflow-hidden">
                   <iframe
                     className="w-full h-full"
-                    src={`https://www.youtube.com/embed/OVW-SNpv2Hk${autoplayVideo ? '?autoplay=1&mute=1' : ''}`}
+                    src={`https://www.youtube.com/embed/OVW-SNpv2Hk${autoplayVideo ? '?autoplay=1' : ''}`}
                     title="How to Turn a Good Offer into a Scalable Outbound System"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
