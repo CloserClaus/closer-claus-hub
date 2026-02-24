@@ -445,7 +445,7 @@ export default function PublicOfferDiagnosticResults() {
               <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
                 <CardContent className="pt-6 text-center space-y-4">
                   <p className="text-lg font-semibold">
-                    Want help fixing this?
+                    Want help scaling this?
                   </p>
                   <p className="text-muted-foreground">
                     Book a free 30-minute strategy call and we'll walk through your results together.
