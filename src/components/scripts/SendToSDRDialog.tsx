@@ -127,7 +127,8 @@ export function SendToSDRDialog({
           content: scriptContent,
           is_default: false,
           created_by: user.id,
-        });
+          objection_playbook: objectionPlaybook ? JSON.parse(JSON.stringify(objectionPlaybook)) : null,
+        } as any);
 
       if (scriptError) {
         console.error("Error creating call script:", scriptError);

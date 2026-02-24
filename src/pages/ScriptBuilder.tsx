@@ -388,10 +388,11 @@ export default function ScriptBuilder() {
           content,
           is_default: false,
           created_by: user.id,
-        });
+          objection_playbook: result.objectionPlaybook ? JSON.parse(JSON.stringify(result.objectionPlaybook)) : null,
+        } as any);
 
       if (error) throw error;
-      toast.success('Script imported to Dialer');
+      toast.success('Script imported to Dialer (with objection playbook)');
     } catch (err) {
       console.error('Import error:', err);
       toast.error('Failed to import script');
