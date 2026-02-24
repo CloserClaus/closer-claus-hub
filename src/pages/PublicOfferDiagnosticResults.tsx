@@ -448,7 +448,7 @@ export default function PublicOfferDiagnosticResults() {
                     Want help scaling this?
                   </p>
                   <p className="text-muted-foreground">
-                    Book a free 30-minute strategy call and we'll walk through your results together.
+                    Book a 30-minute slot here and we'll walk through the exact roadmap.
                   </p>
                   <Button asChild>
                     <a href="https://calendly.com/closer_claus/30-minute-meeting" target="_blank" rel="noopener noreferrer">
