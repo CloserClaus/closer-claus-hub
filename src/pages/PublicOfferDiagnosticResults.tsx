@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -100,6 +100,14 @@ export default function PublicOfferDiagnosticResults() {
   const [recsTimerDone, setRecsTimerDone] = useState(false);
   const [recommendations, setRecommendations] = useState<StructuredRecommendation[]>([]);
   const [recsDataReady, setRecsDataReady] = useState(false);
+  const [autoplayVideo, setAutoplayVideo] = useState(false);
+
+  // Autoplay video 10s after score is revealed
+  useEffect(() => {
+    if (!scoreRevealed) return;
+    const timer = setTimeout(() => setAutoplayVideo(true), 10000);
+    return () => clearTimeout(timer);
+  }, [scoreRevealed]);
 
   // Redirect if no state
   useEffect(() => {
@@ -322,7 +330,7 @@ export default function PublicOfferDiagnosticResults() {
                 <div className="aspect-video rounded-lg overflow-hidden">
                   <iframe
                     className="w-full h-full"
-                    src="https://www.youtube.com/embed/OVW-SNpv2Hk"
+                    src={`https://www.youtube.com/embed/OVW-SNpv2Hk${autoplayVideo ? '?autoplay=1&mute=1' : ''}`}
                     title="How to Turn a Good Offer into a Scalable Outbound System"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
