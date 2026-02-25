@@ -23,6 +23,7 @@ import JobForm from "./pages/JobForm";
 import CRM from "./pages/CRM";
 import Conversations from "./pages/Conversations";
 import Dialer from "./pages/Dialer";
+import Email from "./pages/Email";
 import Training from "./pages/Training";
 import Contracts from "./pages/Contracts";
 import SignContract from "./pages/SignContract";
@@ -71,6 +72,7 @@ const App = () => (
                 <Route path="/leads" element={<Leads />} />
                 <Route path="/conversations" element={<Conversations />} />
                 <Route path="/dialer" element={<ErrorBoundary fallbackTitle="Dialer error"><Dialer /></ErrorBoundary>} />
+                <Route path="/email" element={<Email />} />
                 <Route path="/trainings" element={<Training />} />
                 <Route path="/contracts" element={<Contracts />} />
                 <Route path="/sign/:contractId" element={<SignContract />} />

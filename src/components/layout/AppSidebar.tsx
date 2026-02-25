@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, Users, Phone, MessageSquare, GraduationCap, FileText, DollarSign, Settings, Shield, Building2, LogOut, ChevronDown, CreditCard, AlertTriangle, Tag, UserCircle, Handshake, FileSignature, Bug, Lightbulb, Wallet, Search, Database, ClipboardCheck, Gift, Target, ScrollText, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, Phone, MessageSquare, GraduationCap, FileText, DollarSign, Settings, Shield, Building2, LogOut, ChevronDown, CreditCard, AlertTriangle, Tag, UserCircle, Handshake, FileSignature, Bug, Lightbulb, Wallet, Search, Database, ClipboardCheck, Gift, Target, ScrollText, BarChart3, Mail } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
 import { WorkspaceSwitcher } from '@/components/layout/WorkspaceSwitcher';
@@ -154,6 +154,10 @@ const agencyOwnerNav: NavItem[] = [{
   icon: Phone,
   tourId: 'nav-dialer'
 }, {
+  title: 'Email',
+  url: '/email',
+  icon: Mail
+}, {
   title: 'Conversations',
   url: '/conversations',
   icon: MessageSquare
@@ -212,6 +216,10 @@ const sdrNav: NavItem[] = [{
   url: '/dialer',
   icon: Phone,
   tourId: 'nav-dialer'
+}, {
+  title: 'Email',
+  url: '/email',
+  icon: Mail
 }, {
   title: 'Conversations',
   url: '/conversations',
