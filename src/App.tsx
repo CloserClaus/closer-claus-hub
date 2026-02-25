@@ -9,6 +9,7 @@ import { WorkspaceProvider } from "@/hooks/useWorkspace";
 import { TourProvider } from "@/components/tour/TourProvider";
 import { TourOverlay } from "@/components/tour/TourOverlay";
 import { TourTrigger } from "@/components/tour/TourTrigger";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Auth from "./pages/Auth";
 import RoleSelect from "./pages/RoleSelect";
 import Onboarding from "./pages/Onboarding";
@@ -60,16 +61,16 @@ const App = () => (
                 <Route path="/onboarding" element={<Onboarding />} />
                 <Route path="/subscription" element={<Subscription />} />
                 <Route path="/billing" element={<Billing />} />
-                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/dashboard" element={<ErrorBoundary fallbackTitle="Dashboard error"><Dashboard /></ErrorBoundary>} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/jobs" element={<Jobs />} />
                 <Route path="/jobs/new" element={<JobForm />} />
                 <Route path="/jobs/:id" element={<JobDetail />} />
                 <Route path="/jobs/:id/edit" element={<JobForm />} />
-                <Route path="/crm" element={<CRM />} />
+                <Route path="/crm" element={<ErrorBoundary fallbackTitle="CRM error"><CRM /></ErrorBoundary>} />
                 <Route path="/leads" element={<Leads />} />
                 <Route path="/conversations" element={<Conversations />} />
-                <Route path="/dialer" element={<Dialer />} />
+                <Route path="/dialer" element={<ErrorBoundary fallbackTitle="Dialer error"><Dialer /></ErrorBoundary>} />
                 <Route path="/trainings" element={<Training />} />
                 <Route path="/contracts" element={<Contracts />} />
                 <Route path="/sign/:contractId" element={<SignContract />} />

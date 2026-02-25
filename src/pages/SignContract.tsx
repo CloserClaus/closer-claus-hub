@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
+import { usePageTracking } from '@/hooks/usePageTracking';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,6 +43,7 @@ interface ContractData {
 type Step = 'email' | 'otp' | 'sign' | 'success';
 
 export default function SignContract() {
+  usePageTracking();
   const { contractId } = useParams<{ contractId: string }>();
   const [contract, setContract] = useState<ContractData | null>(null);
   const [isLoading, setIsLoading] = useState(true);

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import html2canvas from 'html2canvas';
 import { Button } from '@/components/ui/button';
 import { ChevronRight, ChevronLeft, Download } from 'lucide-react';
+import { usePageTracking } from '@/hooks/usePageTracking';
 
 // Import all demo states - 19 distinct screenshots
 import { DemoStateJobPosted } from '@/components/demo/DemoStateJobPosted';
@@ -48,6 +49,7 @@ const STATES = [
 ];
 
 const DemoWalkthrough = () => {
+  usePageTracking();
   const [currentState, setCurrentState] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = useState(false);
