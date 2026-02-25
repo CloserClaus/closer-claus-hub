@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Phone, PhoneCall, AlertCircle, ShoppingCart, Zap, Lock, FileText, Mic, Building2,
+  Phone, PhoneCall, AlertCircle, ShoppingCart, Zap, Lock, FileText, Mic, Building2, Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -26,6 +26,7 @@ import { LeadDetailSidebar } from "@/components/crm/LeadDetailSidebar";
 import { DialPad } from "@/components/dialer/DialPadComponent";
 import { QuickDialList } from "@/components/dialer/QuickDialList";
 import { CallHistoryPanel } from "@/components/dialer/CallHistoryPanel";
+import { EmailConnectionsTab } from "@/components/settings/EmailConnectionsTab";
 
 interface Lead {
   id: string;
@@ -257,7 +258,7 @@ export default function Dialer() {
   if (workspaceLoading) {
     return (
       <DashboardLayout>
-        <DashboardHeader title="Dialer" />
+        <DashboardHeader title="Outreach" />
         <main className="flex-1 p-3 md:p-6">
           <div className="flex items-center justify-center h-96">
             <div className="animate-pulse text-muted-foreground">Loading workspace...</div>
@@ -270,7 +271,7 @@ export default function Dialer() {
   if (!currentWorkspace) {
     return (
       <DashboardLayout>
-        <DashboardHeader title="Dialer" />
+        <DashboardHeader title="Outreach" />
         <main className="flex-1 p-3 md:p-6">
           <div className="flex flex-col items-center justify-center h-96 text-center">
             <Phone className="h-12 w-12 text-muted-foreground mb-4" />
@@ -291,13 +292,13 @@ export default function Dialer() {
 
   return (
     <DashboardLayout>
-      <DashboardHeader title="Dialer" />
+      <DashboardHeader title="Outreach" />
       <main className="flex-1 p-3 md:p-6">
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
-              <h1 className="text-xl md:text-3xl font-bold">Dialer</h1>
-              <p className="text-sm md:text-base text-muted-foreground">Make outbound calls to your leads</p>
+              <h1 className="text-xl md:text-3xl font-bold">Outreach</h1>
+              <p className="text-sm md:text-base text-muted-foreground">Calls & email outreach to your leads</p>
             </div>
             <CreditsDisplay credits={creditsBalance} freeMinutesRemaining={freeMinutesRemaining} isLoading={isLoadingCredits} />
           </div>
@@ -320,6 +321,9 @@ export default function Dialer() {
               </TabsTrigger>
               <TabsTrigger value="recordings" className="flex items-center gap-2 whitespace-nowrap">
                 <Mic className="h-4 w-4" />Recordings
+              </TabsTrigger>
+              <TabsTrigger value="email" className="flex items-center gap-2 whitespace-nowrap">
+                <Mail className="h-4 w-4" />Email
               </TabsTrigger>
               {isOwner && (
                 <TabsTrigger value="settings" className="flex items-center gap-2 whitespace-nowrap">
@@ -449,6 +453,10 @@ export default function Dialer() {
 
             <TabsContent value="recordings">
               <CallRecordingsTab workspaceId={currentWorkspace.id} />
+            </TabsContent>
+
+            <TabsContent value="email">
+              <EmailConnectionsTab />
             </TabsContent>
 
             <TabsContent value="settings">

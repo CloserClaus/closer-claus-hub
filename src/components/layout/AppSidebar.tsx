@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, Users, Phone, MessageSquare, GraduationCap, FileText, DollarSign, Settings, Shield, Building2, LogOut, ChevronDown, CreditCard, AlertTriangle, Tag, UserCircle, Handshake, FileSignature, Bug, Lightbulb, Wallet, Search, Database, ClipboardCheck, Gift, Target, ScrollText, BarChart3, Mail } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, Phone, MessageSquare, GraduationCap, FileText, DollarSign, Settings, Shield, Building2, LogOut, ChevronDown, CreditCard, AlertTriangle, Tag, UserCircle, Handshake, FileSignature, Bug, Lightbulb, Wallet, Search, Database, ClipboardCheck, Gift, Target, ScrollText, BarChart3, Mail, Megaphone } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
 import { WorkspaceSwitcher } from '@/components/layout/WorkspaceSwitcher';
@@ -10,14 +10,19 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import logoIcon from '@/assets/logo-icon.png';
 import logoFull from '@/assets/logo-full.png';
+
 interface NavItem {
   title: string;
   url: string;
-  icon: React.ComponentType<{
-    className?: string;
-  }>;
+  icon: React.ComponentType<{ className?: string }>;
   tourId?: string;
 }
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
 const platformAdminNav: NavItem[] = [{
   title: 'Overview',
   url: '/admin',
@@ -116,221 +121,209 @@ const platformAdminNav: NavItem[] = [{
   icon: Shield,
   tourId: 'admin-controls'
 }];
-const agencyOwnerNav: NavItem[] = [{
-  title: 'Dashboard',
-  url: '/dashboard',
-  icon: LayoutDashboard
-}, {
-  title: 'Offer Diagnostic',
-  url: '/app/offer-diagnostic',
-  icon: ClipboardCheck
-}, {
-  title: 'Script Builder',
-  url: '/app/script-builder',
-  icon: ScrollText
-}, {
-  title: 'Jobs',
-  url: '/jobs',
-  icon: Briefcase,
-  tourId: 'nav-jobs'
-}, {
-  title: 'Team',
-  url: '/team',
-  icon: Users,
-  tourId: 'nav-team'
-}, {
-  title: 'CRM',
-  url: '/crm',
-  icon: FileText,
-  tourId: 'nav-crm'
-}, {
-  title: 'Leads',
-  url: '/leads',
-  icon: Search,
-  tourId: 'nav-leads'
-}, {
-  title: 'Dialer',
-  url: '/dialer',
-  icon: Phone,
-  tourId: 'nav-dialer'
-}, {
-  title: 'Email',
-  url: '/email',
-  icon: Mail
-}, {
-  title: 'Conversations',
-  url: '/conversations',
-  icon: MessageSquare
-}, {
-  title: 'Trainings',
-  url: '/trainings',
-  icon: GraduationCap
-}, {
-  title: 'Contracts',
-  url: '/contracts',
-  icon: FileText
-}, {
-  title: 'Commissions',
-  url: '/commissions',
-  icon: DollarSign,
-  tourId: 'nav-commissions'
-}, {
-  title: 'Subscription',
-  url: '/subscription',
-  icon: Tag
-}, {
-  title: 'Billing',
-  url: '/billing',
-  icon: CreditCard
-}, {
-  title: 'Refer & Earn',
-  url: '/refer',
-  icon: Gift
-}];
-const sdrNav: NavItem[] = [{
-  title: 'Dashboard',
-  url: '/dashboard',
-  icon: LayoutDashboard
-}, {
-  title: 'Find Jobs',
-  url: '/jobs',
-  icon: Briefcase,
-  tourId: 'nav-jobs'
-}, {
-  title: 'My Companies',
-  url: '/team',
-  icon: Building2,
-  tourId: 'nav-team'
-}, {
-  title: 'CRM',
-  url: '/crm',
-  icon: FileText,
-  tourId: 'nav-crm'
-}, {
-  title: 'Leads',
-  url: '/leads',
-  icon: Search,
-  tourId: 'nav-leads'
-}, {
-  title: 'Dialer',
-  url: '/dialer',
-  icon: Phone,
-  tourId: 'nav-dialer'
-}, {
-  title: 'Email',
-  url: '/email',
-  icon: Mail
-}, {
-  title: 'Conversations',
-  url: '/conversations',
-  icon: MessageSquare
-}, {
-  title: 'Trainings',
-  url: '/trainings',
-  icon: GraduationCap
-}, {
-  title: 'Contracts',
-  url: '/contracts',
-  icon: FileSignature,
-  tourId: 'nav-contracts'
-}, {
-  title: 'My Earnings',
-  url: '/commissions',
-  icon: DollarSign,
-  tourId: 'nav-earnings'
-}];
+
+// Agency owner nav grouped into sections
+const agencyOwnerGroups: NavGroup[] = [
+  {
+    label: 'Core',
+    items: [
+      { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
+      { title: 'Offer Diagnostic', url: '/app/offer-diagnostic', icon: ClipboardCheck },
+      { title: 'Script Builder', url: '/app/script-builder', icon: ScrollText },
+    ],
+  },
+  {
+    label: 'Sales',
+    items: [
+      { title: 'CRM', url: '/crm', icon: FileText, tourId: 'nav-crm' },
+      { title: 'Leads', url: '/leads', icon: Search, tourId: 'nav-leads' },
+      { title: 'Outreach', url: '/outreach', icon: Megaphone, tourId: 'nav-dialer' },
+      { title: 'Conversations', url: '/conversations', icon: MessageSquare },
+    ],
+  },
+  {
+    label: 'Team',
+    items: [
+      { title: 'Jobs', url: '/jobs', icon: Briefcase, tourId: 'nav-jobs' },
+      { title: 'Team', url: '/team', icon: Users, tourId: 'nav-team' },
+      { title: 'Trainings', url: '/trainings', icon: GraduationCap },
+    ],
+  },
+  {
+    label: 'Finance',
+    items: [
+      { title: 'Contracts', url: '/contracts', icon: FileText },
+      { title: 'Commissions', url: '/commissions', icon: DollarSign, tourId: 'nav-commissions' },
+      { title: 'Subscription', url: '/subscription', icon: Tag },
+      { title: 'Billing', url: '/billing', icon: CreditCard },
+      { title: 'Refer & Earn', url: '/refer', icon: Gift },
+    ],
+  },
+];
+
+// SDR nav grouped into sections
+const sdrGroups: NavGroup[] = [
+  {
+    label: 'Core',
+    items: [
+      { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
+      { title: 'Find Jobs', url: '/jobs', icon: Briefcase, tourId: 'nav-jobs' },
+      { title: 'My Companies', url: '/team', icon: Building2, tourId: 'nav-team' },
+    ],
+  },
+  {
+    label: 'Sales',
+    items: [
+      { title: 'CRM', url: '/crm', icon: FileText, tourId: 'nav-crm' },
+      { title: 'Leads', url: '/leads', icon: Search, tourId: 'nav-leads' },
+      { title: 'Outreach', url: '/outreach', icon: Megaphone, tourId: 'nav-dialer' },
+      { title: 'Conversations', url: '/conversations', icon: MessageSquare },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { title: 'Trainings', url: '/trainings', icon: GraduationCap },
+      { title: 'Contracts', url: '/contracts', icon: FileSignature, tourId: 'nav-contracts' },
+      { title: 'My Earnings', url: '/commissions', icon: DollarSign, tourId: 'nav-earnings' },
+    ],
+  },
+];
+
+function renderNavGroup(group: NavGroup, collapsed: boolean, location: ReturnType<typeof useLocation>) {
+  return (
+    <SidebarGroup key={group.label}>
+      <SidebarGroupLabel className={collapsed ? 'sr-only' : ''}>
+        {group.label}
+      </SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {group.items.map(item => {
+            const isActive = item.url.includes('?')
+              ? location.pathname + location.search === item.url
+              : location.pathname === item.url && !location.search;
+            return (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
+                  <NavLink
+                    to={item.url}
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-sidebar-accent"
+                    activeClassName="bg-sidebar-accent text-sidebar-primary"
+                    data-tour={item.tourId}
+                  >
+                    <item.icon className="h-5 w-5 shrink-0" />
+                    {!collapsed && <span>{item.title}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
 export function AppSidebar() {
-  const {
-    state
-  } = useSidebar();
+  const { state } = useSidebar();
   const location = useLocation();
-  const {
-    userRole,
-    profile,
-    signOut
-  } = useAuth();
+  const { userRole, profile, signOut } = useAuth();
   const collapsed = state === 'collapsed';
-  const getNavItems = (): NavItem[] => {
-    switch (userRole) {
-      case 'platform_admin':
-        return platformAdminNav;
-      case 'agency_owner':
-        return agencyOwnerNav;
-      case 'sdr':
-        return sdrNav;
-      default:
-        return [];
-    }
-  };
-  const navItems = getNavItems();
+
   const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'U';
+
   const getRoleLabel = () => {
     switch (userRole) {
-      case 'platform_admin':
-        return 'Platform Admin';
-      case 'agency_owner':
-        return 'Agency Owner';
-      case 'sdr':
-        return 'SDR';
-      default:
-        return 'User';
+      case 'platform_admin': return 'Platform Admin';
+      case 'agency_owner': return 'Agency Owner';
+      case 'sdr': return 'SDR';
+      default: return 'User';
     }
   };
-  return <Sidebar collapsible="icon" className="border-r border-border" data-tour="sidebar">
+
+  // Platform admin uses flat nav (already manageable)
+  const renderPlatformAdminNav = () => (
+    <SidebarGroup>
+      <SidebarGroupLabel className={collapsed ? 'sr-only' : ''}>
+        Navigation
+      </SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {platformAdminNav.map(item => {
+            const isActive = item.url.includes('?')
+              ? location.pathname + location.search === item.url
+              : location.pathname === item.url && !location.search;
+            return (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
+                  <NavLink
+                    to={item.url}
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-sidebar-accent"
+                    activeClassName="bg-sidebar-accent text-sidebar-primary"
+                    data-tour={item.tourId}
+                  >
+                    <item.icon className="h-5 w-5 shrink-0" />
+                    {!collapsed && <span>{item.title}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+
+  const renderGroupedNav = () => {
+    const groups = userRole === 'agency_owner' ? agencyOwnerGroups : sdrGroups;
+    return groups.map(group => renderNavGroup(group, collapsed, location));
+  };
+
+  return (
+    <Sidebar collapsible="icon" className="border-r border-border" data-tour="sidebar">
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3">
-          {collapsed ? <img src={logoIcon} alt="Closer Claus" className="h-8 w-8 object-contain" /> : <img src={logoFull} alt="Closer Claus" className="h-8 object-contain" />}
+          {collapsed
+            ? <img src={logoIcon} alt="Closer Claus" className="h-8 w-8 object-contain" />
+            : <img src={logoFull} alt="Closer Claus" className="h-8 object-contain" />
+          }
         </div>
       </SidebarHeader>
 
       {(userRole === 'sdr' || userRole === 'agency_owner') && !collapsed && <>
+        <SidebarSeparator />
+        <div data-tour="workspace-switcher" className="py-0 px-0">
+          <WorkspaceSwitcher />
+        </div>
+        {userRole === 'sdr' && <>
           <SidebarSeparator />
-          <div data-tour="workspace-switcher" className="py-0 px-0">
-            <WorkspaceSwitcher />
+          <div className="px-3 py-2" data-tour="sdr-level">
+            <SDRLevelProgress />
           </div>
-          {userRole === 'sdr' && <>
-              <SidebarSeparator />
-              <div className="px-3 py-2" data-tour="sdr-level">
-                <SDRLevelProgress />
-              </div>
-            </>}
         </>}
+      </>}
 
-      {userRole === 'sdr' && collapsed && <div className="px-2 py-2" data-tour="sdr-level">
+      {userRole === 'sdr' && collapsed && (
+        <div className="px-2 py-2" data-tour="sdr-level">
           <SDRLevelProgress compact />
-        </div>}
+        </div>
+      )}
 
       <SidebarSeparator />
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className={collapsed ? 'sr-only' : ''}>
-            Navigation
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navItems.map(item => {
-              const itemUrl = new URL(item.url, window.location.origin);
-              const isActive = item.url.includes('?') ? location.pathname + location.search === item.url : location.pathname === item.url && !location.search;
-              return <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
-                      <NavLink to={item.url} className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-sidebar-accent" activeClassName="bg-sidebar-accent text-sidebar-primary" data-tour={item.tourId}>
-                        <item.icon className="h-5 w-5 shrink-0" />
-                        {!collapsed && <span>{item.title}</span>}
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>;
-            })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {userRole === 'platform_admin' ? renderPlatformAdminNav() : renderGroupedNav()}
 
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={location.pathname === '/settings'} tooltip="Settings">
-                  <NavLink to="/settings" className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-sidebar-accent" activeClassName="bg-sidebar-accent text-sidebar-primary">
+                  <NavLink
+                    to="/settings"
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-sidebar-accent"
+                    activeClassName="bg-sidebar-accent text-sidebar-primary"
+                  >
                     <Settings className="h-5 w-5 shrink-0" />
                     {!collapsed && <span>Settings</span>}
                   </NavLink>
@@ -344,13 +337,17 @@ export function AppSidebar() {
       <SidebarFooter className="p-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className={`w-full justify-start gap-3 px-2 py-6 hover:bg-sidebar-accent ${collapsed ? 'justify-center' : ''}`}>
+            <Button
+              variant="ghost"
+              className={`w-full justify-start gap-3 px-2 py-6 hover:bg-sidebar-accent ${collapsed ? 'justify-center' : ''}`}
+            >
               <Avatar className="h-8 w-8 shrink-0">
                 <AvatarFallback className="bg-primary text-primary-foreground text-sm">
                   {initials}
                 </AvatarFallback>
               </Avatar>
-              {!collapsed && <div className="flex flex-1 items-center justify-between">
+              {!collapsed && (
+                <div className="flex flex-1 items-center justify-between">
                   <div className="text-left">
                     <p className="text-sm font-medium truncate max-w-[120px]">
                       {profile?.full_name || 'User'}
@@ -358,7 +355,8 @@ export function AppSidebar() {
                     <p className="text-xs text-muted-foreground">{getRoleLabel()}</p>
                   </div>
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                </div>}
+                </div>
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
@@ -369,5 +367,6 @@ export function AppSidebar() {
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarFooter>
-    </Sidebar>;
+    </Sidebar>
+  );
 }

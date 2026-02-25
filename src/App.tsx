@@ -71,8 +71,9 @@ const App = () => (
                 <Route path="/crm" element={<ErrorBoundary fallbackTitle="CRM error"><CRM /></ErrorBoundary>} />
                 <Route path="/leads" element={<Leads />} />
                 <Route path="/conversations" element={<Conversations />} />
-                <Route path="/dialer" element={<ErrorBoundary fallbackTitle="Dialer error"><Dialer /></ErrorBoundary>} />
-                <Route path="/email" element={<Email />} />
+                <Route path="/outreach" element={<ErrorBoundary fallbackTitle="Outreach error"><Dialer /></ErrorBoundary>} />
+                <Route path="/dialer" element={<Navigate to="/outreach" replace />} />
+                <Route path="/email" element={<Navigate to="/outreach" replace />} />
                 <Route path="/trainings" element={<Training />} />
                 <Route path="/contracts" element={<Contracts />} />
                 <Route path="/sign/:contractId" element={<SignContract />} />
