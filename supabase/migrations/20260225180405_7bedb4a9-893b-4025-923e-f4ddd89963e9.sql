@@ -1,0 +1,1 @@
+ALTER TABLE public.call_logs ADD COLUMN IF NOT EXISTS ai_summary TEXT DEFAULT NULL;

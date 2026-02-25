@@ -213,6 +213,7 @@ export type Database = {
       }
       call_logs: {
         Row: {
+          ai_summary: string | null
           call_status: string
           caller_id: string
           callhippo_call_id: string | null
@@ -231,6 +232,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          ai_summary?: string | null
           call_status?: string
           caller_id: string
           callhippo_call_id?: string | null
@@ -249,6 +251,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          ai_summary?: string | null
           call_status?: string
           caller_id?: string
           callhippo_call_id?: string | null
