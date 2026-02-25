@@ -26,9 +26,11 @@ import { ReferralsTable } from '@/components/admin/ReferralsTable';
 import { PhoneNumbersTable } from '@/components/admin/PhoneNumbersTable';
 import { PurchasesSection } from '@/components/admin/PurchasesSection';
 import { OfferDiagnosticLeadsTable } from '@/components/admin/OfferDiagnosticLeadsTable';
+import { SiteAnalytics } from '@/components/admin/SiteAnalytics';
 
 const tabTitles: Record<string, string> = {
   overview: 'Platform Overview',
+  analytics: 'Site Analytics',
   agencies: 'Agencies',
   sdrs: 'SDRs',
   jobs: 'Job Posts',
@@ -75,6 +77,8 @@ export default function AdminDashboard() {
 
   const renderContent = () => {
     switch (activeTab) {
+      case 'analytics':
+        return <SiteAnalytics />;
       case 'agencies':
         return <AgenciesTable />;
       case 'sdrs':

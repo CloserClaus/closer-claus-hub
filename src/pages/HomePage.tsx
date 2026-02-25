@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { usePageTracking } from '@/hooks/usePageTracking';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -21,6 +22,7 @@ import logoFull from '@/assets/logo-full.png';
 const HomePage = () => {
   const diagnosticRef = useRef<HTMLDivElement>(null);
   const platformRef = useRef<HTMLDivElement>(null);
+  usePageTracking();
 
   const scrollToDiagnostic = () => {
     diagnosticRef.current?.scrollIntoView({ behavior: 'smooth' });
