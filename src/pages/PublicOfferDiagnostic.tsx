@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
+import { usePageTracking } from '@/hooks/usePageTracking';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -91,6 +92,7 @@ const initialFormData: DiagnosticFormData = {
 export default function PublicOfferDiagnostic() {
   const navigate = useNavigate();
   const formRef = useRef<HTMLDivElement>(null);
+  usePageTracking();
   const [formData, setFormData] = useState<DiagnosticFormData>(initialFormData);
   const [showSoftGate, setShowSoftGate] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);

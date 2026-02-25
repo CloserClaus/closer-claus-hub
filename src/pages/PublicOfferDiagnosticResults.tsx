@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { usePageTracking } from '@/hooks/usePageTracking';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -89,6 +90,7 @@ function getCategoryColor(category: FixCategory) {
 export default function PublicOfferDiagnosticResults() {
   const location = useLocation();
   const navigate = useNavigate();
+  usePageTracking();
   const state = location.state as LocationState | null;
 
   // Phase 1: Score reveal (loading bar ~10s)

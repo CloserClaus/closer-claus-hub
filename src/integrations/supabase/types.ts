@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      active_sessions: {
+        Row: {
+          city: string | null
+          country: string | null
+          current_path: string
+          id: string
+          last_seen_at: string
+          session_id: string
+          started_at: string
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          city?: string | null
+          country?: string | null
+          current_path: string
+          id?: string
+          last_seen_at?: string
+          session_id: string
+          started_at?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          city?: string | null
+          country?: string | null
+          current_path?: string
+          id?: string
+          last_seen_at?: string
+          session_id?: string
+          started_at?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       apollo_leads: {
         Row: {
           apollo_id: string
@@ -1939,6 +1975,54 @@ export type Database = {
           },
         ]
       }
+      page_views: {
+        Row: {
+          city: string | null
+          country: string | null
+          created_at: string
+          id: string
+          language: string | null
+          path: string
+          referrer: string | null
+          screen_height: number | null
+          screen_width: number | null
+          session_id: string
+          timezone: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          id?: string
+          language?: string | null
+          path: string
+          referrer?: string | null
+          screen_height?: number | null
+          screen_width?: number | null
+          session_id: string
+          timezone?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          id?: string
+          language?: string | null
+          path?: string
+          referrer?: string | null
+          screen_height?: number | null
+          screen_width?: number | null
+          session_id?: string
+          timezone?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -2698,6 +2782,7 @@ export type Database = {
         Returns: boolean
       }
       cleanup_old_rate_limits: { Args: never; Returns: undefined }
+      cleanup_stale_sessions: { Args: never; Returns: undefined }
       close_deal_atomic: {
         Args: { p_deal_id: string; p_expected_version: number }
         Returns: boolean

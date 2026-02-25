@@ -6,6 +6,7 @@ import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 import { LevelUpCelebration } from '@/components/LevelUpCelebration';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotifications } from '@/hooks/useNotifications';
+import { usePageTracking } from '@/hooks/usePageTracking';
 
 const SIDEBAR_STORAGE_KEY = 'sidebar-open';
 
@@ -17,6 +18,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, userRole, profile, loading } = useAuth();
   const navigate = useNavigate();
   const { levelUpNotification, closeLevelUpCelebration } = useNotifications();
+  usePageTracking();
   
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
