@@ -140,3 +140,9 @@ verify_jwt = false
 
 [functions.generate-script]
 verify_jwt = false
+
+[functions.send-diagnostic-email]
+verify_jwt = false
+
+[functions.offer-diagnostic-ai]
+verify_jwt = false

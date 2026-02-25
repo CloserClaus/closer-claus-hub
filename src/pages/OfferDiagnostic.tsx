@@ -684,8 +684,8 @@ export default function OfferDiagnostic() {
               <div className="space-y-2">
                 <Label htmlFor="promiseOutcome">What outcome does your offer promise?</Label>
                 <Select
-                  value={formData.promiseOutcome || 'none'}
-                  onValueChange={handleOutcomeChange}
+                  value={formData.promiseOutcome || '__unselected__'}
+                  onValueChange={(value) => handleOutcomeChange(value === '__unselected__' ? 'none' : value)}
                   disabled={!formData.offerType}
                 >
                   <SelectTrigger id="promiseOutcome" className="bg-background">
@@ -732,8 +732,8 @@ export default function OfferDiagnostic() {
                 <div className="space-y-2">
                   <Label htmlFor="verticalSegment">Vertical Segment</Label>
                   <Select
-                    value={formData.verticalSegment || 'none'}
-                    onValueChange={handleVerticalSegmentChange}
+                    value={formData.verticalSegment || '__unselected__'}
+                    onValueChange={(value) => handleVerticalSegmentChange(value === '__unselected__' ? 'none' : value)}
                     disabled={!formData.icpIndustry}
                   >
                     <SelectTrigger id="verticalSegment" className="bg-background">
@@ -833,8 +833,8 @@ export default function OfferDiagnostic() {
               <div className="space-y-2">
                 <Label htmlFor="fulfillmentComplexity">Fulfillment Complexity</Label>
                 <Select
-                  value={formData.fulfillmentComplexity || 'none'}
-                  onValueChange={(value) => handleFieldChange('fulfillmentComplexity', value === 'none' ? null : value as FulfillmentComplexity)}
+                  value={formData.fulfillmentComplexity || '__unselected__'}
+                  onValueChange={(value) => handleFieldChange('fulfillmentComplexity', value === '__unselected__' ? null : value as FulfillmentComplexity)}
                 >
                   <SelectTrigger id="fulfillmentComplexity" className="bg-background">
                     <SelectValue placeholder="Select an option" />
