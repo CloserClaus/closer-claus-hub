@@ -1,94 +1,114 @@
 
 
-# Mobile-Friendliness Overhaul
+# Website Analytics Module for Admin Panel
 
-## Issues Found
+## Overview
 
-### 1. Help Widget ('?') Overlaps Bottom Navigation
-The `HelpWidget` component uses `fixed bottom-4 right-4 z-50`, placing it directly on top of the mobile bottom navigation bar. On mobile, users see the blue '?' circle sitting on the "More" button area, blocking interaction.
+Build a full-stack analytics system that tracks all user activity across the platform and surfaces it in a rich admin dashboard. The system will capture page views, active sessions (with heartbeat for live "online" status), device/browser info, and geographic data.
 
-### 2. Missing Navigation Items in Mobile Bottom Nav
-The mobile "More" sheet is missing several pages that exist in the desktop sidebar:
-- **Offer Diagnostic** (`/app/offer-diagnostic`)
-- **Script Builder** (`/app/script-builder`)
-- **Leads** (`/leads`)
-- **Refer and Earn** (`/refer`)
+## Database Design
 
-SDR mobile nav is also missing **Leads** (`/leads`) and **Contracts** (`/contracts`).
+### Table 1: `page_views`
+Stores every page navigation event.
 
-### 3. Dialer Tab Bar Overflows on Mobile
-The `TabsList` on the Dialer page contains 5-6 tabs (Manual Dialer, Power Dialer, Purchase, Scripts, Recordings, Settings) that extend beyond the screen width. Tabs like "Purchase" get cut off ("Purcha...") with no way to scroll to hidden tabs.
+```text
+page_views
+├── id (uuid, PK)
+├── user_id (uuid, nullable - for anonymous visitors)
+├── session_id (text - browser-generated session ID)
+├── path (text - e.g. "/dashboard", "/crm")
+├── referrer (text, nullable)
+├── user_agent (text, nullable)
+├── screen_width (int, nullable)
+├── screen_height (int, nullable)
+├── language (text, nullable)
+├── timezone (text, nullable)
+├── country (text, nullable)
+├── city (text, nullable)
+├── created_at (timestamptz, default now())
+```
 
-### 4. Dialer Page Layout Issues
-- The header row (`flex items-center justify-between`) stacks poorly -- the title and CreditsDisplay fight for horizontal space.
-- The main content uses `p-6` with no mobile reduction, wasting space.
-- The 3-column grid (`grid-cols-1 lg:grid-cols-3`) is fine structurally but the cards within it are quite tall on mobile.
+RLS: Anon/authenticated can INSERT (own user_id or null). Only platform_admin can SELECT.
 
-### 5. Inconsistent Page Padding Across App
-Many pages use `p-6` without mobile-specific padding (should be `p-4 md:p-6` or `p-3 md:p-6`).
+### Table 2: `active_sessions`
+Tracks who is currently online via heartbeat (upsert every 30s, prune stale > 2min).
 
----
+```text
+active_sessions
+├── id (uuid, PK)
+├── user_id (uuid, nullable)
+├── session_id (text, unique)
+├── current_path (text)
+├── user_agent (text, nullable)
+├── last_seen_at (timestamptz, default now())
+├── started_at (timestamptz, default now())
+├── country (text, nullable)
+├── city (text, nullable)
+```
 
-## Implementation Plan
+RLS: Anon/authenticated can INSERT/UPDATE (own session). Only platform_admin can SELECT all.
 
-### Task 1: Fix HelpWidget Position on Mobile
-**File:** `src/components/help/HelpWidget.tsx`
-- Change the container from `fixed bottom-4 right-4` to `fixed bottom-20 right-4 md:bottom-4` so it sits above the mobile bottom nav (which is ~64px tall).
-- This ensures the '?' button is always accessible and never overlaps navigation.
+## Edge Function: `track-pageview`
 
-### Task 2: Add Missing Nav Items to Mobile Bottom Nav
-**File:** `src/components/layout/MobileBottomNav.tsx`
-- Add missing items to `agencyOwnerMore` array:
-  - Offer Diagnostic (`/app/offer-diagnostic`) with ClipboardCheck icon
-  - Script Builder (`/app/script-builder`) with ScrollText icon
-  - Leads (`/leads`) with Search icon
-  - Refer and Earn (`/refer`) with Gift icon
-- Add missing items to `sdrMore` array:
-  - Leads (`/leads`) with Search icon
-  - Contracts (`/contracts`) with FileSignature icon
-- Import the new icons (ClipboardCheck, ScrollText, Search, Gift, FileSignature).
+A lightweight edge function (`verify_jwt = false`) that:
+1. Accepts `{ path, referrer, session_id, screen_width, screen_height, language, timezone, user_id? }`
+2. Resolves country/city from the request IP using the `cf-ipcountry` header (available on Cloudflare/Deno Deploy) or falls back to timezone-based inference
+3. Inserts into `page_views`
+4. Upserts into `active_sessions` (heartbeat)
 
-### Task 3: Fix Dialer Tab Bar Overflow
-**File:** `src/pages/Dialer.tsx`
-- Wrap the `TabsList` with horizontal scroll support on mobile by adding `overflow-x-auto` and `flex-nowrap` classes, plus hiding the scrollbar for a clean appearance.
-- Ensure all tab triggers use `whitespace-nowrap` so text does not wrap.
+Using an edge function avoids RLS complexity and allows IP-based geo resolution server-side.
 
-### Task 4: Fix Dialer Header and Padding
-**File:** `src/pages/Dialer.tsx`
-- Change `<main className="flex-1 p-6">` to `<main className="flex-1 p-3 md:p-6">`.
-- Change the header row from `flex items-center justify-between` to `flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2` so the title and credits stack vertically on mobile.
-- Reduce the title from `text-3xl` to `text-xl md:text-3xl`.
+## Frontend Tracking
 
-### Task 5: Audit and Fix Padding on Other Key Pages
-Apply `p-3 md:p-6` or `p-4 md:p-6` pattern to these pages:
-- `src/pages/Commissions.tsx` (4 instances of `p-6`)
-- `src/pages/Billing.tsx`
-- `src/pages/Jobs.tsx`
-- `src/pages/Settings.tsx`
-- `src/pages/Contracts.tsx`
-- `src/pages/Conversations.tsx`
-- `src/pages/TeamManagement.tsx`
-- `src/pages/Training.tsx`
-- `src/pages/Leads.tsx`
-- `src/pages/ScriptBuilder.tsx`
-- `src/pages/OfferDiagnostic.tsx`
-- `src/pages/ReferAndEarn.tsx`
+### Hook: `usePageTracking` (placed in `DashboardLayout` and public pages)
+- Generates a persistent `session_id` via `sessionStorage`
+- On every route change (via `useLocation`), fires a beacon to `track-pageview`
+- Sets up a 30-second heartbeat interval that upserts `active_sessions`
+- On `beforeunload`, sends a final beacon
 
-Each page's `<main>` tag will be updated from `p-6` to `p-3 md:p-6`.
+### Tracking Scope
+- **Authenticated pages**: Tracked via `DashboardLayout` (all dashboard routes)
+- **Public pages**: Add tracking to `PublicOfferDiagnostic`, `PublicOfferDiagnosticResults`, `HomePage` via a lightweight wrapper component
 
-### Task 6: Fix Dialer TabsList Scrollbar Styling
-**File:** `src/index.css`
-- Add a utility class for hiding scrollbars on the tab bar while keeping scroll functionality, using `-webkit-scrollbar` and `scrollbar-width: none`.
+## Admin Analytics Dashboard
 
----
+### New tab: `analytics` in the admin panel
 
-## Summary of Changes
+**Components**:
 
-| Area | Issue | Fix |
-|------|-------|-----|
-| HelpWidget | Overlaps bottom nav on mobile | Move up with `bottom-20 md:bottom-4` |
-| Mobile Nav | Missing 4+ pages in "More" menu | Add all sidebar items to mobile nav arrays |
-| Dialer Tabs | Tabs overflow and get cut off | Add horizontal scroll to TabsList |
-| Dialer Layout | Header cramps, excess padding | Stack header, reduce padding on mobile |
-| All Pages | `p-6` wastes space on mobile | Switch to `p-3 md:p-6` responsive padding |
+1. **Live Stats Bar** — Users online now, active sessions count, current pages breakdown
+2. **Traffic Over Time** — Recharts line chart showing page views per hour/day (selectable period: today, 7d, 30d)
+3. **Top Pages** — Bar chart of most visited pages
+4. **Geographic Breakdown** — Table showing visits by country/city
+5. **Device & Browser Stats** — Parsed from user_agent, shown as pie/donut charts
+6. **User Activity Table** — Scrollable table of recent page views with user name, path, timestamp, location
+7. **Active Users List** — Real-time list of who is online right now, what page they're on, how long they've been active
+
+### Data fetching
+- Uses `@tanstack/react-query` with polling (30s refetch for live data)
+- Aggregation queries via Supabase `.select()` with grouping done client-side, or via database functions for heavy aggregations
+
+## File Changes
+
+| File | Action |
+|------|--------|
+| `supabase/functions/track-pageview/index.ts` | Create — edge function for recording page views + heartbeat |
+| `supabase/config.toml` | Edit — add `[functions.track-pageview] verify_jwt = false` |
+| `src/hooks/usePageTracking.ts` | Create — tracking hook with route change detection + heartbeat |
+| `src/components/layout/DashboardLayout.tsx` | Edit — add `usePageTracking()` call |
+| `src/components/admin/SiteAnalytics.tsx` | Create — full analytics dashboard component |
+| `src/pages/AdminDashboard.tsx` | Edit — add `analytics` tab + import |
+| `src/components/layout/AppSidebar.tsx` | Edit — add Analytics nav item to admin sidebar |
+| DB migration | Create `page_views` and `active_sessions` tables with RLS policies |
+| `src/pages/HomePage.tsx` | Edit — add tracking hook for public page |
+| `src/pages/PublicOfferDiagnostic.tsx` | Edit — add tracking hook for public page |
+| `src/pages/PublicOfferDiagnosticResults.tsx` | Edit — add tracking hook for public page |
+
+## Technical Notes
+
+- The `track-pageview` edge function uses `verify_jwt = false` since it must work for both authenticated and anonymous visitors
+- Geographic data is derived server-side from request headers (`x-forwarded-for`, `cf-ipcountry`) — no third-party API needed for country-level data
+- The heartbeat approach (30s interval + 2min stale threshold) gives accurate "users online" counts without WebSocket overhead
+- User agent parsing will be done client-side in the admin component using regex patterns for browser/OS detection
+- A database function `cleanup_stale_sessions()` will be created to prune sessions older than 2 minutes, called by the edge function on each heartbeat
 
