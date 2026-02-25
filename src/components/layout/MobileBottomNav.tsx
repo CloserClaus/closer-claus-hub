@@ -4,7 +4,7 @@ import {
   Home, Users, Phone, MessageSquare, Settings, MoreHorizontal,
   Briefcase, GraduationCap, DollarSign, FileText, Building2,
   AlertTriangle, Tag, Shield, UserCircle, Handshake, FileSignature,
-  CreditCard, ClipboardCheck, ScrollText, Search, Gift, Megaphone
+  CreditCard, ClipboardCheck, ScrollText, Search, Gift
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -47,7 +47,7 @@ const platformAdminMore: NavItem[] = [
 const agencyOwnerPrimary: NavItem[] = [
   { icon: Home, label: "Home", path: "/dashboard" },
   { icon: FileText, label: "CRM", path: "/crm" },
-  { icon: Megaphone, label: "Outreach", path: "/outreach" },
+  { icon: Phone, label: "Dialer", path: "/dialer" },
   { icon: MessageSquare, label: "Chat", path: "/conversations" },
 ];
 
@@ -69,7 +69,7 @@ const agencyOwnerMore: NavItem[] = [
 const sdrPrimary: NavItem[] = [
   { icon: Home, label: "Home", path: "/dashboard" },
   { icon: FileText, label: "CRM", path: "/crm" },
-  { icon: Megaphone, label: "Outreach", path: "/outreach" },
+  { icon: Phone, label: "Dialer", path: "/dialer" },
   { icon: MessageSquare, label: "Chat", path: "/conversations" },
 ];
 
