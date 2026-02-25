@@ -19,6 +19,8 @@ import {
   Users,
   Layers,
   Award,
+  Send,
+  Play,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +29,8 @@ import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
 import { DeleteConfirmDialog } from '@/components/crm/DeleteConfirmDialog';
+import { EmailComposerModal } from '@/components/email/EmailComposerModal';
+import { FollowUpSequenceModal } from '@/components/email/FollowUpSequenceModal';
 
 interface Lead {
   id: string;
@@ -81,7 +85,8 @@ export function LeadDetailSidebar({
   const [activities, setActivities] = useState<Activity[]>([]);
   const [relatedDeals, setRelatedDeals] = useState<{ id: string; title: string; value: number; stage: string }[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
+  const [showEmailComposer, setShowEmailComposer] = useState(false);
+  const [showFollowUpSequence, setShowFollowUpSequence] = useState(false);
   useEffect(() => {
     if (lead && open) {
       fetchRelatedData();
@@ -140,6 +145,29 @@ export function LeadDetailSidebar({
       });
     }
 
+    // Fetch email logs for this lead
+    const { data: emails } = await supabase
+      .from('email_logs')
+      .select('id, status, subject, sent_at')
+      .eq('lead_id', lead.id)
+      .order('sent_at', { ascending: false })
+      .limit(10);
+
+    if (emails) {
+      (emails as any[]).forEach(email => {
+        const statusLabel = email.status === 'opened' ? 'Email Opened' 
+          : email.status === 'delivered' ? 'Email Delivered'
+          : email.status === 'replied' ? 'Email Replied'
+          : 'Email Sent';
+        activityList.push({
+          id: email.id,
+          type: 'email',
+          description: `${statusLabel}: ${email.subject}`,
+          created_at: email.sent_at,
+        });
+      });
+    }
+
     // Sort by date descending
     activityList.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     setActivities(activityList);
@@ -149,6 +177,8 @@ export function LeadDetailSidebar({
     switch (type) {
       case 'call':
         return <PhoneCall className="h-4 w-4 text-primary" />;
+      case 'email':
+        return <Mail className="h-4 w-4 text-blue-500" />;
       case 'contact':
         return <MessageSquare className="h-4 w-4 text-success" />;
       case 'created':
@@ -217,6 +247,18 @@ export function LeadDetailSidebar({
 
             <ScrollArea className="flex-1">
               <div className="p-6 space-y-6">
+                {/* Email Action Buttons */}
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowEmailComposer(true)} disabled={!lead.email}>
+                    <Send className="h-4 w-4 mr-2" />
+                    Send Email
+                  </Button>
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowFollowUpSequence(true)} disabled={!lead.email}>
+                    <Play className="h-4 w-4 mr-2" />
+                    Follow-Up Sequence
+                  </Button>
+                </div>
+
                 {/* Contact Info */}
                 <div className="space-y-3">
                   <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
@@ -426,6 +468,20 @@ export function LeadDetailSidebar({
           onDelete(lead.id);
           setShowDeleteConfirm(false);
         }}
+      />
+
+      <EmailComposerModal
+        open={showEmailComposer}
+        onClose={() => setShowEmailComposer(false)}
+        lead={lead}
+        onEmailSent={fetchRelatedData}
+      />
+
+      <FollowUpSequenceModal
+        open={showFollowUpSequence}
+        onClose={() => setShowFollowUpSequence(false)}
+        lead={lead}
+        onSequenceStarted={fetchRelatedData}
       />
     </>
   );
