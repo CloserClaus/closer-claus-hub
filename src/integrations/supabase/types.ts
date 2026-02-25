@@ -21,6 +21,8 @@ export type Database = {
           current_path: string
           id: string
           last_seen_at: string
+          latitude: number | null
+          longitude: number | null
           session_id: string
           started_at: string
           user_agent: string | null
@@ -32,6 +34,8 @@ export type Database = {
           current_path: string
           id?: string
           last_seen_at?: string
+          latitude?: number | null
+          longitude?: number | null
           session_id: string
           started_at?: string
           user_agent?: string | null
@@ -43,6 +47,8 @@ export type Database = {
           current_path?: string
           id?: string
           last_seen_at?: string
+          latitude?: number | null
+          longitude?: number | null
           session_id?: string
           started_at?: string
           user_agent?: string | null
@@ -1982,6 +1988,8 @@ export type Database = {
           created_at: string
           id: string
           language: string | null
+          latitude: number | null
+          longitude: number | null
           path: string
           referrer: string | null
           screen_height: number | null
@@ -1997,6 +2005,8 @@ export type Database = {
           created_at?: string
           id?: string
           language?: string | null
+          latitude?: number | null
+          longitude?: number | null
           path: string
           referrer?: string | null
           screen_height?: number | null
@@ -2012,6 +2022,8 @@ export type Database = {
           created_at?: string
           id?: string
           language?: string | null
+          latitude?: number | null
+          longitude?: number | null
           path?: string
           referrer?: string | null
           screen_height?: number | null
