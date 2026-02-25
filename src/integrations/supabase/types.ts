@@ -14,6 +14,73 @@ export type Database = {
   }
   public: {
     Tables: {
+      active_follow_ups: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          current_step: number
+          id: string
+          lead_id: string
+          next_send_at: string | null
+          sequence_id: string
+          started_at: string
+          started_by: string
+          status: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          current_step?: number
+          id?: string
+          lead_id: string
+          next_send_at?: string | null
+          sequence_id: string
+          started_at?: string
+          started_by: string
+          status?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          current_step?: number
+          id?: string
+          lead_id?: string
+          next_send_at?: string | null
+          sequence_id?: string
+          started_at?: string
+          started_by?: string
+          status?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "active_follow_ups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_follow_ups_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "follow_up_sequences"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_follow_ups_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       active_sessions: {
         Row: {
           city: string | null
@@ -1120,6 +1187,163 @@ export type Database = {
           },
         ]
       }
+      email_connections: {
+        Row: {
+          api_key: string | null
+          created_at: string
+          gmail_email: string | null
+          gmail_refresh_token: string | null
+          id: string
+          is_active: boolean
+          provider: string
+          provider_name: string | null
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          api_key?: string | null
+          created_at?: string
+          gmail_email?: string | null
+          gmail_refresh_token?: string | null
+          id?: string
+          is_active?: boolean
+          provider: string
+          provider_name?: string | null
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          api_key?: string | null
+          created_at?: string
+          gmail_email?: string | null
+          gmail_refresh_token?: string | null
+          id?: string
+          is_active?: boolean
+          provider?: string
+          provider_name?: string | null
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_connections_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_logs: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          lead_id: string | null
+          provider: string
+          sent_at: string
+          sent_by: string
+          sequence_id: string | null
+          sequence_step: number | null
+          status: string
+          status_updated_at: string | null
+          subject: string
+          workspace_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          provider: string
+          sent_at?: string
+          sent_by: string
+          sequence_id?: string | null
+          sequence_step?: number | null
+          status?: string
+          status_updated_at?: string | null
+          subject: string
+          workspace_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          provider?: string
+          sent_at?: string
+          sent_by?: string
+          sequence_id?: string | null
+          sequence_step?: number | null
+          status?: string
+          status_updated_at?: string | null
+          subject?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_logs_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_logs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_templates: {
+        Row: {
+          body: string
+          created_at: string
+          created_by: string
+          id: string
+          is_default: boolean
+          name: string
+          subject: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          created_by: string
+          id?: string
+          is_default?: boolean
+          name: string
+          subject: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          is_default?: boolean
+          name?: string
+          subject?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_templates_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_verification_tokens: {
         Row: {
           created_at: string
@@ -1246,6 +1470,82 @@ export type Database = {
             columns: ["feature_id"]
             isOneToOne: false
             referencedRelation: "feature_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      follow_up_sequence_steps: {
+        Row: {
+          body: string
+          created_at: string
+          delay_days: number
+          id: string
+          sequence_id: string
+          step_order: number
+          subject: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          delay_days?: number
+          id?: string
+          sequence_id: string
+          step_order: number
+          subject: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          delay_days?: number
+          id?: string
+          sequence_id?: string
+          step_order?: number
+          subject?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "follow_up_sequence_steps_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "follow_up_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      follow_up_sequences: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          is_default: boolean
+          name: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          is_default?: boolean
+          name: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          is_default?: boolean
+          name?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "follow_up_sequences_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
         ]
