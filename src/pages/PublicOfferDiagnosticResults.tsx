@@ -149,7 +149,7 @@ export default function PublicOfferDiagnosticResults() {
     fetchRecommendations();
   }, [state?.formData]);
 
-  // Store lead data and notify admin
+  // Store lead data, notify admin, and send email
   useEffect(() => {
     if (!state) return;
 
@@ -178,6 +178,20 @@ export default function PublicOfferDiagnosticResults() {
             alignment_score: state.latentResult.alignmentScore,
             readiness_label: state.latentResult.readinessLabel,
             primary_bottleneck: state.latentResult.latentBottleneckKey,
+          },
+        });
+
+        // Send diagnostic results email
+        await supabase.functions.invoke('send-diagnostic-email', {
+          body: {
+            email: state.email,
+            firstName: state.firstName,
+            alignmentScore: state.latentResult.alignmentScore,
+            readinessLabel: state.latentResult.readinessLabel,
+            bottleneckLabel: state.latentResult.bottleneckLabel,
+            latentScores: state.latentResult.latentScores,
+            outboundReady: state.latentResult.outboundReady,
+            primaryBottleneck: state.latentResult.primaryBottleneck,
           },
         });
       } catch (error) {

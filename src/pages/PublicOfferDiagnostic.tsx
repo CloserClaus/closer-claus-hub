@@ -225,8 +225,8 @@ export default function PublicOfferDiagnostic() {
     <div className="space-y-2">
       <Label htmlFor={field}>{label}</Label>
       <Select
-        value={currentValue || 'none'}
-        onValueChange={(value) => handleFieldChange(field, value === 'none' ? null : (value as T) as DiagnosticFormData[typeof field])}
+        value={currentValue || '__unselected__'}
+        onValueChange={(value) => handleFieldChange(field, value === '__unselected__' ? null : (value as T) as DiagnosticFormData[typeof field])}
       >
         <SelectTrigger id={field} className="bg-background">
           <SelectValue placeholder="Select an option" />
