@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { usePageTracking } from '@/hooks/usePageTracking';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -59,6 +60,7 @@ type SDRSignUpFormData = z.infer<typeof sdrSignUpSchema>;
 type AuthMode = 'signin' | 'signup-select' | 'signup-agency' | 'signup-sdr' | 'forgot-password' | 'reset-password';
 
 export default function Auth() {
+  usePageTracking();
   const [mode, setMode] = useState<AuthMode>('signin');
   const [isLoading, setIsLoading] = useState(false);
   const { user, userRole } = useAuth();
