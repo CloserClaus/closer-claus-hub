@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Loader2, MessageSquare, Send, StickyNote, ArrowLeft, Filter } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -66,6 +66,31 @@ export function EmailConversationsTab() {
   useEffect(() => {
     if (currentWorkspace) fetchConversations();
   }, [currentWorkspace, statusFilter]);
+
+  // Realtime subscription for new messages and conversation updates
+  useEffect(() => {
+    if (!currentWorkspace) return;
+
+    const channel = supabase
+      .channel('email-conversations-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'email_conversations', filter: `workspace_id=eq.${currentWorkspace.id}` },
+        () => { fetchConversations(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'email_conversation_messages' },
+        (payload) => {
+          if (selectedConvo && payload.new && (payload.new as any).conversation_id === selectedConvo.id) {
+            setMessages(prev => [...prev, payload.new as ConversationMessage]);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [currentWorkspace, selectedConvo]);
 
   const fetchConversations = async () => {
     if (!currentWorkspace) return;

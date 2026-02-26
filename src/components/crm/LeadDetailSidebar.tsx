@@ -45,6 +45,7 @@ interface Lead {
   last_contacted_at: string | null;
   created_at: string;
   assigned_to?: string | null;
+  email_sending_state?: string | null;
   // Apollo enrichment fields
   linkedin_url?: string | null;
   company_domain?: string | null;
@@ -247,15 +248,31 @@ export function LeadDetailSidebar({
 
             <ScrollArea className="flex-1">
               <div className="p-6 space-y-6">
+                {/* Email Sending State */}
+                {lead.email_sending_state && lead.email_sending_state !== 'idle' && (
+                  <div className="flex items-center gap-2">
+                    <Badge variant={
+                      lead.email_sending_state === 'active_sequence' ? 'default' :
+                      lead.email_sending_state === 'replied' ? 'secondary' :
+                      lead.email_sending_state === 'error' ? 'destructive' : 'outline'
+                    } className="text-xs">
+                      {lead.email_sending_state === 'active_sequence' ? '📧 Active Sequence' :
+                       lead.email_sending_state === 'replied' ? '💬 Replied' :
+                       lead.email_sending_state === 'error' ? '❌ Email Error' :
+                       lead.email_sending_state}
+                    </Badge>
+                  </div>
+                )}
+
                 {/* Email Action Buttons */}
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowEmailComposer(true)} disabled={!lead.email}>
                     <Send className="h-4 w-4 mr-2" />
                     Send Email
                   </Button>
-                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowFollowUpSequence(true)} disabled={!lead.email}>
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowFollowUpSequence(true)} disabled={!lead.email || lead.email_sending_state === 'active_sequence'}>
                     <Play className="h-4 w-4 mr-2" />
-                    Follow-Up Sequence
+                    {lead.email_sending_state === 'active_sequence' ? 'Sequence Active' : 'Follow-Up Sequence'}
                   </Button>
                 </div>
 
