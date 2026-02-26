@@ -22,6 +22,8 @@ export type Database = {
           id: string
           lead_id: string
           next_send_at: string | null
+          sender_inbox_id: string | null
+          sender_provider_id: string | null
           sequence_id: string
           started_at: string
           started_by: string
@@ -36,6 +38,8 @@ export type Database = {
           id?: string
           lead_id: string
           next_send_at?: string | null
+          sender_inbox_id?: string | null
+          sender_provider_id?: string | null
           sequence_id: string
           started_at?: string
           started_by: string
@@ -50,6 +54,8 @@ export type Database = {
           id?: string
           lead_id?: string
           next_send_at?: string | null
+          sender_inbox_id?: string | null
+          sender_provider_id?: string | null
           sequence_id?: string
           started_at?: string
           started_by?: string
@@ -63,6 +69,20 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_follow_ups_sender_inbox_id_fkey"
+            columns: ["sender_inbox_id"]
+            isOneToOne: false
+            referencedRelation: "email_inboxes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_follow_ups_sender_provider_id_fkey"
+            columns: ["sender_provider_id"]
+            isOneToOne: false
+            referencedRelation: "email_providers"
             referencedColumns: ["id"]
           },
           {
@@ -1187,6 +1207,81 @@ export type Database = {
           },
         ]
       }
+      email_audit_log: {
+        Row: {
+          action_type: string
+          actor_id: string | null
+          created_at: string
+          id: string
+          inbox_id: string | null
+          lead_id: string | null
+          metadata: Json | null
+          provider_id: string | null
+          sequence_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          action_type: string
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          inbox_id?: string | null
+          lead_id?: string | null
+          metadata?: Json | null
+          provider_id?: string | null
+          sequence_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          action_type?: string
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          inbox_id?: string | null
+          lead_id?: string | null
+          metadata?: Json | null
+          provider_id?: string | null
+          sequence_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_audit_log_inbox_id_fkey"
+            columns: ["inbox_id"]
+            isOneToOne: false
+            referencedRelation: "email_inboxes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_audit_log_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_audit_log_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "email_providers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_audit_log_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "follow_up_sequences"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_audit_log_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_connections: {
         Row: {
           api_key: string | null
@@ -1237,11 +1332,63 @@ export type Database = {
           },
         ]
       }
+      email_inboxes: {
+        Row: {
+          assigned_to: string | null
+          created_at: string
+          email_address: string
+          external_inbox_id: string | null
+          id: string
+          provider_id: string
+          status: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string
+          email_address: string
+          external_inbox_id?: string | null
+          id?: string
+          provider_id: string
+          status?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string
+          email_address?: string
+          external_inbox_id?: string | null
+          id?: string
+          provider_id?: string
+          status?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_inboxes_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "email_providers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_inboxes_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_logs: {
         Row: {
           body: string
           created_at: string
           id: string
+          inbox_id: string | null
           lead_id: string | null
           provider: string
           sent_at: string
@@ -1257,6 +1404,7 @@ export type Database = {
           body: string
           created_at?: string
           id?: string
+          inbox_id?: string | null
           lead_id?: string | null
           provider: string
           sent_at?: string
@@ -1272,6 +1420,7 @@ export type Database = {
           body?: string
           created_at?: string
           id?: string
+          inbox_id?: string | null
           lead_id?: string | null
           provider?: string
           sent_at?: string
@@ -1285,6 +1434,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "email_logs_inbox_id_fkey"
+            columns: ["inbox_id"]
+            isOneToOne: false
+            referencedRelation: "email_inboxes"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "email_logs_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -1293,6 +1449,53 @@ export type Database = {
           },
           {
             foreignKeyName: "email_logs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_providers: {
+        Row: {
+          api_key: string | null
+          created_at: string
+          created_by: string
+          id: string
+          last_validated_at: string | null
+          provider_name: string | null
+          provider_type: string
+          status: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          api_key?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          last_validated_at?: string | null
+          provider_name?: string | null
+          provider_type: string
+          status?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          api_key?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          last_validated_at?: string | null
+          provider_name?: string | null
+          provider_type?: string
+          status?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_providers_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -1843,6 +2046,7 @@ export type Database = {
           created_by: string
           department: string | null
           email: string | null
+          email_sending_state: string
           employee_count: string | null
           first_name: string
           id: string
@@ -1874,6 +2078,7 @@ export type Database = {
           created_by: string
           department?: string | null
           email?: string | null
+          email_sending_state?: string
           employee_count?: string | null
           first_name: string
           id?: string
@@ -1905,6 +2110,7 @@ export type Database = {
           created_by?: string
           department?: string | null
           email?: string | null
+          email_sending_state?: string
           employee_count?: string | null
           first_name?: string
           id?: string

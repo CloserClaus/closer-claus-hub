@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Play, Plus, Trash2, Loader2, Calendar, ChevronDown } from 'lucide-react';
+import { Play, Plus, Trash2, Loader2, Calendar, AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,10 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { useEmailInbox } from '@/hooks/useEmailInbox';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Lead {
@@ -54,7 +54,7 @@ const DEFAULT_SEQUENCES: { name: string; steps: SequenceStep[] }[] = [
     steps: [
       { delay_days: 0, subject: 'Following up — {{first_name}}', body: 'Hi {{first_name}},\n\nGreat connecting with you. Wanted to share some additional thoughts on how we can help {{company}}.\n\nBest,' },
       { delay_days: 3, subject: 'A few more thoughts', body: 'Hi {{first_name}},\n\nI had a few additional ideas I wanted to share with you regarding our conversation.\n\nWould you be open to a quick follow-up?\n\nBest,' },
-      { delay_days: 5, subject: 'Last follow-up', body: 'Hi {{first_name}},\n\nI don\'t want to be a bother — just wanted to check in one last time. Let me know if the timing isn\'t right and I\'ll check back later.\n\nBest,' },
+      { delay_days: 5, subject: 'Last follow-up', body: "Hi {{first_name}},\n\nI don't want to be a bother — just wanted to check in one last time. Let me know if the timing isn't right and I'll check back later.\n\nBest," },
     ],
   },
 ];
@@ -63,6 +63,7 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
   const { user } = useAuth();
   const { currentWorkspace } = useWorkspace();
   const { toast } = useToast();
+  const { assignedInbox, canSendEmail } = useEmailInbox();
   const [activeTab, setActiveTab] = useState('preset');
   const [savedSequences, setSavedSequences] = useState<SavedSequence[]>([]);
   const [loading, setLoading] = useState(false);
@@ -72,27 +73,10 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
     { delay_days: 3, subject: '', body: '' },
   ]);
   const [customName, setCustomName] = useState('');
-  const [connections, setConnections] = useState<{ id: string; provider: string; provider_name: string | null }[]>([]);
-  const [selectedConnection, setSelectedConnection] = useState('');
-  useEffect(() => {
-    if (open && currentWorkspace) {
-      fetchSequences();
-      fetchConnections();
-    }
-  }, [open, currentWorkspace]);
 
-  const fetchConnections = async () => {
-    if (!currentWorkspace || !user) return;
-    const { data } = await supabase
-      .from('email_connections')
-      .select('id, provider, provider_name')
-      .eq('workspace_id', currentWorkspace.id)
-      .eq('user_id', user.id)
-      .eq('is_active', true);
-    const conns = (data as any[]) || [];
-    setConnections(conns);
-    if (conns.length === 1) setSelectedConnection(conns[0].id);
-  };
+  useEffect(() => {
+    if (open && currentWorkspace) fetchSequences();
+  }, [open, currentWorkspace]);
 
   const fetchSequences = async () => {
     if (!currentWorkspace) return;
@@ -122,10 +106,25 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
       toast({ variant: 'destructive', title: 'No email', description: 'This lead has no email address.' });
       return;
     }
+    if (!canSendEmail || !assignedInbox) {
+      toast({ variant: 'destructive', title: 'No inbox assigned', description: 'You need an assigned inbox to start sequences.' });
+      return;
+    }
     if (!currentWorkspace || !user) return;
 
     setStarting(true);
     try {
+      // Check lead sending state
+      const { data: leadData } = await supabase
+        .from('leads')
+        .select('email_sending_state')
+        .eq('id', lead.id)
+        .single();
+
+      if (leadData && (leadData as any).email_sending_state === 'active_sequence') {
+        throw new Error('Lead already in active sequence.');
+      }
+
       // Create or find sequence
       let sequenceId: string;
       const { data: existingSeq } = await supabase
@@ -147,7 +146,6 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
         if (error) throw error;
         sequenceId = newSeq.id;
 
-        // Insert steps
         const stepsToInsert = steps.map((s, i) => ({
           sequence_id: sequenceId,
           step_order: i,
@@ -155,11 +153,10 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
           subject: s.subject,
           body: s.body,
         }));
-        const { error: stepsError } = await supabase.from('follow_up_sequence_steps').insert(stepsToInsert);
-        if (stepsError) throw stepsError;
+        await supabase.from('follow_up_sequence_steps').insert(stepsToInsert);
       }
 
-      // Create active follow-up
+      // Create active follow-up with LOCKED sender identity
       const nextSendAt = new Date();
       nextSendAt.setDate(nextSendAt.getDate() + steps[0].delay_days);
 
@@ -171,23 +168,43 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
         current_step: 0,
         status: 'active',
         next_send_at: nextSendAt.toISOString(),
-      });
+        sender_inbox_id: assignedInbox.id,
+        sender_provider_id: assignedInbox.provider_id,
+      } as any);
       if (afError) throw afError;
 
-      // Log the first email
-      await supabase.from('email_logs').insert({
-        workspace_id: currentWorkspace.id,
-        lead_id: lead.id,
-        sent_by: user.id,
-        provider: 'sequence',
-        subject: steps[0].subject.replace(/\{\{first_name\}\}/g, lead.first_name),
-        body: steps[0].body,
-        status: 'sent',
-        sequence_id: sequenceId,
-        sequence_step: 0,
+      // Update lead sending state
+      await supabase
+        .from('leads')
+        .update({ email_sending_state: 'active_sequence' } as any)
+        .eq('id', lead.id);
+
+      // Send first email via edge function
+      await supabase.functions.invoke('send-email', {
+        body: {
+          workspace_id: currentWorkspace.id,
+          to_email: lead.email,
+          subject: steps[0].subject.replace(/\{\{first_name\}\}/g, lead.first_name),
+          body: steps[0].body,
+          lead_id: lead.id,
+          sequence_id: sequenceId,
+          sequence_step: 0,
+        },
       });
 
-      toast({ title: 'Sequence started', description: `"${name}" sequence started for ${lead.first_name} ${lead.last_name}.` });
+      // Audit log
+      await supabase.from('email_audit_log').insert({
+        workspace_id: currentWorkspace.id,
+        action_type: 'sequence_started',
+        actor_id: user.id,
+        inbox_id: assignedInbox.id,
+        provider_id: assignedInbox.provider_id,
+        lead_id: lead.id,
+        sequence_id: sequenceId,
+        metadata: { sequence_name: name, total_steps: steps.length, inbox_email: assignedInbox.email_address },
+      } as any);
+
+      toast({ title: 'Sequence started', description: `"${name}" started for ${lead.first_name} ${lead.last_name}.` });
       onSequenceStarted?.();
       onClose();
     } catch (error: any) {
@@ -227,27 +244,17 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
           Select a sequence for <strong>{lead.first_name} {lead.last_name}</strong>
         </p>
 
-        {connections.length > 1 && (
-          <div className="space-y-2">
-            <Label>Send via</Label>
-            <Select value={selectedConnection} onValueChange={setSelectedConnection}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select provider" />
-              </SelectTrigger>
-              <SelectContent>
-                {connections.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.provider_name || c.provider}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        {/* Inbox info */}
+        {assignedInbox ? (
+          <div className="p-3 rounded-lg bg-muted/50 border text-sm">
+            <span className="text-muted-foreground">Sending from:</span>{' '}
+            <strong>{assignedInbox.email_address}</strong>
+            <span className="text-muted-foreground ml-2">({assignedInbox.provider_name})</span>
           </div>
-        )}
-
-        {connections.length === 0 && (
-          <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
-            Connect an email provider to send emails. Go to Email → Connections.
+        ) : (
+          <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            No inbox assigned to you. Contact your agency owner to assign an inbox.
           </div>
         )}
 
@@ -259,7 +266,7 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
 
           <TabsContent value="preset" className="space-y-3 mt-4">
             {DEFAULT_SEQUENCES.map((seq, i) => (
-              <Card key={i} className="hover:border-primary/50 transition-colors cursor-pointer">
+              <Card key={i} className="hover:border-primary/50 transition-colors">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="font-medium">{seq.name}</h4>
@@ -268,16 +275,14 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
                   <div className="space-y-2 mb-4">
                     {seq.steps.map((step, si) => (
                       <div key={si} className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
-                          {si + 1}
-                        </div>
+                        <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">{si + 1}</div>
                         <span>Day {step.delay_days}</span>
                         <span className="text-muted-foreground">—</span>
                         <span className="truncate">{step.subject}</span>
                       </div>
                     ))}
                   </div>
-                  <Button size="sm" onClick={() => startSequence(seq.name, seq.steps)} disabled={starting}>
+                  <Button size="sm" onClick={() => startSequence(seq.name, seq.steps)} disabled={starting || !canSendEmail}>
                     {starting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
                     Start Sequence
                   </Button>
@@ -285,7 +290,6 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
               </Card>
             ))}
 
-            {/* Saved sequences */}
             {savedSequences.map((seq) => (
               <Card key={seq.id} className="hover:border-primary/50 transition-colors">
                 <CardContent className="p-4">
@@ -293,7 +297,7 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
                     <h4 className="font-medium">{seq.name}</h4>
                     <Badge variant="secondary">{seq.steps.length} emails</Badge>
                   </div>
-                  <Button size="sm" onClick={() => startSequence(seq.name, seq.steps)} disabled={starting}>
+                  <Button size="sm" onClick={() => startSequence(seq.name, seq.steps)} disabled={starting || !canSendEmail}>
                     {starting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
                     Start Sequence
                   </Button>
@@ -313,9 +317,7 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary">
-                        {i + 1}
-                      </div>
+                      <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary">{i + 1}</div>
                       <span className="text-sm font-medium">Email {i + 1}</span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -351,7 +353,7 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
               <Button variant="outline" onClick={onClose}>Cancel</Button>
               <Button
                 onClick={() => startSequence(customName || 'Custom Sequence', customSteps)}
-                disabled={starting || customSteps.some(s => !s.subject.trim() || !s.body.trim())}
+                disabled={starting || !canSendEmail || customSteps.some(s => !s.subject.trim() || !s.body.trim())}
               >
                 {starting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
                 Start Sequence
