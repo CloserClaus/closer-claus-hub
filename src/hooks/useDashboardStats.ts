@@ -19,11 +19,13 @@ interface AgencyOwnerStats {
   callsLast7Days: number;
   activeDeals: number;
   closeRate: number;
-  // Call analytics
   totalCallMinutes: number;
   avgCallDuration: number;
   callsToday: number;
   connectedCallRate: number;
+  emailsSent: number;
+  emailReplies: number;
+  activeSequences: number;
 }
 
 interface SDRStats {
@@ -33,12 +35,15 @@ interface SDRStats {
   callsLast7Days: number;
   closedDealsLast30Days: number;
   openJobs: number;
-  // Call analytics
   totalCallMinutes: number;
   avgCallDuration: number;
   callsToday: number;
   connectedCallRate: number;
+  emailsSent: number;
+  emailReplies: number;
+  activeSequences: number;
 }
+
 
 export function usePlatformAdminStats() {
   return useQuery({
@@ -93,7 +98,7 @@ export function useAgencyOwnerStats() {
         return { 
           teamSize: 0, pipelineValue: 0, pendingCommissions: 0, callsLast7Days: 0, 
           activeDeals: 0, closeRate: 0, totalCallMinutes: 0, avgCallDuration: 0,
-          callsToday: 0, connectedCallRate: 0
+          callsToday: 0, connectedCallRate: 0, emailsSent: 0, emailReplies: 0, activeSequences: 0
         };
       }
 
@@ -113,44 +118,34 @@ export function useAgencyOwnerStats() {
         callsTodayResult,
         activeDealsResult,
       ] = await Promise.all([
-        // Team size
         supabase.from('workspace_members').select('id', { count: 'exact', head: true })
-          .eq('workspace_id', currentWorkspace.id)
-          .is('removed_at', null),
-        // Pipeline value (all active deals)
+          .eq('workspace_id', currentWorkspace.id).is('removed_at', null),
         supabase.from('deals').select('value')
-          .eq('workspace_id', currentWorkspace.id)
-          .not('stage', 'in', '("closed_won","closed_lost")'),
-        // Pending commissions
+          .eq('workspace_id', currentWorkspace.id).not('stage', 'in', '("closed_won","closed_lost")'),
         supabase.from('commissions').select('amount')
-          .eq('workspace_id', currentWorkspace.id)
-          .eq('status', 'pending'),
-        // Calls last 7 days (count)
+          .eq('workspace_id', currentWorkspace.id).eq('status', 'pending'),
         supabase.from('call_logs').select('id', { count: 'exact', head: true })
-          .eq('workspace_id', currentWorkspace.id)
-          .gte('created_at', sevenDaysAgo),
-        // Closed won last 30 days
+          .eq('workspace_id', currentWorkspace.id).gte('created_at', sevenDaysAgo),
         supabase.from('deals').select('id', { count: 'exact', head: true })
-          .eq('workspace_id', currentWorkspace.id)
-          .eq('stage', 'closed_won')
-          .gte('closed_at', thirtyDaysAgo),
-        // Total closed deals last 30 days (for close rate)
+          .eq('workspace_id', currentWorkspace.id).eq('stage', 'closed_won').gte('closed_at', thirtyDaysAgo),
         supabase.from('deals').select('id', { count: 'exact', head: true })
-          .eq('workspace_id', currentWorkspace.id)
-          .in('stage', ['closed_won', 'closed_lost'])
-          .gte('closed_at', thirtyDaysAgo),
-        // All calls with duration for analytics (last 30 days)
+          .eq('workspace_id', currentWorkspace.id).in('stage', ['closed_won', 'closed_lost']).gte('closed_at', thirtyDaysAgo),
         supabase.from('call_logs').select('duration_seconds, call_status')
-          .eq('workspace_id', currentWorkspace.id)
-          .gte('created_at', thirtyDaysAgo),
-        // Calls today
+          .eq('workspace_id', currentWorkspace.id).gte('created_at', thirtyDaysAgo),
         supabase.from('call_logs').select('id', { count: 'exact', head: true })
-          .eq('workspace_id', currentWorkspace.id)
-          .gte('created_at', todayStart.toISOString()),
-        // Active deals count (not closed)
+          .eq('workspace_id', currentWorkspace.id).gte('created_at', todayStart.toISOString()),
         supabase.from('deals').select('id', { count: 'exact', head: true })
-          .eq('workspace_id', currentWorkspace.id)
-          .not('stage', 'in', '("closed_won","closed_lost")'),
+          .eq('workspace_id', currentWorkspace.id).not('stage', 'in', '("closed_won","closed_lost")'),
+      ]);
+
+      // Email stats
+      const [emailSentResult, emailRepliedResult, activeSeqResult] = await Promise.all([
+        supabase.from('email_logs').select('id', { count: 'exact', head: true })
+          .eq('workspace_id', currentWorkspace.id).gte('sent_at', thirtyDaysAgo),
+        supabase.from('email_logs').select('id', { count: 'exact', head: true })
+          .eq('workspace_id', currentWorkspace.id).eq('status', 'replied').gte('sent_at', thirtyDaysAgo),
+        supabase.from('active_follow_ups').select('id', { count: 'exact', head: true })
+          .eq('workspace_id', currentWorkspace.id).eq('status', 'active'),
       ]);
 
       const pipelineValue = pipelineResult.data?.reduce((sum, d) => sum + (d.value || 0), 0) || 0;
@@ -178,6 +173,9 @@ export function useAgencyOwnerStats() {
         avgCallDuration,
         callsToday: callsTodayResult.count || 0,
         connectedCallRate,
+        emailsSent: emailSentResult.count || 0,
+        emailReplies: emailRepliedResult.count || 0,
+        activeSequences: activeSeqResult.count || 0,
       };
     },
     enabled: !!currentWorkspace,
@@ -194,7 +192,7 @@ export function useSDRStats() {
         return { 
           workspaces: 0, totalEarnings: 0, pendingPayouts: 0, callsLast7Days: 0, 
           closedDealsLast30Days: 0, openJobs: 0, totalCallMinutes: 0, avgCallDuration: 0,
-          callsToday: 0, connectedCallRate: 0
+          callsToday: 0, connectedCallRate: 0, emailsSent: 0, emailReplies: 0, activeSequences: 0
         };
       }
 
@@ -253,6 +251,16 @@ export function useSDRStats() {
       const connectedCalls = allCalls.filter(c => c.call_status === 'completed').length;
       const connectedCallRate = allCalls.length > 0 ? Math.round((connectedCalls / allCalls.length) * 100) : 0;
 
+      // Email stats
+      const [emailSentResult, emailRepliedResult, activeSeqResult] = await Promise.all([
+        supabase.from('email_logs').select('id', { count: 'exact', head: true })
+          .eq('sent_by', user.id).gte('sent_at', thirtyDaysAgo),
+        supabase.from('email_logs').select('id', { count: 'exact', head: true })
+          .eq('sent_by', user.id).eq('status', 'replied').gte('sent_at', thirtyDaysAgo),
+        supabase.from('active_follow_ups').select('id', { count: 'exact', head: true })
+          .eq('started_by', user.id).eq('status', 'active'),
+      ]);
+
       return {
         workspaces: workspacesResult.count || 0,
         totalEarnings,
@@ -264,6 +272,9 @@ export function useSDRStats() {
         avgCallDuration,
         callsToday: callsTodayResult.count || 0,
         connectedCallRate,
+        emailsSent: emailSentResult.count || 0,
+        emailReplies: emailRepliedResult.count || 0,
+        activeSequences: activeSeqResult.count || 0,
       };
     },
     enabled: !!user,
