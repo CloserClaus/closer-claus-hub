@@ -245,6 +245,19 @@ export function EmailCampaignsTab() {
     setCampaignLeads((data as any[]) || []);
   };
 
+  const handleToggleCampaignStatus = async (seqId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'active' ? 'paused' : 'active';
+    await supabase.from('follow_up_sequences').update({ status: newStatus } as any).eq('id', seqId);
+    // Also pause/resume all active follow-ups for this sequence
+    if (newStatus === 'paused') {
+      await supabase.from('active_follow_ups').update({ status: 'paused' } as any).eq('sequence_id', seqId).eq('status', 'active');
+    } else {
+      await supabase.from('active_follow_ups').update({ status: 'active' } as any).eq('sequence_id', seqId).eq('status', 'paused');
+    }
+    toast({ title: `Campaign ${newStatus}` });
+    fetchSequences();
+  };
+
   const addStep = () => {
     const lastDay = steps[steps.length - 1]?.delay_days || 0;
     setSteps([...steps, { delay_days: lastDay + 3, subject: '', body: '' }]);
@@ -288,6 +301,12 @@ export function EmailCampaignsTab() {
             <p className="text-sm text-muted-foreground">{selectedCampaign.total_leads} leads enrolled</p>
           </div>
           {getStatusBadge(selectedCampaign.status)}
+          <Button
+            variant="outline" size="sm"
+            onClick={() => handleToggleCampaignStatus(selectedCampaign.id, selectedCampaign.status)}
+          >
+            {selectedCampaign.status === 'active' ? <><Pause className="h-3.5 w-3.5 mr-1" />Pause</> : <><Play className="h-3.5 w-3.5 mr-1" />Resume</>}
+          </Button>
         </div>
 
         {/* Campaign Stats */}
@@ -321,6 +340,7 @@ export function EmailCampaignsTab() {
                     <TableHead>Current Step</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Next Email</TableHead>
+                    <TableHead>Stop Reason</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -334,12 +354,19 @@ export function EmailCampaignsTab() {
                         <Badge variant="outline">Step {cl.current_step + 1} / {selectedCampaign.steps.length}</Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={cl.status === 'active' ? 'default' : cl.status === 'completed' ? 'secondary' : 'outline'}>
+                        <Badge variant={cl.status === 'active' ? 'default' : cl.status === 'completed' ? 'secondary' : cl.status === 'replied' ? 'default' : 'outline'}
+                          className={cl.status === 'replied' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : ''}>
                           {cl.status}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {cl.next_send_at ? format(new Date(cl.next_send_at), 'MMM d, h:mm a') : '—'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {cl.status === 'replied' ? 'Reply detected' :
+                         cl.status === 'error' ? 'Send error' :
+                         cl.status === 'completed' ? 'All steps sent' :
+                         cl.status === 'paused' ? 'Manually paused' : '—'}
                       </TableCell>
                     </TableRow>
                   ))}

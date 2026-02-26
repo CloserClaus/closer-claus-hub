@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Loader2, MessageSquare, Send, StickyNote, ArrowLeft } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2, MessageSquare, Send, StickyNote, ArrowLeft, Filter } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -59,21 +60,29 @@ export function EmailConversationsTab() {
   const [replySubject, setReplySubject] = useState('');
   const [noteText, setNoteText] = useState('');
   const [sending, setSending] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (currentWorkspace) fetchConversations();
-  }, [currentWorkspace]);
+  }, [currentWorkspace, statusFilter]);
 
   const fetchConversations = async () => {
     if (!currentWorkspace) return;
     setLoading(true);
 
-    const { data } = await supabase
+    let query = supabase
       .from('email_conversations')
       .select('*')
       .eq('workspace_id', currentWorkspace.id)
       .order('last_activity_at', { ascending: false })
       .limit(100);
+
+    if (statusFilter !== 'all') {
+      query = query.eq('status', statusFilter);
+    }
+
+    const { data } = await query;
 
     if (!data || data.length === 0) {
       setConversations([]);
@@ -99,15 +108,23 @@ export function EmailConversationsTab() {
     const inboxMap: Record<string, string> = {};
     (inboxes as any[] || []).forEach(i => { inboxMap[i.id] = i.email_address; });
 
-    setConversations(convos.map(c => ({
+    const enriched = convos.map(c => ({
       ...c,
       lead_name: leadMap[c.lead_id] ? `${leadMap[c.lead_id].first_name} ${leadMap[c.lead_id].last_name}` : 'Unknown',
       lead_email: leadMap[c.lead_id]?.email || '',
       assigned_name: profileMap[c.assigned_to] || 'Unknown',
       inbox_email: c.inbox_id ? inboxMap[c.inbox_id] || null : null,
-    })));
+    }));
+
+    setConversations(enriched);
     setLoading(false);
   };
+
+  const filtered = conversations.filter(c => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return c.lead_name.toLowerCase().includes(q) || c.lead_email.toLowerCase().includes(q) || (c.campaign_name || '').toLowerCase().includes(q);
+  });
 
   const openConversation = async (convo: Conversation) => {
     setSelectedConvo(convo);
@@ -135,7 +152,6 @@ export function EmailConversationsTab() {
       });
       if (error) throw error;
 
-      // Add message to conversation
       await supabase.from('email_conversation_messages').insert({
         conversation_id: selectedConvo.id,
         direction: 'outbound',
@@ -172,6 +188,7 @@ export function EmailConversationsTab() {
     openConversation(selectedConvo);
   };
 
+  // Thread detail view
   if (selectedConvo) {
     return (
       <div className="space-y-4">
@@ -183,12 +200,15 @@ export function EmailConversationsTab() {
             <h2 className="font-semibold">{selectedConvo.lead_name}</h2>
             <p className="text-sm text-muted-foreground">{selectedConvo.lead_email}</p>
           </div>
+          {selectedConvo.campaign_name && (
+            <Badge variant="secondary" className="text-xs">{selectedConvo.campaign_name}</Badge>
+          )}
           <Badge variant="outline" className={STATUS_CONFIG[selectedConvo.status]?.className || ''}>
             {STATUS_CONFIG[selectedConvo.status]?.label || selectedConvo.status}
           </Badge>
         </div>
 
-        {/* Thread */}
+        {/* Activity Timeline / Thread */}
         <Card>
           <CardContent className="p-4 space-y-4 max-h-[400px] overflow-y-auto">
             {messages.length === 0 ? (
@@ -243,63 +263,84 @@ export function EmailConversationsTab() {
     return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   }
 
-  if (conversations.length === 0) {
-    return (
-      <Card>
-        <CardContent className="py-12 text-center">
-          <MessageSquare className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
-          <p className="text-muted-foreground">No email conversations yet</p>
-          <p className="text-xs text-muted-foreground mt-1">Conversations will appear when you send emails to leads</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold">Email Conversations</h2>
-        <p className="text-sm text-muted-foreground">CRM-linked email threads with your leads</p>
-      </div>
-      <Card>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Lead</TableHead>
-                <TableHead>Last Message</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Assigned SDR</TableHead>
-                <TableHead>Campaign</TableHead>
-                <TableHead>Last Activity</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {conversations.map(c => (
-                <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openConversation(c)}>
-                  <TableCell>
-                    <p className="font-medium">{c.lead_name}</p>
-                    <p className="text-xs text-muted-foreground">{c.lead_email}</p>
-                  </TableCell>
-                  <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
-                    {c.last_message_preview || '—'}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={STATUS_CONFIG[c.status]?.className || ''}>
-                      {STATUS_CONFIG[c.status]?.label || c.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm">{c.assigned_name}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{c.campaign_name || '—'}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                    {format(new Date(c.last_activity_at), 'MMM d, h:mm a')}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Email Conversations</h2>
+          <p className="text-sm text-muted-foreground">CRM-linked email threads with your leads</p>
         </div>
-      </Card>
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder="Search leads..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-48 h-9"
+          />
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-36 h-9">
+              <Filter className="h-3.5 w-3.5 mr-1" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
+                <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <MessageSquare className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
+            <p className="text-muted-foreground">No email conversations found</p>
+            <p className="text-xs text-muted-foreground mt-1">Conversations are created when you send emails or start sequences</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Lead</TableHead>
+                  <TableHead>Last Message</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Assigned SDR</TableHead>
+                  <TableHead>Campaign</TableHead>
+                  <TableHead>Last Activity</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map(c => (
+                  <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openConversation(c)}>
+                    <TableCell>
+                      <p className="font-medium">{c.lead_name}</p>
+                      <p className="text-xs text-muted-foreground">{c.lead_email}</p>
+                    </TableCell>
+                    <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
+                      {c.last_message_preview || '—'}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={STATUS_CONFIG[c.status]?.className || ''}>
+                        {STATUS_CONFIG[c.status]?.label || c.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">{c.assigned_name}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{c.campaign_name || '—'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                      {format(new Date(c.last_activity_at), 'MMM d, h:mm a')}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
