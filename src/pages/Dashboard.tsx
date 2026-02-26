@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Building2, Headphones, Shield, TrendingUp, Users, DollarSign, Briefcase, CreditCard, Zap, Phone, Clock, PhoneCall, CheckCircle, Timer, ShieldCheck } from 'lucide-react';
+import { Building2, Headphones, Shield, TrendingUp, Users, DollarSign, Briefcase, CreditCard, Zap, Phone, Clock, PhoneCall, CheckCircle, Timer, ShieldCheck, Mail, Reply } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { usePlatformAdminStats, useAgencyOwnerStats, useSDRStats } from '@/hooks/useDashboardStats';
@@ -201,7 +201,8 @@ export default function Dashboard() {
         <StatCard title="Commissions" description="Owed to SDRs" value={formatCurrency(agencyStats?.pendingCommissions || 0)} subtext="Pending payment" icon={DollarSign} variant="warning" />
         <StatCard title="Close Rate" description="Win percentage" value={`${agencyStats?.closeRate || 0}%`} subtext="Last 30 days" icon={TrendingUp} variant="success" />
         <StatCard title="Active Deals" description="In pipeline" value={String(agencyStats?.activeDeals || 0)} subtext="Not closed" icon={Briefcase} />
-        <StatCard title="Calls Today" description="Team activity" value={String(agencyStats?.callsToday || 0)} subtext="Made today" icon={Phone} />
+        <StatCard title="Emails Sent" description="Last 30 days" value={String(agencyStats?.emailsSent || 0)} subtext={`${agencyStats?.emailReplies || 0} replies`} icon={Mail} />
+        <StatCard title="Sequences" description="Active now" value={String(agencyStats?.activeSequences || 0)} subtext="Running automatically" icon={Reply} />
       </div>
 
       {/* Call Analytics Section */}
@@ -295,8 +296,9 @@ export default function Dashboard() {
         <StatCard title="Earnings" description="Total earned" value={formatCurrency(sdrStats?.totalEarnings || 0)} subtext="All time" icon={DollarSign} variant="success" />
         <StatCard title="Pending" description="Awaiting payout" value={formatCurrency(sdrStats?.pendingPayouts || 0)} subtext="To be paid" icon={DollarSign} variant="warning" />
         <StatCard title="Deals" description="Closed won" value={String(sdrStats?.closedDealsLast30Days || 0)} subtext="Last 30 days" icon={Briefcase} variant="success" />
-        <StatCard title="Jobs" description="Open positions" value={String(sdrStats?.openJobs || 0)} subtext="Available now" icon={Briefcase} />
         <StatCard title="Calls Today" description="Your activity" value={String(sdrStats?.callsToday || 0)} subtext="Made today" icon={Phone} />
+        <StatCard title="Emails Sent" description="Last 30 days" value={String(sdrStats?.emailsSent || 0)} subtext={`${sdrStats?.emailReplies || 0} replies`} icon={Mail} />
+        <StatCard title="Sequences" description="Active now" value={String(sdrStats?.activeSequences || 0)} subtext="Running automatically" icon={Reply} />
       </div>
 
       {/* Call Analytics Section */}

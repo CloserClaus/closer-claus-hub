@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { DollarSign, User, Building2, ArrowRight, Search, FileSignature, Lock } from 'lucide-react';
+import { DollarSign, User, Building2, ArrowRight, Search, FileSignature, Lock, Mail, PlayCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -382,9 +382,24 @@ export function PipelineBoard({ deals, leads, onDealClick, onLeadClick, onConver
                             </TooltipProvider>
                           )}
                         </div>
-                        <div className="flex items-center gap-1 mt-2 text-success text-sm">
-                          <DollarSign className="h-3 w-3" />
-                          {Number(deal.value).toLocaleString()}
+                        <div className="flex items-center justify-between mt-2">
+                          <div className="flex items-center gap-1 text-success text-sm">
+                            <DollarSign className="h-3 w-3" />
+                            {Number(deal.value).toLocaleString()}
+                          </div>
+                          {deal.lead_id && (
+                            <div className="flex gap-0.5">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                title="Send Email"
+                                onClick={(e) => { e.stopPropagation(); onDealClick(deal); }}
+                              >
+                                <Mail className="h-3 w-3 text-muted-foreground" />
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
