@@ -627,6 +627,10 @@ const HomePage = () => {
             </div>
           </div>
           <div className="mt-8 pt-8 border-t border-border/30 text-center text-sm text-muted-foreground">
+            <div className="flex items-center justify-center gap-6 mb-4">
+              <Link to="/privacy" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy Policy</Link>
+              <Link to="/terms" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Terms of Service</Link>
+            </div>
             © {new Date().getFullYear()} Closer Claus. All rights reserved.
           </div>
         </div>
