@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Play, Plus, Trash2, Loader2, Calendar } from 'lucide-react';
+import { Play, Plus, Trash2, Loader2, Calendar, ChevronDown } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -71,10 +72,27 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
     { delay_days: 3, subject: '', body: '' },
   ]);
   const [customName, setCustomName] = useState('');
-
+  const [connections, setConnections] = useState<{ id: string; provider: string; provider_name: string | null }[]>([]);
+  const [selectedConnection, setSelectedConnection] = useState('');
   useEffect(() => {
-    if (open && currentWorkspace) fetchSequences();
+    if (open && currentWorkspace) {
+      fetchSequences();
+      fetchConnections();
+    }
   }, [open, currentWorkspace]);
+
+  const fetchConnections = async () => {
+    if (!currentWorkspace || !user) return;
+    const { data } = await supabase
+      .from('email_connections')
+      .select('id, provider, provider_name')
+      .eq('workspace_id', currentWorkspace.id)
+      .eq('user_id', user.id)
+      .eq('is_active', true);
+    const conns = (data as any[]) || [];
+    setConnections(conns);
+    if (conns.length === 1) setSelectedConnection(conns[0].id);
+  };
 
   const fetchSequences = async () => {
     if (!currentWorkspace) return;
@@ -208,6 +226,30 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
         <p className="text-sm text-muted-foreground">
           Select a sequence for <strong>{lead.first_name} {lead.last_name}</strong>
         </p>
+
+        {connections.length > 1 && (
+          <div className="space-y-2">
+            <Label>Send via</Label>
+            <Select value={selectedConnection} onValueChange={setSelectedConnection}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {connections.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.provider_name || c.provider}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {connections.length === 0 && (
+          <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
+            Connect an email provider to send emails. Go to Email → Connections.
+          </div>
+        )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-2">
