@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Mail, Check, Trash2, Loader2, Plus, Link2, User, AlertCircle, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,37 @@ export function EmailConnectionsTab() {
   const [providerName, setProviderName] = useState('');
   const [connectingGmail, setConnectingGmail] = useState(false);
   const [workspaceMembers, setWorkspaceMembers] = useState<{ id: string; full_name: string; email: string }[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Handle Gmail OAuth callback params
+  useEffect(() => {
+    const gmailConnected = searchParams.get('gmail_connected');
+    const gmailError = searchParams.get('gmail_error');
+    const errorEmail = searchParams.get('email');
+
+    if (gmailConnected) {
+      toast({ title: 'Gmail inbox connected', description: `${gmailConnected} has been added.` });
+      refresh();
+      // Clean URL params
+      searchParams.delete('gmail_connected');
+      setSearchParams(searchParams, { replace: true });
+    }
+
+    if (gmailError) {
+      let message = 'Failed to connect Gmail account.';
+      if (gmailError === 'duplicate') {
+        message = `This inbox is already connected${errorEmail ? ` (${errorEmail})` : ''}.`;
+      } else if (gmailError === 'access_denied') {
+        message = 'Google account access was denied.';
+      } else if (gmailError === 'token_exchange_failed') {
+        message = 'Failed to authenticate with Google. Please try again.';
+      }
+      toast({ variant: 'destructive', title: 'Gmail connection failed', description: message });
+      searchParams.delete('gmail_error');
+      searchParams.delete('email');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (currentWorkspace && isOwner) fetchMembers();
@@ -54,49 +86,22 @@ export function EmailConnectionsTab() {
     if (!currentWorkspace || !user) return;
     setConnectingGmail(true);
     try {
-      // Create provider entry
-      const { data: provider, error: provError } = await supabase
-        .from('email_providers')
-        .insert({
+      // Call edge function to get Google OAuth URL with forced account selector
+      const { data, error } = await supabase.functions.invoke('gmail-oauth-callback', {
+        method: 'POST',
+        body: {
           workspace_id: currentWorkspace.id,
-          provider_type: 'gmail',
-          provider_name: 'Gmail',
-          status: 'connected',
-          created_by: user.id,
-          last_validated_at: new Date().toISOString(),
-        } as any)
-        .select('id')
-        .single();
+          user_id: user.id,
+        },
+      });
 
-      if (provError) throw provError;
+      if (error) throw error;
+      if (!data?.auth_url) throw new Error('No auth URL returned');
 
-      // Create inbox entry (for now using user email - will use OAuth account selector)
-      const gmailEmail = user.email || 'unknown@gmail.com';
-      const { error: inboxError } = await supabase
-        .from('email_inboxes')
-        .insert({
-          provider_id: provider.id,
-          workspace_id: currentWorkspace.id,
-          email_address: gmailEmail,
-          status: 'active',
-        } as any);
-
-      if (inboxError) throw inboxError;
-
-      // Audit log
-      await supabase.from('email_audit_log').insert({
-        workspace_id: currentWorkspace.id,
-        action_type: 'provider_connected',
-        actor_id: user.id,
-        provider_id: provider.id,
-        metadata: { provider_type: 'gmail', email: gmailEmail },
-      } as any);
-
-      toast({ title: 'Gmail connected', description: `Inbox ${gmailEmail} added.` });
-      refresh();
+      // Redirect to Google OAuth — user picks account, then Google redirects back to our callback
+      window.location.href = data.auth_url;
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Connection failed', description: error.message });
-    } finally {
       setConnectingGmail(false);
     }
   };
