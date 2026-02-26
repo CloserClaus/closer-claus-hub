@@ -282,6 +282,60 @@ serve(async (req) => {
         .eq('id', lead_id);
     }
 
+    // Auto-create email conversation for one-off sends (not sequence sends)
+    if (lead_id && !sequence_id) {
+      // Check if conversation already exists for this lead
+      const { data: existingConvo } = await supabase
+        .from('email_conversations')
+        .select('id')
+        .eq('lead_id', lead_id)
+        .eq('workspace_id', workspace_id)
+        .is('sequence_id', null)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingConvo) {
+        // Update existing conversation
+        await supabase.from('email_conversations').update({
+          last_message_preview: body.substring(0, 100),
+          last_activity_at: new Date().toISOString(),
+          status: 'active',
+        } as any).eq('id', existingConvo.id);
+
+        // Add message to conversation
+        await supabase.from('email_conversation_messages').insert({
+          conversation_id: existingConvo.id,
+          direction: 'outbound',
+          subject,
+          body,
+          sender_email: inbox.email_address,
+          message_type: 'email',
+        } as any);
+      } else {
+        // Create new conversation
+        const { data: newConvo } = await supabase.from('email_conversations').insert({
+          workspace_id,
+          lead_id,
+          assigned_to: user.id,
+          inbox_id: inbox.id,
+          status: 'active',
+          last_message_preview: body.substring(0, 100),
+          last_activity_at: new Date().toISOString(),
+        } as any).select('id').single();
+
+        if (newConvo) {
+          await supabase.from('email_conversation_messages').insert({
+            conversation_id: newConvo.id,
+            direction: 'outbound',
+            subject,
+            body,
+            sender_email: inbox.email_address,
+            message_type: 'email',
+          } as any);
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true, status: 'sent',
