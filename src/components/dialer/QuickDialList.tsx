@@ -3,7 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { User, Search, Clock, Tag, MessageSquare, ExternalLink } from 'lucide-react';
+import { User, Search, Clock, Tag, MessageSquare, ExternalLink, Send, Play } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -30,10 +30,12 @@ interface QuickDialListProps {
   isCallActive: boolean;
   onSelectLead: (lead: Lead) => void;
   onOpenCrmSidebar: (lead: any) => void;
+  onSendEmail?: (lead: Lead) => void;
+  onStartSequence?: (lead: Lead) => void;
 }
 
 export function QuickDialList({
-  leads, searchQuery, setSearchQuery, selectedLead, isCallActive, onSelectLead, onOpenCrmSidebar,
+  leads, searchQuery, setSearchQuery, selectedLead, isCallActive, onSelectLead, onOpenCrmSidebar, onSendEmail, onStartSequence,
 }: QuickDialListProps) {
   const filteredLeads = leads.filter(lead => {
     if (!searchQuery) return true;
@@ -106,19 +108,39 @@ export function QuickDialList({
                     </button>
                     <div className="flex flex-col items-end gap-1 ml-2">
                       <p className="text-sm font-mono text-muted-foreground">{lead.phone}</p>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          (async () => {
-                            const { data } = await supabase.from('leads').select('*').eq('id', lead.id).single();
-                            if (data) onOpenCrmSidebar(data);
-                          })();
-                        }}
-                        className="text-xs text-primary hover:underline flex items-center gap-1"
-                        title="View in CRM"
-                      >
-                        <ExternalLink className="h-3 w-3" />CRM
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {lead.email && onSendEmail && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onSendEmail(lead); }}
+                            className="text-xs text-primary hover:underline flex items-center gap-0.5"
+                            title="Send Email"
+                          >
+                            <Send className="h-3 w-3" />
+                          </button>
+                        )}
+                        {lead.email && onStartSequence && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onStartSequence(lead); }}
+                            className="text-xs text-primary hover:underline flex items-center gap-0.5"
+                            title="Start Sequence"
+                          >
+                            <Play className="h-3 w-3" />
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            (async () => {
+                              const { data } = await supabase.from('leads').select('*').eq('id', lead.id).single();
+                              if (data) onOpenCrmSidebar(data);
+                            })();
+                          }}
+                          className="text-xs text-primary hover:underline flex items-center gap-1"
+                          title="View in CRM"
+                        >
+                          <ExternalLink className="h-3 w-3" />CRM
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>

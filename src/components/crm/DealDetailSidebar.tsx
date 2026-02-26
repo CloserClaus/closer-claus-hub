@@ -15,6 +15,8 @@ import {
   Mail,
   Phone,
   PhoneCall,
+  Send,
+  Play,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +25,8 @@ import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
 import { DeleteConfirmDialog } from '@/components/crm/DeleteConfirmDialog';
+import { EmailComposerModal } from '@/components/email/EmailComposerModal';
+import { FollowUpSequenceModal } from '@/components/email/FollowUpSequenceModal';
 
 interface Deal {
   id: string;
@@ -107,6 +111,8 @@ export function DealDetailSidebar({
   const [leadInfo, setLeadInfo] = useState<LeadInfo | null>(null);
   const [assigneeName, setAssigneeName] = useState<string>('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showEmailComposer, setShowEmailComposer] = useState(false);
+  const [showFollowUpSequence, setShowFollowUpSequence] = useState(false);
 
   useEffect(() => {
     if (deal && open) {
@@ -218,6 +224,25 @@ export function DealDetailSidebar({
 
             <ScrollArea className="flex-1">
               <div className="p-6 space-y-6">
+                {/* Email Action Buttons */}
+                {leadInfo && leadInfo.email && (
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowEmailComposer(true)}>
+                      <Send className="h-4 w-4 mr-2" />
+                      Send Email
+                    </Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowFollowUpSequence(true)}>
+                      <Play className="h-4 w-4 mr-2" />
+                      Start Sequence
+                    </Button>
+                  </div>
+                )}
+                {leadInfo && !leadInfo.email && (
+                  <p className="text-xs text-muted-foreground italic text-center py-2">
+                    No email address — connect an email to send messages
+                  </p>
+                )}
+
                 {/* Deal Info */}
                 <div className="space-y-3">
                   <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
@@ -395,6 +420,34 @@ export function DealDetailSidebar({
           setShowDeleteConfirm(false);
         }}
       />
+
+      {leadInfo && (
+        <>
+          <EmailComposerModal
+            open={showEmailComposer}
+            onClose={() => setShowEmailComposer(false)}
+            lead={{
+              id: leadInfo.id,
+              first_name: leadInfo.first_name,
+              last_name: leadInfo.last_name,
+              email: leadInfo.email,
+              phone: leadInfo.phone,
+              company: leadInfo.company,
+              title: leadInfo.title,
+            }}
+          />
+          <FollowUpSequenceModal
+            open={showFollowUpSequence}
+            onClose={() => setShowFollowUpSequence(false)}
+            lead={{
+              id: leadInfo.id,
+              first_name: leadInfo.first_name,
+              last_name: leadInfo.last_name,
+              email: leadInfo.email,
+            }}
+          />
+        </>
+      )}
     </>
   );
 }
