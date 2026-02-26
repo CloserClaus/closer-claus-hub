@@ -27,6 +27,7 @@ import { PhoneNumbersTable } from '@/components/admin/PhoneNumbersTable';
 import { PurchasesSection } from '@/components/admin/PurchasesSection';
 import { OfferDiagnosticLeadsTable } from '@/components/admin/OfferDiagnosticLeadsTable';
 import { SiteAnalytics } from '@/components/admin/SiteAnalytics';
+import { AdminEmailTrackingTable } from '@/components/admin/AdminEmailTrackingTable';
 
 const tabTitles: Record<string, string> = {
   overview: 'Platform Overview',
@@ -42,6 +43,7 @@ const tabTitles: Record<string, string> = {
   contracts: 'Contracts',
   calls: 'Call Logs',
   phones: 'Phone Numbers',
+  email_tracking: 'Email Tracking',
   trainings: 'Training Materials',
   disputes: 'Disputes',
   payouts: 'Payouts',
@@ -101,6 +103,8 @@ export default function AdminDashboard() {
         return <CallLogsTable />;
       case 'phones':
         return <PhoneNumbersTable />;
+      case 'email_tracking':
+        return <AdminEmailTrackingTable />;
       case 'trainings':
         return <TrainingsTable />;
       case 'disputes':

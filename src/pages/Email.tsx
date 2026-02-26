@@ -1,43 +1,57 @@
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
-import { EmailConnectionsTab } from '@/components/settings/EmailConnectionsTab';
-import { EmailSequencesTab } from '@/components/email/EmailSequencesTab';
-import { EmailActivityTab } from '@/components/email/EmailActivityTab';
+import { EmailAccountsTab } from '@/components/email/EmailAccountsTab';
+import { EmailCampaignsTab } from '@/components/email/EmailCampaignsTab';
+import { EmailConversationsTab } from '@/components/email/EmailConversationsTab';
+import { EmailAnalyticsTab } from '@/components/email/EmailAnalyticsTab';
+import { EmailSettingsTab } from '@/components/email/EmailSettingsTab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Link2, Calendar, Activity } from 'lucide-react';
+import { UserCircle, Megaphone, MessageSquare, BarChart3, Settings } from 'lucide-react';
 
 export default function Email() {
   return (
     <DashboardLayout>
       <DashboardHeader title="Email" />
       <main className="flex-1 p-3 md:p-6">
-        <div className="max-w-5xl">
-          <Tabs defaultValue="connections">
-            <TabsList className="mb-6">
-              <TabsTrigger value="connections" className="gap-2">
-                <Link2 className="h-4 w-4" />
-                Connections
+        <div className="max-w-6xl">
+          <Tabs defaultValue="accounts">
+            <TabsList className="mb-6 flex-wrap">
+              <TabsTrigger value="accounts" className="gap-2">
+                <UserCircle className="h-4 w-4" />
+                Accounts
               </TabsTrigger>
-              <TabsTrigger value="sequences" className="gap-2">
-                <Calendar className="h-4 w-4" />
-                Sequences
+              <TabsTrigger value="campaigns" className="gap-2">
+                <Megaphone className="h-4 w-4" />
+                Campaigns
               </TabsTrigger>
-              <TabsTrigger value="activity" className="gap-2">
-                <Activity className="h-4 w-4" />
-                Activity
+              <TabsTrigger value="conversations" className="gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Conversations
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Analytics
+              </TabsTrigger>
+              <TabsTrigger value="settings" className="gap-2">
+                <Settings className="h-4 w-4" />
+                Settings
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="connections">
-              <EmailConnectionsTab />
+            <TabsContent value="accounts">
+              <EmailAccountsTab />
             </TabsContent>
-
-            <TabsContent value="sequences">
-              <EmailSequencesTab />
+            <TabsContent value="campaigns">
+              <EmailCampaignsTab />
             </TabsContent>
-
-            <TabsContent value="activity">
-              <EmailActivityTab />
+            <TabsContent value="conversations">
+              <EmailConversationsTab />
+            </TabsContent>
+            <TabsContent value="analytics">
+              <EmailAnalyticsTab />
+            </TabsContent>
+            <TabsContent value="settings">
+              <EmailSettingsTab />
             </TabsContent>
           </Tabs>
         </div>

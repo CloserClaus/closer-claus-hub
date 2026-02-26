@@ -35,6 +35,7 @@ const platformAdminNav: NavItem[] = [
   { title: 'Deals', url: '/admin?tab=deals', icon: Handshake },
   { title: 'Contracts', url: '/admin?tab=contracts', icon: FileSignature },
   { title: 'Calls', url: '/admin?tab=calls', icon: Phone },
+  { title: 'Email Tracking', url: '/admin?tab=email_tracking', icon: Mail },
   { title: 'Trainings', url: '/admin?tab=trainings', icon: GraduationCap },
   { title: 'Disputes', url: '/admin?tab=disputes', icon: AlertTriangle, tourId: 'disputes' },
   { title: 'Payouts', url: '/admin?tab=payouts', icon: DollarSign },
