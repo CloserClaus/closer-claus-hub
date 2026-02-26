@@ -6,22 +6,109 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// Provider handler interface - each provider implements this
 interface SendResult {
   success: boolean;
   external_id?: string;
+  thread_id?: string;
+  message_id?: string;
   error?: string;
+  error_reason?: string;
 }
 
-// Provider-agnostic routing handlers (mock implementations - swap with real APIs later)
-async function sendViaGmail(_inbox: any, _provider: any, _payload: any): Promise<SendResult> {
-  // TODO: Implement Gmail API send via OAuth tokens
-  console.log('Gmail handler: would send email via Gmail API');
-  return { success: true, external_id: `gmail-${crypto.randomUUID().slice(0, 8)}` };
+// ─── Real Gmail API Send ────────────────────────────────────
+async function sendViaGmail(inbox: any, _provider: any, payload: any): Promise<SendResult> {
+  const refreshToken = inbox.external_inbox_id; // stored as refresh token
+  if (!refreshToken) {
+    return { success: false, error: 'No refresh token stored for this inbox.', error_reason: 'auth_expired' };
+  }
+
+  const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID');
+  const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
+
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    return { success: false, error: 'Google OAuth not configured.', error_reason: 'api_failure' };
+  }
+
+  try {
+    // 1. Refresh the access token
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
+    });
+
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok || !tokenData.access_token) {
+      console.error('Token refresh failed:', tokenData);
+      return { success: false, error: 'Gmail auth expired. Please reconnect.', error_reason: 'auth_expired' };
+    }
+
+    const accessToken = tokenData.access_token;
+
+    // 2. Build RFC 2822 email
+    const fromEmail = inbox.email_address;
+    const toEmail = payload.to_email;
+    const subject = payload.subject;
+    const body = payload.body;
+
+    const emailLines = [
+      `From: ${fromEmail}`,
+      `To: ${toEmail}`,
+      `Subject: ${subject}`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=UTF-8',
+      '',
+      body,
+    ];
+    const rawEmail = emailLines.join('\r\n');
+
+    // Base64url encode
+    const encoder = new TextEncoder();
+    const encoded = encoder.encode(rawEmail);
+    const base64 = btoa(String.fromCharCode(...encoded))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    // 3. Send via Gmail API
+    const sendRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ raw: base64 }),
+    });
+
+    const sendData = await sendRes.json();
+    if (!sendRes.ok) {
+      console.error('Gmail send failed:', sendData);
+      const errorMsg = sendData.error?.message || 'Gmail API error';
+      let errorReason = 'api_failure';
+      if (sendRes.status === 429) errorReason = 'rate_limit';
+      else if (sendRes.status === 401 || sendRes.status === 403) errorReason = 'auth_expired';
+      return { success: false, error: errorMsg, error_reason: errorReason };
+    }
+
+    return {
+      success: true,
+      external_id: sendData.id,
+      thread_id: sendData.threadId,
+      message_id: sendData.id,
+    };
+  } catch (err: any) {
+    console.error('Gmail send exception:', err);
+    return { success: false, error: err.message, error_reason: 'api_failure' };
+  }
 }
 
+// ─── Stub handlers for other providers ──────────────────────
 async function sendViaInstantly(_inbox: any, _provider: any, _payload: any): Promise<SendResult> {
-  // TODO: Implement Instantly API send
   console.log('Instantly handler: would send email via Instantly API');
   return { success: true, external_id: `instantly-${crypto.randomUUID().slice(0, 8)}` };
 }
@@ -41,7 +128,6 @@ async function sendViaOther(_inbox: any, _provider: any, _payload: any): Promise
   return { success: true, external_id: `other-${crypto.randomUUID().slice(0, 8)}` };
 }
 
-// Router: selects handler based on provider type
 const PROVIDER_HANDLERS: Record<string, (inbox: any, provider: any, payload: any) => Promise<SendResult>> = {
   gmail: sendViaGmail,
   instantly: sendViaInstantly,
@@ -78,7 +164,7 @@ serve(async (req) => {
       throw new Error('Missing required fields: workspace_id, to_email, subject, body');
     }
 
-    // SERVER-SIDE SENDER ENFORCEMENT: Find assigned inbox for this SDR
+    // SERVER-SIDE SENDER ENFORCEMENT
     const { data: inbox, error: inboxError } = await supabase
       .from('email_inboxes')
       .select('*, email_providers!inner(*)')
@@ -93,9 +179,14 @@ serve(async (req) => {
 
     const provider = (inbox as any).email_providers;
 
-    // Validate provider is connected
     if (provider.status !== 'connected') {
       throw new Error(`Provider "${provider.provider_name || provider.provider_type}" is disconnected. Please reconnect.`);
+    }
+
+    // Check daily send limit
+    const inboxData = inbox as any;
+    if (inboxData.sends_today >= inboxData.daily_send_limit) {
+      throw new Error(`Daily send limit reached (${inboxData.daily_send_limit}). Try again tomorrow.`);
     }
 
     // Check lead sending state if lead_id provided
@@ -117,7 +208,7 @@ serve(async (req) => {
     const result = await handler(inbox, provider, payload);
 
     if (!result.success) {
-      // Log failure - never create false activity
+      // Log failure
       await supabase.from('email_audit_log').insert({
         workspace_id,
         action_type: 'email_send_failed',
@@ -126,27 +217,46 @@ serve(async (req) => {
         provider_id: provider.id,
         lead_id,
         sequence_id,
-        metadata: { error: result.error, subject },
+        metadata: { error: result.error, error_reason: result.error_reason, subject },
       });
+
+      // Update lead status to error if lead_id provided
+      if (lead_id) {
+        await supabase.from('leads').update({ email_sending_state: 'error' } as any).eq('id', lead_id);
+      }
+
+      // Log to email_logs with error
+      await supabase.from('email_logs').insert({
+        workspace_id, lead_id, sent_by: user.id,
+        provider: provider.provider_type, subject, body,
+        status: 'failed', inbox_id: inbox.id,
+        sequence_id: sequence_id || null,
+        sequence_step: sequence_step ?? null,
+        error_reason: result.error_reason || result.error,
+      } as any);
 
       throw new Error(result.error || 'Provider unavailable. Please retry.');
     }
 
     // Log the email
-    const { error: logError } = await supabase.from('email_logs').insert({
-      workspace_id,
-      lead_id,
-      sent_by: user.id,
-      provider: provider.provider_type,
-      subject,
-      body,
-      status: 'sent',
-      inbox_id: inbox.id,
+    await supabase.from('email_logs').insert({
+      workspace_id, lead_id, sent_by: user.id,
+      provider: provider.provider_type, subject, body,
+      status: 'sent', inbox_id: inbox.id,
       sequence_id: sequence_id || null,
       sequence_step: sequence_step ?? null,
-    });
+      thread_id: result.thread_id || null,
+      message_id: result.message_id || null,
+    } as any);
 
-    if (logError) console.error('Email log error:', logError);
+    // Increment daily send count
+    await supabase.rpc('increment_sends_today' as any, { inbox_id: inbox.id }).catch(() => {
+      // Fallback: direct update if RPC doesn't exist
+      supabase.from('email_inboxes')
+        .update({ sends_today: (inboxData.sends_today || 0) + 1 } as any)
+        .eq('id', inbox.id)
+        .then(() => {});
+    });
 
     // Audit log
     await supabase.from('email_audit_log').insert({
@@ -158,23 +268,26 @@ serve(async (req) => {
       lead_id,
       sequence_id,
       metadata: {
-        subject,
-        to_email,
+        subject, to_email,
         external_id: result.external_id,
+        thread_id: result.thread_id,
         inbox_email: inbox.email_address,
       },
     });
 
     // Update lead's last_contacted_at
     if (lead_id) {
-      await supabase
-        .from('leads')
+      await supabase.from('leads')
         .update({ last_contacted_at: new Date().toISOString() })
         .eq('id', lead_id);
     }
 
     return new Response(
-      JSON.stringify({ success: true, status: 'sent', inbox_id: inbox.id, provider: provider.provider_type }),
+      JSON.stringify({
+        success: true, status: 'sent',
+        inbox_id: inbox.id, provider: provider.provider_type,
+        thread_id: result.thread_id, message_id: result.message_id,
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {

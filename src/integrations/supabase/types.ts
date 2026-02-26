@@ -1282,6 +1282,62 @@ export type Database = {
           },
         ]
       }
+      email_campaign_settings: {
+        Row: {
+          auto_pause_on_bounce_threshold: boolean
+          bounce_threshold_percent: number
+          created_at: string
+          default_daily_send_limit: number
+          id: string
+          max_concurrent_sends: number
+          random_delay_max_seconds: number
+          random_delay_min_seconds: number
+          sending_timezone: string
+          sending_window_end: string
+          sending_window_start: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          auto_pause_on_bounce_threshold?: boolean
+          bounce_threshold_percent?: number
+          created_at?: string
+          default_daily_send_limit?: number
+          id?: string
+          max_concurrent_sends?: number
+          random_delay_max_seconds?: number
+          random_delay_min_seconds?: number
+          sending_timezone?: string
+          sending_window_end?: string
+          sending_window_start?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          auto_pause_on_bounce_threshold?: boolean
+          bounce_threshold_percent?: number
+          created_at?: string
+          default_daily_send_limit?: number
+          id?: string
+          max_concurrent_sends?: number
+          random_delay_max_seconds?: number
+          random_delay_min_seconds?: number
+          sending_timezone?: string
+          sending_window_end?: string
+          sending_window_start?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_campaign_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_connections: {
         Row: {
           api_key: string | null
@@ -1332,38 +1388,171 @@ export type Database = {
           },
         ]
       }
+      email_conversation_messages: {
+        Row: {
+          body: string
+          conversation_id: string
+          created_at: string
+          direction: string
+          gmail_message_id: string | null
+          id: string
+          message_type: string
+          sender_email: string
+          subject: string | null
+        }
+        Insert: {
+          body: string
+          conversation_id: string
+          created_at?: string
+          direction?: string
+          gmail_message_id?: string | null
+          id?: string
+          message_type?: string
+          sender_email: string
+          subject?: string | null
+        }
+        Update: {
+          body?: string
+          conversation_id?: string
+          created_at?: string
+          direction?: string
+          gmail_message_id?: string | null
+          id?: string
+          message_type?: string
+          sender_email?: string
+          subject?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_conversation_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "email_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_conversations: {
+        Row: {
+          assigned_to: string
+          campaign_name: string | null
+          created_at: string
+          id: string
+          inbox_id: string | null
+          last_activity_at: string
+          last_message_preview: string | null
+          lead_id: string
+          sequence_id: string | null
+          status: string
+          thread_id: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          assigned_to: string
+          campaign_name?: string | null
+          created_at?: string
+          id?: string
+          inbox_id?: string | null
+          last_activity_at?: string
+          last_message_preview?: string | null
+          lead_id: string
+          sequence_id?: string | null
+          status?: string
+          thread_id?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          assigned_to?: string
+          campaign_name?: string | null
+          created_at?: string
+          id?: string
+          inbox_id?: string | null
+          last_activity_at?: string
+          last_message_preview?: string | null
+          lead_id?: string
+          sequence_id?: string | null
+          status?: string
+          thread_id?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_conversations_inbox_id_fkey"
+            columns: ["inbox_id"]
+            isOneToOne: false
+            referencedRelation: "email_inboxes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_conversations_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_conversations_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "follow_up_sequences"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_conversations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_inboxes: {
         Row: {
           assigned_to: string | null
           created_at: string
+          daily_send_limit: number
           email_address: string
           external_inbox_id: string | null
           id: string
           provider_id: string
+          sends_today: number
+          sends_today_reset_at: string
           status: string
           updated_at: string
+          warmup_enabled: boolean
           workspace_id: string
         }
         Insert: {
           assigned_to?: string | null
           created_at?: string
+          daily_send_limit?: number
           email_address: string
           external_inbox_id?: string | null
           id?: string
           provider_id: string
+          sends_today?: number
+          sends_today_reset_at?: string
           status?: string
           updated_at?: string
+          warmup_enabled?: boolean
           workspace_id: string
         }
         Update: {
           assigned_to?: string | null
           created_at?: string
+          daily_send_limit?: number
           email_address?: string
           external_inbox_id?: string | null
           id?: string
           provider_id?: string
+          sends_today?: number
+          sends_today_reset_at?: string
           status?: string
           updated_at?: string
+          warmup_enabled?: boolean
           workspace_id?: string
         }
         Relationships: [
@@ -1387,9 +1576,11 @@ export type Database = {
         Row: {
           body: string
           created_at: string
+          error_reason: string | null
           id: string
           inbox_id: string | null
           lead_id: string | null
+          message_id: string | null
           provider: string
           sent_at: string
           sent_by: string
@@ -1398,14 +1589,17 @@ export type Database = {
           status: string
           status_updated_at: string | null
           subject: string
+          thread_id: string | null
           workspace_id: string
         }
         Insert: {
           body: string
           created_at?: string
+          error_reason?: string | null
           id?: string
           inbox_id?: string | null
           lead_id?: string | null
+          message_id?: string | null
           provider: string
           sent_at?: string
           sent_by: string
@@ -1414,14 +1608,17 @@ export type Database = {
           status?: string
           status_updated_at?: string | null
           subject: string
+          thread_id?: string | null
           workspace_id: string
         }
         Update: {
           body?: string
           created_at?: string
+          error_reason?: string | null
           id?: string
           inbox_id?: string | null
           lead_id?: string | null
+          message_id?: string | null
           provider?: string
           sent_at?: string
           sent_by?: string
@@ -1430,6 +1627,7 @@ export type Database = {
           status?: string
           status_updated_at?: string | null
           subject?: string
+          thread_id?: string | null
           workspace_id?: string
         }
         Relationships: [
@@ -1719,31 +1917,62 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string
+          daily_send_cap: number | null
           id: string
           is_default: boolean
           name: string
+          random_delay_max_seconds: number | null
+          random_delay_min_seconds: number | null
+          sending_inbox_id: string | null
+          sending_timezone: string | null
+          sending_window_end: string | null
+          sending_window_start: string | null
+          status: string
           updated_at: string
           workspace_id: string
         }
         Insert: {
           created_at?: string
           created_by: string
+          daily_send_cap?: number | null
           id?: string
           is_default?: boolean
           name: string
+          random_delay_max_seconds?: number | null
+          random_delay_min_seconds?: number | null
+          sending_inbox_id?: string | null
+          sending_timezone?: string | null
+          sending_window_end?: string | null
+          sending_window_start?: string | null
+          status?: string
           updated_at?: string
           workspace_id: string
         }
         Update: {
           created_at?: string
           created_by?: string
+          daily_send_cap?: number | null
           id?: string
           is_default?: boolean
           name?: string
+          random_delay_max_seconds?: number | null
+          random_delay_min_seconds?: number | null
+          sending_inbox_id?: string | null
+          sending_timezone?: string | null
+          sending_window_end?: string | null
+          sending_window_start?: string | null
+          status?: string
           updated_at?: string
           workspace_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "follow_up_sequences_sending_inbox_id_fkey"
+            columns: ["sending_inbox_id"]
+            isOneToOne: false
+            referencedRelation: "email_inboxes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "follow_up_sequences_workspace_id_fkey"
             columns: ["workspace_id"]
@@ -3335,6 +3564,7 @@ export type Database = {
         Returns: boolean
       }
       normalize_linkedin_url: { Args: { url: string }; Returns: string }
+      reset_daily_send_counts: { Args: never; Returns: undefined }
       reset_free_minutes: { Args: never; Returns: undefined }
     }
     Enums: {
