@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Send, X, ChevronDown, Loader2 } from 'lucide-react';
+import { Send, ChevronDown, Loader2, AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { useEmailInbox } from '@/hooks/useEmailInbox';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Lead {
@@ -40,39 +41,17 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id'>[] = [
   {
     name: 'Call Follow-Up',
     subject: 'Great speaking with you, {{first_name}}',
-    body: `Hi {{first_name}},
-
-It was great connecting with you today. I wanted to follow up on our conversation and share a few key points we discussed.
-
-I believe we can help {{company}} achieve great results. Let me know if you'd like to schedule a follow-up to dive deeper.
-
-Looking forward to hearing from you!
-
-Best regards`,
+    body: `Hi {{first_name}},\n\nIt was great connecting with you today. I wanted to follow up on our conversation and share a few key points we discussed.\n\nI believe we can help {{company}} achieve great results. Let me know if you'd like to schedule a follow-up to dive deeper.\n\nLooking forward to hearing from you!\n\nBest regards`,
   },
   {
     name: 'Meeting Confirmation',
     subject: 'Meeting Confirmed — {{first_name}}',
-    body: `Hi {{first_name}},
-
-Just confirming our upcoming meeting. Looking forward to discussing how we can support {{company}}.
-
-If anything changes, feel free to let me know.
-
-See you soon!`,
+    body: `Hi {{first_name}},\n\nJust confirming our upcoming meeting. Looking forward to discussing how we can support {{company}}.\n\nIf anything changes, feel free to let me know.\n\nSee you soon!`,
   },
   {
     name: 'Checking Back In',
     subject: 'Checking in, {{first_name}}',
-    body: `Hi {{first_name}},
-
-I wanted to check back in and see if you had any thoughts on our previous conversation.
-
-I understand things get busy — happy to work around your schedule whenever it makes sense to reconnect.
-
-Let me know how you'd like to proceed.
-
-Best,`,
+    body: `Hi {{first_name}},\n\nI wanted to check back in and see if you had any thoughts on our previous conversation.\n\nI understand things get busy — happy to work around your schedule whenever it makes sense to reconnect.\n\nLet me know how you'd like to proceed.\n\nBest,`,
   },
 ];
 
@@ -89,18 +68,14 @@ export function EmailComposerModal({ open, onClose, lead, onEmailSent }: EmailCo
   const { user } = useAuth();
   const { currentWorkspace } = useWorkspace();
   const { toast } = useToast();
+  const { assignedInbox, canSendEmail, loading: inboxLoading } = useEmailInbox();
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [savedTemplates, setSavedTemplates] = useState<EmailTemplate[]>([]);
-  const [connections, setConnections] = useState<{ id: string; provider: string; provider_name: string | null }[]>([]);
-  const [selectedConnection, setSelectedConnection] = useState('');
 
   useEffect(() => {
-    if (open && currentWorkspace && user) {
-      fetchTemplates();
-      fetchConnections();
-    }
+    if (open && currentWorkspace) fetchTemplates();
   }, [open, currentWorkspace]);
 
   const fetchTemplates = async () => {
@@ -110,19 +85,6 @@ export function EmailComposerModal({ open, onClose, lead, onEmailSent }: EmailCo
       .select('id, name, subject, body')
       .eq('workspace_id', currentWorkspace.id);
     setSavedTemplates((data as EmailTemplate[]) || []);
-  };
-
-  const fetchConnections = async () => {
-    if (!currentWorkspace || !user) return;
-    const { data } = await supabase
-      .from('email_connections')
-      .select('id, provider, provider_name')
-      .eq('workspace_id', currentWorkspace.id)
-      .eq('user_id', user.id)
-      .eq('is_active', true);
-    const conns = (data as any[]) || [];
-    setConnections(conns);
-    if (conns.length === 1) setSelectedConnection(conns[0].id);
   };
 
   const replaceVariables = (text: string) => {
@@ -135,22 +97,10 @@ export function EmailComposerModal({ open, onClose, lead, onEmailSent }: EmailCo
       .replace(/\{\{phone\}\}/g, lead.phone || '');
   };
 
-  const insertVariable = (variable: string) => {
-    setBody((prev) => prev + variable);
-  };
-
-  const loadTemplate = (template: Omit<EmailTemplate, 'id'>) => {
-    setSubject(template.subject);
-    setBody(template.body);
-  };
-
   const handleSend = async () => {
-    if (!lead.email) {
-      toast({ variant: 'destructive', title: 'No email address', description: 'This lead does not have an email address.' });
-      return;
-    }
-    if (!selectedConnection) {
-      toast({ variant: 'destructive', title: 'No provider selected', description: 'Please select an email provider or connect one in Settings.' });
+    if (!lead.email || !currentWorkspace || !user) return;
+    if (!canSendEmail) {
+      toast({ variant: 'destructive', title: 'No inbox assigned', description: 'You need an assigned inbox to send emails.' });
       return;
     }
     if (!subject.trim() || !body.trim()) {
@@ -162,28 +112,22 @@ export function EmailComposerModal({ open, onClose, lead, onEmailSent }: EmailCo
     try {
       const finalSubject = replaceVariables(subject);
       const finalBody = replaceVariables(body);
-      const connection = connections.find(c => c.id === selectedConnection);
 
-      // Log the email
-      const { error } = await supabase.from('email_logs').insert({
-        workspace_id: currentWorkspace!.id,
-        lead_id: lead.id,
-        sent_by: user!.id,
-        provider: connection?.provider || 'other',
-        subject: finalSubject,
-        body: finalBody,
-        status: 'sent',
+      // Server-side routing — no inbox passed from frontend
+      const { data, error } = await supabase.functions.invoke('send-email', {
+        body: {
+          workspace_id: currentWorkspace.id,
+          to_email: lead.email,
+          subject: finalSubject,
+          body: finalBody,
+          lead_id: lead.id,
+        },
       });
 
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
-      // Update lead's last_contacted_at
-      await supabase
-        .from('leads')
-        .update({ last_contacted_at: new Date().toISOString() })
-        .eq('id', lead.id);
-
-      toast({ title: 'Email sent', description: `Email sent to ${lead.email} via ${connection?.provider_name || connection?.provider || 'provider'}.` });
+      toast({ title: 'Email sent', description: `Sent to ${lead.email} via ${assignedInbox?.provider_name || 'provider'}.` });
       onEmailSent?.();
       onClose();
       setSubject('');
@@ -208,43 +152,30 @@ export function EmailComposerModal({ open, onClose, lead, onEmailSent }: EmailCo
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Provider selector */}
-          {connections.length > 1 && (
-            <div className="space-y-2">
-              <Label>Send via</Label>
-              <Select value={selectedConnection} onValueChange={setSelectedConnection}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  {connections.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.provider_name || c.provider}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {/* Sending inbox display */}
+          {assignedInbox ? (
+            <div className="p-3 rounded-lg bg-muted/50 border text-sm">
+              <span className="text-muted-foreground">Sending from:</span>{' '}
+              <strong>{assignedInbox.email_address}</strong>
+              <span className="text-muted-foreground ml-2">({assignedInbox.provider_name})</span>
+            </div>
+          ) : (
+            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200 flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              No inbox assigned to you. Contact your agency owner to assign an inbox.
             </div>
           )}
 
-          {connections.length === 0 && (
-            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
-              No email provider connected. Go to Settings → Email to connect one.
-            </div>
-          )}
-
-          {/* To */}
           <div className="space-y-2">
             <Label>To</Label>
             <Input value={lead.email || 'No email address'} disabled className="bg-muted" />
           </div>
 
-          {/* Template selector */}
           <div className="space-y-2">
             <Label>Template</Label>
             <Select onValueChange={(val) => {
               const tmpl = allTemplates.find(t => t.id === val);
-              if (tmpl) loadTemplate(tmpl);
+              if (tmpl) { setSubject(tmpl.subject); setBody(tmpl.body); }
             }}>
               <SelectTrigger>
                 <SelectValue placeholder="Choose a template (optional)" />
@@ -257,13 +188,11 @@ export function EmailComposerModal({ open, onClose, lead, onEmailSent }: EmailCo
             </Select>
           </div>
 
-          {/* Subject */}
           <div className="space-y-2">
             <Label>Subject</Label>
             <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Enter email subject" />
           </div>
 
-          {/* Body */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label>Body</Label>
@@ -276,25 +205,19 @@ export function EmailComposerModal({ open, onClose, lead, onEmailSent }: EmailCo
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   {VARIABLES.map((v) => (
-                    <DropdownMenuItem key={v.key} onClick={() => insertVariable(v.key)}>
+                    <DropdownMenuItem key={v.key} onClick={() => setBody(prev => prev + v.key)}>
                       {v.label} <span className="ml-auto text-xs text-muted-foreground">{v.key}</span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            <Textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Write your email..."
-              className="min-h-[200px]"
-            />
+            <Textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write your email..." className="min-h-[200px]" />
           </div>
 
-          {/* Actions */}
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button onClick={handleSend} disabled={sending || !lead.email || connections.length === 0}>
+            <Button onClick={handleSend} disabled={sending || !lead.email || !canSendEmail}>
               {sending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
               Send Now
             </Button>
