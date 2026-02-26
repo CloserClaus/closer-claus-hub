@@ -1,4 +1,4 @@
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Briefcase, Users, Phone, MessageSquare, GraduationCap, FileText, DollarSign, Settings, Shield, Building2, LogOut, ChevronDown, CreditCard, AlertTriangle, Tag, UserCircle, Handshake, FileSignature, Bug, Lightbulb, Wallet, Search, Database, ClipboardCheck, Gift, Target, ScrollText, BarChart3, Mail } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -6,7 +6,7 @@ import { WorkspaceSwitcher } from '@/components/layout/WorkspaceSwitcher';
 import { SDRLevelProgress } from '@/components/SDRLevelProgress';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarSeparator, useSidebar } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import logoIcon from '@/assets/logo-icon.png';
 import logoFull from '@/assets/logo-full.png';
@@ -169,6 +169,7 @@ function SectionedNav({ sections, collapsed, location }: { sections: NavSection[
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
+  const navigate = useNavigate();
   const { userRole, profile, signOut } = useAuth();
   const collapsed = state === 'collapsed';
 
@@ -239,27 +240,7 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        <SidebarGroup className="mt-auto">
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {footerNavItems.map((item) => (
-                <NavItemRenderer key={item.title} item={item} collapsed={collapsed} location={location} />
-              ))}
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={location.pathname === '/settings'} tooltip="Settings">
-                  <NavLink
-                    to="/settings"
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-sidebar-accent"
-                    activeClassName="bg-sidebar-accent text-sidebar-primary"
-                  >
-                    <Settings className="h-5 w-5 shrink-0" />
-                    {!collapsed && <span>Settings</span>}
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {/* removed footer nav — items moved to user dropdown */}
       </SidebarContent>
 
       <SidebarFooter className="p-3">
@@ -287,7 +268,18 @@ export function AppSidebar() {
               )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuContent align="end" className="w-56 bg-popover border border-border z-50">
+            {footerNavItems.map((item) => (
+              <DropdownMenuItem key={item.title} onClick={() => navigate(item.url)} className="cursor-pointer">
+                <item.icon className="h-4 w-4 mr-2" />
+                {item.title}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
+              <Settings className="h-4 w-4 mr-2" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={signOut} className="text-destructive cursor-pointer">
               <LogOut className="h-4 w-4 mr-2" />
               Sign Out
