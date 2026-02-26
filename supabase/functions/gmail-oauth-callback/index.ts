@@ -25,13 +25,13 @@ Deno.serve(async (req) => {
   // ─── POST: Generate OAuth URL ───────────────────────────────
   if (req.method === "POST") {
     try {
-      const { workspace_id, user_id } = await req.json();
+      const { workspace_id, user_id, origin } = await req.json();
 
       // The callback URL is this same function's GET endpoint
       const callbackUrl = `${SUPABASE_URL}/functions/v1/gmail-oauth-callback`;
 
-      // State encodes workspace + user so callback knows where to store the inbox
-      const state = btoa(JSON.stringify({ workspace_id, user_id }));
+      // State encodes workspace + user + origin so callback redirects to the correct domain
+      const state = btoa(JSON.stringify({ workspace_id, user_id, origin: origin || "https://closerclaus.com" }));
 
       const params = new URLSearchParams({
         client_id: GOOGLE_CLIENT_ID,
@@ -65,9 +65,10 @@ Deno.serve(async (req) => {
 
     if (error) {
       // User denied or error — redirect back to app with error
+      // For error before state is parsed, use default domain
       return new Response(null, {
         status: 302,
-        headers: { Location: `${getAppUrl()}/settings?gmail_error=${encodeURIComponent(error)}` },
+        headers: { Location: `https://closerclaus.com/settings?gmail_error=${encodeURIComponent(error)}` },
       });
     }
 
@@ -75,12 +76,14 @@ Deno.serve(async (req) => {
       return new Response("Missing code or state", { status: 400 });
     }
 
-    let state: { workspace_id: string; user_id: string };
+    let state: { workspace_id: string; user_id: string; origin?: string };
     try {
       state = JSON.parse(atob(stateParam));
     } catch {
       return new Response("Invalid state", { status: 400 });
     }
+
+    const appUrl = state.origin || "https://closerclaus.com";
 
     // Exchange code for tokens
     const callbackUrl = `${SUPABASE_URL}/functions/v1/gmail-oauth-callback`;
@@ -101,7 +104,7 @@ Deno.serve(async (req) => {
     if (!tokenRes.ok || !tokenData.access_token) {
       return new Response(null, {
         status: 302,
-        headers: { Location: `${getAppUrl()}/settings?gmail_error=token_exchange_failed` },
+        headers: { Location: `${appUrl}/settings?gmail_error=token_exchange_failed` },
       });
     }
 
@@ -115,7 +118,7 @@ Deno.serve(async (req) => {
     if (!gmailEmail) {
       return new Response(null, {
         status: 302,
-        headers: { Location: `${getAppUrl()}/settings?gmail_error=no_email` },
+        headers: { Location: `${appUrl}/settings?gmail_error=no_email` },
       });
     }
 
@@ -130,7 +133,7 @@ Deno.serve(async (req) => {
     if (existingInbox) {
       return new Response(null, {
         status: 302,
-        headers: { Location: `${getAppUrl()}/email?gmail_error=duplicate&email=${encodeURIComponent(gmailEmail)}` },
+        headers: { Location: `${appUrl}/email?gmail_error=duplicate&email=${encodeURIComponent(gmailEmail)}` },
       });
     }
 
@@ -162,7 +165,7 @@ Deno.serve(async (req) => {
       if (provErr || !newProvider) {
         return new Response(null, {
           status: 302,
-          headers: { Location: `${getAppUrl()}/email?gmail_error=provider_create_failed` },
+          headers: { Location: `${appUrl}/email?gmail_error=provider_create_failed` },
         });
       }
       providerId = newProvider.id;
@@ -182,7 +185,7 @@ Deno.serve(async (req) => {
     if (inboxErr) {
       return new Response(null, {
         status: 302,
-        headers: { Location: `${getAppUrl()}/email?gmail_error=inbox_create_failed` },
+        headers: { Location: `${appUrl}/email?gmail_error=inbox_create_failed` },
       });
     }
 
@@ -198,14 +201,9 @@ Deno.serve(async (req) => {
     // Redirect back to app with success
     return new Response(null, {
       status: 302,
-      headers: { Location: `${getAppUrl()}/email?gmail_connected=${encodeURIComponent(gmailEmail)}` },
+      headers: { Location: `${appUrl}/email?gmail_connected=${encodeURIComponent(gmailEmail)}` },
     });
   }
 
   return new Response("Method not allowed", { status: 405 });
 });
-
-function getAppUrl(): string {
-  // Use the published app URL
-  return "https://closerclaus.lovable.app";
-}
