@@ -1,0 +1,2 @@
+ALTER PUBLICATION supabase_realtime ADD TABLE public.email_conversations;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.email_conversation_messages;

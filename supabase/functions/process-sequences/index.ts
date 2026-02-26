@@ -6,6 +6,51 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+function isWithinSendingWindow(settings: any): boolean {
+  if (!settings?.sending_window_start || !settings?.sending_window_end) return true;
+
+  const tz = settings.sending_timezone || 'America/New_York';
+  const nowStr = new Date().toLocaleString('en-US', { timeZone: tz });
+  const nowLocal = new Date(nowStr);
+  const hours = nowLocal.getHours();
+  const minutes = nowLocal.getMinutes();
+  const currentMinutes = hours * 60 + minutes;
+
+  const [startH, startM] = settings.sending_window_start.split(':').map(Number);
+  const [endH, endM] = settings.sending_window_end.split(':').map(Number);
+  const startMinutes = startH * 60 + startM;
+  const endMinutes = endH * 60 + endM;
+
+  return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+}
+
+async function checkBounceThreshold(supabase: any, workspaceId: string, settings: any): Promise<boolean> {
+  if (!settings?.auto_pause_on_bounce_threshold) return false;
+
+  const threshold = settings.bounce_threshold_percent ?? 5;
+
+  // Check emails from last 24h
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const { count: totalCount } = await supabase
+    .from('email_logs')
+    .select('id', { count: 'exact', head: true })
+    .eq('workspace_id', workspaceId)
+    .gte('sent_at', since);
+
+  if (!totalCount || totalCount < 10) return false; // Not enough data
+
+  const { count: bounceCount } = await supabase
+    .from('email_logs')
+    .select('id', { count: 'exact', head: true })
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'bounced')
+    .gte('sent_at', since);
+
+  const bounceRate = ((bounceCount || 0) / totalCount) * 100;
+  return bounceRate >= threshold;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -29,7 +74,7 @@ serve(async (req) => {
       .eq('status', 'active')
       .lte('next_send_at', now)
       .order('next_send_at', { ascending: true })
-      .limit(50); // Process max 50 per run to avoid timeouts
+      .limit(50);
 
     if (fetchErr) {
       console.error('Error fetching due follow-ups:', fetchErr);
@@ -43,10 +88,59 @@ serve(async (req) => {
       });
     }
 
+    // Group by workspace for settings lookup
+    const workspaceIds = [...new Set(dueFollowUps.map((f: any) => f.workspace_id))];
+    const settingsCache: Record<string, any> = {};
+    const pausedWorkspaces = new Set<string>();
+
+    // Pre-fetch settings for all workspaces
+    for (const wsId of workspaceIds) {
+      const { data: settings } = await supabase
+        .from('email_campaign_settings')
+        .select('*')
+        .eq('workspace_id', wsId)
+        .maybeSingle();
+      settingsCache[wsId as string] = settings;
+
+      // Check sending window
+      if (!isWithinSendingWindow(settings)) {
+        console.log(`Workspace ${wsId} outside sending window, skipping.`);
+        pausedWorkspaces.add(wsId as string);
+        continue;
+      }
+
+      // Check bounce threshold
+      const breached = await checkBounceThreshold(supabase, wsId as string, settings);
+      if (breached) {
+        console.log(`Workspace ${wsId} breached bounce threshold, pausing all sequences.`);
+        pausedWorkspaces.add(wsId as string);
+
+        // Pause all active sequences for this workspace
+        await supabase.from('active_follow_ups')
+          .update({ status: 'paused' })
+          .eq('workspace_id', wsId)
+          .eq('status', 'active');
+
+        // Audit log
+        await supabase.from('email_audit_log').insert({
+          workspace_id: wsId,
+          action_type: 'bounce_threshold_paused',
+          metadata: { reason: 'Bounce rate exceeded threshold' },
+        });
+      }
+    }
+
     let processed = 0;
     let errors = 0;
+    let skipped = 0;
 
     for (const fup of dueFollowUps as any[]) {
+      // Skip paused workspaces
+      if (pausedWorkspaces.has(fup.workspace_id)) {
+        skipped++;
+        continue;
+      }
+
       try {
         // Get sequence steps
         const { data: steps } = await supabase
@@ -56,20 +150,16 @@ serve(async (req) => {
           .order('step_order', { ascending: true });
 
         if (!steps || steps.length === 0) {
-          console.log(`No steps for sequence ${fup.sequence_id}, marking completed.`);
           await supabase.from('active_follow_ups').update({
-            status: 'completed',
-            completed_at: now,
+            status: 'completed', completed_at: now,
           }).eq('id', fup.id);
           continue;
         }
 
         const currentStep = (steps as any[]).find(s => s.step_order === fup.current_step);
         if (!currentStep) {
-          // Current step doesn't exist, mark as completed
           await supabase.from('active_follow_ups').update({
-            status: 'completed',
-            completed_at: now,
+            status: 'completed', completed_at: now,
           }).eq('id', fup.id);
           await supabase.from('leads').update({
             email_sending_state: 'idle',
@@ -77,7 +167,7 @@ serve(async (req) => {
           continue;
         }
 
-        // Get lead info for variable replacement
+        // Get lead info
         const { data: lead } = await supabase
           .from('leads')
           .select('first_name, last_name, email, company, title, phone')
@@ -85,10 +175,8 @@ serve(async (req) => {
           .single();
 
         if (!lead?.email) {
-          console.log(`Lead ${fup.lead_id} has no email, skipping.`);
           await supabase.from('active_follow_ups').update({
-            status: 'error',
-            completed_at: now,
+            status: 'error', completed_at: now,
           }).eq('id', fup.id);
           continue;
         }
@@ -96,7 +184,6 @@ serve(async (req) => {
         // Get inbox info
         const inboxId = fup.sender_inbox_id;
         if (!inboxId) {
-          console.log(`No inbox for follow-up ${fup.id}, marking error.`);
           await supabase.from('active_follow_ups').update({ status: 'error', completed_at: now }).eq('id', fup.id);
           continue;
         }
@@ -117,25 +204,37 @@ serve(async (req) => {
 
         // Check daily limit
         if (inboxData.sends_today >= inboxData.daily_send_limit) {
-          console.log(`Inbox ${inboxData.email_address} hit daily limit, skipping.`);
-          // Reschedule for next day
+          console.log(`Inbox ${inboxData.email_address} hit daily limit, rescheduling.`);
           const tomorrow = new Date();
           tomorrow.setDate(tomorrow.getDate() + 1);
           tomorrow.setHours(9, 0, 0, 0);
           await supabase.from('active_follow_ups').update({
             next_send_at: tomorrow.toISOString(),
           }).eq('id', fup.id);
+          skipped++;
           continue;
         }
 
-        // Check sending window from sequence or campaign settings
-        const { data: settings } = await supabase
-          .from('email_campaign_settings')
-          .select('*')
+        // Check workspace concurrent send limit
+        const settings = settingsCache[fup.workspace_id];
+        const maxConcurrent = settings?.max_concurrent_sends ?? 3;
+        // Simple concurrency: count emails sent in last 60 seconds
+        const recentCutoff = new Date(Date.now() - 60_000).toISOString();
+        const { count: recentSends } = await supabase
+          .from('email_logs')
+          .select('id', { count: 'exact', head: true })
           .eq('workspace_id', fup.workspace_id)
-          .maybeSingle();
+          .gte('sent_at', recentCutoff);
 
-        // Replace variables in subject and body
+        if ((recentSends || 0) >= maxConcurrent) {
+          // Reschedule 2 minutes later
+          const later = new Date(Date.now() + 2 * 60_000).toISOString();
+          await supabase.from('active_follow_ups').update({ next_send_at: later }).eq('id', fup.id);
+          skipped++;
+          continue;
+        }
+
+        // Variable replacement
         const replaceVars = (text: string) => {
           return text
             .replace(/\{\{first_name\}\}/g, lead.first_name || '')
@@ -153,8 +252,6 @@ serve(async (req) => {
         const minDelay = settings?.random_delay_min_seconds ?? 45;
         const maxDelay = settings?.random_delay_max_seconds ?? 120;
         const randomDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-        
-        // Wait the random delay
         await new Promise(resolve => setTimeout(resolve, randomDelay * 1000));
 
         // Send via Gmail
@@ -169,7 +266,6 @@ serve(async (req) => {
             errorReason = 'auth_expired';
           } else {
             try {
-              // Refresh access token
               const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -184,7 +280,6 @@ serve(async (req) => {
               if (!tokenRes.ok || !tokenData.access_token) {
                 errorReason = 'auth_expired';
               } else {
-                // Build and send email
                 const emailLines = [
                   `From: ${inboxData.email_address}`,
                   `To: ${lead.email}`,
@@ -228,20 +323,18 @@ serve(async (req) => {
             }
           }
         } else {
-          // Stub for other providers
           sendSuccess = true;
           messageId = `${provider.provider_type}-${crypto.randomUUID().slice(0, 8)}`;
         }
 
         if (sendSuccess) {
-          // Log the email
+          // Log email
           await supabase.from('email_logs').insert({
             workspace_id: fup.workspace_id,
             lead_id: fup.lead_id,
             sent_by: fup.started_by,
             provider: provider.provider_type,
-            subject,
-            body,
+            subject, body,
             status: 'sent',
             inbox_id: inboxId,
             sequence_id: fup.sequence_id,
@@ -259,7 +352,7 @@ serve(async (req) => {
             .eq('sequence_id', fup.sequence_id)
             .eq('lead_id', fup.lead_id);
 
-          // Store outbound message in conversation
+          // Store outbound message
           const { data: convo } = await supabase
             .from('email_conversations')
             .select('id')
@@ -273,8 +366,7 @@ serve(async (req) => {
             await supabase.from('email_conversation_messages').insert({
               conversation_id: convo.id,
               direction: 'outbound',
-              subject,
-              body,
+              subject, body,
               sender_email: inboxData.email_address,
               message_type: 'email',
             } as any);
@@ -285,20 +377,22 @@ serve(async (req) => {
             .update({ sends_today: (inboxData.sends_today || 0) + 1 } as any)
             .eq('id', inboxId);
 
-          // Update lead last_contacted_at
+          // Update lead
           await supabase.from('leads')
             .update({ last_contacted_at: new Date().toISOString() })
             .eq('id', fup.lead_id);
 
-          // Advance to next step or complete
+          // Advance or complete
           const nextStepOrder = fup.current_step + 1;
           const nextStep = (steps as any[]).find(s => s.step_order === nextStepOrder);
 
           if (nextStep) {
             const nextSendAt = new Date();
             nextSendAt.setDate(nextSendAt.getDate() + nextStep.delay_days);
-            // Set to within sending window
-            nextSendAt.setHours(9, 0, 0, 0);
+            // Schedule within sending window
+            const windowStart = settings?.sending_window_start || '09:00';
+            const [startH] = windowStart.split(':').map(Number);
+            nextSendAt.setHours(startH, 0, 0, 0);
 
             await supabase.from('active_follow_ups').update({
               current_step: nextStepOrder,
@@ -306,7 +400,6 @@ serve(async (req) => {
               updated_at: new Date().toISOString(),
             }).eq('id', fup.id);
           } else {
-            // Sequence complete
             await supabase.from('active_follow_ups').update({
               status: 'completed',
               completed_at: new Date().toISOString(),
@@ -316,7 +409,6 @@ serve(async (req) => {
               email_sending_state: 'idle',
             } as any).eq('id', fup.lead_id);
 
-            // Update conversation
             await supabase.from('email_conversations')
               .update({ status: 'completed' } as any)
               .eq('sequence_id', fup.sequence_id)
@@ -343,8 +435,7 @@ serve(async (req) => {
             lead_id: fup.lead_id,
             sent_by: fup.started_by,
             provider: provider.provider_type,
-            subject,
-            body,
+            subject, body,
             status: 'failed',
             inbox_id: inboxId,
             sequence_id: fup.sequence_id,
@@ -352,7 +443,6 @@ serve(async (req) => {
             error_reason: errorReason,
           } as any);
 
-          // Mark follow-up as error
           await supabase.from('active_follow_ups').update({
             status: 'error',
             completed_at: new Date().toISOString(),
@@ -370,10 +460,10 @@ serve(async (req) => {
       }
     }
 
-    console.log(`Sequence processing complete. Processed: ${processed}, Errors: ${errors}`);
+    console.log(`Sequence processing complete. Processed: ${processed}, Errors: ${errors}, Skipped: ${skipped}`);
 
     return new Response(
-      JSON.stringify({ processed, errors, total_due: dueFollowUps.length }),
+      JSON.stringify({ processed, errors, skipped, total_due: dueFollowUps.length }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {
