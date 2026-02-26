@@ -45,6 +45,7 @@ import ReferAndEarn from "./pages/ReferAndEarn";
 import DemoWalkthrough from "./pages/DemoWalkthrough";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
+import GmailOAuthCallback from "./pages/GmailOAuthCallback";
 import { HelpWidget } from "@/components/help/HelpWidget";
 const queryClient = new QueryClient();
 
@@ -96,6 +97,7 @@ const App = () => (
                 <Route path="/example" element={<DemoWalkthrough />} />
                 <Route path="/privacy" element={<PrivacyPolicy />} />
                 <Route path="/terms" element={<TermsOfService />} />
+                <Route path="/auth/google/callback" element={<GmailOAuthCallback />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
