@@ -92,6 +92,7 @@ export function EmailConnectionsTab() {
         body: {
           workspace_id: currentWorkspace.id,
           user_id: user.id,
+          origin: window.location.origin,
         },
       });
 
