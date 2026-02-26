@@ -146,3 +146,6 @@ verify_jwt = false
 
 [functions.offer-diagnostic-ai]
 verify_jwt = false
+
+[functions.gmail-oauth-callback]
+verify_jwt = false
