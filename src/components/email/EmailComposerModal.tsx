@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Send, ChevronDown, Loader2, AlertCircle } from 'lucide-react';
+import { Send, ChevronDown, Loader2, AlertCircle, Save } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -217,6 +217,24 @@ export function EmailComposerModal({ open, onClose, lead, onEmailSent }: EmailCo
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={onClose}>Cancel</Button>
+            {subject.trim() && body.trim() && (
+              <Button variant="ghost" size="sm" onClick={async () => {
+                if (!currentWorkspace || !user) return;
+                const templateName = prompt('Template name:');
+                if (!templateName?.trim()) return;
+                await supabase.from('email_templates').insert({
+                  workspace_id: currentWorkspace.id,
+                  created_by: user.id,
+                  name: templateName,
+                  subject,
+                  body,
+                } as any);
+                toast({ title: 'Saved as template' });
+                fetchTemplates();
+              }}>
+                <Save className="h-4 w-4 mr-1" />Save as Template
+              </Button>
+            )}
             <Button onClick={handleSend} disabled={sending || !lead.email || !canSendEmail}>
               {sending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
               Send Now
