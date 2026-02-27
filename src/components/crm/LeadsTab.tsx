@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import {
-  Plus, Search, Users, Phone, Mail, MoreHorizontal, Trash2, Edit, Building2, Clock,
+  Plus, Search, Users, Phone, Mail, MoreHorizontal, Trash2, Edit, Building2, Clock, Send,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import {
 import { CRMFilters, FilterState } from '@/components/crm/CRMFilters';
 import { CRMPagination } from '@/components/crm/Pagination';
 import { LeadAssignmentDropdown } from '@/components/crm/LeadAssignmentDropdown';
+import { EmailComposerModal } from '@/components/email/EmailComposerModal';
 import { Lead, TeamMember } from '@/hooks/useCRMData';
 
 interface LeadsTabProps {
@@ -48,6 +50,8 @@ export function LeadsTab({
   onOpenLeadDetail, onEditLead, onDeleteLead, onAddLead,
   workspaceId, userId, fetchData,
 }: LeadsTabProps) {
+  const [emailLead, setEmailLead] = useState<Lead | null>(null);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
@@ -151,6 +155,11 @@ export function LeadsTab({
                         <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEditLead(lead); }}>
                           <Edit className="h-4 w-4 mr-2" /> Edit
                         </DropdownMenuItem>
+                        {lead.email && (
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEmailLead(lead); }}>
+                            <Send className="h-4 w-4 mr-2" /> Send Email
+                          </DropdownMenuItem>
+                        )}
                         {isAgencyOwner && (
                           <DropdownMenuItem
                             className="text-destructive"
@@ -208,6 +217,16 @@ export function LeadsTab({
             onPageChange={setLeadsPage}
           />
         </>
+      )}
+
+      {/* Email Composer Modal */}
+      {emailLead && (
+        <EmailComposerModal
+          open={!!emailLead}
+          onClose={() => setEmailLead(null)}
+          lead={emailLead}
+          onEmailSent={fetchData}
+        />
       )}
     </div>
   );

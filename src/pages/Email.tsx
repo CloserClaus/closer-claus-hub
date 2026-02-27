@@ -4,11 +4,12 @@ import { EmailAccountsTab } from '@/components/email/EmailAccountsTab';
 import { EmailCampaignsTab } from '@/components/email/EmailCampaignsTab';
 import { EmailConversationsTab } from '@/components/email/EmailConversationsTab';
 import { EmailSequencesTab } from '@/components/email/EmailSequencesTab';
+import { EmailTemplatesTab } from '@/components/email/EmailTemplatesTab';
 import { EmailActivityTab } from '@/components/email/EmailActivityTab';
 import { EmailAnalyticsTab } from '@/components/email/EmailAnalyticsTab';
 import { EmailSettingsTab } from '@/components/email/EmailSettingsTab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { UserCircle, Megaphone, MessageSquare, BarChart3, Settings, ListOrdered, Activity } from 'lucide-react';
+import { UserCircle, Megaphone, MessageSquare, BarChart3, Settings, ListOrdered, Activity, FileText } from 'lucide-react';
 
 export default function Email() {
   return (
@@ -25,6 +26,10 @@ export default function Email() {
               <TabsTrigger value="sequences" className="gap-2">
                 <ListOrdered className="h-4 w-4" />
                 Sequences
+              </TabsTrigger>
+              <TabsTrigger value="templates" className="gap-2">
+                <FileText className="h-4 w-4" />
+                Templates
               </TabsTrigger>
               <TabsTrigger value="campaigns" className="gap-2">
                 <Megaphone className="h-4 w-4" />
@@ -53,6 +58,9 @@ export default function Email() {
             </TabsContent>
             <TabsContent value="sequences">
               <EmailSequencesTab />
+            </TabsContent>
+            <TabsContent value="templates">
+              <EmailTemplatesTab />
             </TabsContent>
             <TabsContent value="campaigns">
               <EmailCampaignsTab />
