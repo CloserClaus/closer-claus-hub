@@ -684,12 +684,16 @@ async function saveConversation(client: any, userId: string, workspaceId: string
 }
 
 async function logEvent(client: any, userId: string, workspaceId: string, userRole: string, query: string) {
-  await client.from("system_events").insert({
-    event_type: "klaus_query",
-    actor_type: userRole === "agency_owner" ? "owner" : userRole === "platform_admin" ? "admin" : "sales_rep",
-    actor_id: userId,
-    organization_id: workspaceId,
-    object_type: "klaus",
-    metadata: { query },
-  }).catch(() => {}); // Non-blocking
+  try {
+    await client.from("system_events").insert({
+      event_type: "klaus_query",
+      actor_type: userRole === "agency_owner" ? "owner" : userRole === "platform_admin" ? "admin" : "sales_rep",
+      actor_id: userId,
+      organization_id: workspaceId,
+      object_type: "klaus",
+      metadata: { query },
+    });
+  } catch {
+    // Non-blocking, ignore errors
+  }
 }
