@@ -211,6 +211,143 @@ const TOOLS = [
       },
     },
   },
+  // ──────────────────────────────────────────────
+  // WRITE / EXECUTE TOOLS
+  // ──────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "update_leads",
+      description: "Update lead status or notes for leads matching a filter, specific IDs, or all leads. Use confirmed=false first to preview the count, then confirmed=true after user approves.",
+      parameters: {
+        type: "object",
+        properties: {
+          lead_ids: { type: "array", items: { type: "string" }, description: "Specific lead IDs to update" },
+          filter_status: { type: "string", description: "Only update leads with this current status" },
+          all: { type: "boolean", description: "If true, update ALL leads in workspace" },
+          set_status: { type: "string", description: "New status to set" },
+          set_notes: { type: "string", description: "Notes to append" },
+          confirmed: { type: "boolean", description: "Must be true to execute. False returns preview count." },
+        },
+        required: ["confirmed"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_deals",
+      description: "Move deals to a new pipeline stage. Use confirmed=false first to preview, then confirmed=true after user approves.",
+      parameters: {
+        type: "object",
+        properties: {
+          deal_ids: { type: "array", items: { type: "string" }, description: "Specific deal IDs to update" },
+          filter_stage: { type: "string", description: "Only update deals currently in this stage" },
+          all: { type: "boolean", description: "If true, update ALL deals" },
+          set_stage: { type: "string", description: "New pipeline stage to set" },
+          confirmed: { type: "boolean", description: "Must be true to execute. False returns preview count." },
+        },
+        required: ["set_stage", "confirmed"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "assign_leads_to_sdr",
+      description: "Assign leads to an SDR by their name. Use confirmed=false first to preview, then confirmed=true after user approves.",
+      parameters: {
+        type: "object",
+        properties: {
+          sdr_name: { type: "string", description: "Name of the SDR to assign leads to" },
+          lead_ids: { type: "array", items: { type: "string" }, description: "Specific lead IDs to assign" },
+          filter_unassigned: { type: "boolean", description: "If true, only assign currently unassigned leads" },
+          filter_status: { type: "string", description: "Only assign leads with this status" },
+          limit: { type: "number", description: "Max number of leads to assign" },
+          confirmed: { type: "boolean", description: "Must be true to execute. False returns preview count." },
+        },
+        required: ["sdr_name", "confirmed"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "enroll_in_sequence",
+      description: "Enroll leads in a follow-up email sequence by sequence name. Use confirmed=false first to preview, then confirmed=true after user approves.",
+      parameters: {
+        type: "object",
+        properties: {
+          sequence_name: { type: "string", description: "Name of the follow-up sequence" },
+          lead_ids: { type: "array", items: { type: "string" }, description: "Specific lead IDs to enroll" },
+          filter_status: { type: "string", description: "Only enroll leads with this status" },
+          limit: { type: "number", description: "Max leads to enroll" },
+          confirmed: { type: "boolean", description: "Must be true to execute. False returns preview count." },
+        },
+        required: ["sequence_name", "confirmed"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "send_training_to_sdr",
+      description: "Assign a training material to an SDR by sending them a notification with the training link.",
+      parameters: {
+        type: "object",
+        properties: {
+          training_title: { type: "string", description: "Title of the training material to assign" },
+          sdr_name: { type: "string", description: "Name of the SDR to send training to" },
+          confirmed: { type: "boolean", description: "Must be true to execute." },
+        },
+        required: ["training_title", "sdr_name", "confirmed"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_lead",
+      description: "Create a single new lead in the CRM.",
+      parameters: {
+        type: "object",
+        properties: {
+          first_name: { type: "string" },
+          last_name: { type: "string" },
+          email: { type: "string" },
+          company: { type: "string" },
+          phone: { type: "string" },
+          title: { type: "string" },
+        },
+        required: ["first_name"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_deal",
+      description: "Create a new deal in the CRM pipeline.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Deal title" },
+          value: { type: "number", description: "Deal value in dollars" },
+          stage: { type: "string", description: "Pipeline stage" },
+          assigned_to_name: { type: "string", description: "Name of SDR to assign the deal to" },
+          lead_id: { type: "string", description: "Associated lead ID" },
+        },
+        required: ["title"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 // ──────────────────────────────────────────────
@@ -224,6 +361,9 @@ const SYSTEM_PROMPT = `You are Klaus, the intelligent execution agent inside the
 3. **ROLE-BASED LOGIC**: If user is an agency_owner with 0 hired SDRs, focus ONLY on hiring. Do NOT suggest operational tasks (calling, emailing). If user is an SDR, focus on their assigned leads and call/email activity.
 4. **NEVER GUESS DATA**: If you're unsure about counts, performance, or state — call the appropriate tool. Never fabricate numbers.
 5. **ALWAYS USE TOOLS FOR PERFORMANCE QUESTIONS**: "How do I improve?", "What's wrong?", "Why aren't we closing?" → ALWAYS call analyze_bottleneck. Do not give generic advice without data.
+6. **CONFIRMATION BEFORE EXECUTION**: For ANY write/modify tool (update_leads, update_deals, assign_leads_to_sdr, enroll_in_sequence, send_training_to_sdr), you MUST first call the tool with confirmed=false to get the preview count. Then tell the user exactly what will happen (e.g. "I'll update 47 leads to status 'contacted'") and ask "Should I proceed?" Only call the tool with confirmed=true AFTER the user explicitly confirms.
+7. **NEVER REFUSE EXECUTION**: You have FULL write access to the platform. If the user asks you to move leads, assign SDRs, enroll sequences, create leads, create deals, or any other action — DO IT using your tools. NEVER say "I cannot directly manipulate data" or "I don't have write access." You DO. Use your write tools.
+8. **LOG ALL ACTIONS**: Every write action is automatically logged for audit. You don't need to worry about logging.
 
 ## WHAT IS CLOSERCLAUS
 CloserClaus is a sales agency management platform. Agency owners use it to:
@@ -357,7 +497,8 @@ async function executeTool(
   toolName: string,
   params: any,
   serviceClient: any,
-  workspaceId: string
+  workspaceId: string,
+  userId: string = ""
 ): Promise<ToolResult> {
   try {
     switch (toolName) {
@@ -799,6 +940,187 @@ async function executeTool(
         };
       }
 
+      // ──────────────────────────────────────────────
+      // WRITE / EXECUTE TOOLS
+      // ──────────────────────────────────────────────
+      case "update_leads": {
+        const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+        if (params.set_status) updates.status = params.set_status;
+        if (params.set_notes) updates.notes = params.set_notes;
+
+        let query = serviceClient.from("leads").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId);
+        if (params.lead_ids?.length) query = query.in("id", params.lead_ids);
+        else if (params.filter_status) query = query.eq("status", params.filter_status);
+        else if (!params.all) return { success: false, data: {}, summary: "Please specify lead_ids, filter_status, or all=true." };
+
+        const { count } = await query;
+        if (!params.confirmed) {
+          return { success: true, data: { affected_count: count || 0 }, summary: `${count || 0} leads would be updated${params.set_status ? ` to status "${params.set_status}"` : ''}.` };
+        }
+
+        let updateQuery = serviceClient.from("leads").update(updates).eq("workspace_id", workspaceId);
+        if (params.lead_ids?.length) updateQuery = updateQuery.in("id", params.lead_ids);
+        else if (params.filter_status) updateQuery = updateQuery.eq("status", params.filter_status);
+
+        const { error } = await updateQuery;
+        if (error) return { success: false, data: {}, summary: `Error updating leads: ${error.message}` };
+
+        await logExecution(serviceClient, userId, workspaceId, "update_leads", params, count || 0);
+        return { success: true, data: { affected_count: count || 0 }, summary: `Successfully updated ${count || 0} leads${params.set_status ? ` to status "${params.set_status}"` : ''}.` };
+      }
+
+      case "update_deals": {
+        const updates: Record<string, any> = { stage: params.set_stage, updated_at: new Date().toISOString() };
+
+        let query = serviceClient.from("deals").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId);
+        if (params.deal_ids?.length) query = query.in("id", params.deal_ids);
+        else if (params.filter_stage) query = query.eq("stage", params.filter_stage);
+        else if (!params.all) return { success: false, data: {}, summary: "Please specify deal_ids, filter_stage, or all=true." };
+
+        const { count } = await query;
+        if (!params.confirmed) {
+          return { success: true, data: { affected_count: count || 0 }, summary: `${count || 0} deals would be moved to "${params.set_stage}".` };
+        }
+
+        let updateQuery = serviceClient.from("deals").update(updates).eq("workspace_id", workspaceId);
+        if (params.deal_ids?.length) updateQuery = updateQuery.in("id", params.deal_ids);
+        else if (params.filter_stage) updateQuery = updateQuery.eq("stage", params.filter_stage);
+
+        const { error } = await updateQuery;
+        if (error) return { success: false, data: {}, summary: `Error updating deals: ${error.message}` };
+
+        await logExecution(serviceClient, userId, workspaceId, "update_deals", params, count || 0);
+        return { success: true, data: { affected_count: count || 0 }, summary: `Successfully moved ${count || 0} deals to "${params.set_stage}".` };
+      }
+
+      case "assign_leads_to_sdr": {
+        const { data: members } = await serviceClient.from("workspace_members").select("user_id").eq("workspace_id", workspaceId).is("removed_at", null);
+        if (!members?.length) return { success: false, data: {}, summary: "No team members found in this workspace." };
+        
+        const memberIds = members.map((m: any) => m.user_id);
+        const { data: profiles } = await serviceClient.from("profiles").select("id, full_name").in("id", memberIds);
+        const sdr = profiles?.find((p: any) => p.full_name?.toLowerCase().includes(params.sdr_name.toLowerCase()));
+        if (!sdr) return { success: false, data: {}, summary: `Could not find an SDR named "${params.sdr_name}". Available: ${profiles?.map((p: any) => p.full_name).join(', ') || 'none'}.` };
+
+        let query = serviceClient.from("leads").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId);
+        if (params.lead_ids?.length) query = query.in("id", params.lead_ids);
+        else {
+          if (params.filter_unassigned) query = query.is("assigned_to", null);
+          if (params.filter_status) query = query.eq("status", params.filter_status);
+        }
+        const { count } = await query;
+        const effectiveCount = params.limit ? Math.min(count || 0, params.limit) : (count || 0);
+
+        if (!params.confirmed) {
+          return { success: true, data: { affected_count: effectiveCount, sdr_name: sdr.full_name }, summary: `${effectiveCount} leads would be assigned to ${sdr.full_name}.` };
+        }
+
+        if (params.limit && !params.lead_ids?.length) {
+          let idQuery = serviceClient.from("leads").select("id").eq("workspace_id", workspaceId);
+          if (params.filter_unassigned) idQuery = idQuery.is("assigned_to", null);
+          if (params.filter_status) idQuery = idQuery.eq("status", params.filter_status);
+          const { data: leadRows } = await idQuery.limit(params.limit);
+          const ids = leadRows?.map((l: any) => l.id) || [];
+          if (ids.length > 0) await serviceClient.from("leads").update({ assigned_to: sdr.id, updated_at: new Date().toISOString() }).eq("workspace_id", workspaceId).in("id", ids);
+        } else {
+          let uq = serviceClient.from("leads").update({ assigned_to: sdr.id, updated_at: new Date().toISOString() }).eq("workspace_id", workspaceId);
+          if (params.lead_ids?.length) uq = uq.in("id", params.lead_ids);
+          else {
+            if (params.filter_unassigned) uq = uq.is("assigned_to", null);
+            if (params.filter_status) uq = uq.eq("status", params.filter_status);
+          }
+          await uq;
+        }
+
+        await logExecution(serviceClient, userId, workspaceId, "assign_leads_to_sdr", { ...params, sdr_id: sdr.id }, effectiveCount);
+        return { success: true, data: { affected_count: effectiveCount }, summary: `Successfully assigned ${effectiveCount} leads to ${sdr.full_name}.` };
+      }
+
+      case "enroll_in_sequence": {
+        const { data: sequences } = await serviceClient.from("follow_up_sequences").select("id, name").eq("workspace_id", workspaceId);
+        const seq = sequences?.find((s: any) => s.name.toLowerCase().includes(params.sequence_name.toLowerCase()));
+        if (!seq) return { success: false, data: {}, summary: `Could not find sequence "${params.sequence_name}". Available: ${sequences?.map((s: any) => s.name).join(', ') || 'none'}.` };
+
+        let leadQuery = serviceClient.from("leads").select("id").eq("workspace_id", workspaceId);
+        if (params.lead_ids?.length) leadQuery = leadQuery.in("id", params.lead_ids);
+        else if (params.filter_status) leadQuery = leadQuery.eq("status", params.filter_status);
+        if (params.limit) leadQuery = leadQuery.limit(params.limit);
+        const { data: leads } = await leadQuery;
+        const leadIds = leads?.map((l: any) => l.id) || [];
+
+        if (!params.confirmed) {
+          return { success: true, data: { affected_count: leadIds.length, sequence_name: seq.name }, summary: `${leadIds.length} leads would be enrolled in sequence "${seq.name}".` };
+        }
+
+        const { data: existing } = await serviceClient.from("active_follow_ups").select("lead_id").eq("sequence_id", seq.id).eq("status", "active").in("lead_id", leadIds);
+        const existingIds = new Set(existing?.map((e: any) => e.lead_id) || []);
+        const newLeadIds = leadIds.filter((id: string) => !existingIds.has(id));
+
+        if (newLeadIds.length > 0) {
+          await serviceClient.from("active_follow_ups").insert(newLeadIds.map((leadId: string) => ({
+            lead_id: leadId, sequence_id: seq.id, workspace_id: workspaceId, started_by: userId, status: "active", current_step: 0,
+          })));
+        }
+
+        await logExecution(serviceClient, userId, workspaceId, "enroll_in_sequence", { ...params, sequence_id: seq.id }, newLeadIds.length);
+        return { success: true, data: { enrolled: newLeadIds.length, skipped: existingIds.size }, summary: `Enrolled ${newLeadIds.length} leads in "${seq.name}"${existingIds.size > 0 ? ` (${existingIds.size} skipped, already enrolled)` : ''}.` };
+      }
+
+      case "send_training_to_sdr": {
+        const { data: trainings } = await serviceClient.from("training_materials").select("id, title").eq("workspace_id", workspaceId);
+        const training = trainings?.find((t: any) => t.title.toLowerCase().includes(params.training_title.toLowerCase()));
+        if (!training) return { success: false, data: {}, summary: `Could not find training "${params.training_title}". Available: ${trainings?.map((t: any) => t.title).join(', ') || 'none'}.` };
+
+        const { data: members } = await serviceClient.from("workspace_members").select("user_id").eq("workspace_id", workspaceId).is("removed_at", null);
+        const memberIds = members?.map((m: any) => m.user_id) || [];
+        const { data: profiles } = memberIds.length ? await serviceClient.from("profiles").select("id, full_name").in("id", memberIds) : { data: [] };
+        const sdr = profiles?.find((p: any) => p.full_name?.toLowerCase().includes(params.sdr_name.toLowerCase()));
+        if (!sdr) return { success: false, data: {}, summary: `Could not find SDR named "${params.sdr_name}".` };
+
+        if (!params.confirmed) {
+          return { success: true, data: { training_title: training.title, sdr_name: sdr.full_name }, summary: `Training "${training.title}" would be sent to ${sdr.full_name}.` };
+        }
+
+        await serviceClient.from("notifications").insert({
+          user_id: sdr.id, workspace_id: workspaceId, type: "training_assigned",
+          title: "New Training Assigned", message: `You've been assigned: "${training.title}". Check the Training page.`,
+          data: { training_id: training.id, training_title: training.title },
+        });
+
+        await logExecution(serviceClient, userId, workspaceId, "send_training_to_sdr", { training_id: training.id, sdr_id: sdr.id }, 1);
+        return { success: true, data: {}, summary: `Training "${training.title}" assigned to ${sdr.full_name}. They'll see a notification.` };
+      }
+
+      case "create_lead": {
+        const { data: newLead, error } = await serviceClient.from("leads").insert({
+          workspace_id: workspaceId, first_name: params.first_name || "", last_name: params.last_name || "",
+          email: params.email || null, company: params.company || null, phone: params.phone || null, title: params.title || null, status: "new",
+        }).select("id, first_name, last_name").single();
+        if (error) return { success: false, data: {}, summary: `Error creating lead: ${error.message}` };
+        await logExecution(serviceClient, userId, workspaceId, "create_lead", params, 1);
+        return { success: true, data: { lead: newLead }, summary: `Created lead: ${params.first_name} ${params.last_name || ''}${params.company ? ` at ${params.company}` : ''}.` };
+      }
+
+      case "create_deal": {
+        let assignedTo = userId;
+        if (params.assigned_to_name) {
+          const { data: members } = await serviceClient.from("workspace_members").select("user_id").eq("workspace_id", workspaceId).is("removed_at", null);
+          const memberIds = members?.map((m: any) => m.user_id) || [];
+          if (memberIds.length) {
+            const { data: profiles } = await serviceClient.from("profiles").select("id, full_name").in("id", memberIds);
+            const sdr = profiles?.find((p: any) => p.full_name?.toLowerCase().includes(params.assigned_to_name.toLowerCase()));
+            if (sdr) assignedTo = sdr.id;
+          }
+        }
+        const { data: newDeal, error } = await serviceClient.from("deals").insert({
+          workspace_id: workspaceId, title: params.title, value: params.value || 0,
+          stage: params.stage || "prospect", assigned_to: assignedTo, lead_id: params.lead_id || null,
+        }).select("id, title, value, stage").single();
+        if (error) return { success: false, data: {}, summary: `Error creating deal: ${error.message}` };
+        await logExecution(serviceClient, userId, workspaceId, "create_deal", params, 1);
+        return { success: true, data: { deal: newDeal }, summary: `Created deal: "${params.title}" worth $${(params.value || 0).toLocaleString()} in ${params.stage || 'prospect'} stage.` };
+      }
+
       default:
         return { success: false, data: {}, summary: `Unknown tool: ${toolName}` };
     }
@@ -920,7 +1242,7 @@ Deno.serve(async (req: Request) => {
         messages: aiMessages,
         tools: TOOLS,
         temperature: 0.3,
-        max_tokens: 2000,
+        max_tokens: 3000,
       }),
     });
 
@@ -942,7 +1264,7 @@ Deno.serve(async (req: Request) => {
       }
 
       // Fallback
-      const fallbackResult = await executeTool("get_platform_state", {}, serviceClient, workspace_id);
+      const fallbackResult = await executeTool("get_platform_state", {}, serviceClient, workspace_id, user.id);
       const fallbackResponse = `I'm having trouble with my AI capabilities, but here's your current platform state:\n\n${fallbackResult.summary}`;
 
       await saveConversation(serviceClient, user.id, workspace_id, message, fallbackResponse);
@@ -964,7 +1286,7 @@ Deno.serve(async (req: Request) => {
           fnArgs = JSON.parse(toolCall.function?.arguments || "{}");
         } catch { /* empty args */ }
         
-        const result = await executeTool(fnName, fnArgs, serviceClient, workspace_id);
+        const result = await executeTool(fnName, fnArgs, serviceClient, workspace_id, user.id);
         toolResults.push(result);
       }
 
@@ -989,7 +1311,7 @@ Deno.serve(async (req: Request) => {
             ...toolResultMessages,
           ],
           temperature: 0.3,
-          max_tokens: 2000,
+          max_tokens: 3000,
         }),
       });
 
@@ -1047,6 +1369,21 @@ async function logEvent(client: any, userId: string, workspaceId: string, userRo
       organization_id: workspaceId,
       object_type: "klaus",
       metadata: { query },
+    });
+  } catch {
+    // Non-blocking
+  }
+}
+
+async function logExecution(client: any, userId: string, workspaceId: string, action: string, params: any, affectedCount: number) {
+  try {
+    await client.from("system_events").insert({
+      event_type: "klaus_execution",
+      actor_type: "system",
+      actor_id: userId,
+      organization_id: workspaceId,
+      object_type: "klaus",
+      metadata: { action, params, affected_count: affectedCount },
     });
   } catch {
     // Non-blocking
