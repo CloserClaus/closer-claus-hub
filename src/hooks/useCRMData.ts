@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useToast } from '@/hooks/use-toast';
 import { FilterState } from '@/components/crm/CRMFilters';
+import { trackEvent } from '@/lib/eventBus';
 
 export interface Lead {
   id: string;
@@ -335,8 +336,10 @@ export function useCRMData() {
     if (selectedLeadIds.size === 0) return;
     setIsBulkProcessing(true);
     try {
-      const { error } = await supabase.from('leads').delete().in('id', Array.from(selectedLeadIds));
+      const ids = Array.from(selectedLeadIds);
+      const { error } = await supabase.from('leads').delete().in('id', ids);
       if (error) throw error;
+      ids.forEach(id => trackEvent({ event_type: 'lead_deleted', actor_type: 'owner', actor_id: user?.id, organization_id: currentWorkspace?.id, object_type: 'lead', object_id: id }));
       toast({ title: `Deleted ${selectedLeadIds.size} leads` });
       setSelectedLeadIds(new Set());
       fetchData();
@@ -378,6 +381,8 @@ export function useCRMData() {
 
       if (error) throw error;
 
+      dealIds.forEach(id => trackEvent({ event_type: 'deal_stage_changed', actor_type: 'owner', actor_id: user?.id, organization_id: currentWorkspace?.id, object_type: 'deal', object_id: id, metadata: { new_stage: stage } }));
+
       if (stage === 'closed_won' && currentWorkspace) {
         for (const dealId of dealIds) {
           try {
@@ -400,18 +405,20 @@ export function useCRMData() {
     }
   };
 
-  const handleBulkAssignLeads = async (userId: string | null) => {
+  const handleBulkAssignLeads = async (assignToUserId: string | null) => {
     if (selectedLeadIds.size === 0) return;
     setIsBulkProcessing(true);
     try {
       const leadIdsArray = Array.from(selectedLeadIds);
-      const { error } = await supabase.from('leads').update({ assigned_to: userId }).in('id', leadIdsArray);
+      const { error } = await supabase.from('leads').update({ assigned_to: assignToUserId }).in('id', leadIdsArray);
       if (error) throw error;
 
-      if (userId && currentWorkspace) {
+      leadIdsArray.forEach(id => trackEvent({ event_type: 'lead_assigned', actor_type: 'owner', actor_id: user?.id, organization_id: currentWorkspace?.id, object_type: 'lead', object_id: id, metadata: { assigned_to: assignToUserId } }));
+
+      if (assignToUserId && currentWorkspace) {
         try {
           await supabase.functions.invoke('send-lead-assignment-email', {
-            body: { sdrId: userId, leadIds: leadIdsArray, workspaceId: currentWorkspace.id, assignedBy: user?.id },
+            body: { sdrId: assignToUserId, leadIds: leadIdsArray, workspaceId: currentWorkspace.id, assignedBy: user?.id },
           });
         } catch (emailError) {
           console.error('Failed to send lead assignment email:', emailError);
@@ -420,7 +427,7 @@ export function useCRMData() {
 
       toast({
         title: `Assigned ${selectedLeadIds.size} leads`,
-        description: userId ? 'Leads assigned to team member (email notification sent)' : 'Leads returned to agency pool',
+        description: assignToUserId ? 'Leads assigned to team member (email notification sent)' : 'Leads returned to agency pool',
       });
       setSelectedLeadIds(new Set());
       fetchData();

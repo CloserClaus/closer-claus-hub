@@ -28,6 +28,7 @@ import { PurchasesSection } from '@/components/admin/PurchasesSection';
 import { OfferDiagnosticLeadsTable } from '@/components/admin/OfferDiagnosticLeadsTable';
 import { SiteAnalytics } from '@/components/admin/SiteAnalytics';
 import { AdminEmailTrackingTable } from '@/components/admin/AdminEmailTrackingTable';
+import { EventInspector } from '@/components/admin/EventInspector';
 
 const tabTitles: Record<string, string> = {
   overview: 'Platform Overview',
@@ -55,6 +56,7 @@ const tabTitles: Record<string, string> = {
   features: 'Feature Requests',
   referrals: 'Referrals',
   diagnostic_leads: 'Diagnostic Leads',
+  events: 'Event Inspector',
   settings: 'Admin Controls',
 };
 
@@ -127,6 +129,8 @@ export default function AdminDashboard() {
         return <ReferralsTable />;
       case 'diagnostic_leads':
         return <OfferDiagnosticLeadsTable />;
+      case 'events':
+        return <EventInspector />;
       case 'settings':
         return <AdminSettings />;
       default:

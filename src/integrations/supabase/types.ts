@@ -2115,6 +2115,66 @@ export type Database = {
           },
         ]
       }
+      klaus_conversations: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          organization_id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          organization_id: string
+          role: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          organization_id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      klaus_memory: {
+        Row: {
+          created_at: string
+          id: string
+          memory_key: string
+          memory_type: string
+          memory_value: Json
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          memory_key: string
+          memory_type: string
+          memory_value?: Json
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          memory_key?: string
+          memory_type?: string
+          memory_value?: Json
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lead_credit_purchases: {
         Row: {
           created_at: string | null
@@ -3059,6 +3119,42 @@ export type Database = {
           updated_at?: string
           user_email?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      system_events: {
+        Row: {
+          actor_id: string | null
+          actor_type: string
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          object_id: string | null
+          object_type: string | null
+          organization_id: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_type?: string
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          object_id?: string | null
+          object_type?: string | null
+          organization_id?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          actor_type?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          object_id?: string | null
+          object_type?: string | null
+          organization_id?: string | null
         }
         Relationships: []
       }
