@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HelpCircle, Mail, Bug, Lightbulb, X, ChevronUp, ExternalLink } from "lucide-react";
+import { HelpCircle, Mail, Bug, Lightbulb, X, ChevronUp, ExternalLink, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -8,9 +8,10 @@ import {
 } from "@/components/ui/popover";
 import { BugReportForm } from "./BugReportForm";
 import { FeatureHub } from "./FeatureHub";
+import { KlausChat } from "@/components/klaus/KlausChat";
 import { useAuth } from "@/hooks/useAuth";
 
-type ActivePanel = null | "bug" | "feature";
+type ActivePanel = null | "bug" | "feature" | "klaus";
 
 export function HelpWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -53,6 +54,20 @@ export function HelpWidget() {
           {activePanel === null ? (
             <div className="p-4 space-y-2">
               <h3 className="font-semibold text-lg mb-4">How can we help?</h3>
+
+              <button
+                onClick={() => setActivePanel("klaus")}
+                className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
+              >
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Bot className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="font-medium">Ask Klaus</p>
+                  <p className="text-sm text-muted-foreground">Ask anything or tell him what to do…</p>
+                </div>
+                <ChevronUp className="h-4 w-4 ml-auto text-muted-foreground rotate-90" />
+              </button>
               
               <button
                 onClick={handleContactSupport}
@@ -96,6 +111,8 @@ export function HelpWidget() {
                 <ChevronUp className="h-4 w-4 ml-auto text-muted-foreground rotate-90" />
               </button>
             </div>
+          ) : activePanel === "klaus" ? (
+            <KlausChat onBack={() => setActivePanel(null)} />
           ) : activePanel === "bug" ? (
             <BugReportForm onClose={handleClose} onBack={() => setActivePanel(null)} />
           ) : (

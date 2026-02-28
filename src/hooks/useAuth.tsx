@@ -2,6 +2,7 @@ import { useState, useEffect, createContext, useContext, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
+import { trackEvent } from '@/lib/eventBus';
 
 type AppRole = Database['public']['Enums']['app_role'];
 
@@ -111,15 +112,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error, data } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+    
+    if (!error && data.user) {
+      trackEvent({
+        event_type: 'login',
+        actor_type: 'system',
+        actor_id: data.user.id,
+        metadata: { method: 'password' },
+      });
+    }
     
     return { error };
   };
 
   const signOut = async () => {
+    if (user) {
+      trackEvent({
+        event_type: 'logout',
+        actor_type: 'system',
+        actor_id: user.id,
+      });
+    }
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
