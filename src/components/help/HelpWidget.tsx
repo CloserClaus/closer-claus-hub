@@ -35,118 +35,138 @@ export function HelpWidget() {
   const openKlaus = () => {
     setKlausOpen(true);
     setKlausMinimized(false);
-    setIsOpen(false); // close popover
+    setIsOpen(false);
   };
+
+  const handleHelpButtonClick = () => {
+    if (klausOpen && klausMinimized) {
+      // Restore Klaus instead of opening popover
+      setKlausMinimized(false);
+    } else if (!klausOpen) {
+      setIsOpen(!isOpen);
+    }
+  };
+
+  const closeKlaus = () => {
+    setKlausOpen(false);
+    setKlausMinimized(false);
+  };
+
+  const minimizeKlaus = () => {
+    setKlausMinimized(true);
+  };
+
+  // Determine button icon
+  const showBotIcon = klausOpen;
 
   return (
     <>
       {/* Main help button + popover */}
       <div className="fixed bottom-20 right-4 md:bottom-4 z-50">
-        <Popover open={isOpen} onOpenChange={setIsOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              size="lg"
-              className="rounded-full h-14 w-14 shadow-lg hover:shadow-xl transition-shadow"
+        {klausOpen && !klausMinimized ? (
+          // When Klaus is fully open, hide the help button — Klaus panel is visible
+          null
+        ) : (
+          <Popover open={isOpen && !klausOpen} onOpenChange={(open) => {
+            if (!klausOpen) setIsOpen(open);
+          }}>
+            <PopoverTrigger asChild>
+              <Button
+                size="lg"
+                className="rounded-full h-14 w-14 shadow-lg hover:shadow-xl transition-shadow"
+                onClick={handleHelpButtonClick}
+              >
+                {isOpen ? (
+                  <X className="h-6 w-6" />
+                ) : showBotIcon ? (
+                  <Bot className="h-6 w-6" />
+                ) : (
+                  <HelpCircle className="h-6 w-6" />
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="top"
+              align="end"
+              className="w-96 p-0 mb-2 bg-popover border border-border"
+              sideOffset={8}
             >
-              {isOpen ? (
-                <X className="h-6 w-6" />
+              {activePanel === null ? (
+                <div className="p-4 space-y-2">
+                  <h3 className="font-semibold text-lg mb-4">How can we help?</h3>
+
+                  <button
+                    onClick={openKlaus}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
+                  >
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Bot className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Ask Klaus</p>
+                      <p className="text-sm text-muted-foreground">Ask anything or tell him what to do…</p>
+                    </div>
+                    <ChevronUp className="h-4 w-4 ml-auto text-muted-foreground rotate-90" />
+                  </button>
+                  
+                  <button
+                    onClick={handleContactSupport}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
+                  >
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Mail className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Contact Support</p>
+                      <p className="text-sm text-muted-foreground">Email us for help</p>
+                    </div>
+                    <ExternalLink className="h-4 w-4 ml-auto text-muted-foreground" />
+                  </button>
+
+                  <button
+                    onClick={() => setActivePanel("bug")}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
+                  >
+                    <div className="h-10 w-10 rounded-full bg-destructive/10 flex items-center justify-center">
+                      <Bug className="h-5 w-5 text-destructive" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Report a Bug</p>
+                      <p className="text-sm text-muted-foreground">Something not working?</p>
+                    </div>
+                    <ChevronUp className="h-4 w-4 ml-auto text-muted-foreground rotate-90" />
+                  </button>
+
+                  <button
+                    onClick={() => setActivePanel("feature")}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
+                  >
+                    <div className="h-10 w-10 rounded-full bg-amber-500/10 flex items-center justify-center">
+                      <Lightbulb className="h-5 w-5 text-amber-500" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Features & Updates</p>
+                      <p className="text-sm text-muted-foreground">Vote, roadmap & changelog</p>
+                    </div>
+                    <ChevronUp className="h-4 w-4 ml-auto text-muted-foreground rotate-90" />
+                  </button>
+                </div>
+              ) : activePanel === "bug" ? (
+                <BugReportForm onClose={handleClose} onBack={() => setActivePanel(null)} />
               ) : (
-                <HelpCircle className="h-6 w-6" />
+                <FeatureHub onClose={handleClose} onBack={() => setActivePanel(null)} />
               )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            side="top"
-            align="end"
-            className="w-96 p-0 mb-2 bg-popover border border-border"
-            sideOffset={8}
-          >
-            {activePanel === null ? (
-              <div className="p-4 space-y-2">
-                <h3 className="font-semibold text-lg mb-4">How can we help?</h3>
-
-                <button
-                  onClick={openKlaus}
-                  className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
-                >
-                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Bot className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Ask Klaus</p>
-                    <p className="text-sm text-muted-foreground">Ask anything or tell him what to do…</p>
-                  </div>
-                  <ChevronUp className="h-4 w-4 ml-auto text-muted-foreground rotate-90" />
-                </button>
-                
-                <button
-                  onClick={handleContactSupport}
-                  className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
-                >
-                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Mail className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Contact Support</p>
-                    <p className="text-sm text-muted-foreground">Email us for help</p>
-                  </div>
-                  <ExternalLink className="h-4 w-4 ml-auto text-muted-foreground" />
-                </button>
-
-                <button
-                  onClick={() => setActivePanel("bug")}
-                  className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
-                >
-                  <div className="h-10 w-10 rounded-full bg-destructive/10 flex items-center justify-center">
-                    <Bug className="h-5 w-5 text-destructive" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Report a Bug</p>
-                    <p className="text-sm text-muted-foreground">Something not working?</p>
-                  </div>
-                  <ChevronUp className="h-4 w-4 ml-auto text-muted-foreground rotate-90" />
-                </button>
-
-                <button
-                  onClick={() => setActivePanel("feature")}
-                  className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
-                >
-                  <div className="h-10 w-10 rounded-full bg-amber-500/10 flex items-center justify-center">
-                    <Lightbulb className="h-5 w-5 text-amber-500" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Features & Updates</p>
-                    <p className="text-sm text-muted-foreground">Vote, roadmap & changelog</p>
-                  </div>
-                  <ChevronUp className="h-4 w-4 ml-auto text-muted-foreground rotate-90" />
-                </button>
-              </div>
-            ) : activePanel === "bug" ? (
-              <BugReportForm onClose={handleClose} onBack={() => setActivePanel(null)} />
-            ) : (
-              <FeatureHub onClose={handleClose} onBack={() => setActivePanel(null)} />
-            )}
-          </PopoverContent>
-        </Popover>
+            </PopoverContent>
+          </Popover>
+        )}
       </div>
 
-      {/* Klaus floating window — rendered outside popover */}
+      {/* Klaus floating panel — rendered outside popover, anchored bottom-right */}
       {klausOpen && !klausMinimized && (
         <KlausChat
-          onClose={() => setKlausOpen(false)}
-          onMinimize={() => setKlausMinimized(true)}
+          onClose={closeKlaus}
+          onMinimize={minimizeKlaus}
         />
-      )}
-
-      {/* Klaus minimized pill */}
-      {klausOpen && klausMinimized && (
-        <button
-          onClick={() => setKlausMinimized(false)}
-          className="fixed bottom-20 right-20 md:bottom-4 md:right-20 z-[60] flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl transition-shadow text-sm font-medium"
-        >
-          <Bot className="h-4 w-4" />
-          Klaus
-        </button>
       )}
     </>
   );
