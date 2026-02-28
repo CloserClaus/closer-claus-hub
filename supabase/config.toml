@@ -149,3 +149,9 @@ verify_jwt = false
 
 [functions.gmail-oauth-callback]
 verify_jwt = false
+
+[functions.klaus]
+verify_jwt = false
+
+[functions.klaus-ai]
+verify_jwt = false

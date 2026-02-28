@@ -60,17 +60,28 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // User client for auth
-    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader || "" } },
-    });
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
-    if (authError || !user) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // User client for auth
+    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: authError } = await userClient.auth.getClaims(token);
+    if (authError || !claimsData?.claims) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const user = { id: claimsData.claims.sub as string };
 
     // Service client for data access
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
@@ -324,8 +335,8 @@ Deno.serve(async (req: Request) => {
       { role: "user", content: message },
     ];
 
-    // Call AI via Lovable AI proxy
-    const aiResponse = await fetch("https://xlgzxmzejlshsgeiidsz.supabase.co/functions/v1/klaus-ai", {
+    // Call AI via klaus-ai edge function
+    const aiResponse = await fetch(`${supabaseUrl}/functions/v1/klaus-ai`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
