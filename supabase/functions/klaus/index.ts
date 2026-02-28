@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 // ──────────────────────────────────────────────
-// TOOL DEFINITIONS (for AI tool-calling)
+// TOOL DEFINITIONS
 // ──────────────────────────────────────────────
 const TOOLS = [
   {
@@ -21,6 +21,7 @@ const TOOLS = [
           count_only: { type: "boolean", description: "If true, return only the count" },
           status: { type: "string", description: "Filter by lead status" },
           assigned_to_name: { type: "string", description: "Filter by SDR name" },
+          unassigned_only: { type: "boolean", description: "If true, return only leads with no assigned_to" },
           limit: { type: "number", description: "Max results to return (default 10)" },
         },
         required: [],
@@ -53,7 +54,7 @@ const TOOLS = [
       parameters: {
         type: "object",
         properties: {
-          time_range: { type: "string", description: "Natural language time range like 'today', 'this week', 'last 3 days'" },
+          time_range: { type: "string", description: "Natural language time range like 'today', 'this week', 'last 30 days'" },
           caller_name: { type: "string", description: "Filter by caller/SDR name" },
           count_only: { type: "boolean" },
         },
@@ -128,10 +129,83 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_platform_state",
-      description: "Get a comprehensive overview of the workspace state for onboarding or 'what should I do' questions.",
+      description: "Get a comprehensive overview of the workspace state including jobs, applications, SDRs, offer diagnostic, leads assignment, scripts, sequences — everything needed to determine the correct next steps for the agency.",
       parameters: {
         type: "object",
         properties: {},
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "query_jobs",
+      description: "Query job postings in the workspace.",
+      parameters: {
+        type: "object",
+        properties: {
+          count_only: { type: "boolean" },
+          active_only: { type: "boolean", description: "If true, only return active jobs" },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "query_applications",
+      description: "Query job applications with status filter.",
+      parameters: {
+        type: "object",
+        properties: {
+          count_only: { type: "boolean" },
+          status: { type: "string", enum: ["pending", "accepted", "rejected", "interviewing"] },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "query_offer_diagnostic",
+      description: "Check if the agency has completed the Offer Diagnostic and retrieve the results/recommendations.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "query_training",
+      description: "Query training materials available in the workspace.",
+      parameters: {
+        type: "object",
+        properties: { count_only: { type: "boolean" } },
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "analyze_bottleneck",
+      description: "Run a comprehensive KPI analysis across calls, emails, deals to find the #1 performance bottleneck and provide actionable advice. Use this when users ask 'how do I get better results', 'why aren't we closing', 'what's wrong', etc.",
+      parameters: {
+        type: "object",
+        properties: {
+          time_range: { type: "string", description: "Analysis period, default 'last 30 days'" },
+        },
         required: [],
         additionalProperties: false,
       },
@@ -144,38 +218,88 @@ const TOOLS = [
 // ──────────────────────────────────────────────
 const SYSTEM_PROMPT = `You are Klaus, the intelligent execution agent inside the CloserClaus platform.
 
-## Your Role
-You are a platform-aware operator — not a generic chatbot. You help users get the most out of CloserClaus by analyzing their data, executing tasks, and guiding them through the platform.
+## WHAT IS CLOSERCLAUS
+CloserClaus is a sales agency management platform. Agency owners use it to:
+1. Define their offer and ideal customer profile (Offer Diagnostic)
+2. Post jobs to attract and hire SDRs (Sales Development Representatives)
+3. Import leads and assign them to SDRs
+4. Equip SDRs with call scripts (generated from Offer Diagnostic via Script Builder) and email sequences
+5. SDRs make cold calls via the built-in Dialer and send follow-up emails
+6. When prospects convert, SDRs create deals in the CRM pipeline
+7. Deals progress through stages: prospect → qualified → proposal → negotiation → closed_won
+8. Agency sends contracts, collects payments, and SDRs earn commissions
 
-## Core Behaviors
-1. **Data-Driven**: Always base your responses on actual platform data. Use tools to query real data before answering.
-2. **Action-Oriented**: When a user asks what to do, give specific, prioritized next steps based on their current state.
-3. **Proactive Guidance**: If you detect the user is new (few leads, no calls, no sequences), shift into onboarding mode and walk them through setup.
-4. **Natural Language Only**: Never expose JSON, tool names, internal IDs, or technical details to the user. Always respond in clear, human-friendly language.
-5. **Contextual Memory**: Reference previous conversation context to provide continuity.
+SDRs use the platform to:
+1. Browse and apply to agency job postings
+2. Receive assigned leads from their agency
+3. Use the Dialer to cold-call leads with provided scripts
+4. Send email follow-ups via sequences
+5. Move leads through the pipeline, close deals
+6. Request contracts for closed deals
+7. Earn commissions based on deal value
 
-## When Users Ask "What should I do?" or need guidance:
-- Use get_platform_state to assess their workspace
-- Identify gaps (no leads? no scripts? no sequences? no calls?)
-- Provide numbered, actionable next steps
-- Offer to help execute the first step
+## CORRECT ONBOARDING FLOW FOR AGENCY OWNERS
+This is the exact priority order. Always recommend the FIRST incomplete step:
+1. **Complete Offer Diagnostic** — Defines the offer, ICP, pricing, and dream outcome. This is the foundation. Without it, scripts and outreach will be generic and ineffective. Navigate to /offer-diagnostic.
+2. **Use Script Builder** — After diagnostic, generate a cold call script and tactical playbook tailored to the offer. Navigate to /script-builder.
+3. **Post a Job** — Create a job listing to attract SDRs who will do the outbound work. Navigate to /jobs and click "Post a Job".
+4. **Review & Hire SDR Applicants** — Check applications, interview, and accept SDRs. Navigate to /jobs and review applications.
+5. **Import Leads** — Add prospects to the CRM via CSV upload or Apollo search. Navigate to /leads for Apollo search or /crm for CSV import.
+6. **Assign Leads to SDRs** — Distribute leads among hired SDRs so they can start working. In /crm, select leads and use bulk assign.
+7. **Create Email Follow-up Sequences** — Set up automated email sequences for leads that don't pick up calls. Navigate to /email.
+8. **SDRs Start Dialing** — Once scripts, leads, and sequences are ready, SDRs begin cold calling. They use /dialer.
+9. **Monitor Performance** — Track calls, connect rates, meetings, and deals. Use the Dashboard or ask Klaus to analyze bottlenecks.
 
-## For Data Questions:
-- Use the appropriate query tool
-- Present results with clear formatting (numbers, percentages, rankings)
-- Add brief insights when relevant (e.g., "Your connect rate is above average")
+## PERFORMANCE BOTTLENECK ANALYSIS
+When users ask "how do I improve results" or "what's wrong", use the analyze_bottleneck tool and interpret results:
 
-## For Action Requests:
-- Describe what you'll do and how many records are affected
-- Ask for confirmation before destructive or mass operations
-- Report the result after execution
+**Benchmarks (industry standard for cold outbound):**
+- Connect rate (calls answered / total calls): 15-25% is normal
+- 2+ minute calls (meaningful conversations / connects): 30-50% is good
+- Meeting set rate: 5-10% of meaningful conversations
+- Email open rate: 20-40% is healthy
+- Email reply rate: 2-5% is normal
 
-## Important Rules:
-- Never say "I don't have access" if you have tools available — use them
-- Never output raw JSON or tool call syntax
-- Never mention tool names or internal system details
-- If data is empty, explain what that means and suggest how to populate it
-- Keep responses concise but complete`;
+**Diagnosis framework:**
+- Connect rate < 15% → Bad phone data, wrong calling times, or caller ID issues
+- 2+ min calls < 30% of connects → Weak opener. Fix the first 10 seconds of the script. The pattern interrupt and permission check need work.
+- Lots of 2+ min calls but few meetings → Weak pitch or qualification. SDR is engaging but not converting. Fix the relevance hypothesis and micro-commitment in the script.
+- Email opens < 20% → Subject lines are too generic or spammy
+- Email replies < 2% → Email body lacks personalization or clear CTA
+- Deals stalling in pipeline → Follow-up cadence is too slow or contracts aren't being sent
+
+## PLATFORM FEATURES MAP
+- **/dashboard** — Overview stats, recent activity
+- **/crm** — Leads & deals management, pipeline board, CSV import, bulk actions
+- **/leads** — Apollo lead search, saved leads, lead lists
+- **/dialer** — Power dialer, call scripts, call recordings, dial pad
+- **/email** — Email accounts, campaigns, sequences, templates, conversations
+- **/jobs** — Post jobs, review applications
+- **/contracts** — Send and track contracts for closed deals
+- **/commissions** — Track SDR commissions and payouts
+- **/offer-diagnostic** — Evaluate offer readiness for cold outbound
+- **/script-builder** — Generate call scripts from Offer Diagnostic
+- **/training** — Training materials for SDRs
+- **/settings** — Workspace settings, billing, integrations
+- **/conversations** — Internal team messaging
+
+## YOUR ROLE & BEHAVIOR
+1. **Data-Driven**: Always use tools to query real data before answering. Never guess.
+2. **Action-Oriented**: Give specific, prioritized next steps based on current state.
+3. **Platform Expert**: You know every feature and the correct order to use them.
+4. **Proactive**: Detect gaps and recommend fixes before being asked.
+5. **Natural Language Only**: Never expose JSON, tool names, IDs, or technical details.
+6. **Concise but Complete**: Be direct. No filler. Format with markdown for readability.
+7. **Context-Aware**: Consider the user's role (agency_owner vs sdr) when giving advice.
+
+## IMPORTANT RULES
+- When a user asks "what should I do next" → ALWAYS call get_platform_state first
+- When a user asks about performance → Use analyze_bottleneck
+- When mentioning navigation, use the page name (e.g., "Go to the CRM page" not "/crm")
+- Never say "I don't have access" if you have tools — use them
+- If data is empty, explain what it means and what to do about it
+- For agency owners: always think about the full pipeline (offer → jobs → SDRs → leads → scripts → sequences → calls → deals → contracts → commissions)
+- For SDRs: focus on their assigned leads, call activity, and deal progress`;
 
 // ──────────────────────────────────────────────
 // TIME PARSING UTILITY
@@ -229,10 +353,11 @@ async function executeTool(
     switch (toolName) {
       case "query_leads": {
         if (params.count_only) {
-          const { count } = await serviceClient
-            .from("leads").select("id", { count: "exact", head: true })
-            .eq("workspace_id", workspaceId);
-          return { success: true, data: { count: count || 0 }, summary: `There are ${count || 0} leads in the CRM.` };
+          let q = serviceClient.from("leads").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId);
+          if (params.unassigned_only) q = q.is("assigned_to", null);
+          if (params.status) q = q.eq("status", params.status);
+          const { count } = await q;
+          return { success: true, data: { count: count || 0 }, summary: `There are ${count || 0}${params.unassigned_only ? ' unassigned' : ''} leads${params.status ? ` with status "${params.status}"` : ''}.` };
         }
         let query = serviceClient.from("leads")
           .select("id, first_name, last_name, email, company, status, assigned_to, created_at, last_contacted_at")
@@ -240,6 +365,7 @@ async function executeTool(
           .order("created_at", { ascending: false })
           .limit(params.limit || 10);
         if (params.status) query = query.eq("status", params.status);
+        if (params.unassigned_only) query = query.is("assigned_to", null);
         const { data: leads } = await query;
         return {
           success: true,
@@ -276,7 +402,7 @@ async function executeTool(
 
       case "query_call_logs": {
         const { start, label } = parseTimeRange(params.time_range || "this week");
-        let query = serviceClient.from("call_logs")
+        const query = serviceClient.from("call_logs")
           .select("id, call_status, duration_seconds, caller_id, phone_number, created_at, disposition")
           .eq("workspace_id", workspaceId)
           .gte("created_at", start.toISOString());
@@ -284,10 +410,11 @@ async function executeTool(
         const total = calls?.length || 0;
         const connected = calls?.filter((c: any) => c.call_status === 'completed').length || 0;
         const totalDuration = calls?.reduce((s: number, c: any) => s + (c.duration_seconds || 0), 0) || 0;
+        const twoMinPlus = calls?.filter((c: any) => (c.duration_seconds || 0) >= 120).length || 0;
         return {
           success: true,
-          data: { total, connected, totalDuration, connectRate: total ? Math.round((connected / total) * 100) : 0 },
-          summary: `**Call Activity (${label})**\n• Total calls: ${total}\n• Connected: ${connected}\n• Connect rate: ${total ? Math.round((connected / total) * 100) : 0}%\n• Total talk time: ${Math.round(totalDuration / 60)} minutes`,
+          data: { total, connected, totalDuration, connectRate: total ? Math.round((connected / total) * 100) : 0, twoMinPlusCalls: twoMinPlus },
+          summary: `**Call Activity (${label})**\n• Total calls: ${total}\n• Connected: ${connected}\n• Connect rate: ${total ? Math.round((connected / total) * 100) : 0}%\n• 2+ min calls: ${twoMinPlus}\n• Total talk time: ${Math.round(totalDuration / 60)} minutes`,
         };
       }
 
@@ -306,9 +433,15 @@ async function executeTool(
         const nameMap: Record<string, string> = {};
         profiles?.forEach((p: any) => { nameMap[p.id] = p.full_name || "Unknown"; });
 
-        const stats: Record<string, { calls: number; connected: number; deals: number; revenue: number }> = {};
-        sdrIds.forEach(id => { stats[id] = { calls: 0, connected: 0, deals: 0, revenue: 0 }; });
-        calls?.forEach((c: any) => { stats[c.caller_id].calls++; if (c.call_status === 'completed') stats[c.caller_id].connected++; });
+        const stats: Record<string, { calls: number; connected: number; twoMinPlus: number; deals: number; revenue: number }> = {};
+        sdrIds.forEach(id => { stats[id] = { calls: 0, connected: 0, twoMinPlus: 0, deals: 0, revenue: 0 }; });
+        calls?.forEach((c: any) => {
+          if (stats[c.caller_id]) {
+            stats[c.caller_id].calls++;
+            if (c.call_status === 'completed') stats[c.caller_id].connected++;
+            if ((c.duration_seconds || 0) >= 120) stats[c.caller_id].twoMinPlus++;
+          }
+        });
         deals?.forEach((d: any) => { if (stats[d.assigned_to]) { stats[d.assigned_to].deals++; stats[d.assigned_to].revenue += Number(d.value) || 0; } });
 
         const ranked = Object.entries(stats)
@@ -318,7 +451,7 @@ async function executeTool(
         return {
           success: true,
           data: { sdrs: ranked },
-          summary: `**SDR Performance (${label})**\n${ranked.map((s, i) => `${i + 1}. **${s.name}**: ${s.calls} calls, ${s.connected} connected, ${s.deals} deals, $${s.revenue.toLocaleString()}`).join('\n') || "No activity found."}`,
+          summary: `**SDR Performance (${label})**\n${ranked.map((s, i) => `${i + 1}. **${s.name}**: ${s.calls} calls, ${s.connected} connected, ${s.twoMinPlus} quality (2+ min), ${s.deals} deals, $${s.revenue.toLocaleString()}`).join('\n') || "No activity found."}`,
         };
       }
 
@@ -381,67 +514,277 @@ async function executeTool(
         };
       }
 
-      case "get_platform_state": {
-        const [leads, deals, calls, sequences, scripts, sdrs, emailLogs] = await Promise.all([
+      case "query_jobs": {
+        let query = serviceClient.from("jobs").select("id, title, is_active, commission_percentage, payment_type, created_at").eq("workspace_id", workspaceId);
+        if (params.active_only) query = query.eq("is_active", true);
+        const { data: jobs } = await query;
+        if (params.count_only) {
+          return { success: true, data: { count: jobs?.length || 0 }, summary: `You have ${jobs?.length || 0}${params.active_only ? ' active' : ''} job postings.` };
+        }
+        return {
+          success: true,
+          data: { jobs, count: jobs?.length || 0 },
+          summary: jobs?.length
+            ? `**Job Postings**\n${jobs.map((j: any) => `• **${j.title}** (${j.is_active ? 'Active' : 'Inactive'}) — ${j.commission_percentage || 0}% commission`).join('\n')}`
+            : "No job postings yet.",
+        };
+      }
+
+      case "query_applications": {
+        // Get jobs first to join
+        const { data: jobs } = await serviceClient.from("jobs").select("id, title").eq("workspace_id", workspaceId);
+        if (!jobs?.length) {
+          return { success: true, data: { count: 0 }, summary: "No job postings exist yet, so there are no applications." };
+        }
+        const jobIds = jobs.map((j: any) => j.id);
+        let query = serviceClient.from("job_applications").select("id, job_id, user_id, status, applied_at").in("job_id", jobIds);
+        if (params.status) query = query.eq("status", params.status);
+        const { data: apps } = await query;
+
+        if (params.count_only) {
+          return { success: true, data: { count: apps?.length || 0 }, summary: `There are ${apps?.length || 0}${params.status ? ` ${params.status}` : ''} applications.` };
+        }
+
+        // Get applicant names
+        const userIds = [...new Set((apps || []).map((a: any) => a.user_id))];
+        const { data: profiles } = userIds.length ? await serviceClient.from("profiles").select("id, full_name").in("id", userIds) : { data: [] };
+        const nameMap: Record<string, string> = {};
+        profiles?.forEach((p: any) => { nameMap[p.id] = p.full_name || "Unknown"; });
+        const jobMap: Record<string, string> = {};
+        jobs.forEach((j: any) => { jobMap[j.id] = j.title; });
+
+        return {
+          success: true,
+          data: { applications: apps, count: apps?.length || 0 },
+          summary: apps?.length
+            ? `**Job Applications**\n${apps.map((a: any) => `• **${nameMap[a.user_id] || 'Unknown'}** applied to "${jobMap[a.job_id] || 'Unknown Job'}" — Status: ${a.status}`).join('\n')}`
+            : "No applications found.",
+        };
+      }
+
+      case "query_offer_diagnostic": {
+        // Check offer_diagnostic_state table
+        const { data: diagState } = await serviceClient
+          .from("offer_diagnostic_state")
+          .select("*")
+          .eq("workspace_id", workspaceId)
+          .limit(1);
+
+        if (!diagState?.length) {
+          return {
+            success: true,
+            data: { completed: false },
+            summary: "The Offer Diagnostic has NOT been completed yet. This is the first step — it defines the offer, ICP, and pricing strategy needed for effective outbound.",
+          };
+        }
+
+        const state = diagState[0];
+        const hasScore = state.alignment_score != null && state.alignment_score > 0;
+        return {
+          success: true,
+          data: {
+            completed: hasScore,
+            score: state.alignment_score,
+            verdict: state.verdict,
+            bottleneck: state.primary_bottleneck,
+          },
+          summary: hasScore
+            ? `**Offer Diagnostic Results**\n• Score: ${state.alignment_score}/100\n• Verdict: ${state.verdict || 'N/A'}\n• Primary bottleneck: ${state.primary_bottleneck || 'None identified'}`
+            : "The Offer Diagnostic has been started but not completed yet.",
+        };
+      }
+
+      case "query_training": {
+        const { data: training } = await serviceClient
+          .from("training_materials")
+          .select("id, title, type, created_at")
+          .eq("workspace_id", workspaceId);
+
+        if (params.count_only) {
+          return { success: true, data: { count: training?.length || 0 }, summary: `You have ${training?.length || 0} training materials.` };
+        }
+        return {
+          success: true,
+          data: { training, count: training?.length || 0 },
+          summary: training?.length
+            ? `**Training Materials**\n${training.map((t: any) => `• ${t.title} (${t.type || 'general'})`).join('\n')}`
+            : "No training materials created yet.",
+        };
+      }
+
+      case "analyze_bottleneck": {
+        const { start, label } = parseTimeRange(params.time_range || "last 30 days");
+
+        // Parallel queries for all KPIs
+        const [callsRes, emailsRes, dealsRes, leadsRes] = await Promise.all([
+          serviceClient.from("call_logs").select("id, call_status, duration_seconds, disposition").eq("workspace_id", workspaceId).gte("created_at", start.toISOString()),
+          serviceClient.from("email_logs").select("id, status").eq("workspace_id", workspaceId).gte("sent_at", start.toISOString()),
+          serviceClient.from("deals").select("id, stage, value").eq("workspace_id", workspaceId).gte("created_at", start.toISOString()),
           serviceClient.from("leads").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
+        ]);
+
+        const calls = callsRes.data || [];
+        const emails = emailsRes.data || [];
+        const deals = dealsRes.data || [];
+        const totalLeads = leadsRes.count || 0;
+
+        const totalCalls = calls.length;
+        const connected = calls.filter((c: any) => c.call_status === 'completed').length;
+        const twoMinPlus = calls.filter((c: any) => (c.duration_seconds || 0) >= 120).length;
+        const connectRate = totalCalls > 0 ? Math.round((connected / totalCalls) * 100) : 0;
+        const qualityRate = connected > 0 ? Math.round((twoMinPlus / connected) * 100) : 0;
+
+        const totalEmails = emails.length;
+        const opened = emails.filter((e: any) => e.status === 'opened').length;
+        const openRate = totalEmails > 0 ? Math.round((opened / totalEmails) * 100) : 0;
+
+        const closedWon = deals.filter((d: any) => d.stage === 'closed_won').length;
+        const closedRevenue = deals.filter((d: any) => d.stage === 'closed_won').reduce((s: number, d: any) => s + (Number(d.value) || 0), 0);
+
+        // Determine bottleneck
+        const bottlenecks: { issue: string; severity: number; advice: string }[] = [];
+
+        if (totalCalls === 0 && totalEmails === 0) {
+          bottlenecks.push({ issue: "No outbound activity", severity: 100, advice: "Your SDRs haven't made any calls or sent any emails. Make sure leads are assigned and SDRs are actively working them." });
+        } else {
+          if (totalCalls > 0 && connectRate < 15) {
+            bottlenecks.push({ issue: `Low connect rate (${connectRate}%)`, severity: 90, advice: "Your connect rate is below 15%. Check: Are you calling during business hours (9-11am, 2-4pm local time)? Is the phone data accurate? Consider using a local caller ID." });
+          }
+          if (connected > 5 && qualityRate < 30) {
+            bottlenecks.push({ issue: `Low quality calls (${qualityRate}% are 2+ min)`, severity: 85, advice: "Most calls are ending quickly. Your opener needs work — the first 10 seconds determine if the prospect stays. Review the script's pattern interrupt and permission check. Consider using the Script Builder to generate a better opener." });
+          }
+          if (twoMinPlus > 10 && closedWon === 0) {
+            bottlenecks.push({ issue: "Good conversations but no closed deals", severity: 80, advice: "SDRs are having quality conversations but not closing. Check the pitch and qualification criteria. Are they asking for the meeting/next step clearly? Review the micro-commitment and earned next step in the script." });
+          }
+          if (totalEmails > 20 && openRate < 20) {
+            bottlenecks.push({ issue: `Low email open rate (${openRate}%)`, severity: 70, advice: "Email subject lines aren't compelling enough. Use curiosity-driven, short subject lines (3-5 words). Avoid spam triggers. Personalize with the prospect's company name." });
+          }
+        }
+
+        bottlenecks.sort((a, b) => b.severity - a.severity);
+        const topBottleneck = bottlenecks[0];
+
+        const summary = [
+          `**Performance Analysis (${label})**`,
+          ``,
+          `📞 **Calls**: ${totalCalls} total, ${connected} connected (${connectRate}% connect rate), ${twoMinPlus} quality (2+ min, ${qualityRate}%)`,
+          `📧 **Emails**: ${totalEmails} sent, ${opened} opened (${openRate}% open rate)`,
+          `💰 **Deals**: ${deals.length} total, ${closedWon} closed won ($${closedRevenue.toLocaleString()})`,
+          `👥 **Leads**: ${totalLeads} in CRM`,
+          ``,
+          topBottleneck
+            ? `🎯 **#1 Bottleneck: ${topBottleneck.issue}**\n${topBottleneck.advice}`
+            : `✅ No major bottlenecks detected. Keep up the momentum!`,
+          bottlenecks.length > 1 ? `\n📋 **Other areas to watch:**\n${bottlenecks.slice(1).map(b => `• ${b.issue}`).join('\n')}` : '',
+        ].join('\n');
+
+        return { success: true, data: { connectRate, qualityRate, openRate, closedWon, closedRevenue, bottlenecks }, summary };
+      }
+
+      case "get_platform_state": {
+        // Comprehensive state check — all critical tables
+        const [leads, unassignedLeads, deals, calls, sequences, scripts, members, emailLogs, jobs, diagState] = await Promise.all([
+          serviceClient.from("leads").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
+          serviceClient.from("leads").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).is("assigned_to", null),
           serviceClient.from("deals").select("id, value, stage", { count: "exact" }).eq("workspace_id", workspaceId),
           serviceClient.from("call_logs").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
           serviceClient.from("follow_up_sequences").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
           serviceClient.from("call_scripts").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
           serviceClient.from("workspace_members").select("user_id", { count: "exact", head: true }).eq("workspace_id", workspaceId).is("removed_at", null),
           serviceClient.from("email_logs").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
+          serviceClient.from("jobs").select("id, is_active", { count: "exact" }).eq("workspace_id", workspaceId),
+          serviceClient.from("offer_diagnostic_state").select("alignment_score, verdict, primary_bottleneck").eq("workspace_id", workspaceId).limit(1),
         ]);
+
+        // Job applications count
+        const jobIds = (jobs.data || []).map((j: any) => j.id);
+        let applicationsCount = 0;
+        let pendingAppsCount = 0;
+        let acceptedAppsCount = 0;
+        if (jobIds.length > 0) {
+          const { data: apps } = await serviceClient.from("job_applications").select("id, status").in("job_id", jobIds);
+          applicationsCount = apps?.length || 0;
+          pendingAppsCount = apps?.filter((a: any) => a.status === 'pending').length || 0;
+          acceptedAppsCount = apps?.filter((a: any) => a.status === 'accepted').length || 0;
+        }
+
+        const diagnosticCompleted = diagState.data?.[0]?.alignment_score > 0;
+        const diagnosticScore = diagState.data?.[0]?.alignment_score || 0;
+        const activeJobs = (jobs.data || []).filter((j: any) => j.is_active).length;
+        const totalJobs = jobs.count || 0;
 
         const state = {
           leads: leads.count || 0,
+          unassignedLeads: unassignedLeads.count || 0,
           deals: deals.count || 0,
           calls: calls.count || 0,
           sequences: sequences.count || 0,
           scripts: scripts.count || 0,
-          teamMembers: sdrs.count || 0,
+          teamMembers: members.count || 0,
           emailsSent: emailLogs.count || 0,
+          jobs: totalJobs,
+          activeJobs,
+          applications: applicationsCount,
+          pendingApplications: pendingAppsCount,
+          acceptedApplications: acceptedAppsCount,
+          diagnosticCompleted,
+          diagnosticScore,
         };
-
-        // Determine user state
-        const isNew = state.leads === 0 && state.calls === 0 && state.sequences === 0;
-        const isStalled = state.leads > 0 && state.calls === 0 && state.deals === 0;
-        const isActive = state.calls > 0 || state.deals > 0;
-
-        let userState = "active";
-        if (isNew) userState = "new";
-        else if (isStalled) userState = "stalled";
 
         const summaryParts = [
           `**Platform Overview**`,
-          `• Leads: ${state.leads}`,
-          `• Deals: ${state.deals}`,
-          `• Calls made: ${state.calls}`,
-          `• Email sequences: ${state.sequences}`,
+          `• Offer Diagnostic: ${diagnosticCompleted ? `✅ Completed (Score: ${diagnosticScore}/100)` : '❌ Not completed'}`,
+          `• Jobs: ${totalJobs} posted (${activeJobs} active)`,
+          `• Applications: ${applicationsCount} total (${pendingAppsCount} pending, ${acceptedAppsCount} accepted)`,
+          `• Team members (SDRs): ${state.teamMembers}`,
+          `• Leads: ${state.leads} total (${state.unassignedLeads} unassigned)`,
           `• Call scripts: ${state.scripts}`,
-          `• Team members: ${state.teamMembers}`,
+          `• Email sequences: ${state.sequences}`,
+          `• Calls made: ${state.calls}`,
           `• Emails sent: ${state.emailsSent}`,
-          ``,
-          `User state: ${userState}`,
+          `• Deals: ${state.deals}`,
         ];
 
-        // Build next steps based on gaps
+        // Build priority-ordered next steps
         const nextSteps: string[] = [];
-        if (state.leads === 0) nextSteps.push("Import or add leads to your CRM");
-        if (state.scripts === 0) nextSteps.push("Create a call script for your outreach");
-        if (state.sequences === 0) nextSteps.push("Set up an email follow-up sequence");
-        if (state.leads > 0 && state.calls === 0) nextSteps.push("Start making calls to your leads using the Dialer");
-        if (state.leads > 0 && state.emailsSent === 0) nextSteps.push("Send your first email campaign");
-        if (state.teamMembers <= 1) nextSteps.push("Post a job listing to recruit SDRs");
-        if (state.deals > 0 && state.sequences === 0) nextSteps.push("Create follow-up sequences for your active deals");
+        if (!diagnosticCompleted) {
+          nextSteps.push("Complete the Offer Diagnostic — this defines your offer, ICP, and pricing strategy. Everything else builds on this. Go to the Offer Diagnostic page.");
+        }
+        if (diagnosticCompleted && state.scripts === 0) {
+          nextSteps.push("Use the Script Builder to generate a cold call script from your Offer Diagnostic results. Go to the Script Builder page.");
+        }
+        if (totalJobs === 0) {
+          nextSteps.push("Post a job to start recruiting SDRs who will make calls and close deals for you. Go to the Jobs page.");
+        }
+        if (totalJobs > 0 && acceptedAppsCount === 0 && pendingAppsCount > 0) {
+          nextSteps.push(`Review ${pendingAppsCount} pending SDR applications. Go to the Jobs page to accept or reject applicants.`);
+        }
+        if (totalJobs > 0 && applicationsCount === 0) {
+          nextSteps.push("No SDRs have applied yet. Share your job listing to attract talent, or invite SDRs directly.");
+        }
+        if (state.leads === 0) {
+          nextSteps.push("Import leads into your CRM. Use Apollo Search on the Leads page or upload a CSV in the CRM.");
+        }
+        if (state.leads > 0 && state.unassignedLeads > 0 && acceptedAppsCount > 0) {
+          nextSteps.push(`Assign ${state.unassignedLeads} unassigned leads to your SDRs. Go to the CRM, select leads, and use bulk assign.`);
+        }
+        if (state.sequences === 0 && state.leads > 0) {
+          nextSteps.push("Create email follow-up sequences for leads that don't pick up calls. Go to the Email page.");
+        }
+        if (state.leads > 0 && state.calls === 0 && acceptedAppsCount > 0) {
+          nextSteps.push("Your SDRs should start making calls! Make sure they have scripts and assigned leads, then use the Dialer.");
+        }
 
         if (nextSteps.length > 0) {
-          summaryParts.push("", "**Suggested next steps:**");
+          summaryParts.push("", "**Recommended next steps (in priority order):**");
           nextSteps.forEach((step, i) => summaryParts.push(`${i + 1}. ${step}`));
+        } else {
+          summaryParts.push("", "✅ Your platform is fully set up! Focus on monitoring performance and optimizing outreach.");
         }
 
         return {
           success: true,
-          data: { ...state, userState, nextSteps },
+          data: { ...state, nextSteps },
           summary: summaryParts.join('\n'),
         };
       }
@@ -588,7 +931,7 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      // Fallback: provide basic data-driven response
+      // Fallback
       const fallbackResult = await executeTool("get_platform_state", {}, serviceClient, workspace_id);
       const fallbackResponse = `I'm having trouble with my AI capabilities, but here's your current platform state:\n\n${fallbackResult.summary}`;
 
@@ -603,7 +946,6 @@ Deno.serve(async (req: Request) => {
 
     // ── STEP 2: Check if AI wants to call tools ──
     if (firstChoice?.message?.tool_calls?.length > 0) {
-      // Execute all tool calls
       const toolResults: ToolResult[] = [];
       for (const toolCall of firstChoice.message.tool_calls) {
         const fnName = toolCall.function?.name;
@@ -646,7 +988,6 @@ Deno.serve(async (req: Request) => {
         const formatData = await formatResponse.json();
         finalResponse = formatData.choices?.[0]?.message?.content || toolResults.map(r => r.summary).join('\n\n');
       } else {
-        // If formatting fails, use the tool summaries directly
         finalResponse = toolResults.map(r => r.summary).join('\n\n');
       }
 
@@ -698,6 +1039,6 @@ async function logEvent(client: any, userId: string, workspaceId: string, userRo
       metadata: { query },
     });
   } catch {
-    // Non-blocking, ignore errors
+    // Non-blocking
   }
 }
