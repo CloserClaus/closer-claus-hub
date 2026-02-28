@@ -15,7 +15,7 @@ interface Message {
 
 interface AttachedFile {
   name: string;
-  content: string; // text content or "[image uploaded]"
+  content: string;
   type: string;
 }
 
@@ -29,6 +29,12 @@ const QUICK_ACTIONS = [
   "Show my KPIs",
   "Who's my top SDR?",
   "Analyze my bottlenecks",
+];
+
+const FOLLOW_UP_CHIPS = [
+  "Help me with that",
+  "What else?",
+  "Show my stats",
 ];
 
 export function KlausChat({ onClose, onMinimize }: KlausChatProps) {
@@ -87,7 +93,7 @@ export function KlausChat({ onClose, onMinimize }: KlausChatProps) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
       setMessages(prev => [...prev, { role: "assistant", content: "File is too large. Max 5MB.", timestamp: new Date() }]);
       return;
@@ -95,7 +101,6 @@ export function KlausChat({ onClose, onMinimize }: KlausChatProps) {
 
     if (file.type === "text/csv" || file.name.endsWith(".csv")) {
       const text = await file.text();
-      // Truncate to first 50 rows for context
       const lines = text.split("\n").slice(0, 51);
       setAttachedFile({ name: file.name, content: lines.join("\n"), type: "csv" });
     } else if (file.type.startsWith("text/") || file.name.endsWith(".txt") || file.name.endsWith(".json")) {
@@ -153,8 +158,11 @@ export function KlausChat({ onClose, onMinimize }: KlausChatProps) {
     }
   };
 
+  // Show follow-up chips after the last assistant message if conversation is short
+  const showFollowUpChips = messages.length > 0 && messages.length < 8 && messages[messages.length - 1]?.role === "assistant" && !isLoading;
+
   return (
-    <div className="fixed bottom-20 right-4 md:bottom-4 z-[60] w-[460px] h-[620px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-6rem)] flex flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
+    <div className="fixed bottom-20 right-4 md:bottom-4 z-[60] w-[480px] h-[620px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-6rem)] flex flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/30 shrink-0">
         <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
@@ -231,6 +239,19 @@ export function KlausChat({ onClose, onMinimize }: KlausChatProps) {
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">Analyzing...</span>
               </div>
+            </div>
+          )}
+          {showFollowUpChips && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {FOLLOW_UP_CHIPS.map((chip) => (
+                <button
+                  key={chip}
+                  onClick={() => sendMessage(chip)}
+                  className="px-2.5 py-1 rounded-full border border-border text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  {chip}
+                </button>
+              ))}
             </div>
           )}
         </div>
