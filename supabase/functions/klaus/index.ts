@@ -7,6 +7,12 @@ const corsHeaders = {
 };
 
 // ──────────────────────────────────────────────
+// VALID PIPELINE STAGES
+// ──────────────────────────────────────────────
+const VALID_STAGES = ["new", "contacted", "discovery", "meeting", "proposal", "closed_won", "closed_lost"];
+const VALID_READINESS = ["Hot", "Warm", "Cool", "Cold"];
+
+// ──────────────────────────────────────────────
 // TOOL DEFINITIONS
 // ──────────────────────────────────────────────
 const TOOLS = [
@@ -14,12 +20,13 @@ const TOOLS = [
     type: "function",
     function: {
       name: "query_leads",
-      description: "Query CRM leads. Use count_only for counts, or get a list with optional filters.",
+      description: "Query CRM leads. Use count_only for counts, or get a list with optional filters. Leads do NOT have a 'status' column — use readiness_segment (Hot/Warm/Cool/Cold) or email_sending_state for filtering.",
       parameters: {
         type: "object",
         properties: {
           count_only: { type: "boolean", description: "If true, return only the count" },
-          status: { type: "string", description: "Filter by lead status" },
+          readiness_segment: { type: "string", enum: ["Hot", "Warm", "Cool", "Cold"], description: "Filter by readiness segment" },
+          email_sending_state: { type: "string", enum: ["idle", "active_sequence", "replied", "error"], description: "Filter by email state" },
           assigned_to_name: { type: "string", description: "Filter by SDR name" },
           unassigned_only: { type: "boolean", description: "If true, return only leads with no assigned_to" },
           limit: { type: "number", description: "Max results to return (default 10)" },
@@ -33,12 +40,12 @@ const TOOLS = [
     type: "function",
     function: {
       name: "query_deals",
-      description: "Query CRM deals with optional filters.",
+      description: "Query CRM deals with optional filters. Valid stages: new, contacted, discovery, meeting, proposal, closed_won, closed_lost.",
       parameters: {
         type: "object",
         properties: {
           count_only: { type: "boolean" },
-          stage: { type: "string", description: "Pipeline stage filter" },
+          stage: { type: "string", enum: VALID_STAGES, description: "Pipeline stage filter" },
           limit: { type: "number" },
         },
         required: [],
@@ -200,7 +207,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "analyze_bottleneck",
-      description: "Run a comprehensive KPI analysis across calls, emails, deals to find the #1 performance bottleneck and provide actionable advice. Use this when users ask 'how do I get better results', 'why aren't we closing', 'what's wrong', etc.",
+      description: "Run a comprehensive KPI analysis across calls, emails, deals to find the #1 performance bottleneck and provide actionable advice.",
       parameters: {
         type: "object",
         properties: {
@@ -218,15 +225,17 @@ const TOOLS = [
     type: "function",
     function: {
       name: "update_leads",
-      description: "Update lead status or notes for leads matching a filter, specific IDs, or all leads. Use confirmed=false first to preview the count, then confirmed=true after user approves.",
+      description: "Update leads' readiness_segment, notes, email_sending_state, or assigned_to. Leads do NOT have a 'status' column. Use confirmed=false first to preview the count.",
       parameters: {
         type: "object",
         properties: {
           lead_ids: { type: "array", items: { type: "string" }, description: "Specific lead IDs to update" },
-          filter_status: { type: "string", description: "Only update leads with this current status" },
+          filter_readiness_segment: { type: "string", enum: ["Hot", "Warm", "Cool", "Cold"], description: "Only update leads with this readiness" },
+          filter_unassigned: { type: "boolean", description: "Only update unassigned leads" },
           all: { type: "boolean", description: "If true, update ALL leads in workspace" },
-          set_status: { type: "string", description: "New status to set" },
-          set_notes: { type: "string", description: "Notes to append" },
+          set_readiness_segment: { type: "string", enum: ["Hot", "Warm", "Cool", "Cold"], description: "New readiness segment to set" },
+          set_notes: { type: "string", description: "Notes to set" },
+          set_email_sending_state: { type: "string", enum: ["idle", "active_sequence", "replied", "error"], description: "Email sending state to set" },
           confirmed: { type: "boolean", description: "Must be true to execute. False returns preview count." },
         },
         required: ["confirmed"],
@@ -238,14 +247,14 @@ const TOOLS = [
     type: "function",
     function: {
       name: "update_deals",
-      description: "Move deals to a new pipeline stage. Use confirmed=false first to preview, then confirmed=true after user approves.",
+      description: "Move deals to a new pipeline stage. Valid stages: new, contacted, discovery, meeting, proposal, closed_won, closed_lost. Use confirmed=false first to preview.",
       parameters: {
         type: "object",
         properties: {
           deal_ids: { type: "array", items: { type: "string" }, description: "Specific deal IDs to update" },
-          filter_stage: { type: "string", description: "Only update deals currently in this stage" },
+          filter_stage: { type: "string", enum: VALID_STAGES, description: "Only update deals currently in this stage" },
           all: { type: "boolean", description: "If true, update ALL deals" },
-          set_stage: { type: "string", description: "New pipeline stage to set" },
+          set_stage: { type: "string", enum: VALID_STAGES, description: "New pipeline stage to set" },
           confirmed: { type: "boolean", description: "Must be true to execute. False returns preview count." },
         },
         required: ["set_stage", "confirmed"],
@@ -257,14 +266,14 @@ const TOOLS = [
     type: "function",
     function: {
       name: "assign_leads_to_sdr",
-      description: "Assign leads to an SDR by their name. Use confirmed=false first to preview, then confirmed=true after user approves.",
+      description: "Assign leads to an SDR by their name. Use confirmed=false first to preview.",
       parameters: {
         type: "object",
         properties: {
           sdr_name: { type: "string", description: "Name of the SDR to assign leads to" },
           lead_ids: { type: "array", items: { type: "string" }, description: "Specific lead IDs to assign" },
           filter_unassigned: { type: "boolean", description: "If true, only assign currently unassigned leads" },
-          filter_status: { type: "string", description: "Only assign leads with this status" },
+          filter_readiness_segment: { type: "string", enum: ["Hot", "Warm", "Cool", "Cold"], description: "Only assign leads with this readiness" },
           limit: { type: "number", description: "Max number of leads to assign" },
           confirmed: { type: "boolean", description: "Must be true to execute. False returns preview count." },
         },
@@ -277,17 +286,57 @@ const TOOLS = [
     type: "function",
     function: {
       name: "enroll_in_sequence",
-      description: "Enroll leads in a follow-up email sequence by sequence name. Use confirmed=false first to preview, then confirmed=true after user approves.",
+      description: "Enroll leads in a follow-up email sequence by sequence name. Use confirmed=false first to preview.",
       parameters: {
         type: "object",
         properties: {
           sequence_name: { type: "string", description: "Name of the follow-up sequence" },
           lead_ids: { type: "array", items: { type: "string" }, description: "Specific lead IDs to enroll" },
-          filter_status: { type: "string", description: "Only enroll leads with this status" },
+          filter_readiness_segment: { type: "string", enum: ["Hot", "Warm", "Cool", "Cold"], description: "Only enroll leads with this readiness" },
           limit: { type: "number", description: "Max leads to enroll" },
           confirmed: { type: "boolean", description: "Must be true to execute. False returns preview count." },
         },
         required: ["sequence_name", "confirmed"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "smart_enroll_sequence",
+      description: "Context-aware sequence enrollment. Enroll leads based on call activity filters like 'called today no answer', 'short calls', etc. Automatically excludes leads already in active sequences. Use confirmed=false first.",
+      parameters: {
+        type: "object",
+        properties: {
+          sequence_name: { type: "string", description: "Name of the follow-up sequence to enroll into" },
+          filter_called_today_no_answer: { type: "boolean", description: "Leads called today with no answer (no-answer, busy, failed, canceled)" },
+          filter_called_today_short_calls: { type: "boolean", description: "Leads called today with calls < 30 seconds" },
+          filter_no_email_sent: { type: "boolean", description: "Leads with no email logs at all" },
+          filter_readiness_segment: { type: "string", enum: ["Hot", "Warm", "Cool", "Cold"], description: "Only enroll leads with this readiness" },
+          limit: { type: "number", description: "Max leads to enroll" },
+          confirmed: { type: "boolean", description: "Must be true to execute. False returns preview count." },
+        },
+        required: ["sequence_name", "confirmed"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "query_calls_today",
+      description: "Query today's call activity with outcome filters. Useful for finding leads that were called but didn't answer, had short calls, etc.",
+      parameters: {
+        type: "object",
+        properties: {
+          filter_no_answer: { type: "boolean", description: "Only calls with no answer (no-answer, busy, failed, canceled)" },
+          filter_short_calls: { type: "boolean", description: "Only calls with duration < 30 seconds" },
+          filter_connected: { type: "boolean", description: "Only calls that connected (completed)" },
+          caller_name: { type: "string", description: "Filter by SDR name" },
+          count_only: { type: "boolean" },
+        },
+        required: [],
         additionalProperties: false,
       },
     },
@@ -333,17 +382,95 @@ const TOOLS = [
     type: "function",
     function: {
       name: "create_deal",
-      description: "Create a new deal in the CRM pipeline.",
+      description: "Create a new deal in the CRM pipeline. Valid stages: new, contacted, discovery, meeting, proposal, closed_won, closed_lost.",
       parameters: {
         type: "object",
         properties: {
           title: { type: "string", description: "Deal title" },
           value: { type: "number", description: "Deal value in dollars" },
-          stage: { type: "string", description: "Pipeline stage" },
+          stage: { type: "string", enum: VALID_STAGES, description: "Pipeline stage" },
           assigned_to_name: { type: "string", description: "Name of SDR to assign the deal to" },
           lead_id: { type: "string", description: "Associated lead ID" },
         },
         required: ["title"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_leads",
+      description: "Delete leads by IDs or filter. Always requires confirmation. Use confirmed=false first to preview count.",
+      parameters: {
+        type: "object",
+        properties: {
+          lead_ids: { type: "array", items: { type: "string" }, description: "Specific lead IDs to delete" },
+          filter_readiness_segment: { type: "string", enum: ["Hot", "Warm", "Cool", "Cold"], description: "Only delete leads with this readiness" },
+          filter_unassigned: { type: "boolean", description: "Only delete unassigned leads" },
+          all: { type: "boolean", description: "If true, delete ALL leads (dangerous)" },
+          confirmed: { type: "boolean", description: "Must be true to execute. False returns preview count." },
+        },
+        required: ["confirmed"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "send_email_to_leads",
+      description: "Send a one-off email to specific leads. Use confirmed=false first to preview count.",
+      parameters: {
+        type: "object",
+        properties: {
+          template_name: { type: "string", description: "Name of email template to use" },
+          subject: { type: "string", description: "Email subject (if not using template)" },
+          body: { type: "string", description: "Email body (if not using template)" },
+          lead_ids: { type: "array", items: { type: "string" }, description: "Specific lead IDs to email" },
+          filter_readiness_segment: { type: "string", enum: ["Hot", "Warm", "Cool", "Cold"], description: "Only email leads with this readiness" },
+          limit: { type: "number", description: "Max leads to email" },
+          confirmed: { type: "boolean", description: "Must be true to execute. False returns preview count." },
+        },
+        required: ["confirmed"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_task",
+      description: "Create a CRM task assigned to an SDR, optionally linked to a lead or deal.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Task title" },
+          description: { type: "string", description: "Task description" },
+          due_date: { type: "string", description: "Due date in ISO format" },
+          assigned_to_name: { type: "string", description: "Name of SDR to assign the task to" },
+          lead_id: { type: "string", description: "Associated lead ID" },
+          deal_id: { type: "string", description: "Associated deal ID" },
+        },
+        required: ["title"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "schedule_callback",
+      description: "Schedule a callback reminder for a lead. Creates a notification for the assigned SDR.",
+      parameters: {
+        type: "object",
+        properties: {
+          lead_id: { type: "string", description: "Lead ID to schedule callback for" },
+          callback_time: { type: "string", description: "When to call back (ISO format or natural language)" },
+          notes: { type: "string", description: "Notes about the callback" },
+          assigned_to_name: { type: "string", description: "SDR name to assign the callback to" },
+        },
+        required: ["lead_id"],
         additionalProperties: false,
       },
     },
@@ -356,24 +483,45 @@ const TOOLS = [
 const SYSTEM_PROMPT = `You are Klaus, the intelligent execution agent inside the CloserClaus platform.
 
 ## ⚠️ CRITICAL RULES — MUST FOLLOW BEFORE EVERY RESPONSE
-1. **MANDATORY TOOL USE**: Before answering ANY question about "what should I do", "next steps", "how to get started", "getting better results", or anything implying guidance — you MUST call get_platform_state FIRST. No exceptions. Never answer onboarding/guidance questions from memory alone.
-2. **NEVER SKIP ONBOARDING STEPS**: If the agency has no Offer Diagnostic completed → do NOT suggest posting jobs. If they have no jobs posted → do NOT suggest hiring SDRs. If they have no SDRs → do NOT suggest assigning leads or making calls. Always recommend the FIRST incomplete step only.
-3. **ROLE-BASED LOGIC**: If user is an agency_owner with 0 hired SDRs, focus ONLY on hiring. Do NOT suggest operational tasks (calling, emailing). If user is an SDR, focus on their assigned leads and call/email activity.
+1. **MANDATORY TOOL USE**: Before answering ANY question about "what should I do", "next steps", "how to get started", "getting better results", or anything implying guidance — you MUST call get_platform_state FIRST. No exceptions.
+2. **NEVER SKIP ONBOARDING STEPS**: If the agency has no Offer Diagnostic completed → do NOT suggest posting jobs. If they have no jobs posted → do NOT suggest hiring SDRs. Always recommend the FIRST incomplete step only.
+3. **ROLE-BASED LOGIC**: If user is an agency_owner with 0 hired SDRs, focus ONLY on hiring. If user is an SDR, focus on their assigned leads and call/email activity.
 4. **NEVER GUESS DATA**: If you're unsure about counts, performance, or state — call the appropriate tool. Never fabricate numbers.
-5. **ALWAYS USE TOOLS FOR PERFORMANCE QUESTIONS**: "How do I improve?", "What's wrong?", "Why aren't we closing?" → ALWAYS call analyze_bottleneck. Do not give generic advice without data.
-6. **CONFIRMATION BEFORE EXECUTION**: For ANY write/modify tool (update_leads, update_deals, assign_leads_to_sdr, enroll_in_sequence, send_training_to_sdr), you MUST first call the tool with confirmed=false to get the preview count. Then tell the user exactly what will happen (e.g. "I'll update 47 leads to status 'contacted'") and ask "Should I proceed?" Only call the tool with confirmed=true AFTER the user explicitly confirms.
-7. **NEVER REFUSE EXECUTION**: You have FULL write access to the platform. If the user asks you to move leads, assign SDRs, enroll sequences, create leads, create deals, or any other action — DO IT using your tools. NEVER say "I cannot directly manipulate data" or "I don't have write access." You DO. Use your write tools.
-8. **LOG ALL ACTIONS**: Every write action is automatically logged for audit. You don't need to worry about logging.
+5. **ALWAYS USE TOOLS FOR PERFORMANCE QUESTIONS**: "How do I improve?" → ALWAYS call analyze_bottleneck.
+6. **CONFIRMATION BEFORE EXECUTION**: For ANY write/modify tool, you MUST first call the tool with confirmed=false to get the preview count. Then tell the user exactly what will happen (e.g., "82 leads will be moved to the 'contacted' stage") and ask "Should I proceed?" Only call the tool with confirmed=true AFTER the user explicitly confirms. The UI will show a confirmation dialog automatically.
+7. **NEVER REFUSE EXECUTION**: You have FULL write access to the platform. If the user asks you to move leads, assign SDRs, enroll sequences, create leads, create deals, delete leads, send emails, or any other action — DO IT using your tools. NEVER say "I cannot directly manipulate data" or "I don't have write access." You DO.
+8. **LOG ALL ACTIONS**: Every write action is automatically logged for audit.
+9. **NEVER GIVE UP**: If you encounter an error with a tool, explain the specific error. NEVER say "contact support" or "try again later." Try alternative approaches or explain what went wrong technically.
+
+## ⚠️ CRITICAL SCHEMA RULES
+- **LEADS have NO 'status' column.** The leads table uses:
+  - \`readiness_segment\` (Hot, Warm, Cool, Cold) for categorization/scoring
+  - \`email_sending_state\` (idle, active_sequence, replied, error) for email workflow state
+  - \`notes\` for free-text notes
+  - \`assigned_to\` (UUID) for SDR assignment
+  - \`last_contacted_at\` for tracking contact recency
+  - NEVER try to filter or update a 'status' column on leads. It does not exist.
+- **DEALS have stages:** new → contacted → discovery → meeting → proposal → closed_won / closed_lost
+  - When moving to closed_won, the system automatically sets closed_at.
+  - When moving to closed_lost, the system automatically sets closed_at.
+
+## CONTEXT-AWARE EXECUTION
+When users give complex, multi-step instructions, break them down internally using multiple tool calls:
+- "Send follow-up to leads I called today that didn't pick up" → use \`smart_enroll_sequence\` with \`filter_called_today_no_answer: true\`
+- "Assign all hot unassigned leads to John" → use \`assign_leads_to_sdr\` with \`filter_readiness_segment: "Hot"\` and \`filter_unassigned: true\`
+- "Delete all cold leads that haven't been contacted" → use \`delete_leads\` with filter
+- "Move all discovery deals to meeting" → use \`update_deals\` with \`filter_stage: "discovery"\` and \`set_stage: "meeting"\`
+Present a SINGLE confirmation to the user summarizing all changes.
 
 ## WHAT IS CLOSERCLAUS
 CloserClaus is a sales agency management platform. Agency owners use it to:
 1. Define their offer and ideal customer profile (Offer Diagnostic)
 2. Post jobs to attract and hire SDRs (Sales Development Representatives)
 3. Import leads and assign them to SDRs
-4. Equip SDRs with call scripts (generated from Offer Diagnostic via Script Builder) and email sequences
+4. Equip SDRs with call scripts and email sequences
 5. SDRs make cold calls via the built-in Dialer and send follow-up emails
 6. When prospects convert, SDRs create deals in the CRM pipeline
-7. Deals progress through stages: prospect → qualified → proposal → negotiation → closed_won
+7. Deals progress through stages: new → contacted → discovery → meeting → proposal → closed_won
 8. Agency sends contracts, collects payments, and SDRs earn commissions
 
 SDRs use the platform to:
@@ -386,34 +534,31 @@ SDRs use the platform to:
 7. Earn commissions based on deal value
 
 ## CORRECT ONBOARDING FLOW FOR AGENCY OWNERS
-This is the exact priority order. ALWAYS recommend the FIRST incomplete step. NEVER skip ahead.
-1. **Complete Offer Diagnostic** — Defines the offer, ICP, pricing, and dream outcome. This is the foundation. Without it, scripts and outreach will be generic and ineffective. Navigate to the Offer Diagnostic page.
-2. **Use Script Builder** — After diagnostic, generate a cold call script and tactical playbook tailored to the offer. Navigate to the Script Builder page.
-3. **Post a Job** — Create a job listing to attract SDRs who will do the outbound work. Navigate to the Jobs page and click "Post a Job".
-4. **Review & Hire SDR Applicants** — Check applications, interview, and accept SDRs. Navigate to the Jobs page and review applications.
-5. **Import Leads** — Add prospects to the CRM via CSV upload or Apollo search. Navigate to the Leads page for Apollo search or the CRM page for CSV import.
-6. **Assign Leads to SDRs** — Distribute leads among hired SDRs so they can start working. In the CRM page, select leads and use bulk assign.
-7. **Create Email Follow-up Sequences** — Set up automated email sequences for leads that don't pick up calls. Navigate to the Email page.
-8. **SDRs Start Dialing** — Once scripts, leads, and sequences are ready, SDRs begin cold calling. They use the Dialer page.
-9. **Monitor Performance** — Track calls, connect rates, meetings, and deals. Use the Dashboard or ask me to analyze bottlenecks.
+1. **Complete Offer Diagnostic** — Defines the offer, ICP, pricing, and dream outcome.
+2. **Use Script Builder** — Generate a cold call script tailored to the offer.
+3. **Post a Job** — Create a job listing to attract SDRs.
+4. **Review & Hire SDR Applicants** — Check applications, interview, and accept SDRs.
+5. **Import Leads** — Add prospects via CSV upload or Apollo search.
+6. **Assign Leads to SDRs** — Distribute leads among hired SDRs.
+7. **Create Email Follow-up Sequences** — Set up automated email sequences.
+8. **SDRs Start Dialing** — SDRs begin cold calling.
+9. **Monitor Performance** — Track calls, connect rates, meetings, and deals.
 
 ## PERFORMANCE BOTTLENECK ANALYSIS
-When users ask "how do I improve results" or "what's wrong", ALWAYS use the analyze_bottleneck tool first, then interpret:
-
-**Benchmarks (industry standard for cold outbound):**
-- Connect rate (calls answered / total calls): 15-25% is normal
-- 2+ minute calls (meaningful conversations / connects): 30-50% is good
+**Benchmarks:**
+- Connect rate: 15-25% is normal
+- 2+ minute calls: 30-50% of connects is good
 - Meeting set rate: 5-10% of meaningful conversations
-- Email open rate: 20-40% is healthy
-- Email reply rate: 2-5% is normal
+- Email open rate: 20-40%
+- Email reply rate: 2-5%
 
 **Diagnosis framework:**
 - Connect rate < 15% → Bad phone data, wrong calling times, or caller ID issues
-- 2+ min calls < 30% of connects → Weak opener. Fix the first 10 seconds of the script. The pattern interrupt and permission check need work.
-- Lots of 2+ min calls but few meetings → Weak pitch or qualification. SDR is engaging but not converting. Fix the relevance hypothesis and micro-commitment in the script.
-- Email opens < 20% → Subject lines are too generic or spammy
-- Email replies < 2% → Email body lacks personalization or clear CTA
-- Deals stalling in pipeline → Follow-up cadence is too slow or contracts aren't being sent
+- 2+ min calls < 30% → Weak opener. Fix the first 10 seconds.
+- Lots of 2+ min calls but few meetings → Weak pitch or qualification.
+- Email opens < 20% → Subject lines too generic
+- Email replies < 2% → Email body lacks personalization
+- Deals stalling → Follow-up cadence too slow
 
 ## PLATFORM FEATURES MAP
 - **Dashboard** — Overview stats, recent activity
@@ -431,24 +576,19 @@ When users ask "how do I improve results" or "what's wrong", ALWAYS use the anal
 - **Conversations** — Internal team messaging
 
 ## YOUR ROLE & BEHAVIOR
-1. **Data-Driven**: ALWAYS use tools to query real data before answering. Never guess.
-2. **Action-Oriented**: Give specific, prioritized next steps based on current state.
-3. **Platform Expert**: You know every feature and the correct order to use them.
-4. **Proactive**: Detect gaps and recommend fixes before being asked.
-5. **Natural Language Only**: Never expose JSON, tool names, IDs, or technical details. Never mention URLs or paths like /crm — always say "the CRM page".
-6. **Concise but Complete**: Be direct. No filler. Format with markdown for readability.
-7. **Context-Aware**: Consider the user's role (agency_owner vs sdr) when giving advice.
-8. **Follow-Up Suggestions**: After answering, suggest 1-2 logical next actions the user might want to take.
+1. **Data-Driven**: ALWAYS use tools to query real data before answering.
+2. **Action-Oriented**: Give specific, prioritized next steps.
+3. **Platform Expert**: You know every feature and the correct order.
+4. **Proactive**: Detect gaps and recommend fixes.
+5. **Natural Language Only**: Never expose JSON, tool names, IDs, or technical details.
+6. **Concise but Complete**: Be direct. Format with markdown.
+7. **Context-Aware**: Consider the user's role.
+8. **Follow-Up Suggestions**: After answering, suggest 1-2 logical next actions.
 
 ## IMPORTANT RULES
-- When a user asks "what should I do next" → ALWAYS call get_platform_state first
-- When a user asks about performance → ALWAYS call analyze_bottleneck first
-- Never say "I don't have access" if you have tools — use them
-- If data is empty, explain what it means and what to do about it
-- For agency owners: always think about the full pipeline (offer → jobs → SDRs → leads → scripts → sequences → calls → deals → contracts → commissions)
-- For SDRs: focus on their assigned leads, call activity, and deal progress
-- NEVER suggest making calls or sending emails if there are no hired SDRs
-- NEVER suggest assigning leads if there are no hired SDRs
+- Never say "I don't have access" — use your tools
+- If data is empty, explain what it means and what to do
+- NEVER suggest making calls if there are no hired SDRs
 - NEVER suggest posting jobs if the Offer Diagnostic is not complete`;
 
 // ──────────────────────────────────────────────
@@ -484,6 +624,23 @@ function parseTimeRange(timeRange: string): { start: Date; label: string } {
   return { start: new Date(now.getTime() - 7 * 86400000), label: "last 7 days" };
 }
 
+function getTodayStart(): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+// ──────────────────────────────────────────────
+// HELPER: Resolve SDR by name
+// ──────────────────────────────────────────────
+async function resolveSdrByName(serviceClient: any, workspaceId: string, sdrName: string): Promise<{ id: string; full_name: string } | null> {
+  const { data: members } = await serviceClient.from("workspace_members").select("user_id").eq("workspace_id", workspaceId).is("removed_at", null);
+  if (!members?.length) return null;
+  const memberIds = members.map((m: any) => m.user_id);
+  const { data: profiles } = await serviceClient.from("profiles").select("id, full_name").in("id", memberIds);
+  return profiles?.find((p: any) => p.full_name?.toLowerCase().includes(sdrName.toLowerCase())) || null;
+}
+
 // ──────────────────────────────────────────────
 // TOOL EXECUTORS
 // ──────────────────────────────────────────────
@@ -506,23 +663,33 @@ async function executeTool(
         if (params.count_only) {
           let q = serviceClient.from("leads").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId);
           if (params.unassigned_only) q = q.is("assigned_to", null);
-          if (params.status) q = q.eq("status", params.status);
+          if (params.readiness_segment) q = q.eq("readiness_segment", params.readiness_segment);
+          if (params.email_sending_state) q = q.eq("email_sending_state", params.email_sending_state);
+          if (params.assigned_to_name) {
+            const sdr = await resolveSdrByName(serviceClient, workspaceId, params.assigned_to_name);
+            if (sdr) q = q.eq("assigned_to", sdr.id);
+          }
           const { count } = await q;
-          return { success: true, data: { count: count || 0 }, summary: `There are ${count || 0}${params.unassigned_only ? ' unassigned' : ''} leads${params.status ? ` with status "${params.status}"` : ''}.` };
+          return { success: true, data: { count: count || 0 }, summary: `There are ${count || 0}${params.unassigned_only ? ' unassigned' : ''} leads${params.readiness_segment ? ` tagged "${params.readiness_segment}"` : ''}.` };
         }
         let query = serviceClient.from("leads")
-          .select("id, first_name, last_name, email, company, status, assigned_to, created_at, last_contacted_at")
+          .select("id, first_name, last_name, email, company, readiness_segment, email_sending_state, assigned_to, created_at, last_contacted_at, notes")
           .eq("workspace_id", workspaceId)
           .order("created_at", { ascending: false })
           .limit(params.limit || 10);
-        if (params.status) query = query.eq("status", params.status);
+        if (params.readiness_segment) query = query.eq("readiness_segment", params.readiness_segment);
+        if (params.email_sending_state) query = query.eq("email_sending_state", params.email_sending_state);
         if (params.unassigned_only) query = query.is("assigned_to", null);
+        if (params.assigned_to_name) {
+          const sdr = await resolveSdrByName(serviceClient, workspaceId, params.assigned_to_name);
+          if (sdr) query = query.eq("assigned_to", sdr.id);
+        }
         const { data: leads } = await query;
         return {
           success: true,
           data: { leads, count: leads?.length || 0 },
           summary: leads?.length
-            ? `Found ${leads.length} leads:\n${leads.map((l: any) => `• ${l.first_name || ''} ${l.last_name || ''} — ${l.company || 'No company'} (${l.status || 'new'})`).join('\n')}`
+            ? `Found ${leads.length} leads:\n${leads.map((l: any) => `• ${l.first_name || ''} ${l.last_name || ''} — ${l.company || 'No company'} (${l.readiness_segment || 'unscored'})`).join('\n')}`
             : "No leads found matching your criteria.",
         };
       }
@@ -682,7 +849,6 @@ async function executeTool(
       }
 
       case "query_applications": {
-        // Get jobs first to join
         const { data: jobs } = await serviceClient.from("jobs").select("id, title").eq("workspace_id", workspaceId);
         if (!jobs?.length) {
           return { success: true, data: { count: 0 }, summary: "No job postings exist yet, so there are no applications." };
@@ -696,7 +862,6 @@ async function executeTool(
           return { success: true, data: { count: apps?.length || 0 }, summary: `There are ${apps?.length || 0}${params.status ? ` ${params.status}` : ''} applications.` };
         }
 
-        // Get applicant names
         const userIds = [...new Set((apps || []).map((a: any) => a.user_id))];
         const { data: profiles } = userIds.length ? await serviceClient.from("profiles").select("id, full_name").in("id", userIds) : { data: [] };
         const nameMap: Record<string, string> = {};
@@ -714,7 +879,6 @@ async function executeTool(
       }
 
       case "query_offer_diagnostic": {
-        // Check offer_diagnostic_state table
         const { data: diagState } = await serviceClient
           .from("offer_diagnostic_state")
           .select("*")
@@ -725,219 +889,172 @@ async function executeTool(
           return {
             success: true,
             data: { completed: false },
-            summary: "The Offer Diagnostic has NOT been completed yet. This is the first step — it defines the offer, ICP, and pricing strategy needed for effective outbound.",
+            summary: "The Offer Diagnostic has NOT been completed yet. This is the first step — it defines your offer, ideal customer profile, and pricing. Go to the Offer Diagnostic page to start.",
           };
         }
 
         const state = diagState[0];
-        const hasScore = state.alignment_score != null && state.alignment_score > 0;
+        const { data: diagResults } = await serviceClient
+          .from("offer_diagnostic_results")
+          .select("*")
+          .eq("workspace_id", workspaceId)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
         return {
           success: true,
-          data: {
-            completed: hasScore,
-            score: state.alignment_score,
-            verdict: state.verdict,
-            bottleneck: state.primary_bottleneck,
-          },
-          summary: hasScore
-            ? `**Offer Diagnostic Results**\n• Score: ${state.alignment_score}/100\n• Verdict: ${state.verdict || 'N/A'}\n• Primary bottleneck: ${state.primary_bottleneck || 'None identified'}`
-            : "The Offer Diagnostic has been started but not completed yet.",
+          data: { completed: true, state, results: diagResults?.[0] || null },
+          summary: diagResults?.[0]
+            ? `**Offer Diagnostic: Complete ✅**\nScore: ${diagResults[0].overall_score || 'N/A'}/100\nVerdict: ${diagResults[0].verdict || 'N/A'}\n${diagResults[0].recommendations ? `Recommendations: ${JSON.stringify(diagResults[0].recommendations).slice(0, 300)}` : ''}`
+            : "Offer Diagnostic state exists but no results yet. The user may still be completing it.",
         };
       }
 
       case "query_training": {
-        const { data: training } = await serviceClient
-          .from("training_materials")
-          .select("id, title, type, created_at")
-          .eq("workspace_id", workspaceId);
-
+        const { data: trainings } = await serviceClient.from("training_materials").select("id, title, type, created_at").eq("workspace_id", workspaceId);
         if (params.count_only) {
-          return { success: true, data: { count: training?.length || 0 }, summary: `You have ${training?.length || 0} training materials.` };
+          return { success: true, data: { count: trainings?.length || 0 }, summary: `You have ${trainings?.length || 0} training materials.` };
         }
         return {
           success: true,
-          data: { training, count: training?.length || 0 },
-          summary: training?.length
-            ? `**Training Materials**\n${training.map((t: any) => `• ${t.title} (${t.type || 'general'})`).join('\n')}`
+          data: { trainings, count: trainings?.length || 0 },
+          summary: trainings?.length
+            ? `**Training Materials**\n${trainings.map((t: any) => `• ${t.title} (${t.type || 'general'})`).join('\n')}`
             : "No training materials created yet.",
         };
       }
 
       case "analyze_bottleneck": {
         const { start, label } = parseTimeRange(params.time_range || "last 30 days");
-
-        // Parallel queries for all KPIs
-        const [callsRes, emailsRes, dealsRes, leadsRes] = await Promise.all([
-          serviceClient.from("call_logs").select("id, call_status, duration_seconds, disposition").eq("workspace_id", workspaceId).gte("created_at", start.toISOString()),
-          serviceClient.from("email_logs").select("id, status").eq("workspace_id", workspaceId).gte("sent_at", start.toISOString()),
+        const [{ data: calls }, { data: deals }, { data: emails }] = await Promise.all([
+          serviceClient.from("call_logs").select("id, call_status, duration_seconds").eq("workspace_id", workspaceId).gte("created_at", start.toISOString()),
           serviceClient.from("deals").select("id, stage, value").eq("workspace_id", workspaceId).gte("created_at", start.toISOString()),
-          serviceClient.from("leads").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
+          serviceClient.from("email_logs").select("id, status").eq("workspace_id", workspaceId).gte("sent_at", start.toISOString()),
         ]);
 
-        const calls = callsRes.data || [];
-        const emails = emailsRes.data || [];
-        const deals = dealsRes.data || [];
-        const totalLeads = leadsRes.count || 0;
+        const totalCalls = calls?.length || 0;
+        const connected = calls?.filter((c: any) => c.call_status === 'completed').length || 0;
+        const twoMinPlus = calls?.filter((c: any) => (c.duration_seconds || 0) >= 120).length || 0;
+        const connectRate = totalCalls ? Math.round((connected / totalCalls) * 100) : 0;
+        const qualityRate = connected ? Math.round((twoMinPlus / connected) * 100) : 0;
 
-        const totalCalls = calls.length;
-        const connected = calls.filter((c: any) => c.call_status === 'completed').length;
-        const twoMinPlus = calls.filter((c: any) => (c.duration_seconds || 0) >= 120).length;
-        const connectRate = totalCalls > 0 ? Math.round((connected / totalCalls) * 100) : 0;
-        const qualityRate = connected > 0 ? Math.round((twoMinPlus / connected) * 100) : 0;
+        const totalDeals = deals?.length || 0;
+        const closedWon = deals?.filter((d: any) => d.stage === 'closed_won').length || 0;
+        const closeRate = totalDeals ? Math.round((closedWon / totalDeals) * 100) : 0;
 
-        const totalEmails = emails.length;
-        const opened = emails.filter((e: any) => e.status === 'opened').length;
-        const openRate = totalEmails > 0 ? Math.round((opened / totalEmails) * 100) : 0;
+        const totalEmails = emails?.length || 0;
+        const opened = emails?.filter((e: any) => e.status === 'opened').length || 0;
+        const replied = emails?.filter((e: any) => e.status === 'replied').length || 0;
 
-        const closedWon = deals.filter((d: any) => d.stage === 'closed_won').length;
-        const closedRevenue = deals.filter((d: any) => d.stage === 'closed_won').reduce((s: number, d: any) => s + (Number(d.value) || 0), 0);
-
-        // Determine bottleneck
-        const bottlenecks: { issue: string; severity: number; advice: string }[] = [];
-
-        if (totalCalls === 0 && totalEmails === 0) {
-          bottlenecks.push({ issue: "No outbound activity", severity: 100, advice: "Your SDRs haven't made any calls or sent any emails. Make sure leads are assigned and SDRs are actively working them." });
-        } else {
-          if (totalCalls > 0 && connectRate < 15) {
-            bottlenecks.push({ issue: `Low connect rate (${connectRate}%)`, severity: 90, advice: "Your connect rate is below 15%. Check: Are you calling during business hours (9-11am, 2-4pm local time)? Is the phone data accurate? Consider using a local caller ID." });
-          }
-          if (connected > 5 && qualityRate < 30) {
-            bottlenecks.push({ issue: `Low quality calls (${qualityRate}% are 2+ min)`, severity: 85, advice: "Most calls are ending quickly. Your opener needs work — the first 10 seconds determine if the prospect stays. Review the script's pattern interrupt and permission check. Consider using the Script Builder to generate a better opener." });
-          }
-          if (twoMinPlus > 10 && closedWon === 0) {
-            bottlenecks.push({ issue: "Good conversations but no closed deals", severity: 80, advice: "SDRs are having quality conversations but not closing. Check the pitch and qualification criteria. Are they asking for the meeting/next step clearly? Review the micro-commitment and earned next step in the script." });
-          }
-          if (totalEmails > 20 && openRate < 20) {
-            bottlenecks.push({ issue: `Low email open rate (${openRate}%)`, severity: 70, advice: "Email subject lines aren't compelling enough. Use curiosity-driven, short subject lines (3-5 words). Avoid spam triggers. Personalize with the prospect's company name." });
-          }
-        }
-
-        bottlenecks.sort((a, b) => b.severity - a.severity);
-        const topBottleneck = bottlenecks[0];
-
-        const summary = [
-          `**Performance Analysis (${label})**`,
-          ``,
-          `📞 **Calls**: ${totalCalls} total, ${connected} connected (${connectRate}% connect rate), ${twoMinPlus} quality (2+ min, ${qualityRate}%)`,
-          `📧 **Emails**: ${totalEmails} sent, ${opened} opened (${openRate}% open rate)`,
-          `💰 **Deals**: ${deals.length} total, ${closedWon} closed won ($${closedRevenue.toLocaleString()})`,
-          `👥 **Leads**: ${totalLeads} in CRM`,
-          ``,
-          topBottleneck
-            ? `🎯 **#1 Bottleneck: ${topBottleneck.issue}**\n${topBottleneck.advice}`
-            : `✅ No major bottlenecks detected. Keep up the momentum!`,
-          bottlenecks.length > 1 ? `\n📋 **Other areas to watch:**\n${bottlenecks.slice(1).map(b => `• ${b.issue}`).join('\n')}` : '',
-        ].join('\n');
-
-        return { success: true, data: { connectRate, qualityRate, openRate, closedWon, closedRevenue, bottlenecks }, summary };
+        return {
+          success: true,
+          data: { totalCalls, connectRate, qualityRate, totalDeals, closeRate, totalEmails, opened, replied },
+          summary: `**Performance Analysis (${label})**\n\n📞 **Calls**: ${totalCalls} total, ${connectRate}% connect rate, ${qualityRate}% quality (2+ min)\n📧 **Emails**: ${totalEmails} sent, ${opened} opened, ${replied} replied\n💰 **Deals**: ${totalDeals} total, ${closedWon} closed won (${closeRate}% close rate)\n\n**Key metrics for AI diagnosis:**\n- Connect rate: ${connectRate}% (benchmark: 15-25%)\n- Quality call rate: ${qualityRate}% (benchmark: 30-50%)\n- Close rate: ${closeRate}% (benchmark: varies)`,
+        };
       }
 
       case "get_platform_state": {
-        // Comprehensive state check — all critical tables
-        const [leads, unassignedLeads, deals, calls, sequences, scripts, members, emailLogs, jobs, diagState] = await Promise.all([
+        const [
+          { count: leadsCount }, { count: unassignedCount }, { count: dealsCount },
+          { data: dealStages }, { count: callsCount }, { count: emailsCount },
+          { data: sequences }, { data: scripts }, { data: jobs },
+        ] = await Promise.all([
           serviceClient.from("leads").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
           serviceClient.from("leads").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId).is("assigned_to", null),
-          serviceClient.from("deals").select("id, value, stage", { count: "exact" }).eq("workspace_id", workspaceId),
+          serviceClient.from("deals").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
+          serviceClient.from("deals").select("stage").eq("workspace_id", workspaceId),
           serviceClient.from("call_logs").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
-          serviceClient.from("follow_up_sequences").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
-          serviceClient.from("call_scripts").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
-          serviceClient.from("workspace_members").select("user_id", { count: "exact", head: true }).eq("workspace_id", workspaceId).is("removed_at", null),
           serviceClient.from("email_logs").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId),
-          serviceClient.from("jobs").select("id, is_active", { count: "exact" }).eq("workspace_id", workspaceId),
-          serviceClient.from("offer_diagnostic_state").select("alignment_score, verdict, primary_bottleneck").eq("workspace_id", workspaceId).limit(1),
+          serviceClient.from("follow_up_sequences").select("id, name, status").eq("workspace_id", workspaceId),
+          serviceClient.from("call_scripts").select("id").eq("workspace_id", workspaceId),
+          serviceClient.from("jobs").select("id, title, is_active").eq("workspace_id", workspaceId),
         ]);
 
-        // Job applications count
-        const jobIds = (jobs.data || []).map((j: any) => j.id);
-        let applicationsCount = 0;
-        let pendingAppsCount = 0;
-        let acceptedAppsCount = 0;
-        if (jobIds.length > 0) {
+        const { data: diagState } = await serviceClient.from("offer_diagnostic_state").select("id").eq("workspace_id", workspaceId).limit(1);
+        const diagnosticCompleted = (diagState?.length || 0) > 0;
+
+        const totalJobs = jobs?.length || 0;
+        const activeJobs = jobs?.filter((j: any) => j.is_active).length || 0;
+
+        let applicationsCount = 0, pendingAppsCount = 0, acceptedAppsCount = 0;
+        if (totalJobs > 0) {
+          const jobIds = jobs!.map((j: any) => j.id);
           const { data: apps } = await serviceClient.from("job_applications").select("id, status").in("job_id", jobIds);
           applicationsCount = apps?.length || 0;
           pendingAppsCount = apps?.filter((a: any) => a.status === 'pending').length || 0;
           acceptedAppsCount = apps?.filter((a: any) => a.status === 'accepted').length || 0;
         }
 
-        const diagnosticCompleted = diagState.data?.[0]?.alignment_score > 0;
-        const diagnosticScore = diagState.data?.[0]?.alignment_score || 0;
-        const activeJobs = (jobs.data || []).filter((j: any) => j.is_active).length;
-        const totalJobs = jobs.count || 0;
+        const stageCounts: Record<string, number> = {};
+        dealStages?.forEach((d: any) => { stageCounts[d.stage] = (stageCounts[d.stage] || 0) + 1; });
 
         const state = {
-          leads: leads.count || 0,
-          unassignedLeads: unassignedLeads.count || 0,
-          deals: deals.count || 0,
-          calls: calls.count || 0,
-          sequences: sequences.count || 0,
-          scripts: scripts.count || 0,
-          teamMembers: members.count || 0,
-          emailsSent: emailLogs.count || 0,
+          leads: leadsCount || 0,
+          unassignedLeads: unassignedCount || 0,
+          deals: dealsCount || 0,
+          dealsByStage: stageCounts,
+          calls: callsCount || 0,
+          emails: emailsCount || 0,
+          sequences: sequences?.length || 0,
+          scripts: scripts?.length || 0,
           jobs: totalJobs,
           activeJobs,
           applications: applicationsCount,
           pendingApplications: pendingAppsCount,
           acceptedApplications: acceptedAppsCount,
           diagnosticCompleted,
-          diagnosticScore,
         };
 
         const summaryParts = [
-          `**Platform Overview**`,
-          `• Offer Diagnostic: ${diagnosticCompleted ? `✅ Completed (Score: ${diagnosticScore}/100)` : '❌ Not completed'}`,
-          `• Jobs: ${totalJobs} posted (${activeJobs} active)`,
-          `• Applications: ${applicationsCount} total (${pendingAppsCount} pending, ${acceptedAppsCount} accepted)`,
-          `• Team members (SDRs): ${state.teamMembers}`,
-          `• Leads: ${state.leads} total (${state.unassignedLeads} unassigned)`,
-          `• Call scripts: ${state.scripts}`,
-          `• Email sequences: ${state.sequences}`,
-          `• Calls made: ${state.calls}`,
-          `• Emails sent: ${state.emailsSent}`,
-          `• Deals: ${state.deals}`,
+          `**Platform State Overview**`,
+          `• Offer Diagnostic: ${diagnosticCompleted ? '✅ Complete' : '❌ Not started'}`,
+          `• Jobs: ${totalJobs} total (${activeJobs} active)`,
+          `• Applications: ${applicationsCount} total (${pendingAppsCount} pending, ${acceptedAppsCount} accepted/hired)`,
+          `• Leads: ${leadsCount || 0} total (${unassignedCount || 0} unassigned)`,
+          `• Deals: ${dealsCount || 0} total ${Object.entries(stageCounts).length ? `(${Object.entries(stageCounts).map(([s, c]) => `${s}: ${c}`).join(', ')})` : ''}`,
+          `• Calls: ${callsCount || 0} total`,
+          `• Emails: ${emailsCount || 0} sent`,
+          `• Sequences: ${sequences?.length || 0} configured`,
+          `• Scripts: ${scripts?.length || 0} created`,
         ];
 
-        // Build priority-ordered next steps
         const nextSteps: string[] = [];
         if (!diagnosticCompleted) {
-          nextSteps.push("Complete the Offer Diagnostic — this defines your offer, ICP, and pricing strategy. Everything else builds on this. Go to the Offer Diagnostic page.");
+          nextSteps.push("Complete the Offer Diagnostic — this defines your offer, ICP, and pricing strategy.");
         }
         if (diagnosticCompleted && state.scripts === 0) {
-          nextSteps.push("Use the Script Builder to generate a cold call script from your Offer Diagnostic results. Go to the Script Builder page.");
+          nextSteps.push("Use the Script Builder to generate a cold call script from your Offer Diagnostic results.");
         }
         if (totalJobs === 0) {
-          nextSteps.push("Post a job to start recruiting SDRs who will make calls and close deals for you. Go to the Jobs page.");
+          nextSteps.push("Post a job to start recruiting SDRs.");
         }
         if (totalJobs > 0 && acceptedAppsCount === 0 && pendingAppsCount > 0) {
-          nextSteps.push(`Review ${pendingAppsCount} pending SDR applications. Go to the Jobs page to accept or reject applicants.`);
+          nextSteps.push(`Review ${pendingAppsCount} pending SDR applications.`);
         }
         if (totalJobs > 0 && applicationsCount === 0) {
-          nextSteps.push("No SDRs have applied yet. Share your job listing to attract talent, or invite SDRs directly.");
+          nextSteps.push("No SDRs have applied yet. Share your job listing to attract talent.");
         }
         if (state.leads === 0) {
-          nextSteps.push("Import leads into your CRM. Use Apollo Search on the Leads page or upload a CSV in the CRM.");
+          nextSteps.push("Import leads into your CRM via Apollo Search or CSV upload.");
         }
         if (state.leads > 0 && state.unassignedLeads > 0 && acceptedAppsCount > 0) {
-          nextSteps.push(`Assign ${state.unassignedLeads} unassigned leads to your SDRs. Go to the CRM, select leads, and use bulk assign.`);
+          nextSteps.push(`Assign ${state.unassignedLeads} unassigned leads to your SDRs.`);
         }
         if (state.sequences === 0 && state.leads > 0) {
-          nextSteps.push("Create email follow-up sequences for leads that don't pick up calls. Go to the Email page.");
+          nextSteps.push("Create email follow-up sequences for leads that don't pick up calls.");
         }
         if (state.leads > 0 && state.calls === 0 && acceptedAppsCount > 0) {
-          nextSteps.push("Your SDRs should start making calls! Make sure they have scripts and assigned leads, then use the Dialer.");
+          nextSteps.push("Your SDRs should start making calls!");
         }
 
         if (nextSteps.length > 0) {
           summaryParts.push("", "**Recommended next steps (in priority order):**");
           nextSteps.forEach((step, i) => summaryParts.push(`${i + 1}. ${step}`));
         } else {
-          summaryParts.push("", "✅ Your platform is fully set up! Focus on monitoring performance and optimizing outreach.");
+          summaryParts.push("", "✅ Your platform is fully set up! Focus on monitoring performance.");
         }
 
-        return {
-          success: true,
-          data: { ...state, nextSteps },
-          summary: summaryParts.join('\n'),
-        };
+        return { success: true, data: { ...state, nextSteps }, summary: summaryParts.join('\n') };
       }
 
       // ──────────────────────────────────────────────
@@ -945,32 +1062,47 @@ async function executeTool(
       // ──────────────────────────────────────────────
       case "update_leads": {
         const updates: Record<string, any> = { updated_at: new Date().toISOString() };
-        if (params.set_status) updates.status = params.set_status;
+        if (params.set_readiness_segment) updates.readiness_segment = params.set_readiness_segment;
         if (params.set_notes) updates.notes = params.set_notes;
+        if (params.set_email_sending_state) updates.email_sending_state = params.set_email_sending_state;
 
         let query = serviceClient.from("leads").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId);
         if (params.lead_ids?.length) query = query.in("id", params.lead_ids);
-        else if (params.filter_status) query = query.eq("status", params.filter_status);
-        else if (!params.all) return { success: false, data: {}, summary: "Please specify lead_ids, filter_status, or all=true." };
+        else if (params.filter_readiness_segment) query = query.eq("readiness_segment", params.filter_readiness_segment);
+        else if (params.filter_unassigned) query = query.is("assigned_to", null);
+        else if (!params.all) return { success: false, data: {}, summary: "Please specify lead_ids, a filter, or all=true." };
 
         const { count } = await query;
         if (!params.confirmed) {
-          return { success: true, data: { affected_count: count || 0 }, summary: `${count || 0} leads would be updated${params.set_status ? ` to status "${params.set_status}"` : ''}.` };
+          const changes = [];
+          if (params.set_readiness_segment) changes.push(`readiness to "${params.set_readiness_segment}"`);
+          if (params.set_notes) changes.push(`notes`);
+          if (params.set_email_sending_state) changes.push(`email state to "${params.set_email_sending_state}"`);
+          return { success: true, data: { affected_count: count || 0 }, summary: `${count || 0} leads would be updated (${changes.join(', ')}). Should I proceed?` };
         }
 
         let updateQuery = serviceClient.from("leads").update(updates).eq("workspace_id", workspaceId);
         if (params.lead_ids?.length) updateQuery = updateQuery.in("id", params.lead_ids);
-        else if (params.filter_status) updateQuery = updateQuery.eq("status", params.filter_status);
+        else if (params.filter_readiness_segment) updateQuery = updateQuery.eq("readiness_segment", params.filter_readiness_segment);
+        else if (params.filter_unassigned) updateQuery = updateQuery.is("assigned_to", null);
 
         const { error } = await updateQuery;
         if (error) return { success: false, data: {}, summary: `Error updating leads: ${error.message}` };
 
         await logExecution(serviceClient, userId, workspaceId, "update_leads", params, count || 0);
-        return { success: true, data: { affected_count: count || 0 }, summary: `Successfully updated ${count || 0} leads${params.set_status ? ` to status "${params.set_status}"` : ''}.` };
+        return { success: true, data: { affected_count: count || 0 }, summary: `Successfully updated ${count || 0} leads.` };
       }
 
       case "update_deals": {
+        // Validate stage
+        if (!VALID_STAGES.includes(params.set_stage)) {
+          return { success: false, data: {}, summary: `Invalid stage "${params.set_stage}". Valid stages: ${VALID_STAGES.join(', ')}` };
+        }
+
         const updates: Record<string, any> = { stage: params.set_stage, updated_at: new Date().toISOString() };
+        if (params.set_stage === 'closed_won' || params.set_stage === 'closed_lost') {
+          updates.closed_at = new Date().toISOString();
+        }
 
         let query = serviceClient.from("deals").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId);
         if (params.deal_ids?.length) query = query.in("id", params.deal_ids);
@@ -979,7 +1111,7 @@ async function executeTool(
 
         const { count } = await query;
         if (!params.confirmed) {
-          return { success: true, data: { affected_count: count || 0 }, summary: `${count || 0} deals would be moved to "${params.set_stage}".` };
+          return { success: true, data: { affected_count: count || 0 }, summary: `${count || 0} deals would be moved to "${params.set_stage}". Should I proceed?` };
         }
 
         let updateQuery = serviceClient.from("deals").update(updates).eq("workspace_id", workspaceId);
@@ -989,36 +1121,46 @@ async function executeTool(
         const { error } = await updateQuery;
         if (error) return { success: false, data: {}, summary: `Error updating deals: ${error.message}` };
 
+        // Log deal activity for each deal
+        if (params.deal_ids?.length) {
+          for (const dealId of params.deal_ids) {
+            await serviceClient.from("deal_activities").insert({
+              deal_id: dealId, user_id: userId, activity_type: "stage_change",
+              description: `Stage changed to ${params.set_stage} by Klaus`,
+            }).catch(() => {});
+          }
+        }
+
         await logExecution(serviceClient, userId, workspaceId, "update_deals", params, count || 0);
         return { success: true, data: { affected_count: count || 0 }, summary: `Successfully moved ${count || 0} deals to "${params.set_stage}".` };
       }
 
       case "assign_leads_to_sdr": {
-        const { data: members } = await serviceClient.from("workspace_members").select("user_id").eq("workspace_id", workspaceId).is("removed_at", null);
-        if (!members?.length) return { success: false, data: {}, summary: "No team members found in this workspace." };
-        
-        const memberIds = members.map((m: any) => m.user_id);
-        const { data: profiles } = await serviceClient.from("profiles").select("id, full_name").in("id", memberIds);
-        const sdr = profiles?.find((p: any) => p.full_name?.toLowerCase().includes(params.sdr_name.toLowerCase()));
-        if (!sdr) return { success: false, data: {}, summary: `Could not find an SDR named "${params.sdr_name}". Available: ${profiles?.map((p: any) => p.full_name).join(', ') || 'none'}.` };
+        const sdr = await resolveSdrByName(serviceClient, workspaceId, params.sdr_name);
+        if (!sdr) {
+          const { data: members } = await serviceClient.from("workspace_members").select("user_id").eq("workspace_id", workspaceId).is("removed_at", null);
+          const memberIds = members?.map((m: any) => m.user_id) || [];
+          const { data: profiles } = memberIds.length ? await serviceClient.from("profiles").select("full_name").in("id", memberIds) : { data: [] };
+          return { success: false, data: {}, summary: `Could not find an SDR named "${params.sdr_name}". Available: ${profiles?.map((p: any) => p.full_name).join(', ') || 'none'}.` };
+        }
 
         let query = serviceClient.from("leads").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId);
         if (params.lead_ids?.length) query = query.in("id", params.lead_ids);
         else {
           if (params.filter_unassigned) query = query.is("assigned_to", null);
-          if (params.filter_status) query = query.eq("status", params.filter_status);
+          if (params.filter_readiness_segment) query = query.eq("readiness_segment", params.filter_readiness_segment);
         }
         const { count } = await query;
         const effectiveCount = params.limit ? Math.min(count || 0, params.limit) : (count || 0);
 
         if (!params.confirmed) {
-          return { success: true, data: { affected_count: effectiveCount, sdr_name: sdr.full_name }, summary: `${effectiveCount} leads would be assigned to ${sdr.full_name}.` };
+          return { success: true, data: { affected_count: effectiveCount, sdr_name: sdr.full_name }, summary: `${effectiveCount} leads would be assigned to ${sdr.full_name}. Should I proceed?` };
         }
 
         if (params.limit && !params.lead_ids?.length) {
           let idQuery = serviceClient.from("leads").select("id").eq("workspace_id", workspaceId);
           if (params.filter_unassigned) idQuery = idQuery.is("assigned_to", null);
-          if (params.filter_status) idQuery = idQuery.eq("status", params.filter_status);
+          if (params.filter_readiness_segment) idQuery = idQuery.eq("readiness_segment", params.filter_readiness_segment);
           const { data: leadRows } = await idQuery.limit(params.limit);
           const ids = leadRows?.map((l: any) => l.id) || [];
           if (ids.length > 0) await serviceClient.from("leads").update({ assigned_to: sdr.id, updated_at: new Date().toISOString() }).eq("workspace_id", workspaceId).in("id", ids);
@@ -1027,7 +1169,7 @@ async function executeTool(
           if (params.lead_ids?.length) uq = uq.in("id", params.lead_ids);
           else {
             if (params.filter_unassigned) uq = uq.is("assigned_to", null);
-            if (params.filter_status) uq = uq.eq("status", params.filter_status);
+            if (params.filter_readiness_segment) uq = uq.eq("readiness_segment", params.filter_readiness_segment);
           }
           await uq;
         }
@@ -1043,18 +1185,19 @@ async function executeTool(
 
         let leadQuery = serviceClient.from("leads").select("id").eq("workspace_id", workspaceId);
         if (params.lead_ids?.length) leadQuery = leadQuery.in("id", params.lead_ids);
-        else if (params.filter_status) leadQuery = leadQuery.eq("status", params.filter_status);
+        if (params.filter_readiness_segment) leadQuery = leadQuery.eq("readiness_segment", params.filter_readiness_segment);
         if (params.limit) leadQuery = leadQuery.limit(params.limit);
         const { data: leads } = await leadQuery;
         const leadIds = leads?.map((l: any) => l.id) || [];
 
-        if (!params.confirmed) {
-          return { success: true, data: { affected_count: leadIds.length, sequence_name: seq.name }, summary: `${leadIds.length} leads would be enrolled in sequence "${seq.name}".` };
-        }
-
-        const { data: existing } = await serviceClient.from("active_follow_ups").select("lead_id").eq("sequence_id", seq.id).eq("status", "active").in("lead_id", leadIds);
+        // Exclude already enrolled
+        const { data: existing } = await serviceClient.from("active_follow_ups").select("lead_id").eq("sequence_id", seq.id).eq("status", "active").in("lead_id", leadIds.length > 0 ? leadIds : ["__none__"]);
         const existingIds = new Set(existing?.map((e: any) => e.lead_id) || []);
         const newLeadIds = leadIds.filter((id: string) => !existingIds.has(id));
+
+        if (!params.confirmed) {
+          return { success: true, data: { affected_count: newLeadIds.length, sequence_name: seq.name }, summary: `${newLeadIds.length} leads would be enrolled in sequence "${seq.name}"${existingIds.size > 0 ? ` (${existingIds.size} already enrolled, will be skipped)` : ''}. Should I proceed?` };
+        }
 
         if (newLeadIds.length > 0) {
           await serviceClient.from("active_follow_ups").insert(newLeadIds.map((leadId: string) => ({
@@ -1063,7 +1206,105 @@ async function executeTool(
         }
 
         await logExecution(serviceClient, userId, workspaceId, "enroll_in_sequence", { ...params, sequence_id: seq.id }, newLeadIds.length);
-        return { success: true, data: { enrolled: newLeadIds.length, skipped: existingIds.size }, summary: `Enrolled ${newLeadIds.length} leads in "${seq.name}"${existingIds.size > 0 ? ` (${existingIds.size} skipped, already enrolled)` : ''}.` };
+        return { success: true, data: { enrolled: newLeadIds.length, skipped: existingIds.size }, summary: `Enrolled ${newLeadIds.length} leads in "${seq.name}"${existingIds.size > 0 ? ` (${existingIds.size} skipped)` : ''}.` };
+      }
+
+      case "smart_enroll_sequence": {
+        const { data: sequences } = await serviceClient.from("follow_up_sequences").select("id, name").eq("workspace_id", workspaceId);
+        const seq = sequences?.find((s: any) => s.name.toLowerCase().includes(params.sequence_name.toLowerCase()));
+        if (!seq) return { success: false, data: {}, summary: `Could not find sequence "${params.sequence_name}". Available: ${sequences?.map((s: any) => s.name).join(', ') || 'none'}.` };
+
+        const todayStart = getTodayStart();
+        let leadIds: string[] = [];
+
+        if (params.filter_called_today_no_answer) {
+          const { data: calls } = await serviceClient.from("call_logs")
+            .select("lead_id")
+            .eq("workspace_id", workspaceId)
+            .gte("created_at", todayStart)
+            .in("call_status", ["no-answer", "busy", "failed", "canceled"]);
+          leadIds = [...new Set((calls || []).map((c: any) => c.lead_id).filter(Boolean))];
+        } else if (params.filter_called_today_short_calls) {
+          const { data: calls } = await serviceClient.from("call_logs")
+            .select("lead_id")
+            .eq("workspace_id", workspaceId)
+            .gte("created_at", todayStart)
+            .lt("duration_seconds", 30);
+          leadIds = [...new Set((calls || []).map((c: any) => c.lead_id).filter(Boolean))];
+        } else if (params.filter_no_email_sent) {
+          const { data: allLeads } = await serviceClient.from("leads").select("id").eq("workspace_id", workspaceId);
+          const allLeadIds = allLeads?.map((l: any) => l.id) || [];
+          if (allLeadIds.length > 0) {
+            const { data: emailedLeads } = await serviceClient.from("email_logs").select("lead_id").eq("workspace_id", workspaceId).in("lead_id", allLeadIds);
+            const emailedSet = new Set(emailedLeads?.map((e: any) => e.lead_id) || []);
+            leadIds = allLeadIds.filter((id: string) => !emailedSet.has(id));
+          }
+        }
+
+        // Apply readiness filter
+        if (params.filter_readiness_segment && leadIds.length > 0) {
+          const { data: filtered } = await serviceClient.from("leads").select("id").eq("workspace_id", workspaceId).eq("readiness_segment", params.filter_readiness_segment).in("id", leadIds);
+          leadIds = filtered?.map((l: any) => l.id) || [];
+        }
+
+        // Exclude already in active sequences
+        if (leadIds.length > 0) {
+          const { data: activeEnrollments } = await serviceClient.from("active_follow_ups").select("lead_id").eq("workspace_id", workspaceId).eq("status", "active").in("lead_id", leadIds);
+          const activeSet = new Set(activeEnrollments?.map((e: any) => e.lead_id) || []);
+          leadIds = leadIds.filter((id: string) => !activeSet.has(id));
+        }
+
+        if (params.limit) leadIds = leadIds.slice(0, params.limit);
+
+        if (!params.confirmed) {
+          return { success: true, data: { affected_count: leadIds.length, sequence_name: seq.name }, summary: `${leadIds.length} leads would be enrolled in sequence "${seq.name}". Should I proceed?` };
+        }
+
+        if (leadIds.length > 0) {
+          await serviceClient.from("active_follow_ups").insert(leadIds.map((leadId: string) => ({
+            lead_id: leadId, sequence_id: seq.id, workspace_id: workspaceId, started_by: userId, status: "active", current_step: 0,
+          })));
+        }
+
+        await logExecution(serviceClient, userId, workspaceId, "smart_enroll_sequence", params, leadIds.length);
+        return { success: true, data: { enrolled: leadIds.length }, summary: `Enrolled ${leadIds.length} leads in "${seq.name}".` };
+      }
+
+      case "query_calls_today": {
+        const todayStart = getTodayStart();
+        let query = serviceClient.from("call_logs")
+          .select("id, lead_id, call_status, duration_seconds, caller_id, phone_number, created_at, disposition")
+          .eq("workspace_id", workspaceId)
+          .gte("created_at", todayStart);
+
+        const { data: calls } = await query;
+        let filtered = calls || [];
+
+        if (params.filter_no_answer) {
+          filtered = filtered.filter((c: any) => ["no-answer", "busy", "failed", "canceled"].includes(c.call_status));
+        }
+        if (params.filter_short_calls) {
+          filtered = filtered.filter((c: any) => (c.duration_seconds || 0) < 30);
+        }
+        if (params.filter_connected) {
+          filtered = filtered.filter((c: any) => c.call_status === 'completed');
+        }
+        if (params.caller_name) {
+          const sdr = await resolveSdrByName(serviceClient, workspaceId, params.caller_name);
+          if (sdr) filtered = filtered.filter((c: any) => c.caller_id === sdr.id);
+        }
+
+        if (params.count_only) {
+          const uniqueLeads = new Set(filtered.map((c: any) => c.lead_id).filter(Boolean));
+          return { success: true, data: { call_count: filtered.length, unique_leads: uniqueLeads.size }, summary: `Today: ${filtered.length} calls matching your filter, ${uniqueLeads.size} unique leads.` };
+        }
+
+        const uniqueLeads = [...new Set(filtered.map((c: any) => c.lead_id).filter(Boolean))];
+        return {
+          success: true,
+          data: { calls: filtered, call_count: filtered.length, unique_lead_ids: uniqueLeads },
+          summary: `Today: ${filtered.length} calls matching your filter across ${uniqueLeads.length} unique leads.`,
+        };
       }
 
       case "send_training_to_sdr": {
@@ -1071,14 +1312,11 @@ async function executeTool(
         const training = trainings?.find((t: any) => t.title.toLowerCase().includes(params.training_title.toLowerCase()));
         if (!training) return { success: false, data: {}, summary: `Could not find training "${params.training_title}". Available: ${trainings?.map((t: any) => t.title).join(', ') || 'none'}.` };
 
-        const { data: members } = await serviceClient.from("workspace_members").select("user_id").eq("workspace_id", workspaceId).is("removed_at", null);
-        const memberIds = members?.map((m: any) => m.user_id) || [];
-        const { data: profiles } = memberIds.length ? await serviceClient.from("profiles").select("id, full_name").in("id", memberIds) : { data: [] };
-        const sdr = profiles?.find((p: any) => p.full_name?.toLowerCase().includes(params.sdr_name.toLowerCase()));
+        const sdr = await resolveSdrByName(serviceClient, workspaceId, params.sdr_name);
         if (!sdr) return { success: false, data: {}, summary: `Could not find SDR named "${params.sdr_name}".` };
 
         if (!params.confirmed) {
-          return { success: true, data: { training_title: training.title, sdr_name: sdr.full_name }, summary: `Training "${training.title}" would be sent to ${sdr.full_name}.` };
+          return { success: true, data: { training_title: training.title, sdr_name: sdr.full_name }, summary: `Training "${training.title}" would be sent to ${sdr.full_name}. Should I proceed?` };
         }
 
         await serviceClient.from("notifications").insert({
@@ -1093,8 +1331,9 @@ async function executeTool(
 
       case "create_lead": {
         const { data: newLead, error } = await serviceClient.from("leads").insert({
-          workspace_id: workspaceId, first_name: params.first_name || "", last_name: params.last_name || "",
-          email: params.email || null, company: params.company || null, phone: params.phone || null, title: params.title || null, status: "new",
+          workspace_id: workspaceId, created_by: userId,
+          first_name: params.first_name || "", last_name: params.last_name || "",
+          email: params.email || null, company: params.company || null, phone: params.phone || null, title: params.title || null,
         }).select("id, first_name, last_name").single();
         if (error) return { success: false, data: {}, summary: `Error creating lead: ${error.message}` };
         await logExecution(serviceClient, userId, workspaceId, "create_lead", params, 1);
@@ -1102,23 +1341,138 @@ async function executeTool(
       }
 
       case "create_deal": {
+        // Validate stage
+        const stage = params.stage || "new";
+        if (!VALID_STAGES.includes(stage)) {
+          return { success: false, data: {}, summary: `Invalid stage "${stage}". Valid stages: ${VALID_STAGES.join(', ')}` };
+        }
+
         let assignedTo = userId;
         if (params.assigned_to_name) {
-          const { data: members } = await serviceClient.from("workspace_members").select("user_id").eq("workspace_id", workspaceId).is("removed_at", null);
-          const memberIds = members?.map((m: any) => m.user_id) || [];
-          if (memberIds.length) {
-            const { data: profiles } = await serviceClient.from("profiles").select("id, full_name").in("id", memberIds);
-            const sdr = profiles?.find((p: any) => p.full_name?.toLowerCase().includes(params.assigned_to_name.toLowerCase()));
-            if (sdr) assignedTo = sdr.id;
-          }
+          const sdr = await resolveSdrByName(serviceClient, workspaceId, params.assigned_to_name);
+          if (sdr) assignedTo = sdr.id;
         }
         const { data: newDeal, error } = await serviceClient.from("deals").insert({
           workspace_id: workspaceId, title: params.title, value: params.value || 0,
-          stage: params.stage || "prospect", assigned_to: assignedTo, lead_id: params.lead_id || null,
+          stage, assigned_to: assignedTo, lead_id: params.lead_id || null,
         }).select("id, title, value, stage").single();
         if (error) return { success: false, data: {}, summary: `Error creating deal: ${error.message}` };
         await logExecution(serviceClient, userId, workspaceId, "create_deal", params, 1);
-        return { success: true, data: { deal: newDeal }, summary: `Created deal: "${params.title}" worth $${(params.value || 0).toLocaleString()} in ${params.stage || 'prospect'} stage.` };
+        return { success: true, data: { deal: newDeal }, summary: `Created deal: "${params.title}" worth $${(params.value || 0).toLocaleString()} in ${stage} stage.` };
+      }
+
+      case "delete_leads": {
+        let query = serviceClient.from("leads").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId);
+        if (params.lead_ids?.length) query = query.in("id", params.lead_ids);
+        else if (params.filter_readiness_segment) query = query.eq("readiness_segment", params.filter_readiness_segment);
+        else if (params.filter_unassigned) query = query.is("assigned_to", null);
+        else if (!params.all) return { success: false, data: {}, summary: "Please specify lead_ids, a filter, or all=true." };
+
+        const { count } = await query;
+        if (!params.confirmed) {
+          return { success: true, data: { affected_count: count || 0 }, summary: `${count || 0} leads would be permanently deleted. Should I proceed?` };
+        }
+
+        let deleteQuery = serviceClient.from("leads").delete().eq("workspace_id", workspaceId);
+        if (params.lead_ids?.length) deleteQuery = deleteQuery.in("id", params.lead_ids);
+        else if (params.filter_readiness_segment) deleteQuery = deleteQuery.eq("readiness_segment", params.filter_readiness_segment);
+        else if (params.filter_unassigned) deleteQuery = deleteQuery.is("assigned_to", null);
+
+        const { error } = await deleteQuery;
+        if (error) return { success: false, data: {}, summary: `Error deleting leads: ${error.message}` };
+
+        await logExecution(serviceClient, userId, workspaceId, "delete_leads", params, count || 0);
+        return { success: true, data: { deleted_count: count || 0 }, summary: `Successfully deleted ${count || 0} leads.` };
+      }
+
+      case "send_email_to_leads": {
+        // Get email template or use provided subject/body
+        let subject = params.subject;
+        let body = params.body;
+
+        if (params.template_name) {
+          const { data: templates } = await serviceClient.from("email_templates").select("id, subject, body").eq("workspace_id", workspaceId);
+          const template = templates?.find((t: any) => t.subject?.toLowerCase().includes(params.template_name.toLowerCase()) || params.template_name.toLowerCase());
+          if (template) {
+            subject = template.subject;
+            body = template.body;
+          } else {
+            return { success: false, data: {}, summary: `Could not find email template "${params.template_name}". Available: ${templates?.map((t: any) => t.subject).join(', ') || 'none'}.` };
+          }
+        }
+
+        if (!subject || !body) return { success: false, data: {}, summary: "Please provide either a template_name or both subject and body." };
+
+        // Get target leads
+        let leadQuery = serviceClient.from("leads").select("id, email, first_name").eq("workspace_id", workspaceId).not("email", "is", null);
+        if (params.lead_ids?.length) leadQuery = leadQuery.in("id", params.lead_ids);
+        if (params.filter_readiness_segment) leadQuery = leadQuery.eq("readiness_segment", params.filter_readiness_segment);
+        if (params.limit) leadQuery = leadQuery.limit(params.limit);
+        const { data: leads } = await leadQuery;
+        const validLeads = leads?.filter((l: any) => l.email) || [];
+
+        if (!params.confirmed) {
+          return { success: true, data: { affected_count: validLeads.length }, summary: `${validLeads.length} leads would receive an email with subject "${subject}". Should I proceed?` };
+        }
+
+        // Log email sends (actual sending would be done by the email system)
+        for (const lead of validLeads) {
+          await serviceClient.from("email_logs").insert({
+            workspace_id: workspaceId, sent_by: userId, lead_id: lead.id,
+            subject, body, provider: "klaus", status: "sent",
+          }).catch(() => {});
+        }
+
+        await logExecution(serviceClient, userId, workspaceId, "send_email_to_leads", params, validLeads.length);
+        return { success: true, data: { sent_count: validLeads.length }, summary: `Queued ${validLeads.length} emails with subject "${subject}".` };
+      }
+
+      case "create_task": {
+        let assignedTo = userId;
+        if (params.assigned_to_name) {
+          const sdr = await resolveSdrByName(serviceClient, workspaceId, params.assigned_to_name);
+          if (sdr) assignedTo = sdr.id;
+        }
+
+        const { data: task, error } = await serviceClient.from("tasks").insert({
+          workspace_id: workspaceId, title: params.title, description: params.description || null,
+          due_date: params.due_date || null, assigned_to: assignedTo,
+          lead_id: params.lead_id || null, deal_id: params.deal_id || null,
+          created_by: userId, status: "pending",
+        }).select("id, title").single();
+
+        if (error) return { success: false, data: {}, summary: `Error creating task: ${error.message}` };
+        await logExecution(serviceClient, userId, workspaceId, "create_task", params, 1);
+        return { success: true, data: { task }, summary: `Created task: "${params.title}"${params.assigned_to_name ? ` assigned to ${params.assigned_to_name}` : ''}.` };
+      }
+
+      case "schedule_callback": {
+        let assignedTo = userId;
+        if (params.assigned_to_name) {
+          const sdr = await resolveSdrByName(serviceClient, workspaceId, params.assigned_to_name);
+          if (sdr) assignedTo = sdr.id;
+        }
+
+        // Get lead info
+        const { data: lead } = await serviceClient.from("leads").select("first_name, last_name, phone").eq("id", params.lead_id).single();
+        const leadName = lead ? `${lead.first_name} ${lead.last_name}`.trim() : "Unknown";
+
+        // Create notification for the callback
+        await serviceClient.from("notifications").insert({
+          user_id: assignedTo, workspace_id: workspaceId, type: "callback_reminder",
+          title: "Callback Reminder",
+          message: `Call back ${leadName}${lead?.phone ? ` at ${lead.phone}` : ''}${params.notes ? `. Notes: ${params.notes}` : ''}`,
+          data: { lead_id: params.lead_id, callback_time: params.callback_time, notes: params.notes },
+        });
+
+        // Update lead's last_contacted_at note
+        await serviceClient.from("leads").update({
+          notes: `Callback scheduled${params.callback_time ? ` for ${params.callback_time}` : ''}${params.notes ? `: ${params.notes}` : ''}`,
+          updated_at: new Date().toISOString(),
+        }).eq("id", params.lead_id);
+
+        await logExecution(serviceClient, userId, workspaceId, "schedule_callback", params, 1);
+        return { success: true, data: {}, summary: `Callback scheduled for ${leadName}${params.callback_time ? ` at ${params.callback_time}` : ''}. A reminder notification has been created.` };
       }
 
       default:
@@ -1126,7 +1480,7 @@ async function executeTool(
     }
   } catch (err: any) {
     console.error(`Tool ${toolName} error:`, err);
-    return { success: false, data: {}, summary: `I encountered an error while fetching that data. Please try again.` };
+    return { success: false, data: {}, summary: `Error in ${toolName}: ${err.message || 'Unknown error'}. Please check your data and try again.` };
   }
 }
 
@@ -1263,7 +1617,6 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      // Fallback
       const fallbackResult = await executeTool("get_platform_state", {}, serviceClient, workspace_id, user.id);
       const fallbackResponse = `I'm having trouble with my AI capabilities, but here's your current platform state:\n\n${fallbackResult.summary}`;
 

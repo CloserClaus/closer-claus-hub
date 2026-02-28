@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import ReactMarkdown from "react-markdown";
+import { KlausConfirmationDialog } from "./KlausConfirmationDialog";
 
 interface Message {
   role: "user" | "assistant";
@@ -37,12 +38,41 @@ const FOLLOW_UP_CHIPS = [
   "Show my stats",
 ];
 
+const CONFIRMATION_PATTERNS = [
+  /(\d+)\s+(leads?|deals?|records?|emails?)\s+(would be|will be)/i,
+  /should I proceed/i,
+  /do you confirm/i,
+  /shall I go ahead/i,
+  /would be (updated|moved|assigned|enrolled|deleted|sent)/i,
+];
+
+function extractConfirmationMessage(content: string): string | null {
+  const hasConfirmation = CONFIRMATION_PATTERNS.some(p => p.test(content));
+  if (!hasConfirmation) return null;
+  
+  // Extract the key sentence about the action
+  const lines = content.split('\n').filter(l => l.trim());
+  const actionLine = lines.find(l => 
+    /\d+\s+(leads?|deals?|records?|emails?)/.test(l) && 
+    /(would be|will be|would|will)/.test(l)
+  );
+  
+  if (actionLine) {
+    // Clean markdown
+    return actionLine.replace(/\*\*/g, '').replace(/^[-•]\s*/, '').trim();
+  }
+  
+  // Fallback: take first meaningful line
+  return lines[0]?.replace(/\*\*/g, '').trim() || null;
+}
+
 export function KlausChat({ onClose, onMinimize }: KlausChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
+  const [confirmationMessage, setConfirmationMessage] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { currentWorkspace } = useWorkspace();
@@ -75,6 +105,18 @@ export function KlausChat({ onClose, onMinimize }: KlausChatProps) {
     if (scrollRef.current) {
       const el = scrollRef.current.querySelector("[data-radix-scroll-area-viewport]");
       if (el) el.scrollTop = el.scrollHeight;
+    }
+  }, [messages, isLoading]);
+
+  // Check last assistant message for confirmation patterns
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role !== "assistant" || isLoading) return;
+    
+    const extracted = extractConfirmationMessage(lastMsg.content);
+    if (extracted) {
+      setConfirmationMessage(extracted);
     }
   }, [messages, isLoading]);
 
@@ -151,6 +193,16 @@ export function KlausChat({ onClose, onMinimize }: KlausChatProps) {
     }
   };
 
+  const handleConfirm = () => {
+    setConfirmationMessage(null);
+    sendMessage("Yes, proceed.");
+  };
+
+  const handleCancelConfirmation = () => {
+    setConfirmationMessage(null);
+    sendMessage("No, cancel.");
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -158,147 +210,155 @@ export function KlausChat({ onClose, onMinimize }: KlausChatProps) {
     }
   };
 
-  // Show follow-up chips after the last assistant message if conversation is short
-  const showFollowUpChips = messages.length > 0 && messages.length < 8 && messages[messages.length - 1]?.role === "assistant" && !isLoading;
+  const showFollowUpChips = messages.length > 0 && messages.length < 8 && messages[messages.length - 1]?.role === "assistant" && !isLoading && !confirmationMessage;
 
   return (
-    <div className="fixed bottom-20 right-4 md:bottom-4 z-[60] w-[480px] h-[620px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-6rem)] flex flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/30 shrink-0">
-        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-          <Bot className="h-4 w-4 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm">Klaus</p>
-          <p className="text-xs text-muted-foreground">Execution Agent</p>
-        </div>
-        <div className="flex items-center gap-0.5">
-          {messages.length > 0 && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={clearHistory} title="Clear history">
-              <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+    <>
+      {confirmationMessage && (
+        <KlausConfirmationDialog
+          message={confirmationMessage}
+          onConfirm={handleConfirm}
+          onCancel={handleCancelConfirmation}
+        />
+      )}
+      <div className="fixed bottom-20 right-4 md:bottom-4 z-[60] w-[480px] h-[620px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-6rem)] flex flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/30 shrink-0">
+          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+            <Bot className="h-4 w-4 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm">Klaus</p>
+            <p className="text-xs text-muted-foreground">Execution Agent</p>
+          </div>
+          <div className="flex items-center gap-0.5">
+            {messages.length > 0 && (
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={clearHistory} title="Clear history">
+                <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onMinimize} title="Minimize">
+              <Minus className="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
-          )}
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onMinimize} title="Minimize">
-            <Minus className="h-3.5 w-3.5 text-muted-foreground" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} title="Close">
-            <X className="h-3.5 w-3.5 text-muted-foreground" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Messages */}
-      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
-        {messages.length === 0 && !isLoading && (
-          <div className="text-center py-6 space-y-4">
-            <div className="h-14 w-14 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
-              <Sparkles className="h-7 w-7 text-primary" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">Hey! I'm Klaus, your platform agent.</p>
-              <p className="text-xs text-muted-foreground mt-1.5 max-w-xs mx-auto">
-                I can analyze your performance, guide your next steps, and help you get more out of CloserClaus.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2 justify-center pt-2">
-              {QUICK_ACTIONS.map((action) => (
-                <button
-                  key={action}
-                  onClick={() => sendMessage(action)}
-                  className="px-3 py-1.5 rounded-full border border-border text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                >
-                  {action}
-                </button>
-              ))}
-            </div>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} title="Close">
+              <X className="h-3.5 w-3.5 text-muted-foreground" />
+            </Button>
           </div>
-        )}
-        <div className="space-y-3">
-          {messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div
-                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-foreground"
-                }`}
-              >
-                {msg.role === "assistant" ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
-                  </div>
-                ) : (
-                  <span className="whitespace-pre-wrap">{msg.content}</span>
-                )}
+        </div>
+
+        {/* Messages */}
+        <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+          {messages.length === 0 && !isLoading && (
+            <div className="text-center py-6 space-y-4">
+              <div className="h-14 w-14 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+                <Sparkles className="h-7 w-7 text-primary" />
               </div>
-            </div>
-          ))}
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">Analyzing...</span>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Hey! I'm Klaus, your platform agent.</p>
+                <p className="text-xs text-muted-foreground mt-1.5 max-w-xs mx-auto">
+                  I can analyze your performance, guide your next steps, execute actions, and help you get more out of CloserClaus.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 justify-center pt-2">
+                {QUICK_ACTIONS.map((action) => (
+                  <button
+                    key={action}
+                    onClick={() => sendMessage(action)}
+                    className="px-3 py-1.5 rounded-full border border-border text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  >
+                    {action}
+                  </button>
+                ))}
               </div>
             </div>
           )}
-          {showFollowUpChips && (
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {FOLLOW_UP_CHIPS.map((chip) => (
-                <button
-                  key={chip}
-                  onClick={() => sendMessage(chip)}
-                  className="px-2.5 py-1 rounded-full border border-border text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          <div className="space-y-3">
+            {messages.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-foreground"
+                  }`}
                 >
-                  {chip}
-                </button>
-              ))}
+                  {msg.role === "assistant" ? (
+                    <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <span className="whitespace-pre-wrap">{msg.content}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Analyzing...</span>
+                </div>
+              </div>
+            )}
+            {showFollowUpChips && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {FOLLOW_UP_CHIPS.map((chip) => (
+                  <button
+                    key={chip}
+                    onClick={() => sendMessage(chip)}
+                    className="px-2.5 py-1 rounded-full border border-border text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+
+        {/* Input area */}
+        <div className="p-3 border-t border-border shrink-0">
+          {attachedFile && (
+            <div className="flex items-center gap-2 mb-2 px-2 py-1.5 bg-muted rounded-md text-xs">
+              <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="truncate text-muted-foreground">{attachedFile.name}</span>
+              <button onClick={() => setAttachedFile(null)} className="ml-auto shrink-0">
+                <XCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+              </button>
             </div>
           )}
-        </div>
-      </ScrollArea>
-
-      {/* Input area */}
-      <div className="p-3 border-t border-border shrink-0">
-        {attachedFile && (
-          <div className="flex items-center gap-2 mb-2 px-2 py-1.5 bg-muted rounded-md text-xs">
-            <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <span className="truncate text-muted-foreground">{attachedFile.name}</span>
-            <button onClick={() => setAttachedFile(null)} className="ml-auto shrink-0">
-              <XCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-            </button>
+          <div className="flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.txt,.json,.pdf,.png,.jpg,.jpeg"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading}
+              title="Attach file"
+            >
+              <Paperclip className="h-4 w-4 text-muted-foreground" />
+            </Button>
+            <Input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask Klaus anything…"
+              className="text-sm"
+              disabled={isLoading}
+            />
+            <Button size="icon" className="shrink-0" onClick={() => sendMessage()} disabled={isLoading || !input.trim()}>
+              <Send className="h-4 w-4" />
+            </Button>
           </div>
-        )}
-        <div className="flex gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.txt,.json,.pdf,.png,.jpg,.jpeg"
-            className="hidden"
-            onChange={handleFileSelect}
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading}
-            title="Attach file"
-          >
-            <Paperclip className="h-4 w-4 text-muted-foreground" />
-          </Button>
-          <Input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask Klaus anything…"
-            className="text-sm"
-            disabled={isLoading}
-          />
-          <Button size="icon" className="shrink-0" onClick={() => sendMessage()} disabled={isLoading || !input.trim()}>
-            <Send className="h-4 w-4" />
-          </Button>
         </div>
       </div>
-    </div>
+    </>
   );
 }
