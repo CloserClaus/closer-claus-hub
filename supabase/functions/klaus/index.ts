@@ -480,14 +480,18 @@ Deno.serve(async (req: Request) => {
     });
 
     const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await userClient.auth.getUser(token);
-    if (authError || !user) {
-      console.error("Auth error:", authError?.message);
+    const { data: claimsData, error: authError } = await userClient.auth.getClaims(token);
+    const userId = claimsData?.claims?.sub as string | undefined;
+
+    if (authError || !userId) {
+      console.error("Auth error:", authError?.message || "Missing JWT sub claim");
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const user = { id: userId };
 
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
     const { message, workspace_id } = await req.json();
