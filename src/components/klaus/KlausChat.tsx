@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from "react";
-import { Bot, Send, Loader2, ArrowLeft, Sparkles } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Bot, Send, Loader2, ArrowLeft, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   role: "user" | "assistant";
@@ -20,14 +21,61 @@ export function KlausChat({ onBack }: KlausChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { currentWorkspace } = useWorkspace();
 
+  // Load conversation history on mount
+  useEffect(() => {
+    if (!currentWorkspace?.id || historyLoaded) return;
+
+    const loadHistory = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: history } = await supabase
+        .from("klaus_conversations")
+        .select("role, content, created_at")
+        .eq("user_id", user.id)
+        .eq("organization_id", currentWorkspace.id)
+        .order("created_at", { ascending: true })
+        .limit(50);
+
+      if (history?.length) {
+        setMessages(
+          history.map((h: any) => ({
+            role: h.role as "user" | "assistant",
+            content: h.content,
+            timestamp: new Date(h.created_at),
+          }))
+        );
+      }
+      setHistoryLoaded(true);
+    };
+
+    loadHistory();
+  }, [currentWorkspace?.id, historyLoaded]);
+
+  // Auto-scroll on new messages
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      const el = scrollRef.current.querySelector("[data-radix-scroll-area-viewport]");
+      if (el) el.scrollTop = el.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isLoading]);
+
+  const clearHistory = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !currentWorkspace?.id) return;
+
+    await supabase
+      .from("klaus_conversations")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("organization_id", currentWorkspace.id);
+
+    setMessages([]);
+  }, [currentWorkspace?.id]);
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !currentWorkspace?.id) return;
@@ -54,9 +102,16 @@ export function KlausChat({ onBack }: KlausChatProps) {
       };
       setMessages(prev => [...prev, assistantMessage]);
     } catch (err: any) {
+      console.error("Klaus error:", err);
+      const errorMsg = err?.message?.includes("429")
+        ? "I'm being rate limited. Please wait a moment and try again."
+        : err?.message?.includes("402")
+        ? "AI credits exhausted. Please add credits in Settings → Workspace → Usage."
+        : "Sorry, I encountered an error. Please try again.";
+
       setMessages(prev => [
         ...prev,
-        { role: "assistant", content: "Sorry, I encountered an error. Please try again.", timestamp: new Date() },
+        { role: "assistant", content: errorMsg, timestamp: new Date() },
       ]);
     } finally {
       setIsLoading(false);
@@ -84,18 +139,25 @@ export function KlausChat({ onBack }: KlausChatProps) {
           <p className="font-semibold text-sm">Klaus</p>
           <p className="text-xs text-muted-foreground">Execution Agent</p>
         </div>
-        <Sparkles className="h-3 w-3 text-primary ml-auto" />
+        <div className="ml-auto flex items-center gap-1">
+          {messages.length > 0 && (
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={clearHistory} title="Clear history">
+              <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+            </Button>
+          )}
+          <Sparkles className="h-3 w-3 text-primary" />
+        </div>
       </div>
 
       {/* Messages */}
       <ScrollArea className="flex-1 p-3" ref={scrollRef}>
-        {messages.length === 0 && (
+        {messages.length === 0 && !isLoading && (
           <div className="text-center py-8 space-y-3">
             <Bot className="h-10 w-10 mx-auto text-muted-foreground/50" />
             <div>
               <p className="text-sm font-medium text-foreground">Ask Klaus anything</p>
               <p className="text-xs text-muted-foreground mt-1">
-                "How many calls this week?" • "Who's my top SDR?" • "Assign leads to John"
+                "What should I do next?" • "How many leads do I have?" • "Who's my top SDR?"
               </p>
             </div>
           </div>
@@ -104,20 +166,27 @@ export function KlausChat({ onBack }: KlausChatProps) {
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
+                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
                   msg.role === "user"
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-foreground"
                 }`}
               >
-                {msg.content}
+                {msg.role === "assistant" ? (
+                  <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5">
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <span className="whitespace-pre-wrap">{msg.content}</span>
+                )}
               </div>
             </div>
           ))}
           {isLoading && (
             <div className="flex justify-start">
-              <div className="bg-muted rounded-lg px-3 py-2">
+              <div className="bg-muted rounded-lg px-3 py-2 flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Analyzing...</span>
               </div>
             </div>
           )}
