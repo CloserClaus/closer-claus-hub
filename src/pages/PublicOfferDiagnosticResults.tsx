@@ -104,6 +104,71 @@ export default function PublicOfferDiagnosticResults() {
   const [recsDataReady, setRecsDataReady] = useState(false);
   const [autoplayVideo, setAutoplayVideo] = useState(false);
 
+  // Engagement tracking
+  const leadRecordIdRef = useRef<string | null>(null);
+  const pageEnteredAtRef = useRef<number>(Date.now());
+  const videoWatchedRef = useRef(false);
+
+  // Track time on page and update record on unload
+  useEffect(() => {
+    const updateEngagement = () => {
+      if (!leadRecordIdRef.current) return;
+      const seconds = Math.round((Date.now() - pageEnteredAtRef.current) / 1000);
+      // Use sendBeacon for reliability on page unload
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/offer_diagnostic_leads?id=eq.${leadRecordIdRef.current}`;
+      const body = JSON.stringify({
+        time_on_results_seconds: seconds,
+        video_watched: videoWatchedRef.current,
+      });
+      navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+      // Also try supabase client as fallback
+      supabase.from('offer_diagnostic_leads' as any).update({
+        time_on_results_seconds: seconds,
+        video_watched: videoWatchedRef.current,
+      } as any).eq('id', leadRecordIdRef.current).then(() => {});
+    };
+
+    window.addEventListener('beforeunload', updateEngagement);
+    // Also save periodically every 30s
+    const interval = setInterval(() => {
+      if (!leadRecordIdRef.current) return;
+      const seconds = Math.round((Date.now() - pageEnteredAtRef.current) / 1000);
+      supabase.from('offer_diagnostic_leads' as any).update({
+        time_on_results_seconds: seconds,
+        video_watched: videoWatchedRef.current,
+      } as any).eq('id', leadRecordIdRef.current).then(() => {});
+    }, 30000);
+
+    return () => {
+      window.removeEventListener('beforeunload', updateEngagement);
+      clearInterval(interval);
+      updateEngagement(); // save on unmount too
+    };
+  }, []);
+
+  // Detect video interaction via postMessage from YouTube iframe
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        if (typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          // YouTube iframe API sends events like this
+          if (data.event === 'onStateChange' && data.info === 1) {
+            videoWatchedRef.current = true;
+          }
+        }
+        // Also check for object-based messages
+        if (event.data?.event === 'onStateChange' && event.data?.info === 1) {
+          videoWatchedRef.current = true;
+        }
+      } catch {
+        // ignore non-JSON messages
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
   // Autoplay video 10s after score is revealed
   useEffect(() => {
     if (!scoreRevealed) return;
@@ -140,6 +205,12 @@ export default function PublicOfferDiagnosticResults() {
         const result = await evaluateOfferV2(state.formData);
         if (result?.recommendations) {
           setRecommendations(result.recommendations);
+          // Save AI suggestions to the lead record
+          if (leadRecordIdRef.current) {
+            await supabase.from('offer_diagnostic_leads' as any).update({
+              ai_suggestions: result.recommendations as any,
+            } as any).eq('id', leadRecordIdRef.current);
+          }
         }
       } catch (error) {
         console.error('Failed to fetch recommendations:', error);
@@ -157,7 +228,7 @@ export default function PublicOfferDiagnosticResults() {
 
     const storeLeadData = async () => {
       try {
-        await supabase.from('offer_diagnostic_leads' as any).insert({
+        const { data: insertedData } = await supabase.from('offer_diagnostic_leads' as any).insert({
           first_name: state.firstName,
           email: state.email,
           source: state.source,
@@ -166,7 +237,11 @@ export default function PublicOfferDiagnosticResults() {
           primary_bottleneck: state.latentResult.latentBottleneckKey,
           latent_scores: state.latentResult.latentScores as any,
           form_data: state.formData as any,
-        } as any);
+        } as any).select('id').single();
+
+        if (insertedData) {
+          leadRecordIdRef.current = (insertedData as any).id;
+        }
 
         const ADMIN_USER_ID = 'ff0792cb-1296-40c2-94a4-e6b3e5af970f';
         await supabase.from('notifications').insert({
@@ -346,10 +421,12 @@ export default function PublicOfferDiagnosticResults() {
                 <div className="aspect-video rounded-lg overflow-hidden">
                   <iframe
                     className="w-full h-full"
-                    src={`https://www.youtube.com/embed/OVW-SNpv2Hk${autoplayVideo ? '?autoplay=1' : ''}`}
+                    src={`https://www.youtube.com/embed/OVW-SNpv2Hk?enablejsapi=1&origin=${window.location.origin}${autoplayVideo ? '&autoplay=1' : ''}`}
                     title="How to Turn a Good Offer into a Scalable Outbound System"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
+                    onLoad={() => { videoWatchedRef.current = false; }}
+                    onClick={() => { videoWatchedRef.current = true; }}
                   />
                 </div>
               </CardContent>

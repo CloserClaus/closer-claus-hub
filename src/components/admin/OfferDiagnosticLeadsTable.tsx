@@ -11,7 +11,7 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { Target, Search, Users, Gauge, RefreshCw, Eye } from 'lucide-react';
+import { Target, Search, Users, Gauge, RefreshCw, Eye, Clock, Video, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -24,6 +24,9 @@ interface DiagnosticLead {
   primary_bottleneck: string | null;
   form_data: Record<string, any> | null;
   latent_scores: Record<string, number> | null;
+  ai_suggestions: any[] | null;
+  time_on_results_seconds: number | null;
+  video_watched: boolean | null;
   source: string | null;
   recommendations_sent: boolean | null;
   created_at: string;
@@ -84,6 +87,8 @@ export function OfferDiagnosticLeadsTable() {
     strong: leads.filter(l => l.readiness_label === 'Strong').length,
     moderate: leads.filter(l => l.readiness_label === 'Moderate').length,
     weak: leads.filter(l => l.readiness_label === 'Weak').length,
+    videoWatched: leads.filter(l => l.video_watched).length,
+    avgTimeSeconds: leads.length > 0 ? Math.round(leads.reduce((sum, l) => sum + (l.time_on_results_seconds || 0), 0) / leads.length) : 0,
   };
 
   return (
@@ -144,6 +149,36 @@ export function OfferDiagnosticLeadsTable() {
         </Card>
       </div>
 
+      {/* Engagement Stats */}
+      <div className="grid grid-cols-2 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Video className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{stats.videoWatched}/{stats.total}</p>
+                <p className="text-sm text-muted-foreground">Watched Video</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Clock className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{Math.floor(stats.avgTimeSeconds / 60)}m {stats.avgTimeSeconds % 60}s</p>
+                <p className="text-sm text-muted-foreground">Avg. Time on Results</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Table */}
       <Card>
         <CardHeader>
@@ -186,12 +221,18 @@ export function OfferDiagnosticLeadsTable() {
                     <TableHead>Score</TableHead>
                     <TableHead>Readiness</TableHead>
                     <TableHead>Bottleneck</TableHead>
+                    <TableHead>Time on Page</TableHead>
+                    <TableHead>Video</TableHead>
+                    <TableHead>Suggestions</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((lead) => (
+                  {filtered.map((lead) => {
+                    const mins = Math.floor((lead.time_on_results_seconds || 0) / 60);
+                    const secs = (lead.time_on_results_seconds || 0) % 60;
+                    return (
                     <TableRow key={lead.id}>
                       <TableCell className="font-medium">{lead.first_name || '—'}</TableCell>
                       <TableCell>{lead.email}</TableCell>
@@ -201,6 +242,27 @@ export function OfferDiagnosticLeadsTable() {
                       </TableCell>
                       <TableCell>{getReadinessBadge(lead.readiness_label)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{lead.primary_bottleneck || '—'}</TableCell>
+                      <TableCell className="text-sm">
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3 text-muted-foreground" />
+                          {mins}m {secs}s
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {lead.video_watched ? (
+                          <Badge className="bg-green-500/10 text-green-600 border-green-500/20">Watched</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-muted-foreground">No</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {lead.ai_suggestions && lead.ai_suggestions.length > 0 ? (
+                          <Badge variant="outline" className="gap-1">
+                            <FileText className="h-3 w-3" />
+                            {lead.ai_suggestions.length}
+                          </Badge>
+                        ) : '—'}
+                      </TableCell>
                       <TableCell className="text-muted-foreground">
                         {format(new Date(lead.created_at), 'MMM d, yyyy h:mm a')}
                       </TableCell>
@@ -210,7 +272,8 @@ export function OfferDiagnosticLeadsTable() {
                         </Button>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
               <ScrollBar orientation="horizontal" />
@@ -252,6 +315,21 @@ export function OfferDiagnosticLeadsTable() {
                   <p className="text-sm text-muted-foreground">Submitted</p>
                   <p>{format(new Date(selectedLead.created_at), 'MMM d, yyyy h:mm a')}</p>
                 </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Time on Results Page</p>
+                  <p className="font-medium flex items-center gap-1">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    {Math.floor((selectedLead.time_on_results_seconds || 0) / 60)}m {(selectedLead.time_on_results_seconds || 0) % 60}s
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Video Watched</p>
+                  {selectedLead.video_watched ? (
+                    <Badge className="bg-green-500/10 text-green-600 border-green-500/20">Yes</Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground">No</Badge>
+                  )}
+                </div>
               </div>
 
               {selectedLead.latent_scores && (
@@ -280,6 +358,25 @@ export function OfferDiagnosticLeadsTable() {
                           <span className="text-sm font-medium">{String(value)}</span>
                         </div>
                       ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedLead.ai_suggestions && selectedLead.ai_suggestions.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium mb-2">AI Suggestions Given</p>
+                  <div className="space-y-2">
+                    {selectedLead.ai_suggestions.map((suggestion: any, idx: number) => (
+                      <div key={idx} className="bg-muted rounded px-3 py-2 space-y-1">
+                        <p className="text-sm font-medium">{idx + 1}. {suggestion.headline || suggestion.title || 'Suggestion'}</p>
+                        {suggestion.plainExplanation && (
+                          <p className="text-xs text-muted-foreground">{suggestion.plainExplanation}</p>
+                        )}
+                        {suggestion.category && (
+                          <Badge variant="outline" className="text-xs">{suggestion.category}</Badge>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
