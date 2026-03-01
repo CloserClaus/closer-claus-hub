@@ -2590,6 +2590,7 @@ export type Database = {
       }
       offer_diagnostic_leads: {
         Row: {
+          ai_suggestions: Json | null
           alignment_score: number | null
           created_at: string
           email: string
@@ -2601,8 +2602,11 @@ export type Database = {
           readiness_label: string | null
           recommendations_sent: boolean | null
           source: string | null
+          time_on_results_seconds: number | null
+          video_watched: boolean | null
         }
         Insert: {
+          ai_suggestions?: Json | null
           alignment_score?: number | null
           created_at?: string
           email: string
@@ -2614,8 +2618,11 @@ export type Database = {
           readiness_label?: string | null
           recommendations_sent?: boolean | null
           source?: string | null
+          time_on_results_seconds?: number | null
+          video_watched?: boolean | null
         }
         Update: {
+          ai_suggestions?: Json | null
           alignment_score?: number | null
           created_at?: string
           email?: string
@@ -2627,6 +2634,8 @@ export type Database = {
           readiness_label?: string | null
           recommendations_sent?: boolean | null
           source?: string | null
+          time_on_results_seconds?: number | null
+          video_watched?: boolean | null
         }
         Relationships: []
       }
