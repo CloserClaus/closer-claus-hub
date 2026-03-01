@@ -225,17 +225,17 @@ const TOOLS = [
     type: "function",
     function: {
       name: "update_leads",
-      description: "Update leads' readiness_segment, notes, email_sending_state, or assigned_to. Leads do NOT have a 'status' column. Use confirmed=false first to preview the count.",
+      description: "Update leads' notes, email_sending_state, or assignment. Note: readiness_segment is AI-managed and read-only via Klaus. Use confirmed=false first to preview the count.",
       parameters: {
         type: "object",
         properties: {
           lead_ids: { type: "array", items: { type: "string" }, description: "Specific lead IDs to update" },
-          filter_readiness_segment: { type: "string", enum: ["Hot", "Warm", "Cool", "Cold"], description: "Only update leads with this readiness" },
-          filter_unassigned: { type: "boolean", description: "Only update unassigned leads" },
+          filter_readiness_segment: { type: "string", enum: ["Hot", "Warm", "Cool", "Cold"], description: "Only target leads with this readiness" },
+          filter_unassigned: { type: "boolean", description: "Only target unassigned leads" },
           all: { type: "boolean", description: "If true, update ALL leads in workspace" },
-          set_readiness_segment: { type: "string", enum: ["Hot", "Warm", "Cool", "Cold"], description: "New readiness segment to set" },
           set_notes: { type: "string", description: "Notes to set" },
           set_email_sending_state: { type: "string", enum: ["idle", "active_sequence", "replied", "error"], description: "Email sending state to set" },
+          set_assigned_to_name: { type: "string", description: "Assign targeted leads to this SDR name" },
           confirmed: { type: "boolean", description: "Must be true to execute. False returns preview count." },
         },
         required: ["confirmed"],
@@ -494,13 +494,14 @@ const SYSTEM_PROMPT = `You are Klaus, the intelligent execution agent inside the
 9. **NEVER GIVE UP**: If you encounter an error with a tool, explain the specific error. NEVER say "contact support" or "try again later." Try alternative approaches or explain what went wrong technically.
 
 ## ⚠️ CRITICAL SCHEMA RULES
-- **LEADS have NO 'status' column.** The leads table uses:
-  - \`readiness_segment\` (Hot, Warm, Cool, Cold) for categorization/scoring
+- **LEADS have NO 'status' column and NO pipeline stage.** The leads table uses:
+  - \`readiness_segment\` (Hot, Warm, Cool, Cold) for AI scoring/categorization
   - \`email_sending_state\` (idle, active_sequence, replied, error) for email workflow state
   - \`notes\` for free-text notes
   - \`assigned_to\` (UUID) for SDR assignment
   - \`last_contacted_at\` for tracking contact recency
-  - NEVER try to filter or update a 'status' column on leads. It does not exist.
+  - NEVER try to filter or update a 'status' or 'stage' column on leads.
+  - **\`readiness_segment\` is AI-managed and read-only in Klaus actions.** Klaus may filter by readiness_segment, but must not modify it.
 - **DEALS have stages:** new → contacted → discovery → meeting → proposal → closed_won / closed_lost
   - When moving to closed_won, the system automatically sets closed_at.
   - When moving to closed_lost, the system automatically sets closed_at.
@@ -529,7 +530,7 @@ SDRs use the platform to:
 2. Receive assigned leads from their agency
 3. Use the Dialer to cold-call leads with provided scripts
 4. Send email follow-ups via sequences
-5. Move leads through the pipeline, close deals
+5. Move deals through the pipeline, close deals
 6. Request contracts for closed deals
 7. Earn commissions based on deal value
 
@@ -590,8 +591,8 @@ When a user's request is ambiguous, NEVER ask for clarification if you can reaso
 
 1. **"Move leads/deals to [stage name]"** — If the target is a pipeline stage (new, contacted, discovery, meeting, proposal, closed_won, closed_lost), the user means DEALS, not leads. Leads don't have stages. Use \`update_deals\`.
 2. **"Move to new/New"** — "new" is a valid pipeline stage. The user wants to move deals to the "new" stage.
-3. **"Change lead status"** — Leads have no status. Infer they mean \`readiness_segment\` (Hot/Warm/Cool/Cold) and use \`update_leads\`.
-4. **"Move all my leads"** — If followed by a stage name → they mean deals. If followed by Hot/Warm/Cool/Cold → they mean readiness_segment on leads.
+3. **"Change lead status"** — Leads have no status column. Infer they mean \`email_sending_state\` unless they explicitly mention a readiness label.
+4. **"Move all my leads"** — If followed by a pipeline stage name, they mean deals. If followed by email workflow language (pause/start/replied/error), they mean \`email_sending_state\` on leads.
 5. **"Send follow-up to leads that didn't pick up"** — Use \`smart_enroll_sequence\` with \`filter_called_today_no_answer: true\`.
 6. **"Assign leads to [name]"** — Use \`assign_leads_to_sdr\`.
 7. **"Delete cold leads"** — Use \`delete_leads\` with \`filter_readiness_segment: "Cold"\`.
@@ -642,6 +643,51 @@ function getTodayStart(): string {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d.toISOString();
+}
+
+function normalizeUserIntentForPlatform(message: string): { aiMessage: string; inferred: boolean } {
+  const lower = (message || "").toLowerCase();
+  const mentionsLeads = /\bleads?\b/.test(lower);
+  const mentionsStageLanguage = /\b(stage|pipeline|new|contacted|discovery|meeting|proposal|closed[\s_-]?(won|lost))\b/.test(lower);
+  const mentionsMoveVerb = /\b(move|moved|set|change|changed|update|updated|put|shift)\b/.test(lower);
+
+  if (mentionsLeads && mentionsStageLanguage && mentionsMoveVerb) {
+    const stageAliases: Record<string, string> = {
+      "closed won": "closed_won",
+      "closed_won": "closed_won",
+      "closed-won": "closed_won",
+      "closed lost": "closed_lost",
+      "closed_lost": "closed_lost",
+      "closed-lost": "closed_lost",
+      new: "new",
+      contacted: "contacted",
+      discovery: "discovery",
+      meeting: "meeting",
+      proposal: "proposal",
+    };
+
+    let inferredStage: string | null = null;
+    for (const [alias, canonical] of Object.entries(stageAliases)) {
+      if (lower.includes(alias)) {
+        inferredStage = canonical;
+        break;
+      }
+    }
+
+    const normalizedCommand = inferredStage
+      ? `Move all relevant deals to the \"${inferredStage}\" stage.`
+      : "Move all relevant deals to the requested pipeline stage.";
+
+    return {
+      inferred: true,
+      aiMessage:
+        `User message (raw): ${message}\n` +
+        "Intent inference: In CloserClaus, leads do not have pipeline stages. This request is about DEALS and must use update_deals with confirmation preview first.\n" +
+        `Normalized command: ${normalizedCommand}`,
+    };
+  }
+
+  return { aiMessage: message, inferred: false };
 }
 
 // ──────────────────────────────────────────────
@@ -1075,10 +1121,34 @@ async function executeTool(
       // WRITE / EXECUTE TOOLS
       // ──────────────────────────────────────────────
       case "update_leads": {
+        if (params.set_readiness_segment) {
+          return {
+            success: false,
+            data: {},
+            summary: "readiness_segment is AI-managed and read-only in Klaus. I can update email_sending_state, assignment, or notes instead.",
+          };
+        }
+
         const updates: Record<string, any> = { updated_at: new Date().toISOString() };
-        if (params.set_readiness_segment) updates.readiness_segment = params.set_readiness_segment;
         if (params.set_notes) updates.notes = params.set_notes;
         if (params.set_email_sending_state) updates.email_sending_state = params.set_email_sending_state;
+
+        let assignedSdrName: string | null = null;
+        if (params.set_assigned_to_name) {
+          const sdr = await resolveSdrByName(serviceClient, workspaceId, params.set_assigned_to_name);
+          if (!sdr) {
+            const { data: members } = await serviceClient.from("workspace_members").select("user_id").eq("workspace_id", workspaceId).is("removed_at", null);
+            const memberIds = members?.map((m: any) => m.user_id) || [];
+            const { data: profiles } = memberIds.length ? await serviceClient.from("profiles").select("full_name").in("id", memberIds) : { data: [] };
+            return { success: false, data: {}, summary: `Could not find an SDR named "${params.set_assigned_to_name}". Available: ${profiles?.map((p: any) => p.full_name).join(', ') || 'none'}.` };
+          }
+          updates.assigned_to = sdr.id;
+          assignedSdrName = sdr.full_name;
+        }
+
+        if (Object.keys(updates).length === 1) {
+          return { success: false, data: {}, summary: "No mutable lead fields specified. You can set notes, email_sending_state, or assigned SDR." };
+        }
 
         let query = serviceClient.from("leads").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId);
         if (params.lead_ids?.length) query = query.in("id", params.lead_ids);
@@ -1089,9 +1159,9 @@ async function executeTool(
         const { count } = await query;
         if (!params.confirmed) {
           const changes = [];
-          if (params.set_readiness_segment) changes.push(`readiness to "${params.set_readiness_segment}"`);
           if (params.set_notes) changes.push(`notes`);
           if (params.set_email_sending_state) changes.push(`email state to "${params.set_email_sending_state}"`);
+          if (assignedSdrName) changes.push(`assignment to "${assignedSdrName}"`);
           return { success: true, data: { affected_count: count || 0 }, summary: `${count || 0} leads would be updated (${changes.join(', ')}). Should I proceed?` };
         }
 
@@ -1581,6 +1651,9 @@ Deno.serve(async (req: Request) => {
       ? `\nWorkspace behavioral patterns:\n${memories.map((m: any) => `- ${m.memory_key}: ${JSON.stringify(m.memory_value)}`).join('\n')}`
       : '';
 
+    // Normalize ambiguous intent before sending to AI
+    const normalized = normalizeUserIntentForPlatform(message);
+
     // Build messages for AI with tool-calling
     const aiMessages = [
       {
@@ -1588,7 +1661,7 @@ Deno.serve(async (req: Request) => {
         content: SYSTEM_PROMPT + `\n\nCurrent user: ${profile?.full_name || 'User'} (role: ${userRole})\nWorkspace ID: ${workspace_id}${memoryContext}`,
       },
       ...(history || []).map((h: any) => ({ role: h.role, content: h.content })),
-      { role: "user", content: message },
+      { role: "user", content: normalized.aiMessage },
     ];
 
     // ── STEP 1: Call AI with tools ──
