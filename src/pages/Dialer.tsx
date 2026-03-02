@@ -142,7 +142,7 @@ export default function Dialer() {
     return () => { if (demoTimerRef.current) clearInterval(demoTimerRef.current); };
   }, [demoCallActive, demoCallStatus]);
 
-  const isDemoMode = workspacePhoneNumbers.length === 0;
+  const isDemoMode = workspacePhoneNumbers.length === 0 || !dialerAvailable;
   const isCallActive = demoCallActive || callStatus === 'connecting' || callStatus === 'ringing' || callStatus === 'in_progress';
   const effectiveCallStatus = demoCallActive ? demoCallStatus : callStatus;
   const effectiveFormattedDuration = demoCallActive 
