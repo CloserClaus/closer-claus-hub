@@ -127,9 +127,9 @@ const generateDummyLeads = (count: number) => {
 export function ApolloSearchTab() {
   const [filters, setFilters] = useState<SearchFilters>(defaultFilters);
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
-  const [showDemoResults, setShowDemoResults] = useState(false); // Only show demo results after explicit search
+  const [showDemoResults, setShowDemoResults] = useState(true);
   const [isDemoSearching, setIsDemoSearching] = useState(false);
-  const [demoLeads, setDemoLeads] = useState<ReturnType<typeof generateDummyLeads>>([]);
+  const [demoLeads, setDemoLeads] = useState<ReturnType<typeof generateDummyLeads>>(() => generateDummyLeads(500));
   
   const { 
     searchResults, 
