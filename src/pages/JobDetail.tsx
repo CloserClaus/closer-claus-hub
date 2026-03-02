@@ -83,6 +83,8 @@ interface Application {
   status: 'applied' | 'shortlisted' | 'interviewing' | 'hired' | 'rejected';
   cover_letter: string | null;
   applied_at: string;
+  applicant_name?: string | null;
+  applicant_email?: string | null;
   profile?: {
     full_name: string | null;
     email: string;
@@ -143,7 +145,7 @@ export default function JobDetail() {
           .eq('job_id', id)
           .order('applied_at', { ascending: false });
 
-        // Fetch profiles for each applicant
+        // Fetch profiles for each applicant, but preserve denormalized applicant identity
         if (appData && appData.length > 0) {
           const userIds = appData.map(a => a.user_id);
           const { data: profiles } = await supabase
@@ -152,12 +154,20 @@ export default function JobDetail() {
             .in('id', userIds);
 
           const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
-          
+
           setApplications(
-            appData.map(app => ({
-              ...app,
-              profile: profileMap.get(app.user_id) || { full_name: null, email: '' },
-            }))
+            appData.map(app => {
+              const profile = profileMap.get(app.user_id);
+              return {
+                ...app,
+                profile: {
+                  full_name: (app as any).applicant_name || profile?.full_name || 'Unknown SDR',
+                  email: (app as any).applicant_email || profile?.email || '',
+                  sdr_level: profile?.sdr_level || 1,
+                  total_deals_closed_value: profile?.total_deals_closed_value || 0,
+                },
+              };
+            })
           );
         } else {
           setApplications([]);
@@ -245,7 +255,9 @@ export default function JobDetail() {
         job_id: job.id,
         user_id: user.id,
         cover_letter: coverLetter || null,
-      });
+        applicant_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'SDR Applicant',
+        applicant_email: user.email || null,
+      } as any);
 
       if (error) throw error;
 
