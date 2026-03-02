@@ -1984,6 +1984,8 @@ export type Database = {
       }
       job_applications: {
         Row: {
+          applicant_email: string | null
+          applicant_name: string | null
           applied_at: string
           cover_letter: string | null
           id: string
@@ -1993,6 +1995,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          applicant_email?: string | null
+          applicant_name?: string | null
           applied_at?: string
           cover_letter?: string | null
           id?: string
@@ -2002,6 +2006,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          applicant_email?: string | null
+          applicant_name?: string | null
           applied_at?: string
           cover_letter?: string | null
           id?: string
