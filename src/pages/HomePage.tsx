@@ -109,14 +109,14 @@ const HomePage = () => {
                 Is My Offer Outbound-Ready?
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
-              <Link to="/auth">
+              <Link to="/demo">
                 <Button 
                   size="lg" 
                   variant="outline" 
                   className="h-14 px-8 text-lg border-border/50 hover:bg-card"
                 >
                   <Play className="mr-2 h-5 w-5" />
-                  See the Platform
+                  Show Me How It Works
                 </Button>
               </Link>
             </div>
