@@ -43,6 +43,7 @@ import PublicOfferDiagnostic from "./pages/PublicOfferDiagnostic";
 import PublicOfferDiagnosticResults from "./pages/PublicOfferDiagnosticResults";
 import ReferAndEarn from "./pages/ReferAndEarn";
 import DemoWalkthrough from "./pages/DemoWalkthrough";
+import DemoVideo from "./pages/DemoVideo";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import GmailOAuthCallback from "./pages/GmailOAuthCallback";
@@ -95,6 +96,7 @@ const App = () => (
                 <Route path="/app/script-builder" element={<ScriptBuilder />} />
                 <Route path="/refer" element={<ReferAndEarn />} />
                 <Route path="/example" element={<DemoWalkthrough />} />
+                <Route path="/demo" element={<DemoVideo />} />
                 <Route path="/privacy" element={<PrivacyPolicy />} />
                 <Route path="/terms" element={<TermsOfService />} />
                 <Route path="/auth/google/callback" element={<GmailOAuthCallback />} />
