@@ -39,8 +39,8 @@ const DemoVideo = () => {
               src="https://www.loom.com/embed/9e6d01a399b3457cb78e5fd8676da3e0"
               frameBorder="0"
               allowFullScreen
-              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
-            />
+              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} />
+            
           </div>
         </div>
 
@@ -48,7 +48,7 @@ const DemoVideo = () => {
         <div className="text-center space-y-6">
           <h2 className="text-2xl md:text-3xl font-bold">Ready to Scale Your Outbound?</h2>
           <p className="text-muted-foreground max-w-xl mx-auto">
-            Book a call with our team and we'll show you how CloserClaus can work for your agency.
+            Book a call with our team and we'll show you how Closer Claus can work for your agency.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button size="lg" className="h-14 px-8 text-lg" asChild>
@@ -66,8 +66,8 @@ const DemoVideo = () => {
           </div>
         </div>
       </section>
-    </div>
-  );
+    </div>);
+
 };
 
 export default DemoVideo;
