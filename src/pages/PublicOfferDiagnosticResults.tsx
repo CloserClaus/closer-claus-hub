@@ -108,65 +108,75 @@ export default function PublicOfferDiagnosticResults() {
   const leadRecordIdRef = useRef<string | null>(null);
   const pageEnteredAtRef = useRef<number>(Date.now());
   const videoWatchedRef = useRef(false);
+  const leadStoredRef = useRef(false); // guard against double-mount
 
-  // Track time on page and update record on unload
+  // Save engagement data to DB
+  const saveEngagement = useRef(async () => {
+    if (!leadRecordIdRef.current) return;
+    const seconds = Math.round((Date.now() - pageEnteredAtRef.current) / 1000);
+    try {
+      await supabase.from('offer_diagnostic_leads' as any).update({
+        time_on_results_seconds: seconds,
+        video_watched: videoWatchedRef.current,
+      } as any).eq('id', leadRecordIdRef.current);
+    } catch (e) {
+      console.error('Failed to save engagement:', e);
+    }
+  });
+
+  // Track time on page — save every 15s via supabase client
   useEffect(() => {
-    const updateEngagement = () => {
-      if (!leadRecordIdRef.current) return;
-      const seconds = Math.round((Date.now() - pageEnteredAtRef.current) / 1000);
-      // Use sendBeacon for reliability on page unload
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/offer_diagnostic_leads?id=eq.${leadRecordIdRef.current}`;
-      const body = JSON.stringify({
-        time_on_results_seconds: seconds,
-        video_watched: videoWatchedRef.current,
-      });
-      navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
-      // Also try supabase client as fallback
-      supabase.from('offer_diagnostic_leads' as any).update({
-        time_on_results_seconds: seconds,
-        video_watched: videoWatchedRef.current,
-      } as any).eq('id', leadRecordIdRef.current).then(() => {});
-    };
-
-    window.addEventListener('beforeunload', updateEngagement);
-    // Also save periodically every 30s
     const interval = setInterval(() => {
-      if (!leadRecordIdRef.current) return;
-      const seconds = Math.round((Date.now() - pageEnteredAtRef.current) / 1000);
-      supabase.from('offer_diagnostic_leads' as any).update({
-        time_on_results_seconds: seconds,
-        video_watched: videoWatchedRef.current,
-      } as any).eq('id', leadRecordIdRef.current).then(() => {});
-    }, 30000);
+      saveEngagement.current();
+    }, 15000);
+
+    const handleBeforeUnload = () => {
+      // Fire-and-forget on unload — may or may not complete
+      saveEngagement.current();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
-      window.removeEventListener('beforeunload', updateEngagement);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       clearInterval(interval);
-      updateEngagement(); // save on unmount too
+      saveEngagement.current(); // save on unmount
     };
   }, []);
 
-  // Detect video interaction via postMessage from YouTube iframe
+  // Detect video interaction: use IntersectionObserver + click/focus on iframe
+  // YouTube postMessage only works with full YT API init, so we track clicks instead
+  const videoIframeRef = useRef<HTMLIFrameElement>(null);
+
   useEffect(() => {
+    // Track when user clicks into the iframe (plays video)
+    const handleWindowBlur = () => {
+      // When window loses focus and iframe is active, user clicked into iframe
+      if (document.activeElement === videoIframeRef.current) {
+        videoWatchedRef.current = true;
+        // Immediately save this
+        saveEngagement.current();
+      }
+    };
+    window.addEventListener('blur', handleWindowBlur);
+
+    // Also listen for postMessage as a bonus (may work in some cases)
     const handleMessage = (event: MessageEvent) => {
       try {
-        if (typeof event.data === 'string') {
-          const data = JSON.parse(event.data);
-          // YouTube iframe API sends events like this
-          if (data.event === 'onStateChange' && data.info === 1) {
-            videoWatchedRef.current = true;
-          }
-        }
-        // Also check for object-based messages
-        if (event.data?.event === 'onStateChange' && event.data?.info === 1) {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (data?.event === 'onStateChange' && data?.info === 1) {
           videoWatchedRef.current = true;
+          saveEngagement.current();
         }
       } catch {
-        // ignore non-JSON messages
+        // ignore
       }
     };
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+
+    return () => {
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('message', handleMessage);
+    };
   }, []);
 
   // Autoplay video 10s after score is revealed
@@ -222,9 +232,11 @@ export default function PublicOfferDiagnosticResults() {
     fetchRecommendations();
   }, [state?.formData]);
 
-  // Store lead data, notify admin, and send email
+  // Store lead data, notify admin, and send email (with double-mount guard)
   useEffect(() => {
     if (!state) return;
+    if (leadStoredRef.current) return;
+    leadStoredRef.current = true;
 
     const storeLeadData = async () => {
       try {
@@ -420,13 +432,12 @@ export default function PublicOfferDiagnosticResults() {
               <CardContent>
                 <div className="aspect-video rounded-lg overflow-hidden">
                   <iframe
+                    ref={videoIframeRef}
                     className="w-full h-full"
                     src={`https://www.youtube.com/embed/OVW-SNpv2Hk?enablejsapi=1&origin=${window.location.origin}${autoplayVideo ? '&autoplay=1' : ''}`}
                     title="How to Turn a Good Offer into a Scalable Outbound System"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
-                    onLoad={() => { videoWatchedRef.current = false; }}
-                    onClick={() => { videoWatchedRef.current = true; }}
                   />
                 </div>
               </CardContent>
