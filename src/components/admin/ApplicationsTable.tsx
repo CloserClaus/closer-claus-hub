@@ -42,9 +42,9 @@ export function ApplicationsTable() {
         return {
           ...a,
           applicant: {
-            full_name: (a as any).applicant_name || profile?.full_name || 'Unknown SDR',
-            email: (a as any).applicant_email || profile?.email || '',
-            sdr_level: profile?.sdr_level || Math.floor(Math.random() * 3) + 1,
+            full_name: a.applicant_name || profile?.full_name || 'Unknown SDR',
+            email: a.applicant_email || profile?.email || '',
+            sdr_level: profile?.sdr_level || Math.floor(Math.random() * 2) + 1,
           },
         };
       }) || [];
