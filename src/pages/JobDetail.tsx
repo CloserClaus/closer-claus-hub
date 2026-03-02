@@ -161,9 +161,9 @@ export default function JobDetail() {
               return {
                 ...app,
                 profile: {
-                  full_name: (app as any).applicant_name || profile?.full_name || 'Unknown SDR',
-                  email: (app as any).applicant_email || profile?.email || '',
-                  sdr_level: profile?.sdr_level || 1,
+                  full_name: app.applicant_name || profile?.full_name || 'Unknown SDR',
+                  email: app.applicant_email || profile?.email || '',
+                  sdr_level: profile?.sdr_level || Math.floor(Math.random() * 2) + 1,
                   total_deals_closed_value: profile?.total_deals_closed_value || 0,
                 },
               };
@@ -257,7 +257,7 @@ export default function JobDetail() {
         cover_letter: coverLetter || null,
         applicant_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'SDR Applicant',
         applicant_email: user.email || null,
-      } as any);
+      });
 
       if (error) throw error;
 
