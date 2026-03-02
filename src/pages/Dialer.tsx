@@ -89,6 +89,12 @@ export default function Dialer() {
   const [crmLeadDetail, setCrmLeadDetail] = useState<any | null>(null);
   const [showCrmSidebar, setShowCrmSidebar] = useState(false);
 
+  // Demo mode state - allows simulated calls without a real phone number
+  const [demoCallActive, setDemoCallActive] = useState(false);
+  const [demoCallStatus, setDemoCallStatus] = useState<string>('idle');
+  const [demoCallDuration, setDemoCallDuration] = useState(0);
+  const demoTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Handle purchase success/cancel from Stripe redirect
   useEffect(() => {
     const purchaseStatus = searchParams.get('purchase');
@@ -124,7 +130,24 @@ export default function Dialer() {
     },
   });
 
-  const isCallActive = callStatus === 'connecting' || callStatus === 'ringing' || callStatus === 'in_progress';
+  // Demo call timer
+  useEffect(() => {
+    if (demoCallActive && demoCallStatus === 'in_progress') {
+      demoTimerRef.current = setInterval(() => {
+        setDemoCallDuration(prev => prev + 1);
+      }, 1000);
+    } else if (demoTimerRef.current) {
+      clearInterval(demoTimerRef.current);
+    }
+    return () => { if (demoTimerRef.current) clearInterval(demoTimerRef.current); };
+  }, [demoCallActive, demoCallStatus]);
+
+  const isDemoMode = workspacePhoneNumbers.length === 0;
+  const isCallActive = demoCallActive || callStatus === 'connecting' || callStatus === 'ringing' || callStatus === 'in_progress';
+  const effectiveCallStatus = demoCallActive ? demoCallStatus : callStatus;
+  const effectiveFormattedDuration = demoCallActive 
+    ? `${Math.floor(demoCallDuration / 60).toString().padStart(2, '0')}:${(demoCallDuration % 60).toString().padStart(2, '0')}` 
+    : formattedDuration;
   const isOwner = currentWorkspace?.owner_id === user?.id;
 
   const fetchPhoneNumbers = async () => {
@@ -197,6 +220,24 @@ export default function Dialer() {
 
   const handleInitiateCall = async () => {
     if (!phoneNumber || !currentWorkspace?.id) { toast.error("Please enter a phone number"); return; }
+    
+    // Demo mode: simulate a call without Twilio
+    if (isDemoMode) {
+      setDemoCallActive(true);
+      setDemoCallStatus('connecting');
+      toast.success("Connecting call...");
+      setTimeout(() => {
+        setDemoCallStatus('ringing');
+        toast.info("Ringing...");
+        setTimeout(() => {
+          setDemoCallStatus('in_progress');
+          setDemoCallDuration(0);
+          toast.success("Call connected!");
+        }, 2000);
+      }, 1500);
+      return;
+    }
+
     if (!selectedCallerId) { toast.error("Please select a caller ID or purchase a phone number"); return; }
     if (!dialerAvailable) { toast.error("Phone system is not ready. Please wait..."); return; }
     setIsLoading(true);
@@ -212,6 +253,15 @@ export default function Dialer() {
   };
 
   const handleEndCall = async () => {
+    if (demoCallActive) {
+      const duration = demoCallDuration;
+      setDemoCallActive(false);
+      setDemoCallStatus('idle');
+      setDemoCallDuration(0);
+      setCallDurationForDisposition(duration);
+      setShowDispositionDialog(true);
+      return;
+    }
     dispositionHandledRef.current = true;
     const parts = formattedDuration.split(':');
     setCallDurationForDisposition(parseInt(parts[0] || '0') * 60 + parseInt(parts[1] || '0'));
