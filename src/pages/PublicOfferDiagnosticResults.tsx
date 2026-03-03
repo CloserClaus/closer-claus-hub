@@ -554,12 +554,20 @@ export default function PublicOfferDiagnosticResults() {
                   <p className="text-muted-foreground">
                     Book a 30-minute slot here and we'll walk through the exact roadmap.
                   </p>
-                  <Button asChild>
-                    <a href="https://calendly.com/closer_claus/30-minute-meeting" target="_blank" rel="noopener noreferrer">
-                      Book a Call
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </a>
-                  </Button>
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                    <Button asChild>
+                      <a href="https://calendly.com/closer_claus/30-minute-meeting" target="_blank" rel="noopener noreferrer">
+                        Book a Call
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </a>
+                    </Button>
+                    <Button variant="outline" asChild>
+                      <Link to="/demo">
+                        <Play className="mr-2 h-4 w-4" />
+                        Show Me How It Works
+                      </Link>
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             )}
