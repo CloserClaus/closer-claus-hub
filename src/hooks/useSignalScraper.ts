@@ -126,8 +126,8 @@ export function useSignalScraper() {
       return data;
     },
     onSuccess: (data) => {
-      if (data?.status === 'running') {
-        toast({ title: 'Signal Running', description: 'Scraping in background. Results will appear when complete.' });
+      if (data?.status === 'queued' || data?.status === 'running') {
+        toast({ title: 'Signal Queued', description: 'Your signal is in the queue. Results will appear shortly.' });
       } else {
         toast({ title: 'Signal Complete!', description: `${data.leads_discovered} leads discovered. ${data.credits_charged} credits charged.` });
       }

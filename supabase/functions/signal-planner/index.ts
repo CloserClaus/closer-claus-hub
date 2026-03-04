@@ -468,11 +468,11 @@ serve(async (req) => {
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      // Update status to running
+      // Enqueue for the worker to pick up
       await serviceClient
         .from("signal_runs")
         .update({
-          status: "running",
+          status: "queued",
           schedule_type: params.schedule_type || "once",
           schedule_hour: params.schedule_hour || null,
           next_run_at: params.schedule_type === "daily"
@@ -482,12 +482,8 @@ serve(async (req) => {
               : null,
         })
         .eq("id", run_id);
-      // Execute in background
-      EdgeRuntime.waitUntil(
-        handleExecuteSignal(run, workspace_id, balance, serviceClient)
-      );
       return new Response(
-        JSON.stringify({ status: "running", run_id }),
+        JSON.stringify({ status: "queued", run_id }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } else {
