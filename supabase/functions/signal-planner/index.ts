@@ -35,7 +35,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
   // ── Hiring Intent ──
   {
     key: "linkedin_jobs",
-    actorId: "AtsAgajsFjMVfxXJZ",
+    actorId: "sovereigntaylor/linkedin-jobs-scraper",
     label: "LinkedIn Jobs",
     category: "hiring_intent",
     description: "Scrapes LinkedIn job postings. Best for hiring intent — find companies actively hiring for specific roles like SDRs, sales reps, marketers, etc.",
