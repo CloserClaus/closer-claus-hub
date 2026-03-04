@@ -361,7 +361,7 @@ async function processSignalRun(run: any, serviceClient: any) {
       actual_cost: actualCredits,
       leads_discovered: (run.leads_discovered || 0) + uniqueLeads.length,
       last_run_at: new Date().toISOString(),
-      next_run_at: new Date(Date.now() + 86400000).toISOString(),
+      next_run_at: new Date(Date.now() + (run.schedule_type === "weekly" ? 7 * 86400000 : 86400000)).toISOString(),
     })
     .eq("id", run.id);
 
