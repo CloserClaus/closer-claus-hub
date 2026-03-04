@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+declare const EdgeRuntime: { waitUntil(promise: Promise<any>): void };
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -439,7 +441,53 @@ serve(async (req) => {
     if (action === "generate_plan") {
       return await handleGeneratePlan(params, user.id, serviceClient);
     } else if (action === "execute_signal") {
-      return await handleExecuteSignal(params, user.id, serviceClient);
+      // Credit check before background execution
+      const { run_id, workspace_id } = params;
+      const { data: run, error: runError } = await serviceClient
+        .from("signal_runs")
+        .select("*")
+        .eq("id", run_id)
+        .single();
+      if (runError || !run) {
+        return new Response(JSON.stringify({ error: "Signal run not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (run.user_id !== user.id) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: credits } = await serviceClient
+        .from("lead_credits")
+        .select("credits_balance")
+        .eq("workspace_id", workspace_id)
+        .maybeSingle();
+      const balance = credits?.credits_balance || 0;
+      if (balance < run.estimated_cost) {
+        return new Response(
+          JSON.stringify({ error: `Insufficient credits. Need ${run.estimated_cost}, have ${balance}.` }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // Update status to running
+      await serviceClient
+        .from("signal_runs")
+        .update({
+          status: "running",
+          schedule_type: params.schedule_type || "once",
+          schedule_hour: params.schedule_hour || null,
+          next_run_at: params.schedule_type === "daily" ? new Date(Date.now() + 86400000).toISOString() : null,
+        })
+        .eq("id", run_id);
+      // Execute in background
+      EdgeRuntime.waitUntil(
+        handleExecuteSignal(run, workspace_id, balance, serviceClient)
+      );
+      return new Response(
+        JSON.stringify({ status: "running", run_id }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     } else {
       return new Response(JSON.stringify({ error: "Unknown action" }), {
         status: 400,
@@ -600,49 +648,19 @@ async function handleGeneratePlan(
 // ════════════════════════════════════════════════════════════════
 
 async function handleExecuteSignal(
-  params: { run_id: string; workspace_id: string; schedule_type?: string; schedule_hour?: number },
-  userId: string,
+  run: any,
+  workspace_id: string,
+  balance: number,
   serviceClient: any
 ) {
-  const { run_id, workspace_id, schedule_type, schedule_hour } = params;
+  const run_id = run.id;
   const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN");
   if (!APIFY_API_TOKEN) throw new Error("APIFY_API_TOKEN not configured");
 
   const runLog: any[] = [];
   const log = (step: string, data: any) => runLog.push({ step, ts: new Date().toISOString(), ...data });
 
-  const { data: run, error: runError } = await serviceClient
-    .from("signal_runs")
-    .select("*")
-    .eq("id", run_id)
-    .single();
-
-  if (runError || !run) throw new Error("Signal run not found");
-  if (run.user_id !== userId) throw new Error("Unauthorized");
-
-  const { data: credits } = await serviceClient
-    .from("lead_credits")
-    .select("credits_balance")
-    .eq("workspace_id", workspace_id)
-    .maybeSingle();
-
-  const balance = credits?.credits_balance || 0;
-  if (balance < run.estimated_cost) {
-    return new Response(
-      JSON.stringify({ error: `Insufficient credits. Need ${run.estimated_cost}, have ${balance}.` }),
-      { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-
-  await serviceClient
-    .from("signal_runs")
-    .update({
-      status: "running",
-      schedule_type: schedule_type || "once",
-      schedule_hour: schedule_hour || null,
-      next_run_at: schedule_type === "daily" ? new Date(Date.now() + 86400000).toISOString() : null,
-    })
-    .eq("id", run_id);
+  // Status already set to "running" by the main handler
 
   // Backward compat: signal_plan can be a single object (old) or array (new)
   const storedPlan = run.signal_plan;
@@ -982,17 +1000,8 @@ async function handleExecuteSignal(
       })
       .eq("id", run_id);
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        leads_discovered: uniqueLeads.length,
-        credits_charged: actualCredits,
-        total_scraped: allRawResults.length,
-        total_filtered: filtered.length,
-        run_log: runLog,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    // Background execution complete — no Response to return
+    console.log(`Signal ${run_id} completed: ${uniqueLeads.length} leads, ${actualCredits} credits`);
   } catch (error) {
     log("error", { message: error instanceof Error ? error.message : String(error) });
     await serviceClient
