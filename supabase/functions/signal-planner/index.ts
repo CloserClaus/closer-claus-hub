@@ -756,7 +756,7 @@ async function handleExecuteSignal(
           let runResponse: Response;
           try {
             runResponse = await fetch(
-              `https://api.apify.com/v2/acts/${actor.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
+              `https://api.apify.com/v2/acts/${actor.actorId.replace("/", "~")}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
