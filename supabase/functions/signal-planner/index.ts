@@ -156,18 +156,18 @@ Always return valid JSON only, no markdown.`;
     );
   }
 
-  // Cost estimation with 95% margin rule
+  // Cost estimation
   // Apify cost estimate: ~$0.25 per 1000 rows scraped
   const scrapeCostUsd = (plan.estimated_rows / 1000) * 0.25;
-  // AI filtering cost: ~$0.01 per row if ai_classification is needed
+  // AI filtering cost: ~$0.001 per row (batch classification is cheap)
   const aiFilterRows = plan.ai_classification ? plan.estimated_rows : 0;
-  const aiFilterCostUsd = aiFilterRows * 0.01;
+  const aiFilterCostUsd = aiFilterRows * 0.001;
   // 20% infrastructure buffer
   const actualCostUsd = (scrapeCostUsd + aiFilterCostUsd) * 1.2;
-  // 95% gross margin: charged_price >= actual_cost / 0.05
-  const chargedPriceUsd = actualCostUsd / 0.05;
-  // $1 = 5 credits
-  const creditsToCharge = Math.ceil(chargedPriceUsd * 5);
+  // 3x markup for margin
+  const chargedPriceUsd = actualCostUsd * 3;
+  // $1 = 5 credits (minimum 5 credits)
+  const creditsToCharge = Math.max(5, Math.ceil(chargedPriceUsd * 5));
 
   // Cap at 200 credits
   if (creditsToCharge > 200) {
@@ -475,10 +475,10 @@ async function handleExecuteSignal(
     // Step 7: Calculate actual cost and deduct credits
     const scrapedRows = rawResults.length;
     const scrapeCostUsd = (scrapedRows / 1000) * 0.25;
-    const aiFilterCostUsd = aiFilteredCount * 0.01;
+    const aiFilterCostUsd = aiFilteredCount * 0.001;
     const actualCostUsd = (scrapeCostUsd + aiFilterCostUsd) * 1.2;
-    const chargedPriceUsd = actualCostUsd / 0.05;
-    const actualCredits = Math.ceil(chargedPriceUsd * 5);
+    const chargedPriceUsd = actualCostUsd * 3;
+    const actualCredits = Math.max(5, Math.ceil(chargedPriceUsd * 5));
 
     // Deduct credits
     await serviceClient.rpc("", {}).catch(() => {}); // no rpc needed, direct update
