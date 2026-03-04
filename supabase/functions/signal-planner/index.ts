@@ -15,19 +15,122 @@ const APIFY_ACTOR_MAP: Record<string, { actorId: string; label: string }> = {
   yelp: { actorId: "yin5oHQaJGRfmJhlN", label: "Yelp" },
 };
 
+// ── Actor-specific input builders with REAL Apify schemas ──
+function buildActorInput(source: string, plan: any): Record<string, any> {
+  const sp = plan.search_params || {};
+  switch (source) {
+    case "linkedin_jobs":
+      return {
+        keyword: sp.keyword || plan.search_query,
+        location: sp.location || "",
+        timePosted: sp.timePosted || "pastWeek",       // pastDay | pastWeek | pastMonth
+        rows: Math.min(sp.rows || plan.estimated_rows || 100, 500),
+        proxy: { useApifyProxy: true },
+      };
+    case "linkedin_companies":
+      return {
+        urls: sp.urls || [],
+        searchQuery: sp.searchQuery || plan.search_query,
+        maxResults: Math.min(sp.maxResults || plan.estimated_rows || 100, 500),
+        proxy: { useApifyProxy: true },
+      };
+    case "google_maps":
+      return {
+        searchStringsArray: [plan.search_query],
+        maxCrawledPlacesPerSearch: Math.min(plan.estimated_rows || 200, 3000),
+        language: "en",
+        ...(sp.locationQuery ? { locationQuery: sp.locationQuery } : {}),
+      };
+    case "google_search":
+      return {
+        queries: sp.queries || [plan.search_query],
+        maxPagesPerQuery: sp.maxPagesPerQuery || 3,
+        resultsPerPage: sp.resultsPerPage || 10,
+      };
+    case "yelp":
+      return {
+        searchTerms: [plan.search_query],
+        locations: sp.locations || ["United States"],
+        maxItems: Math.min(plan.estimated_rows || 200, 1000),
+      };
+    default:
+      return {
+        searchStringsArray: [plan.search_query],
+        maxCrawledPlacesPerSearch: Math.min(plan.estimated_rows || 200, 3000),
+        language: "en",
+      };
+  }
+}
+
+// ── Normalise raw results from different actors into a common shape ──
+function normaliseResults(source: string, items: any[]): any[] {
+  switch (source) {
+    case "linkedin_jobs":
+      return items.map((item) => ({
+        company_name: item.companyName || item.company || null,
+        title: item.title || item.position || null,
+        website: item.companyUrl || item.companyLink || null,
+        linkedin: item.companyLinkedinUrl || item.companyUrl || null,
+        location: item.location || item.place || null,
+        phone: null,
+        description: item.description || "",
+        _raw: item,
+      }));
+    case "linkedin_companies":
+      return items.map((item) => ({
+        company_name: item.name || item.title || null,
+        website: item.website || item.url || null,
+        linkedin: item.linkedinUrl || item.url || null,
+        location: item.headquarters || item.location || null,
+        phone: item.phone || null,
+        description: item.description || item.tagline || "",
+        employee_count: item.employeeCount || item.staffCount || null,
+        _raw: item,
+      }));
+    case "google_maps":
+      return items.map((item) => ({
+        company_name: item.title || item.name || null,
+        website: item.website || item.url || null,
+        linkedin: null,
+        location: item.address || item.city || null,
+        phone: item.phone || item.telephone || null,
+        description: item.description || item.categoryName || "",
+        _raw: item,
+      }));
+    case "yelp":
+      return items.map((item) => ({
+        company_name: item.name || item.title || null,
+        website: item.website || item.url || null,
+        linkedin: null,
+        location: item.address || item.neighborhood || null,
+        phone: item.phone || null,
+        description: item.categories?.join(", ") || "",
+        _raw: item,
+      }));
+    default:
+      return items.map((item) => ({
+        company_name: item.title || item.name || item.company_name || null,
+        website: item.website || item.url || null,
+        linkedin: item.linkedin || item.linkedinUrl || null,
+        location: item.address || item.city || item.location || null,
+        phone: item.phone || item.telephone || null,
+        description: item.description || "",
+        _raw: item,
+      }));
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const { action, ...params } = await req.json();
 
-    // Auth check
     const authHeader = req.headers.get("authorization");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
 
-    // Create user client to get user
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader || "" } },
     });
@@ -61,29 +164,56 @@ serve(async (req) => {
 });
 
 async function handleGeneratePlan(
-  params: { query: string; workspace_id: string },
+  params: { query: string; workspace_id: string; plan_override?: any },
   userId: string,
   serviceClient: any
 ) {
-  const { query, workspace_id } = params;
+  const { query, workspace_id, plan_override } = params;
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
   const systemPrompt = `You are a lead generation signal planner. Given a user's description of leads they want, create a structured scraping plan.
 
-Available data sources and their Apify actor keys:
-- google_maps: Google Maps business listings
-- linkedin_jobs: LinkedIn job postings
-- linkedin_companies: LinkedIn company profiles
-- google_search: Google search results
-- yelp: Yelp business listings
+Available data sources with their EXACT Apify input parameters:
+
+1. "google_maps" — Google Maps Places scraper
+   Input: searchStringsArray (auto-set), maxCrawledPlacesPerSearch, language, locationQuery (optional city/state filter)
+   Returns: title, website, phone, address, categoryName, totalScore, reviewsCount
+   Best for: Local businesses, agencies, service providers
+
+2. "linkedin_jobs" — LinkedIn Job Postings scraper
+   Input: keyword (job search term), location (city/country), timePosted ("pastDay" | "pastWeek" | "pastMonth"), rows (max results)
+   Returns: title (job title), companyName, companyUrl, location, description
+   Best for: Hiring intent signals — companies actively hiring for roles
+
+3. "linkedin_companies" — LinkedIn Company Profiles scraper
+   Input: urls (array of LinkedIn company URLs) OR searchQuery, maxResults
+   Returns: name, website, headquarters, employeeCount, description, industry
+   Best for: Enriching company data after finding them from another source
+
+4. "google_search" — Google Search results scraper
+   Input: queries (array of search strings), maxPagesPerQuery, resultsPerPage
+   Returns: title, url, description
+   Best for: Finding specific types of companies via Google
+
+5. "yelp" — Yelp Business scraper
+   Input: searchTerms (array), locations (array of city names), maxItems
+   Returns: name, phone, address, categories, website
+   Best for: Local service businesses with reviews
+
+IMPORTANT RULES FOR search_params:
+- Only use parameter names listed above for each source
+- For linkedin_jobs: "keyword" is the job search term, NOT the company type
+- For hiring intent signals: use linkedin_jobs with job-related keywords (e.g. "sales representative", "SDR", "account executive")
+- For finding local businesses directly: use google_maps
+- ai_classification is a text description of an AI filter to apply AFTER scraping. Use it to filter by company type, size, relevance, etc.
 
 Return a JSON object with this exact structure:
 {
   "signal_name": "short descriptive name",
-  "source": "one of the actor keys above",
-  "search_query": "the search query to use",
-  "search_params": { any additional parameters for the actor },
+  "source": "one of: google_maps, linkedin_jobs, linkedin_companies, google_search, yelp",
+  "search_query": "the main search term",
+  "search_params": { ONLY valid params for the chosen source },
   "fields_to_collect": ["field1", "field2"],
   "filters": [{"field": "field_name", "operator": "<|>|=|contains|not_contains", "value": "value"}],
   "ai_classification": "description of AI check to run on each result, or null if not needed",
@@ -91,9 +221,7 @@ Return a JSON object with this exact structure:
   "estimated_leads_after_filter": number
 }
 
-Be realistic with estimates. Consider the specificity of the query.
-If the query is very broad, estimate higher rows. If specific, estimate lower.
-Always return valid JSON only, no markdown.`;
+Be realistic with estimates. Always return valid JSON only, no markdown.`;
 
   const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -114,14 +242,12 @@ Always return valid JSON only, no markdown.`;
     const status = response.status;
     if (status === 429) {
       return new Response(JSON.stringify({ error: "Rate limited. Please try again shortly." }), {
-        status: 429,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (status === 402) {
       return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds." }), {
-        status: 402,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     throw new Error(`AI gateway error: ${status}`);
@@ -129,8 +255,6 @@ Always return valid JSON only, no markdown.`;
 
   const aiResult = await response.json();
   let planText = aiResult.choices?.[0]?.message?.content || "";
-  
-  // Strip markdown code fences if present
   planText = planText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
   let plan;
@@ -140,9 +264,16 @@ Always return valid JSON only, no markdown.`;
     throw new Error("AI returned invalid plan. Please try rephrasing your query.");
   }
 
+  // Apply template overrides if provided
+  if (plan_override) {
+    if (plan_override.source) plan.source = plan_override.source;
+    if (plan_override.search_params) plan.search_params = { ...plan.search_params, ...plan_override.search_params };
+    if (plan_override.ai_classification) plan.ai_classification = plan_override.ai_classification;
+  }
+
   // Validate source
   if (!APIFY_ACTOR_MAP[plan.source]) {
-    plan.source = "google_maps"; // fallback
+    plan.source = "google_maps";
   }
 
   // Safety limits
@@ -157,19 +288,13 @@ Always return valid JSON only, no markdown.`;
   }
 
   // Cost estimation
-  // Apify cost estimate: ~$0.25 per 1000 rows scraped
   const scrapeCostUsd = (plan.estimated_rows / 1000) * 0.25;
-  // AI filtering cost: ~$0.001 per row (batch classification is cheap)
   const aiFilterRows = plan.ai_classification ? plan.estimated_rows : 0;
   const aiFilterCostUsd = aiFilterRows * 0.001;
-  // 20% infrastructure buffer
   const actualCostUsd = (scrapeCostUsd + aiFilterCostUsd) * 1.2;
-  // 3x markup for margin
   const chargedPriceUsd = actualCostUsd * 3;
-  // $1 = 5 credits (minimum 5 credits)
   const creditsToCharge = Math.max(5, Math.ceil(chargedPriceUsd * 5));
 
-  // Cap at 200 credits
   if (creditsToCharge > 200) {
     return new Response(
       JSON.stringify({
@@ -183,7 +308,6 @@ Always return valid JSON only, no markdown.`;
   const estimatedLeads = plan.estimated_leads_after_filter || Math.floor(plan.estimated_rows * 0.15);
   const costPerLead = estimatedLeads > 0 ? (creditsToCharge / estimatedLeads).toFixed(1) : "N/A";
 
-  // Create the signal run record
   const { data: run, error: insertError } = await serviceClient
     .from("signal_runs")
     .insert({
@@ -226,7 +350,9 @@ async function handleExecuteSignal(
   const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN");
   if (!APIFY_API_TOKEN) throw new Error("APIFY_API_TOKEN not configured");
 
-  // Get the run
+  const runLog: any[] = [];
+  const log = (step: string, data: any) => runLog.push({ step, ts: new Date().toISOString(), ...data });
+
   const { data: run, error: runError } = await serviceClient
     .from("signal_runs")
     .select("*")
@@ -236,7 +362,6 @@ async function handleExecuteSignal(
   if (runError || !run) throw new Error("Signal run not found");
   if (run.user_id !== userId) throw new Error("Unauthorized");
 
-  // Check credits
   const { data: credits } = await serviceClient
     .from("lead_credits")
     .select("credits_balance")
@@ -251,7 +376,6 @@ async function handleExecuteSignal(
     );
   }
 
-  // Update status
   await serviceClient
     .from("signal_runs")
     .update({
@@ -267,7 +391,7 @@ async function handleExecuteSignal(
   if (!actorInfo) throw new Error(`Unknown source: ${plan.source}`);
 
   try {
-    // Check dataset cache first
+    // ── Step 1: Check dataset cache ──
     const queryHash = btoa(JSON.stringify({ source: plan.source, query: plan.search_query, params: plan.search_params })).slice(0, 64);
     const { data: cached } = await serviceClient
       .from("signal_dataset_cache")
@@ -281,14 +405,11 @@ async function handleExecuteSignal(
 
     if (cached?.dataset) {
       rawResults = cached.dataset;
+      log("cache_hit", { rows: rawResults.length });
     } else {
-      // Run Apify actor
-      const actorInput: Record<string, any> = {
-        searchStringsArray: [plan.search_query],
-        maxCrawledPlacesPerSearch: Math.min(plan.estimated_rows, 3000),
-        language: "en",
-        ...plan.search_params,
-      };
+      // ── Step 2: Build actor-specific input and run Apify ──
+      const actorInput = buildActorInput(plan.source, plan);
+      log("apify_request", { actor: actorInfo.actorId, source: plan.source, input: actorInput });
 
       const runResponse = await fetch(
         `https://api.apify.com/v2/acts/${actorInfo.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
@@ -301,26 +422,34 @@ async function handleExecuteSignal(
 
       if (!runResponse.ok) {
         const errText = await runResponse.text();
-        throw new Error(`Apify error [${runResponse.status}]: ${errText}`);
+        log("apify_error", { status: runResponse.status, body: errText.slice(0, 500) });
+        throw new Error(`Apify error [${runResponse.status}]: ${errText.slice(0, 300)}`);
       }
 
       rawResults = await runResponse.json();
+      log("apify_response", { rows: rawResults.length });
 
       // Cache the dataset
-      await serviceClient.from("signal_dataset_cache").upsert({
-        query_hash: queryHash,
-        source: plan.source,
-        dataset: rawResults,
-        row_count: rawResults.length,
-      }, { onConflict: "query_hash,source" });
+      if (rawResults.length > 0) {
+        await serviceClient.from("signal_dataset_cache").upsert({
+          query_hash: queryHash,
+          source: plan.source,
+          dataset: rawResults,
+          row_count: rawResults.length,
+        }, { onConflict: "query_hash,source" });
+      }
     }
 
-    // Step 3: Apply non-AI filters
-    let filtered = rawResults;
+    // ── Step 3: Normalise results ──
+    const normalised = normaliseResults(plan.source, rawResults);
+    log("normalised", { count: normalised.length });
+
+    // ── Step 4: Apply non-AI filters ──
+    let filtered = normalised;
     if (plan.filters && plan.filters.length > 0) {
-      filtered = rawResults.filter((item: any) => {
+      filtered = normalised.filter((item: any) => {
         return plan.filters.every((f: any) => {
-          const val = item[f.field];
+          const val = item[f.field] ?? item._raw?.[f.field];
           if (val === undefined || val === null) return false;
           switch (f.operator) {
             case "<": return Number(val) < Number(f.value);
@@ -332,14 +461,14 @@ async function handleExecuteSignal(
           }
         });
       });
+      log("static_filter", { before: normalised.length, after: filtered.length });
     }
 
-    // Step 4: AI classification if needed
+    // ── Step 5: AI classification ──
     let aiFilteredCount = 0;
     if (plan.ai_classification && filtered.length > 0) {
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
       if (LOVABLE_API_KEY) {
-        // Process in batches of 20
         const batchSize = 20;
         const classified: any[] = [];
         for (let i = 0; i < filtered.length; i += batchSize) {
@@ -360,9 +489,11 @@ async function handleExecuteSignal(
                 {
                   role: "user",
                   content: JSON.stringify(batch.map((b: any) => ({
-                    name: b.title || b.name || b.company_name,
-                    description: b.description || b.categoryName || "",
-                    website: b.website || b.url || "",
+                    name: b.company_name || b.title,
+                    description: b.description || "",
+                    website: b.website || "",
+                    location: b.location || "",
+                    employee_count: b.employee_count || null,
                   }))),
                 },
               ],
@@ -376,21 +507,22 @@ async function handleExecuteSignal(
               const content = classResult.choices?.[0]?.message?.content || "[]";
               bools = JSON.parse(content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
             } catch {
-              bools = batch.map(() => true); // fallback: include all
+              bools = batch.map(() => true);
             }
             batch.forEach((item: any, idx: number) => {
               if (bools[idx]) classified.push(item);
             });
             aiFilteredCount += batch.length;
           } else {
-            classified.push(...batch); // on error, include all
+            classified.push(...batch);
           }
         }
         filtered = classified;
+        log("ai_classification", { processed: aiFilteredCount, passed: filtered.length });
       }
     }
 
-    // Step 5: Deduplicate
+    // ── Step 6: Deduplicate ──
     const { data: existingKeys } = await serviceClient
       .from("signal_dedup_keys")
       .select("dedup_key, dedup_type")
@@ -398,7 +530,6 @@ async function handleExecuteSignal(
 
     const existingSet = new Set((existingKeys || []).map((k: any) => `${k.dedup_type}:${k.dedup_key}`));
 
-    // Also check CRM leads for dedup
     const { data: crmLeads } = await serviceClient
       .from("leads")
       .select("email, phone, linkedin_url")
@@ -413,11 +544,12 @@ async function handleExecuteSignal(
 
     const uniqueLeads: any[] = [];
     const newDedupKeys: any[] = [];
+    let dedupRemoved = 0;
 
     for (const item of filtered) {
-      const domain = extractDomain(item.website || item.url || "");
-      const phone = (item.phone || item.telephone || "").replace(/\D/g, "");
-      const linkedin = item.linkedin || item.linkedinUrl || "";
+      const domain = extractDomain(item.website || "");
+      const phone = (item.phone || "").replace(/\D/g, "");
+      const linkedin = item.linkedin || "";
 
       let isDuplicate = false;
       if (domain && (existingSet.has(`domain:${domain}`) || crmSet.has(`domain:${domain}`))) isDuplicate = true;
@@ -438,21 +570,24 @@ async function handleExecuteSignal(
           existingSet.add(`linkedin:${linkedin}`);
           newDedupKeys.push({ workspace_id, dedup_key: linkedin, dedup_type: "linkedin" });
         }
+      } else {
+        dedupRemoved++;
       }
     }
+    log("dedup", { before: filtered.length, after: uniqueLeads.length, removed: dedupRemoved });
 
-    // Step 6: Store leads
+    // ── Step 7: Store leads ──
     const leadsToInsert = uniqueLeads.map((item) => ({
       run_id,
       workspace_id,
-      company_name: item.title || item.name || item.company_name || null,
-      website: item.website || item.url || null,
-      domain: extractDomain(item.website || item.url || ""),
-      phone: item.phone || item.telephone || null,
-      linkedin: item.linkedin || item.linkedinUrl || null,
-      location: item.address || item.city || item.location || null,
+      company_name: item.company_name || null,
+      website: item.website || null,
+      domain: extractDomain(item.website || ""),
+      phone: item.phone || null,
+      linkedin: item.linkedin || null,
+      location: item.location || null,
       source: actorInfo.label,
-      extra_data: item,
+      extra_data: item._raw || item,
     }));
 
     if (leadsToInsert.length > 0) {
@@ -461,9 +596,7 @@ async function handleExecuteSignal(
         .insert(leadsToInsert)
         .select("id");
 
-      // Store dedup keys with lead IDs
       if (insertedLeads && newDedupKeys.length > 0) {
-        // Associate dedup keys with leads (best effort)
         const dedupWithIds = newDedupKeys.map((dk, idx) => ({
           ...dk,
           signal_lead_id: insertedLeads[Math.min(idx, insertedLeads.length - 1)]?.id || null,
@@ -472,23 +605,32 @@ async function handleExecuteSignal(
       }
     }
 
-    // Step 7: Calculate actual cost and deduct credits
+    // ── Step 8: Calculate actual cost — DON'T charge if 0 results ──
     const scrapedRows = rawResults.length;
     const scrapeCostUsd = (scrapedRows / 1000) * 0.25;
     const aiFilterCostUsd = aiFilteredCount * 0.001;
     const actualCostUsd = (scrapeCostUsd + aiFilterCostUsd) * 1.2;
     const chargedPriceUsd = actualCostUsd * 3;
-    const actualCredits = Math.max(5, Math.ceil(chargedPriceUsd * 5));
+    let actualCredits = Math.max(5, Math.ceil(chargedPriceUsd * 5));
 
-    // Deduct credits
-    const { error: creditError } = await serviceClient
-      .from("lead_credits")
-      .update({ credits_balance: balance - actualCredits })
-      .eq("workspace_id", workspace_id);
+    // Zero-result credit protection: don't charge if no leads found
+    if (uniqueLeads.length === 0) {
+      actualCredits = 0;
+      log("zero_result_protection", { message: "No leads discovered, credits not charged" });
+    }
 
-    if (creditError) console.error("Credit deduction error:", creditError);
+    // Deduct credits only if > 0
+    if (actualCredits > 0) {
+      const { error: creditError } = await serviceClient
+        .from("lead_credits")
+        .update({ credits_balance: balance - actualCredits })
+        .eq("workspace_id", workspace_id);
+      if (creditError) console.error("Credit deduction error:", creditError);
+    }
 
-    // Update run status
+    log("complete", { leads: uniqueLeads.length, credits: actualCredits });
+
+    // Update run status with log
     await serviceClient
       .from("signal_runs")
       .update({
@@ -496,6 +638,7 @@ async function handleExecuteSignal(
         actual_cost: actualCredits,
         leads_discovered: uniqueLeads.length,
         last_run_at: new Date().toISOString(),
+        run_log: runLog,
       })
       .eq("id", run_id);
 
@@ -506,16 +649,16 @@ async function handleExecuteSignal(
         credits_charged: actualCredits,
         total_scraped: rawResults.length,
         total_filtered: filtered.length,
+        run_log: runLog,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    // Mark as failed
+    log("error", { message: error instanceof Error ? error.message : String(error) });
     await serviceClient
       .from("signal_runs")
-      .update({ status: "failed" })
+      .update({ status: "failed", run_log: runLog })
       .eq("id", run_id);
-
     throw error;
   }
 }

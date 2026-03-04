@@ -80,10 +80,12 @@ export function useSignalScraper() {
 
   // Generate plan mutation
   const generatePlanMutation = useMutation({
-    mutationFn: async (query: string) => {
+    mutationFn: async (params: { query: string; plan_override?: any } | string) => {
       if (!currentWorkspace?.id) throw new Error('No workspace selected');
+      const query = typeof params === 'string' ? params : params.query;
+      const plan_override = typeof params === 'string' ? undefined : params.plan_override;
       const { data, error } = await supabase.functions.invoke('signal-planner', {
-        body: { action: 'generate_plan', query, workspace_id: currentWorkspace.id },
+        body: { action: 'generate_plan', query, workspace_id: currentWorkspace.id, plan_override },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);

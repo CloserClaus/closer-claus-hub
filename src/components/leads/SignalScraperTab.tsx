@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import {
   Zap, Loader2, Play, Clock, Trash2, RotateCcw, ExternalLink, Plus, History,
   Globe, Phone, MapPin, Building2, ChevronDown, ChevronUp, Search, Mail, Sparkles,
+  Briefcase, Rocket, FileText,
 } from 'lucide-react';
 import { useSignalScraper, SignalRun, SignalLead } from '@/hooks/useSignalScraper';
 import { useLeadCredits } from '@/hooks/useLeadCredits';
@@ -16,6 +17,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
+
+const ICON_MAP: Record<string, any> = { Briefcase, Rocket, MapPin, Zap, Sparkles };
 
 export function SignalScraperTab() {
   const [query, setQuery] = useState('');
@@ -36,9 +39,25 @@ export function SignalScraperTab() {
 
   const { credits } = useLeadCredits();
 
-  const handleGenerate = () => {
-    if (!query.trim()) return;
-    generatePlan(query.trim());
+  // Fetch templates
+  const { data: templates = [] } = useQuery({
+    queryKey: ['signal-templates'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('signal_templates')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const handleGenerate = (q?: string, planOverride?: any) => {
+    const finalQuery = q || query.trim();
+    if (!finalQuery) return;
+    if (q) setQuery(q);
+    generatePlan({ query: finalQuery, plan_override: planOverride });
   };
 
   const handleExecute = () => {
@@ -48,11 +67,51 @@ export function SignalScraperTab() {
 
   const handleRerun = (run: SignalRun) => {
     setQuery(run.signal_query);
-    generatePlan(run.signal_query);
+    generatePlan({ query: run.signal_query });
+  };
+
+  const handleTemplate = (tpl: any) => {
+    setQuery(tpl.query_template);
+    handleGenerate(tpl.query_template, tpl.plan_override);
   };
 
   return (
     <div className="space-y-6">
+      {/* Templates Section */}
+      {templates.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Quick Start Templates
+            </CardTitle>
+            <CardDescription>Pre-configured intent signals — one click to generate a plan.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {templates.map((tpl: any) => {
+                const Icon = ICON_MAP[tpl.icon] || Zap;
+                return (
+                  <button
+                    key={tpl.id}
+                    onClick={() => handleTemplate(tpl)}
+                    disabled={isGenerating}
+                    className="text-left p-3 rounded-lg border bg-card hover:bg-muted transition-colors disabled:opacity-50"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Icon className="h-4 w-4 text-primary" />
+                      <span className="font-medium text-sm">{tpl.name}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{tpl.description}</p>
+                    <Badge variant="outline" className="text-xs mt-2">{tpl.category.replace('_', ' ')}</Badge>
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Prompt Section */}
       <Card>
         <CardHeader className="pb-3">
@@ -75,7 +134,7 @@ export function SignalScraperTab() {
             <div className="text-sm text-muted-foreground">
               Credits available: <span className="font-semibold text-foreground">{credits}</span>
             </div>
-            <Button onClick={handleGenerate} disabled={isGenerating || !query.trim()}>
+            <Button onClick={() => handleGenerate()} disabled={isGenerating || !query.trim()}>
               {isGenerating ? (
                 <><Loader2 className="h-4 w-4 animate-spin" /> Generating Plan...</>
               ) : (
@@ -216,46 +275,78 @@ export function SignalScraperTab() {
             ) : (
               <div className="space-y-3">
                 {signalHistory.map((run) => (
-                  <div
+                  <SignalHistoryItem
                     key={run.id}
-                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 rounded-lg bg-muted gap-3"
-                  >
-                    <div className="space-y-1 flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm truncate">{run.signal_name || run.signal_query}</span>
-                        <StatusBadge status={run.status} />
-                        {run.schedule_type === 'daily' && (
-                          <Badge variant="outline" className="text-xs"><Clock className="h-3 w-3 mr-1" />Daily</Badge>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
-                        {run.last_run_at && (
-                          <span>Last run: {formatDistanceToNow(new Date(run.last_run_at), { addSuffix: true })}</span>
-                        )}
-                        <span>{run.leads_discovered} leads</span>
-                        <span>{run.actual_cost ?? run.estimated_cost} credits</span>
-                      </div>
-                    </div>
-                    <div className="flex gap-1.5">
-                      {run.status === 'completed' && (
-                        <Button size="sm" variant="outline" onClick={() => setViewingRunId(run.id)}>
-                          View Leads
-                        </Button>
-                      )}
-                      <Button size="sm" variant="ghost" onClick={() => handleRerun(run)}>
-                        <RotateCcw className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteSignal(run.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
+                    run={run}
+                    onView={() => setViewingRunId(run.id)}
+                    onRerun={() => handleRerun(run)}
+                    onDelete={() => deleteSignal(run.id)}
+                  />
                 ))}
               </div>
             )}
           </CardContent>
         )}
       </Card>
+    </div>
+  );
+}
+
+function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun; onView: () => void; onRerun: () => void; onDelete: () => void }) {
+  const [showLog, setShowLog] = useState(false);
+  const runLog = (run as any).run_log as any[] | null;
+
+  return (
+    <div className="p-3 rounded-lg bg-muted space-y-2">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="space-y-1 flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-sm truncate">{run.signal_name || run.signal_query}</span>
+            <StatusBadge status={run.status} />
+            {run.schedule_type === 'daily' && (
+              <Badge variant="outline" className="text-xs"><Clock className="h-3 w-3 mr-1" />Daily</Badge>
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
+            {run.last_run_at && (
+              <span>Last run: {formatDistanceToNow(new Date(run.last_run_at), { addSuffix: true })}</span>
+            )}
+            <span>{run.leads_discovered} leads</span>
+            <span>{run.actual_cost ?? run.estimated_cost} credits</span>
+            {run.actual_cost === 0 && run.status === 'completed' && (
+              <span className="text-green-500">🛡️ No charge (0 results)</span>
+            )}
+          </div>
+        </div>
+        <div className="flex gap-1.5">
+          {run.status === 'completed' && (
+            <Button size="sm" variant="outline" onClick={onView}>View Leads</Button>
+          )}
+          {runLog && runLog.length > 0 && (
+            <Button size="sm" variant="ghost" onClick={() => setShowLog(!showLog)}>
+              <FileText className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" onClick={onRerun}>
+            <RotateCcw className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="sm" variant="ghost" className="text-destructive" onClick={onDelete}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+      {showLog && runLog && (
+        <div className="mt-2 p-2 rounded bg-background border text-xs font-mono space-y-1 max-h-48 overflow-y-auto">
+          {runLog.map((entry: any, i: number) => (
+            <div key={i} className="flex gap-2">
+              <span className="text-muted-foreground whitespace-nowrap">{entry.step}</span>
+              <span className="text-foreground">
+                {Object.entries(entry).filter(([k]) => k !== 'step' && k !== 'ts').map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(' ')}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -343,11 +434,9 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
 
   const enrichWithApolloMutation = useMutation({
     mutationFn: async (lead: SignalLead) => {
-      // Add to CRM first if not already
       if (!lead.added_to_crm) {
         await addToCRM(lead);
       }
-      // Trigger Apollo enrichment via the existing edge function
       const { data, error } = await supabase.functions.invoke('apollo-enrich', {
         body: {
           workspace_id: workspaceId,

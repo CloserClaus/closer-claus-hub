@@ -3243,6 +3243,7 @@ export type Database = {
           last_run_at: string | null
           leads_discovered: number | null
           next_run_at: string | null
+          run_log: Json | null
           schedule_hour: number | null
           schedule_type: string
           signal_name: string | null
@@ -3262,6 +3263,7 @@ export type Database = {
           last_run_at?: string | null
           leads_discovered?: number | null
           next_run_at?: string | null
+          run_log?: Json | null
           schedule_hour?: number | null
           schedule_type?: string
           signal_name?: string | null
@@ -3281,6 +3283,7 @@ export type Database = {
           last_run_at?: string | null
           leads_discovered?: number | null
           next_run_at?: string | null
+          run_log?: Json | null
           schedule_hour?: number | null
           schedule_type?: string
           signal_name?: string | null
@@ -3300,6 +3303,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      signal_templates: {
+        Row: {
+          category: string
+          created_at: string
+          description: string
+          icon: string | null
+          id: string
+          is_active: boolean
+          name: string
+          plan_override: Json
+          query_template: string
+          sort_order: number
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          description: string
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          plan_override?: Json
+          query_template: string
+          sort_order?: number
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          plan_override?: Json
+          query_template?: string
+          sort_order?: number
+        }
+        Relationships: []
       }
       support_tickets: {
         Row: {
