@@ -40,6 +40,9 @@ export interface SignalRun {
   schedule_type: string;
   last_run_at: string | null;
   created_at: string;
+  started_at: string | null;
+  retry_count: number;
+  error_message: string | null;
 }
 
 export interface SignalLead {
