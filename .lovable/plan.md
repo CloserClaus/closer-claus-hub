@@ -1,23 +1,50 @@
 
 
-## Diagnosis
+## Tuning Issues — Why Results Are Near Zero
 
-The database has the correct data — all 10 Bizvolve applications have `applicant_name` populated (verified via direct query). The root cause is a **code-level issue** in `JobDetail.tsx`:
+Three distinct problems visible in the logs:
 
-1. The query uses `select('*')` but the code accesses the fields via `(app as any).applicant_name` — a fragile pattern that can fail if TypeScript's type narrowing or Supabase's PostgREST response doesn't include these columns as expected.
-2. The published site may be running an older version of the code before the `applicant_name` fallback was added.
+### Problem 1: LinkedIn Jobs Actor Returns 0 Rows
 
-## Plan
+The actor `sovereigntaylor/linkedin-jobs-scraper` returned 0 items for 3 keywords and FAILED for 2. The proxy config only sets `useApifyProxy: true` without specifying residential proxy groups. LinkedIn aggressively blocks datacenter proxies. The fix is to add `proxyCountry` and `proxyGroups` to the proxy configuration:
 
-### 1. Fix `JobDetail.tsx` — Use explicit column selection and typed access
+```typescript
+actorInput.proxyConfiguration = { 
+  useApifyProxy: true, 
+  apifyProxyGroups: ["RESIDENTIAL"],
+  apifyProxyCountry: "US"
+};
+```
 
-- Change the `select('*')` query to explicitly include `applicant_name, applicant_email` in the select string
-- Remove `(app as any)` casts — access `app.applicant_name` and `app.applicant_email` directly (these fields already exist in the generated Supabase types)
-- Add a hardcoded SDR level (1–2) fallback when profile lookup fails, instead of always defaulting to 1
+Additionally, the actor may expect different input field names than what we're sending. We need to verify the actual input schema by checking the Apify actor page or testing a direct API call.
 
-### 2. Fix `ApplicationsTable.tsx` — Same pattern fix
+### Problem 2: Indeed Actor Returns Only 1 Row Per Keyword
 
-- Same change: remove `(app as any)` casts, use typed `a.applicant_name` and `a.applicant_email` directly since the types already include them
+5 keywords, 1 result each = the `maxResults` param is likely being ignored because the actor uses a different field name (e.g., `maxItems`, `limit`, or `maxCrawledItems`). The `inputSchema` in our catalog says `maxResults` but the actual Apify actor for Indeed (`consummate_mandala/indeed-job-listings-scraper`) may not recognize that param. Need to verify the correct param name and update the catalog.
 
-These are small, surgical changes to two files. Once saved, the preview and published site will correctly display applicant names from the denormalized columns without depending on profile/workspace membership lookups.
+### Problem 3: Cross-Keyword Dedup Too Aggressive for Job Boards
+
+The dedup key is `domain || company::title`. For job scraping, one company might post 4 identical-title jobs across keywords (e.g., "SDR" and "BDR" at the same company). After dedup, 4 → 1. This is correct behavior for lead generation (you only need one entry per company), but combined with problems 1 and 2, it leaves almost nothing.
+
+### Fix Plan
+
+**File: `supabase/functions/process-signal-queue/index.ts`**
+
+1. **Fix LinkedIn proxy config** (line ~598): Add residential proxy group and country code
+2. **Verify and fix actor input schemas**: Check the actual Apify actor pages for `sovereigntaylor/linkedin-jobs-scraper` and `consummate_mandala/indeed-job-listings-scraper` to confirm correct input field names — update the `ACTOR_CATALOG` in both `process-signal-queue` and `signal-planner` if any field names are wrong
+
+**File: `supabase/functions/signal-planner/index.ts`**
+
+3. **Same catalog fixes** — keep catalogs in sync
+
+### Investigation Step
+
+Before changing code, I need to verify the actual input schemas for these two Apify actors by checking their documentation. This determines whether the field name mismatches are the root cause or if it's purely a proxy issue.
+
+| File | Change |
+|------|--------|
+| `supabase/functions/process-signal-queue/index.ts` | Fix proxy config, fix actor input field names |
+| `supabase/functions/signal-planner/index.ts` | Mirror catalog fixes |
+
+Shall I investigate the actual Apify actor schemas first, or proceed with the proxy fix and test?
 
