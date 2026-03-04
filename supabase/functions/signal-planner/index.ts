@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-declare const EdgeRuntime: { waitUntil(promise: Promise<any>): void };
+// Execution is now handled by process-signal-queue worker
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
