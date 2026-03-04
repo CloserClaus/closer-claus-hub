@@ -3101,6 +3101,206 @@ export type Database = {
           },
         ]
       }
+      signal_dataset_cache: {
+        Row: {
+          created_at: string
+          dataset: Json | null
+          id: string
+          query_hash: string
+          row_count: number | null
+          source: string
+        }
+        Insert: {
+          created_at?: string
+          dataset?: Json | null
+          id?: string
+          query_hash: string
+          row_count?: number | null
+          source: string
+        }
+        Update: {
+          created_at?: string
+          dataset?: Json | null
+          id?: string
+          query_hash?: string
+          row_count?: number | null
+          source?: string
+        }
+        Relationships: []
+      }
+      signal_dedup_keys: {
+        Row: {
+          created_at: string
+          dedup_key: string
+          dedup_type: string
+          id: string
+          signal_lead_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          dedup_key: string
+          dedup_type: string
+          id?: string
+          signal_lead_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          dedup_key?: string
+          dedup_type?: string
+          id?: string
+          signal_lead_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signal_dedup_keys_signal_lead_id_fkey"
+            columns: ["signal_lead_id"]
+            isOneToOne: false
+            referencedRelation: "signal_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "signal_dedup_keys_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      signal_leads: {
+        Row: {
+          added_to_crm: boolean
+          company_name: string | null
+          discovered_at: string
+          domain: string | null
+          extra_data: Json | null
+          id: string
+          linkedin: string | null
+          location: string | null
+          phone: string | null
+          run_id: string
+          source: string | null
+          website: string | null
+          workspace_id: string
+        }
+        Insert: {
+          added_to_crm?: boolean
+          company_name?: string | null
+          discovered_at?: string
+          domain?: string | null
+          extra_data?: Json | null
+          id?: string
+          linkedin?: string | null
+          location?: string | null
+          phone?: string | null
+          run_id: string
+          source?: string | null
+          website?: string | null
+          workspace_id: string
+        }
+        Update: {
+          added_to_crm?: boolean
+          company_name?: string | null
+          discovered_at?: string
+          domain?: string | null
+          extra_data?: Json | null
+          id?: string
+          linkedin?: string | null
+          location?: string | null
+          phone?: string | null
+          run_id?: string
+          source?: string | null
+          website?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signal_leads_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "signal_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "signal_leads_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      signal_runs: {
+        Row: {
+          actual_cost: number | null
+          created_at: string
+          estimated_cost: number
+          estimated_leads: number | null
+          id: string
+          last_run_at: string | null
+          leads_discovered: number | null
+          next_run_at: string | null
+          schedule_hour: number | null
+          schedule_type: string
+          signal_name: string | null
+          signal_plan: Json | null
+          signal_query: string
+          status: string
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          actual_cost?: number | null
+          created_at?: string
+          estimated_cost?: number
+          estimated_leads?: number | null
+          id?: string
+          last_run_at?: string | null
+          leads_discovered?: number | null
+          next_run_at?: string | null
+          schedule_hour?: number | null
+          schedule_type?: string
+          signal_name?: string | null
+          signal_plan?: Json | null
+          signal_query: string
+          status?: string
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          actual_cost?: number | null
+          created_at?: string
+          estimated_cost?: number
+          estimated_leads?: number | null
+          id?: string
+          last_run_at?: string | null
+          leads_discovered?: number | null
+          next_run_at?: string | null
+          schedule_hour?: number | null
+          schedule_type?: string
+          signal_name?: string | null
+          signal_plan?: Json | null
+          signal_query?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signal_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       support_tickets: {
         Row: {
           admin_notes: string | null

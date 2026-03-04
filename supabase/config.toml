@@ -155,3 +155,6 @@ verify_jwt = false
 
 [functions.klaus-ai]
 verify_jwt = false
+
+[functions.signal-planner]
+verify_jwt = false
