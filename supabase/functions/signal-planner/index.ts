@@ -979,3 +979,32 @@ function extractDomain(url: string): string {
     return url.replace(/^(https?:\/\/)?(www\.)?/, "").split("/")[0] || "";
   }
 }
+
+/**
+ * Splits compound keyword strings into individual search terms.
+ * Handles: "SDR OR BDR OR 'Sales Rep'" → ["SDR", "BDR", "Sales Rep"]
+ * Also handles comma-separated: "SDR, BDR, Sales Rep" → ["SDR", "BDR", "Sales Rep"]
+ * Single keywords pass through as-is: "SDR" → ["SDR"]
+ */
+function splitCompoundKeywords(keyword: string): string[] {
+  if (!keyword) return [keyword || ""];
+  
+  // Check for OR separator (case insensitive, with spaces)
+  if (/\s+OR\s+/i.test(keyword)) {
+    return keyword
+      .split(/\s+OR\s+/i)
+      .map(k => k.replace(/^['"]|['"]$/g, "").trim())
+      .filter(k => k.length > 0);
+  }
+  
+  // Check for comma separator (but not inside quotes)
+  if (keyword.includes(",") && !keyword.startsWith("http")) {
+    return keyword
+      .split(",")
+      .map(k => k.replace(/^['"]|['"]$/g, "").trim())
+      .filter(k => k.length > 0);
+  }
+  
+  // Single keyword — strip quotes
+  return [keyword.replace(/^['"]|['"]$/g, "").trim()];
+}
