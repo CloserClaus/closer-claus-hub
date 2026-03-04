@@ -387,12 +387,14 @@ RULES:
 - For general web discovery, use "google_search".
 - ai_classification is a text description of an AI filter applied AFTER scraping. Use it to narrow results by company type, size, or relevance.
 - You may suggest multiple sources by returning a SINGLE plan with the BEST-fit source. The user can modify later.
+- IMPORTANT: For the "keyword" field, use a SINGLE simple keyword per search (e.g. "SDR" or "Sales Representative"). Do NOT use boolean operators like OR, AND, or quoted phrases. If you need to search multiple keywords, put ONLY the most important one in "keyword" and list ALL variations in "search_query" separated by " OR " — the engine will automatically split and run them individually.
+- For hiring intent queries, prefer timePosted "pastWeek" unless the user explicitly asks for today's jobs only. "past24h" is too restrictive and often returns zero results.
 
 Return a JSON object with this exact structure:
 {
   "signal_name": "short descriptive name",
   "source": "<actor_key from list above>",
-  "search_query": "the main search term",
+  "search_query": "the main search term (use OR to list variations, e.g. 'SDR OR BDR OR Sales Representative')",
   "search_params": { ONLY valid params for the chosen actor },
   "fields_to_collect": ["field1", "field2"],
   "filters": [{"field": "field_name", "operator": "<|>|=|contains|not_contains", "value": "value"}],
