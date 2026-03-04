@@ -310,6 +310,18 @@ export function SignalScraperTab() {
 function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun; onView: () => void; onRerun: () => void; onDelete: () => void }) {
   const [showLog, setShowLog] = useState(false);
   const runLog = (run as any).run_log as any[] | null;
+  const { toast } = useToast();
+
+  // Detect stale runs: "running" for more than 10 minutes
+  const isStale = run.status === 'running' && run.created_at &&
+    (Date.now() - new Date(run.created_at).getTime()) > 10 * 60 * 1000;
+
+  const markAsFailed = async () => {
+    await supabase.from('signal_runs').update({ status: 'failed' }).eq('id', run.id);
+    toast({ title: 'Signal marked as failed' });
+    // Trigger refetch
+    onRerun();
+  };
 
   return (
     <div className="p-3 rounded-lg bg-muted space-y-2">
