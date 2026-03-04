@@ -14,7 +14,7 @@ const ACTOR_REGISTRY: Record<string, { actorId: string; label: string }> = {
   linkedin_companies:  { actorId: "2SyF0bVxmgGr8IVCZ", label: "LinkedIn Companies" },
   google_search:       { actorId: "nFJndFXA5zjCTuudP", label: "Google Search" },
   yelp:                { actorId: "yin5oHQaJGRfmJhlN", label: "Yelp" },
-  indeed_jobs:         { actorId: "curious_coder/indeed-scraper", label: "Indeed Jobs" },
+  indeed_jobs:         { actorId: "consummate_mandala/indeed-job-listings-scraper", label: "Indeed Jobs" },
   yellow_pages:        { actorId: "trudax/yellow-pages-us-scraper", label: "Yellow Pages" },
   contact_enrichment:  { actorId: "9Sk4JJhEma9vBKqrg", label: "Contact Enrichment" },
 };

@@ -66,15 +66,14 @@ const ACTOR_CATALOG: ActorEntry[] = [
   },
   {
     key: "indeed_jobs",
-    actorId: "curious_coder/indeed-scraper",
+    actorId: "consummate_mandala/indeed-job-listings-scraper",
     label: "Indeed Jobs",
     category: "hiring_intent",
     description: "Scrapes Indeed job postings. Broader job board coverage than LinkedIn. Good for finding SMBs hiring in specific locations.",
     inputSchema: {
-      keyword:    { type: "string",  required: true, description: "Job search keyword" },
+      keywords:   { type: "string[]", required: true, description: "Job search keywords (auto-set from search_query)" },
       location:   { type: "string",  default: "United States", description: "Location filter" },
-      maxItems:   { type: "number",  default: 100, description: "Max results" },
-      datePosted: { type: "enum",    values: ["today", "3days", "7days", "14days"], default: "7days", description: "Recency" },
+      maxResults: { type: "number",  default: 100, description: "Max results" },
     },
     outputFields: {
       company_name: ["company", "companyName"],
