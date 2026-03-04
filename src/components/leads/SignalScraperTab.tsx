@@ -146,11 +146,18 @@ export function SignalScraperTab() {
       </Card>
 
       {/* Plan Display */}
-      {currentPlan && (
+      {currentPlan && (() => {
+        // Normalize plan to array for display
+        const planArray = Array.isArray(currentPlan.plan) ? currentPlan.plan : [currentPlan.plan];
+        const firstPlan = planArray[0];
+        const allSearchQueries = planArray.map(p => p.search_query).filter(Boolean);
+        const uniqueQueries = [...new Set(allSearchQueries)];
+
+        return (
         <Card className="border-primary/30">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">{currentPlan.plan.signal_name}</CardTitle>
+              <CardTitle className="text-lg">{firstPlan.signal_name}</CardTitle>
               <Badge variant="outline">{currentPlan.estimation.source_label}</Badge>
             </div>
           </CardHeader>
@@ -176,14 +183,14 @@ export function SignalScraperTab() {
 
             <div className="text-sm space-y-1">
               <span className="font-medium text-muted-foreground">Search query:</span>
-              <span className="ml-2 text-foreground">{currentPlan.plan.search_query}</span>
+              <span className="ml-2 text-foreground">{uniqueQueries.join(" | ")}</span>
             </div>
 
-            {currentPlan.plan.filters.length > 0 && (
+            {firstPlan.filters && firstPlan.filters.length > 0 && (
               <div className="text-sm space-y-1">
                 <span className="font-medium text-muted-foreground">Filters:</span>
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {currentPlan.plan.filters.map((f, i) => (
+                  {firstPlan.filters.map((f: any, i: number) => (
                     <Badge key={i} variant="secondary" className="text-xs">
                       {f.field} {f.operator} {f.value}
                     </Badge>
@@ -192,10 +199,10 @@ export function SignalScraperTab() {
               </div>
             )}
 
-            {currentPlan.plan.ai_classification && (
+            {firstPlan.ai_classification && (
               <div className="text-sm">
                 <span className="font-medium text-muted-foreground">AI check:</span>
-                <span className="ml-2 text-foreground">{currentPlan.plan.ai_classification}</span>
+                <span className="ml-2 text-foreground">{firstPlan.ai_classification}</span>
               </div>
             )}
 
