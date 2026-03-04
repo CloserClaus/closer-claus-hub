@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import {
   Zap, Loader2, Play, Clock, Trash2, RotateCcw, ExternalLink, Plus, History,
-  Globe, Phone, MapPin, Building2, ChevronDown, ChevronUp,
+  Globe, Phone, MapPin, Building2, ChevronDown, ChevronUp, Search, Mail, Sparkles,
 } from 'lucide-react';
 import { useSignalScraper, SignalRun, SignalLead } from '@/hooks/useSignalScraper';
 import { useLeadCredits } from '@/hooks/useLeadCredits';
@@ -15,8 +15,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useToast } from '@/hooks/use-toast';
-import { useQueryClient } from '@tanstack/react-query';
-import { useQuery } from '@tanstack/react-query';
+import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 
 export function SignalScraperTab() {
   const [query, setQuery] = useState('');
@@ -97,7 +96,6 @@ export function SignalScraperTab() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Plan details */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center p-3 rounded-lg bg-muted">
                 <div className="text-2xl font-bold text-foreground">~{currentPlan.estimation.estimated_rows}</div>
@@ -117,13 +115,11 @@ export function SignalScraperTab() {
               </div>
             </div>
 
-            {/* Search query */}
             <div className="text-sm space-y-1">
               <span className="font-medium text-muted-foreground">Search query:</span>
               <span className="ml-2 text-foreground">{currentPlan.plan.search_query}</span>
             </div>
 
-            {/* Filters */}
             {currentPlan.plan.filters.length > 0 && (
               <div className="text-sm space-y-1">
                 <span className="font-medium text-muted-foreground">Filters:</span>
@@ -137,7 +133,6 @@ export function SignalScraperTab() {
               </div>
             )}
 
-            {/* AI classification */}
             {currentPlan.plan.ai_classification && (
               <div className="text-sm">
                 <span className="font-medium text-muted-foreground">AI check:</span>
@@ -147,7 +142,6 @@ export function SignalScraperTab() {
 
             <Separator />
 
-            {/* Run controls */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <span className="text-sm text-muted-foreground">Schedule:</span>
@@ -319,6 +313,60 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
     queryClient.invalidateQueries({ queryKey: ['signal-leads', runId] });
   };
 
+  const addAllToCRM = async () => {
+    const unleadedLeads = leads.filter((l) => !l.added_to_crm);
+    if (unleadedLeads.length === 0) return;
+    const userId = (await supabase.auth.getUser()).data.user?.id || '';
+    const rows = unleadedLeads.map((lead) => ({
+      workspace_id: workspaceId,
+      created_by: userId,
+      first_name: '',
+      last_name: '',
+      company: lead.company_name,
+      phone: lead.phone,
+      linkedin_url: lead.linkedin,
+      source: `Signal: ${lead.source}`,
+      notes: `Website: ${lead.website || ''}\nLocation: ${lead.location || ''}`,
+    }));
+    const { error } = await supabase.from('leads').insert(rows);
+    if (error) {
+      toast({ title: 'Failed to add leads', description: error.message, variant: 'destructive' });
+      return;
+    }
+    const ids = unleadedLeads.map((l) => l.id);
+    for (let i = 0; i < ids.length; i += 50) {
+      await supabase.from('signal_leads').update({ added_to_crm: true }).in('id', ids.slice(i, i + 50));
+    }
+    toast({ title: `${unleadedLeads.length} leads added to CRM` });
+    queryClient.invalidateQueries({ queryKey: ['signal-leads', runId] });
+  };
+
+  const enrichWithApolloMutation = useMutation({
+    mutationFn: async (lead: SignalLead) => {
+      // Add to CRM first if not already
+      if (!lead.added_to_crm) {
+        await addToCRM(lead);
+      }
+      // Trigger Apollo enrichment via the existing edge function
+      const { data, error } = await supabase.functions.invoke('apollo-enrich', {
+        body: {
+          workspace_id: workspaceId,
+          domain: lead.domain,
+          company_name: lead.company_name,
+        },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast({ title: 'Enrichment started', description: 'Apollo enrichment has been queued for this lead.' });
+      queryClient.invalidateQueries({ queryKey: ['lead-credits'] });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Enrichment failed', description: err.message, variant: 'destructive' });
+    },
+  });
+
   if (isLoading) {
     return (
       <Card>
@@ -329,12 +377,21 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
     );
   }
 
+  const notInCrmCount = leads.filter((l) => !l.added_to_crm).length;
+
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <CardTitle className="text-lg">Signal Results — {leads.length} leads discovered</CardTitle>
-          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+          <div className="flex gap-2">
+            {notInCrmCount > 0 && (
+              <Button size="sm" variant="outline" onClick={addAllToCRM}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add All to CRM ({notInCrmCount})
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -366,10 +423,28 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
                     <MapPin className="h-3 w-3" /> {lead.location}
                   </div>
                 )}
-                <div className="flex gap-1.5 pt-1">
+                <div className="flex flex-wrap gap-1.5 pt-1">
                   {!lead.added_to_crm && (
                     <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => addToCRM(lead)}>
                       <Plus className="h-3 w-3 mr-1" /> Add to CRM
+                    </Button>
+                  )}
+                  {lead.domain && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-7"
+                      onClick={() => enrichWithApolloMutation.mutate(lead)}
+                      disabled={enrichWithApolloMutation.isPending}
+                    >
+                      <Search className="h-3 w-3 mr-1" /> Enrich
+                    </Button>
+                  )}
+                  {lead.added_to_crm && (
+                    <Button size="sm" variant="outline" className="text-xs h-7" asChild>
+                      <a href="/crm">
+                        <Mail className="h-3 w-3 mr-1" /> Start Outreach
+                      </a>
                     </Button>
                   )}
                   {lead.website && (
