@@ -1,23 +1,40 @@
 
 
-## Diagnosis
+## Root Cause
 
-The database has the correct data — all 10 Bizvolve applications have `applicant_name` populated (verified via direct query). The root cause is a **code-level issue** in `JobDetail.tsx`:
+The `execute_signal` action calls Apify's `run-sync-get-dataset-items` endpoint, which blocks until the actor finishes. With multi-source (LinkedIn + Indeed) and multi-keyword splitting (4-6 keywords each), this means **multiple sequential HTTP calls that each take 15-60 seconds**. The edge function hits its execution timeout before it can return a response.
 
-1. The query uses `select('*')` but the code accesses the fields via `(app as any).applicant_name` — a fragile pattern that can fail if TypeScript's type narrowing or Supabase's PostgREST response doesn't include these columns as expected.
-2. The published site may be running an older version of the code before the `applicant_name` fallback was added.
+## Fix: Background execution with `EdgeRuntime.waitUntil()`
 
-## Plan
+Convert `execute_signal` to return immediately with a "running" status, then process in the background.
 
-### 1. Fix `JobDetail.tsx` — Use explicit column selection and typed access
+### Changes to `supabase/functions/signal-planner/index.ts`
 
-- Change the `select('*')` query to explicitly include `applicant_name, applicant_email` in the select string
-- Remove `(app as any)` casts — access `app.applicant_name` and `app.applicant_email` directly (these fields already exist in the generated Supabase types)
-- Add a hardcoded SDR level (1–2) fallback when profile lookup fails, instead of always defaulting to 1
+**1. In the main handler (line 441-442)**, change the `execute_signal` branch:
+- Instead of `return await handleExecuteSignal(...)`, do:
+  - Update the signal run status to "running" (with schedule info)
+  - Call `EdgeRuntime.waitUntil(handleExecuteSignal(...))` to run processing in background
+  - Return immediately with `{ status: "running", run_id }` so the client gets a fast response
 
-### 2. Fix `ApplicationsTable.tsx` — Same pattern fix
+**2. Refactor `handleExecuteSignal` (line 602)**:
+- Remove the `Response` return type — it now runs in background and just writes results to the DB
+- Remove the early `return new Response(...)` for insufficient credits — move that check to the main handler before `waitUntil`
+- Keep the try/catch that updates the run to "failed" on error
+- Remove the final `return new Response(...)` — the function just completes silently
 
-- Same change: remove `(app as any)` casts, use typed `a.applicant_name` and `a.applicant_email` directly since the types already include them
+**3. Add `EdgeRuntime` type declaration** at top of file:
+```typescript
+declare const EdgeRuntime: { waitUntil(promise: Promise<any>): void };
+```
 
-These are small, surgical changes to two files. Once saved, the preview and published site will correctly display applicant names from the denormalized columns without depending on profile/workspace membership lookups.
+**4. Client-side polling** — the UI already polls `signal_runs` via react-query, so once the run status changes to "completed" or "failed" in the DB, the UI will pick it up on the next refetch. No client changes needed beyond ensuring the `signal-runs` query refetches periodically (it likely already does via `invalidateQueries` in the mutation's `onSuccess`).
+
+**5. Update `useSignalScraper.ts`** — the `executeSignalMutation.onSuccess` handler currently expects `data.leads_discovered` and `data.credits_charged` in the response. Update it to handle the new `{ status: "running" }` response by showing a "Signal running in background" toast instead, and let the query invalidation handle the final state.
+
+### Files
+
+| File | Change |
+|------|--------|
+| `supabase/functions/signal-planner/index.ts` | Add EdgeRuntime declaration, move credit check to main handler, wrap execution in `waitUntil`, return immediately |
+| `src/hooks/useSignalScraper.ts` | Update `onSuccess` to handle async "running" response |
 
