@@ -305,10 +305,48 @@ serve(async (req) => {
     let failed = 0;
 
     for (const run of allRuns) {
+      const isStaleRecovery = run.status === "running";
+      const newRetryCount = isStaleRecovery ? (run.retry_count || 0) + 1 : (run.retry_count || 0);
+
+      // If this is a stale recovery and we've hit max retries, fail immediately
+      if (isStaleRecovery && newRetryCount >= MAX_RETRIES) {
+        console.log(`Signal ${run.id} exceeded max retries (${newRetryCount}/${MAX_RETRIES}), marking failed`);
+        await serviceClient
+          .from("signal_runs")
+          .update({
+            status: "failed",
+            retry_count: newRetryCount,
+            error_message: `Failed after ${MAX_RETRIES} attempts (container killed or timed out)`,
+          })
+          .eq("id", run.id);
+
+        if (run.user_id) {
+          await serviceClient.from("notifications").insert({
+            user_id: run.user_id,
+            workspace_id: run.workspace_id,
+            type: "signal_failed",
+            title: "Signal Failed",
+            message: `Your signal "${run.signal_name || run.signal_query}" failed after ${MAX_RETRIES} attempts. The search may be too complex — try fewer keywords or sources.`,
+          });
+        }
+        failed++;
+        continue;
+      }
+
       // Lease the job: set status=running, started_at=now
+      // For stale recoveries, also increment retry_count at lease time
+      const leasePayload: Record<string, any> = {
+        status: "running",
+        started_at: new Date().toISOString(),
+        error_message: null,
+      };
+      if (isStaleRecovery) {
+        leasePayload.retry_count = newRetryCount;
+      }
+
       const { data: leased, error: leaseErr } = await serviceClient
         .from("signal_runs")
-        .update({ status: "running", started_at: new Date().toISOString(), error_message: null })
+        .update(leasePayload)
         .eq("id", run.id)
         .in("status", ["queued", "running", "completed"]) // Only lease if still in expected state
         .select()
@@ -325,21 +363,19 @@ serve(async (req) => {
       } catch (err) {
         console.error(`Failed to process signal ${run.id}:`, err);
         failed++;
-        const newRetryCount = (run.retry_count || 0) + 1;
+        const catchRetryCount = (leased.retry_count || 0) + 1;
         const errorMsg = err instanceof Error ? err.message : String(err);
 
-        if (newRetryCount >= MAX_RETRIES) {
-          // Max retries exceeded — mark as failed
+        if (catchRetryCount >= MAX_RETRIES) {
           await serviceClient
             .from("signal_runs")
             .update({
               status: "failed",
-              retry_count: newRetryCount,
+              retry_count: catchRetryCount,
               error_message: `Failed after ${MAX_RETRIES} attempts: ${errorMsg}`,
             })
             .eq("id", run.id);
 
-          // Notify user
           if (run.user_id) {
             await serviceClient.from("notifications").insert({
               user_id: run.user_id,
@@ -350,13 +386,12 @@ serve(async (req) => {
             });
           }
         } else {
-          // Re-queue for retry
           await serviceClient
             .from("signal_runs")
             .update({
               status: "queued",
-              retry_count: newRetryCount,
-              error_message: `Attempt ${newRetryCount} failed: ${errorMsg}`,
+              retry_count: catchRetryCount,
+              error_message: `Attempt ${catchRetryCount} failed: ${errorMsg}`,
               started_at: null,
             })
             .eq("id", run.id);

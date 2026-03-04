@@ -1,39 +1,23 @@
 
 
-## Fix: Container-Kill-Proof Retry Mechanism
+## Diagnosis
 
-### Root Cause
-When the edge function container is killed by the platform (timeout/memory), the `catch` block never runs. This means `retry_count` never increments, creating an infinite stale-detect → re-lease → kill loop.
+The database has the correct data — all 10 Bizvolve applications have `applicant_name` populated (verified via direct query). The root cause is a **code-level issue** in `JobDetail.tsx`:
 
-### Solution
-Move the retry-count increment into the **lease step itself**, not the catch block. If the worker picks up a "running" (stale) run, that IS the evidence of a failed attempt — increment retry_count at lease time.
+1. The query uses `select('*')` but the code accesses the fields via `(app as any).applicant_name` — a fragile pattern that can fail if TypeScript's type narrowing or Supabase's PostgREST response doesn't include these columns as expected.
+2. The published site may be running an older version of the code before the `applicant_name` fallback was added.
 
-### Changes
+## Plan
 
-**`supabase/functions/process-signal-queue/index.ts`**
+### 1. Fix `JobDetail.tsx` — Use explicit column selection and typed access
 
-In the job leasing section (~line 307-320), change the lease logic:
+- Change the `select('*')` query to explicitly include `applicant_name, applicant_email` in the select string
+- Remove `(app as any)` casts — access `app.applicant_name` and `app.applicant_email` directly (these fields already exist in the generated Supabase types)
+- Add a hardcoded SDR level (1–2) fallback when profile lookup fails, instead of always defaulting to 1
 
-```text
-For each run picked up:
-  - If run.status === "running" (stale recovery):
-    → increment retry_count in the lease update
-    → if retry_count + 1 >= MAX_RETRIES, mark as "failed" immediately, notify user, skip
-  - If run.status === "queued" (fresh job):
-    → lease normally (no retry increment)
-```
+### 2. Fix `ApplicationsTable.tsx` — Same pattern fix
 
-Specifically:
-1. When leasing a stale run, set `retry_count: (run.retry_count || 0) + 1` in the update
-2. Before processing, check if the new retry_count >= MAX_RETRIES. If so, mark failed + notify + skip
-3. Keep the catch block as a secondary safety net (for non-timeout errors), but don't double-increment
+- Same change: remove `(app as any)` casts, use typed `a.applicant_name` and `a.applicant_email` directly since the types already include them
 
-Also fix the completed-with-0-leads issue: in `processSignalRun`, ensure that runs which return 0 results from Apify still get properly marked as completed (this path appears to work already, so likely that second run was a victim of the old `waitUntil` code before the migration reset it).
-
-### Files
-
-| File | Change |
-|------|--------|
-| `supabase/functions/process-signal-queue/index.ts` | Increment retry_count at lease time for stale runs; fail immediately at MAX_RETRIES |
-| Database migration | Reset the currently stuck run back to queued |
+These are small, surgical changes to two files. Once saved, the preview and published site will correctly display applicant names from the denormalized columns without depending on profile/workspace membership lookups.
 
