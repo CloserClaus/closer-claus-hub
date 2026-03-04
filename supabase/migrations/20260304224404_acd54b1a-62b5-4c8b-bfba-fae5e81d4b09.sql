@@ -1,0 +1,1 @@
+UPDATE signal_runs SET status = 'queued', started_at = NULL, retry_count = 0 WHERE status = 'running' AND leads_discovered = 0;
