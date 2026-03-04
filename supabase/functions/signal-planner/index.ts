@@ -411,7 +411,7 @@ async function handleExecuteSignal(
 
     let rawResults: any[] = [];
 
-    if (cached?.dataset) {
+    if (cached?.dataset && Array.isArray(cached.dataset) && cached.dataset.length > 0 && !cached.dataset[0]?.error) {
       rawResults = cached.dataset;
       log("cache_hit", { rows: rawResults.length });
     } else {
