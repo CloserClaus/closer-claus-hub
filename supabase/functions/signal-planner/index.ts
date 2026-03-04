@@ -387,8 +387,8 @@ RULES:
 - For general web discovery, use "google_search".
 - ai_classification is a text description of an AI filter applied AFTER scraping. Use it to narrow results by company type, size, or relevance.
 - You may suggest multiple sources by returning a SINGLE plan with the BEST-fit source. The user can modify later.
-- IMPORTANT: For the "keyword" field, use a SINGLE simple keyword per search (e.g. "SDR" or "Sales Representative"). Do NOT use boolean operators like OR, AND, or quoted phrases. If you need to search multiple keywords, put ONLY the most important one in "keyword" and list ALL variations in "search_query" separated by " OR " — the engine will automatically split and run them individually.
-- For hiring intent queries, prefer timePosted "pastWeek" unless the user explicitly asks for today's jobs only. "past24h" is too restrictive and often returns zero results.
+- IMPORTANT: Put ALL keyword variations in "search_query" separated by " OR " (e.g. "SDR OR BDR OR Appointment Setter OR Sales Representative"). The engine will automatically split on OR and run each keyword as a separate search, then merge results. In "search_params", put only the FIRST/primary keyword in the "keyword" field as a fallback — the engine primarily reads from "search_query".
+- For hiring intent queries, ALWAYS prefer timePosted "pastWeek" unless the user explicitly says "today only" or "last 24 hours". The "past24h" window is extremely restrictive and frequently returns zero results for niche roles.
 
 Return a JSON object with this exact structure:
 {
@@ -647,7 +647,11 @@ async function handleExecuteSignal(
     // ── Step 0: Split compound keywords ──
     const keywordFields = ["keyword", "search", "searchQuery"];
     const keywordField = keywordFields.find(f => actor.inputSchema[f]);
-    const rawKeyword = plan.search_params?.[keywordField!] || plan.search_query || "";
+    // Prefer search_query (which has OR-separated variations) over search_params keyword
+    const searchQueryHasOR = plan.search_query && /\s+OR\s+/i.test(plan.search_query);
+    const rawKeyword = searchQueryHasOR
+      ? plan.search_query
+      : (plan.search_params?.[keywordField!] || plan.search_query || "");
     const keywords = splitCompoundKeywords(rawKeyword);
     const isMultiKeyword = keywords.length > 1;
     
@@ -670,10 +674,13 @@ async function handleExecuteSignal(
         }
       }
 
-      // Divide maxResults across keywords
+      // Divide maxResults across keywords, enforce minimum of 50 per keyword
       const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max"));
       if (maxField && isMultiKeyword && iterPlan.search_params[maxField]) {
-        iterPlan.search_params[maxField] = Math.max(20, Math.ceil(iterPlan.search_params[maxField] / keywords.length));
+        iterPlan.search_params[maxField] = Math.max(50, Math.ceil(iterPlan.search_params[maxField] / keywords.length));
+      } else if (maxField && !iterPlan.search_params[maxField]) {
+        // Ensure a minimum is set even if not specified
+        iterPlan.search_params[maxField] = 100;
       }
 
       const queryHash = btoa(JSON.stringify({ source: plan.source, query: keyword, params: iterPlan.search_params })).slice(0, 64);
@@ -690,6 +697,10 @@ async function handleExecuteSignal(
         log("cache_hit", { keyword, rows: cached.dataset.length });
       } else {
         const actorInput = buildGenericInput(actor, iterPlan);
+        // Add proxy config for LinkedIn actors to improve success rates
+        if (actor.key === "linkedin_jobs" || actor.key === "linkedin_companies") {
+          actorInput.proxyConfiguration = { useApifyProxy: true };
+        }
         log("apify_request", { keyword, actor_key: actor.key, actorId: actor.actorId, input: actorInput });
 
         const runResponse = await fetch(
