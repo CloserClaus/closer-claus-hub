@@ -190,8 +190,8 @@ Available data sources with their EXACT Apify input parameters:
    Best for: Local businesses, agencies, service providers
 
 2. "linkedin_jobs" — LinkedIn Job Postings scraper
-   Input: keyword (job search term), location (city/country), timePosted ("pastDay" | "pastWeek" | "pastMonth"), rows (max results)
-   Returns: title (job title), companyName, companyUrl, location, description
+   Input: keyword (job search term), location (city/country), timePosted ("pastDay" | "pastWeek" | "pastMonth"), maxResults (max results, up to 500), scrapeJobDetails (true/false)
+   Returns: jobTitle, companyName, companyLink, jobLocation, jobDescription, salary, applyLink
    Best for: Hiring intent signals — companies actively hiring for roles
 
 3. "linkedin_companies" — LinkedIn Company Profiles scraper
