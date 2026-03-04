@@ -481,7 +481,6 @@ async function handleExecuteSignal(
     const actualCredits = Math.max(5, Math.ceil(chargedPriceUsd * 5));
 
     // Deduct credits
-    await serviceClient.rpc("", {}).catch(() => {}); // no rpc needed, direct update
     const { error: creditError } = await serviceClient
       .from("lead_credits")
       .update({ credits_balance: balance - actualCredits })
