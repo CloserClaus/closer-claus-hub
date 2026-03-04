@@ -3176,6 +3176,8 @@ export type Database = {
           company_name: string | null
           discovered_at: string
           domain: string | null
+          email: string | null
+          enriched: boolean
           extra_data: Json | null
           id: string
           linkedin: string | null
@@ -3191,6 +3193,8 @@ export type Database = {
           company_name?: string | null
           discovered_at?: string
           domain?: string | null
+          email?: string | null
+          enriched?: boolean
           extra_data?: Json | null
           id?: string
           linkedin?: string | null
@@ -3206,6 +3210,8 @@ export type Database = {
           company_name?: string | null
           discovered_at?: string
           domain?: string | null
+          email?: string | null
+          enriched?: boolean
           extra_data?: Json | null
           id?: string
           linkedin?: string | null

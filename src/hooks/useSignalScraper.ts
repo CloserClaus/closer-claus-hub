@@ -45,10 +45,12 @@ export interface SignalLead {
   website: string | null;
   domain: string | null;
   phone: string | null;
+  email: string | null;
   linkedin: string | null;
   location: string | null;
   source: string | null;
   added_to_crm: boolean;
+  enriched: boolean;
   discovered_at: string;
 }
 

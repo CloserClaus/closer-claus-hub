@@ -432,8 +432,31 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
     queryClient.invalidateQueries({ queryKey: ['signal-leads', runId] });
   };
 
-  const enrichWithApolloMutation = useMutation({
+  const enrichLeadMutation = useMutation({
     mutationFn: async (lead: SignalLead) => {
+      // If Apify already found email/phone, just mark as enriched — no Apollo needed
+      if (lead.email || lead.phone) {
+        await supabase.from('signal_leads').update({ enriched: true }).eq('id', lead.id);
+        // If in CRM, update the CRM lead too
+        if (lead.added_to_crm) {
+          // Update the matching CRM lead with the revealed data
+          const { data: crmLeads } = await supabase
+            .from('leads')
+            .select('id')
+            .eq('workspace_id', workspaceId)
+            .eq('company', lead.company_name)
+            .limit(1);
+          if (crmLeads && crmLeads.length > 0) {
+            const updates: Record<string, string> = {};
+            if (lead.email) updates.email = lead.email;
+            if (lead.phone) updates.phone = lead.phone;
+            await supabase.from('leads').update(updates).eq('id', crmLeads[0].id);
+          }
+        }
+        return { source: 'apify', email: lead.email, phone: lead.phone };
+      }
+
+      // No Apify data — use Apollo enrichment
       if (!lead.added_to_crm) {
         await addToCRM(lead);
       }
@@ -445,10 +468,16 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
         },
       });
       if (error) throw error;
-      return data;
+      // Mark as enriched
+      await supabase.from('signal_leads').update({ enriched: true }).eq('id', lead.id);
+      return { source: 'apollo', ...data };
     },
-    onSuccess: () => {
-      toast({ title: 'Enrichment started', description: 'Apollo enrichment has been queued for this lead.' });
+    onSuccess: (data) => {
+      const desc = data.source === 'apify'
+        ? 'Contact info revealed from scraped data.'
+        : 'Apollo enrichment has been queued for this lead.';
+      toast({ title: 'Lead enriched', description: desc });
+      queryClient.invalidateQueries({ queryKey: ['signal-leads', runId] });
       queryClient.invalidateQueries({ queryKey: ['lead-credits'] });
     },
     onError: (err: any) => {
@@ -495,16 +524,30 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
                     <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
                     {lead.company_name || 'Unknown'}
                   </div>
-                  {lead.added_to_crm && <Badge variant="secondary" className="text-xs">In CRM</Badge>}
+                  <div className="flex gap-1">
+                    {lead.enriched && <Badge variant="secondary" className="text-xs">Enriched</Badge>}
+                    {lead.added_to_crm && <Badge variant="secondary" className="text-xs">In CRM</Badge>}
+                  </div>
                 </div>
                 {lead.website && (
                   <div className="text-xs text-muted-foreground flex items-center gap-1">
                     <Globe className="h-3 w-3" /> {lead.domain || lead.website}
                   </div>
                 )}
-                {lead.phone && (
+                {/* Only show email/phone after enrichment */}
+                {lead.enriched && lead.email && (
+                  <div className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Mail className="h-3 w-3" /> {lead.email}
+                  </div>
+                )}
+                {lead.enriched && lead.phone && (
                   <div className="text-xs text-muted-foreground flex items-center gap-1">
                     <Phone className="h-3 w-3" /> {lead.phone}
+                  </div>
+                )}
+                {!lead.enriched && (lead.email || lead.phone) && (
+                  <div className="text-xs text-muted-foreground italic">
+                    Contact info available — enrich to reveal
                   </div>
                 )}
                 {lead.location && (
@@ -518,15 +561,20 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
                       <Plus className="h-3 w-3 mr-1" /> Add to CRM
                     </Button>
                   )}
-                  {lead.domain && (
+                  {!lead.enriched && (
                     <Button
                       size="sm"
                       variant="outline"
                       className="text-xs h-7"
-                      onClick={() => enrichWithApolloMutation.mutate(lead)}
-                      disabled={enrichWithApolloMutation.isPending}
+                      onClick={() => enrichLeadMutation.mutate(lead)}
+                      disabled={enrichLeadMutation.isPending}
                     >
-                      <Search className="h-3 w-3 mr-1" /> Enrich
+                      {enrichLeadMutation.isPending ? (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      ) : (
+                        <Search className="h-3 w-3 mr-1" />
+                      )}
+                      {(lead.email || lead.phone) ? 'Reveal Contact' : 'Enrich'}
                     </Button>
                   )}
                   {lead.added_to_crm && (
