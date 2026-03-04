@@ -293,9 +293,17 @@ function buildGenericInput(actor: ActorEntry, plan: any): Record<string, any> {
     if (schema.type === "number" && schema.max && typeof value === "number") {
       value = Math.min(value, schema.max);
     }
-    // Enforce enum
-    if (schema.type === "enum" && schema.values && !schema.values.includes(value)) {
-      value = schema.default;
+    // Enforce enum — also fix common AI mistakes
+    if (schema.type === "enum" && schema.values) {
+      // Map common AI-generated synonyms to valid values
+      const ENUM_ALIASES: Record<string, string> = {
+        "pastDay": "past24h", "past_day": "past24h", "past24hours": "past24h", "last24h": "past24h",
+        "past_week": "pastWeek", "last_week": "pastWeek", "7days": "pastWeek",
+        "past_month": "pastMonth", "last_month": "pastMonth", "30days": "pastMonth",
+      };
+      if (typeof value === "string" && !schema.values.includes(value)) {
+        value = ENUM_ALIASES[value] ?? schema.default;
+      }
     }
 
     result[field] = value;
