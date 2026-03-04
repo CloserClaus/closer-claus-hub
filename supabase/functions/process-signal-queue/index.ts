@@ -252,11 +252,67 @@ function extractDomain(url: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ██  MAIN HANDLER — processes queued + scheduled signals
+// ██  APIFY ASYNC HELPERS
+// ═══════════════════════════════════════════════════════════
+
+interface ApifyRunRef {
+  actorKey: string;
+  keyword: string;
+  runId: string;
+  datasetId: string;
+  status: string; // READY, RUNNING, SUCCEEDED, FAILED, TIMED-OUT, ABORTED
+}
+
+async function startApifyRun(actor: ActorEntry, input: Record<string, any>, token: string): Promise<{ runId: string; datasetId: string }> {
+  const actorIdEncoded = actor.actorId.replace("/", "~");
+  const resp = await fetch(
+    `https://api.apify.com/v2/acts/${actorIdEncoded}/runs?token=${token}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
+  );
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Apify start failed (${resp.status}): ${errText.slice(0, 300)}`);
+  }
+  const data = await resp.json();
+  return {
+    runId: data.data.id,
+    datasetId: data.data.defaultDatasetId,
+  };
+}
+
+async function pollApifyRun(runId: string, token: string): Promise<string> {
+  const resp = await fetch(
+    `https://api.apify.com/v2/actor-runs/${runId}?token=${token}`,
+    { method: "GET" }
+  );
+  if (!resp.ok) {
+    throw new Error(`Apify poll failed (${resp.status})`);
+  }
+  const data = await resp.json();
+  return data.data.status; // READY, RUNNING, SUCCEEDED, FAILED, TIMED-OUT, ABORTED
+}
+
+async function collectApifyResults(datasetId: string, token: string): Promise<any[]> {
+  const resp = await fetch(
+    `https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}&clean=true&limit=500`,
+    { method: "GET" }
+  );
+  if (!resp.ok) {
+    throw new Error(`Apify collect failed (${resp.status})`);
+  }
+  return await resp.json();
+}
+
+// ═══════════════════════════════════════════════════════════
+// ██  MAIN HANDLER — processes queued + in-progress signals
 // ═══════════════════════════════════════════════════════════
 
 const MAX_RETRIES = 3;
-const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+const HARD_CEILING_MS = 30 * 60 * 1000; // 30 minutes absolute max
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -266,15 +322,23 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    const staleThreshold = new Date(Date.now() - STALE_THRESHOLD_MS).toISOString();
+    const hardCeilingThreshold = new Date(Date.now() - HARD_CEILING_MS).toISOString();
 
-    // 1) Pick up queued runs + stale running runs (job leasing)
-    const { data: queuedRuns, error: qErr } = await serviceClient
+    // 1) Pick up runs that need work:
+    //    - queued runs (new)
+    //    - running runs in active phases (starting, scraping, collecting) — these need polling
+    //    - running runs that are truly stale (pending phase + old, or past hard ceiling)
+    const { data: activeRuns, error: qErr } = await serviceClient
       .from("signal_runs")
       .select("*")
-      .or(`status.eq.queued,and(status.eq.running,started_at.is.null),and(status.eq.running,started_at.lt.${staleThreshold},retry_count.lt.${MAX_RETRIES})`)
+      .or(
+        `status.eq.queued,` +
+        `and(status.eq.running,processing_phase.in.(starting,scraping,collecting)),` +
+        `and(status.eq.running,processing_phase.in.(pending),started_at.lt.${hardCeilingThreshold},retry_count.lt.${MAX_RETRIES}),` +
+        `and(status.eq.running,started_at.lt.${hardCeilingThreshold},retry_count.lt.${MAX_RETRIES})`
+      )
       .order("created_at", { ascending: true })
-      .limit(1);
+      .limit(3);
 
     if (qErr) throw qErr;
 
@@ -290,7 +354,7 @@ serve(async (req) => {
 
     if (sErr) throw sErr;
 
-    const allRuns = [...(queuedRuns || []), ...(scheduledRuns || [])];
+    const allRuns = [...(activeRuns || []), ...(scheduledRuns || [])];
 
     if (allRuns.length === 0) {
       return new Response(
@@ -299,102 +363,94 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Processing ${allRuns.length} signals (${queuedRuns?.length || 0} queued, ${scheduledRuns?.length || 0} scheduled)`);
+    console.log(`Processing ${allRuns.length} signals`);
 
     let processed = 0;
     let failed = 0;
 
     for (const run of allRuns) {
-      const isStaleRecovery = run.status === "running";
-      const newRetryCount = isStaleRecovery ? (run.retry_count || 0) + 1 : (run.retry_count || 0);
+      const phase = run.processing_phase || "pending";
+      const isActivePhase = ["starting", "scraping", "collecting"].includes(phase);
 
-      // If this is a stale recovery and we've hit max retries, fail immediately
-      if (isStaleRecovery && newRetryCount >= MAX_RETRIES) {
-        console.log(`Signal ${run.id} exceeded max retries (${newRetryCount}/${MAX_RETRIES}), marking failed`);
-        await serviceClient
-          .from("signal_runs")
-          .update({
+      // For truly stale runs (not in active phase), handle retries
+      if (run.status === "running" && !isActivePhase) {
+        const newRetryCount = (run.retry_count || 0) + 1;
+        if (newRetryCount >= MAX_RETRIES) {
+          console.log(`Signal ${run.id} exceeded max retries, marking failed`);
+          await serviceClient.from("signal_runs").update({
             status: "failed",
             retry_count: newRetryCount,
-            error_message: `Failed after ${MAX_RETRIES} attempts (container killed or timed out)`,
-          })
-          .eq("id", run.id);
-
-        if (run.user_id) {
-          await serviceClient.from("notifications").insert({
-            user_id: run.user_id,
-            workspace_id: run.workspace_id,
-            type: "signal_failed",
-            title: "Signal Failed",
-            message: `Your signal "${run.signal_name || run.signal_query}" failed after ${MAX_RETRIES} attempts. The search may be too complex — try fewer keywords or sources.`,
-          });
-        }
-        failed++;
-        continue;
-      }
-
-      // Lease the job: set status=running, started_at=now
-      // For stale recoveries, also increment retry_count at lease time
-      const leasePayload: Record<string, any> = {
-        status: "running",
-        started_at: new Date().toISOString(),
-        error_message: null,
-      };
-      if (isStaleRecovery) {
-        leasePayload.retry_count = newRetryCount;
-      }
-
-      const { data: leased, error: leaseErr } = await serviceClient
-        .from("signal_runs")
-        .update(leasePayload)
-        .eq("id", run.id)
-        .in("status", ["queued", "running", "completed"]) // Only lease if still in expected state
-        .select()
-        .maybeSingle();
-
-      if (leaseErr || !leased) {
-        console.log(`Could not lease signal ${run.id}, skipping`);
-        continue;
-      }
-
-      try {
-        await processSignalRun(leased, serviceClient);
-        processed++;
-      } catch (err) {
-        console.error(`Failed to process signal ${run.id}:`, err);
-        failed++;
-        const catchRetryCount = (leased.retry_count || 0) + 1;
-        const errorMsg = err instanceof Error ? err.message : String(err);
-
-        if (catchRetryCount >= MAX_RETRIES) {
-          await serviceClient
-            .from("signal_runs")
-            .update({
-              status: "failed",
-              retry_count: catchRetryCount,
-              error_message: `Failed after ${MAX_RETRIES} attempts: ${errorMsg}`,
-            })
-            .eq("id", run.id);
+            error_message: `Failed after ${MAX_RETRIES} attempts`,
+          }).eq("id", run.id);
 
           if (run.user_id) {
             await serviceClient.from("notifications").insert({
-              user_id: run.user_id,
-              workspace_id: run.workspace_id,
-              type: "signal_failed",
-              title: "Signal Failed",
-              message: `Your signal "${run.signal_name || run.signal_query}" failed after ${MAX_RETRIES} attempts. Error: ${errorMsg.slice(0, 200)}`,
+              user_id: run.user_id, workspace_id: run.workspace_id,
+              type: "signal_failed", title: "Signal Failed",
+              message: `Your signal "${run.signal_name || run.signal_query}" failed after ${MAX_RETRIES} attempts.`,
             });
           }
-        } else {
-          await serviceClient
-            .from("signal_runs")
-            .update({
-              status: "queued",
-              retry_count: catchRetryCount,
-              error_message: `Attempt ${catchRetryCount} failed: ${errorMsg}`,
-              started_at: null,
-            })
-            .eq("id", run.id);
+          failed++;
+          continue;
+        }
+        // Reset to queued for retry
+        await serviceClient.from("signal_runs").update({
+          status: "queued", retry_count: newRetryCount, started_at: null,
+          processing_phase: "pending", apify_run_ids: [], current_keyword_index: 0,
+          error_message: `Stale recovery attempt ${newRetryCount}`,
+        }).eq("id", run.id);
+        continue;
+      }
+
+      // For scheduled re-runs, reset to queued
+      if (run.status === "completed" && (run.schedule_type === "daily" || run.schedule_type === "weekly")) {
+        await serviceClient.from("signal_runs").update({
+          status: "queued", started_at: null, processing_phase: "pending",
+          apify_run_ids: [], current_keyword_index: 0, error_message: null,
+        }).eq("id", run.id);
+        // Will be picked up next cycle
+        continue;
+      }
+
+      // Lease queued runs
+      if (run.status === "queued") {
+        const { data: leased, error: leaseErr } = await serviceClient
+          .from("signal_runs")
+          .update({
+            status: "running", started_at: new Date().toISOString(),
+            error_message: null, processing_phase: "starting",
+            apify_run_ids: [], current_keyword_index: 0,
+          })
+          .eq("id", run.id)
+          .eq("status", "queued")
+          .select()
+          .maybeSingle();
+
+        if (leaseErr || !leased) {
+          console.log(`Could not lease signal ${run.id}, skipping`);
+          continue;
+        }
+        // Process starting phase immediately
+        try {
+          await processPhase(leased, serviceClient);
+          processed++;
+        } catch (err) {
+          console.error(`Phase error for ${run.id}:`, err);
+          await handlePhaseError(run, err, serviceClient);
+          failed++;
+        }
+        continue;
+      }
+
+      // Process active-phase runs (starting, scraping, collecting)
+      if (run.status === "running" && isActivePhase) {
+        try {
+          await processPhase(run, serviceClient);
+          processed++;
+        } catch (err) {
+          console.error(`Phase error for ${run.id}:`, err);
+          await handlePhaseError(run, err, serviceClient);
+          failed++;
         }
       }
     }
@@ -413,17 +469,70 @@ serve(async (req) => {
 });
 
 // ═══════════════════════════════════════════════════════════
-// ██  PROCESS A SINGLE SIGNAL RUN
+// ██  PHASE ERROR HANDLER
 // ═══════════════════════════════════════════════════════════
 
-async function processSignalRun(run: any, serviceClient: any) {
+async function handlePhaseError(run: any, err: unknown, serviceClient: any) {
+  const errorMsg = err instanceof Error ? err.message : String(err);
+  const retryCount = (run.retry_count || 0) + 1;
+
+  if (retryCount >= MAX_RETRIES) {
+    await serviceClient.from("signal_runs").update({
+      status: "failed", retry_count: retryCount,
+      error_message: `Failed after ${MAX_RETRIES} attempts: ${errorMsg}`,
+    }).eq("id", run.id);
+
+    if (run.user_id) {
+      await serviceClient.from("notifications").insert({
+        user_id: run.user_id, workspace_id: run.workspace_id,
+        type: "signal_failed", title: "Signal Failed",
+        message: `Your signal "${run.signal_name || run.signal_query}" failed: ${errorMsg.slice(0, 200)}`,
+      });
+    }
+  } else {
+    await serviceClient.from("signal_runs").update({
+      status: "queued", retry_count: retryCount, started_at: null,
+      processing_phase: "pending", apify_run_ids: [], current_keyword_index: 0,
+      error_message: `Attempt ${retryCount} failed: ${errorMsg}`,
+    }).eq("id", run.id);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ██  PHASE ROUTER — dispatches to the right phase handler
+// ═══════════════════════════════════════════════════════════
+
+async function processPhase(run: any, serviceClient: any) {
+  const phase = run.processing_phase || "pending";
+  console.log(`Signal ${run.id} phase=${phase}`);
+
+  switch (phase) {
+    case "pending":
+    case "starting":
+      await phaseStarting(run, serviceClient);
+      break;
+    case "scraping":
+      await phaseScraping(run, serviceClient);
+      break;
+    case "collecting":
+      await phaseCollecting(run, serviceClient);
+      break;
+    default:
+      throw new Error(`Unknown phase: ${phase}`);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ██  PHASE 1: STARTING — kick off Apify actor runs
+// ═══════════════════════════════════════════════════════════
+
+async function phaseStarting(run: any, serviceClient: any) {
   const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN");
   if (!APIFY_API_TOKEN) throw new Error("APIFY_API_TOKEN not configured");
 
   const workspace_id = run.workspace_id;
-  const run_id = run.id;
 
-  // Check credits
+  // Check credits first
   const { data: credits } = await serviceClient
     .from("lead_credits")
     .select("credits_balance")
@@ -431,51 +540,32 @@ async function processSignalRun(run: any, serviceClient: any) {
     .maybeSingle();
 
   const balance = credits?.credits_balance || 0;
-  if (balance < run.estimated_cost) {
-    // Insufficient credits — notify and skip (don't count as failure)
+  if (balance < (run.estimated_cost || 0)) {
     if (run.user_id) {
       await serviceClient.from("notifications").insert({
-        user_id: run.user_id,
-        workspace_id,
-        type: "signal_failed",
-        title: "Signal Paused — Insufficient Credits",
+        user_id: run.user_id, workspace_id,
+        type: "signal_failed", title: "Signal Paused — Insufficient Credits",
         message: `Your signal "${run.signal_name}" needs ${run.estimated_cost} credits but you only have ${balance}.`,
       });
     }
-    // For scheduled runs, push next_run_at forward; for one-time, mark failed
-    if (run.schedule_type === "daily" || run.schedule_type === "weekly") {
-      await serviceClient.from("signal_runs").update({
-        status: "completed",
-        error_message: "Insufficient credits",
-        next_run_at: new Date(Date.now() + (run.schedule_type === "weekly" ? 7 * 86400000 : 86400000)).toISOString(),
-      }).eq("id", run_id);
-    } else {
-      await serviceClient.from("signal_runs").update({
-        status: "failed",
-        error_message: "Insufficient credits",
-      }).eq("id", run_id);
-    }
+    const isScheduled = run.schedule_type === "daily" || run.schedule_type === "weekly";
+    await serviceClient.from("signal_runs").update({
+      status: isScheduled ? "completed" : "failed",
+      error_message: "Insufficient credits",
+      ...(isScheduled ? { next_run_at: new Date(Date.now() + (run.schedule_type === "weekly" ? 7 * 86400000 : 86400000)).toISOString() } : {}),
+    }).eq("id", run.id);
     return;
   }
-
-  const runLog: any[] = [];
-  const log = (step: string, data: any) => runLog.push({ step, ts: new Date().toISOString(), ...data });
 
   const storedPlan = run.signal_plan;
   const plans: any[] = Array.isArray(storedPlan) ? storedPlan : [storedPlan];
 
-  let allRawResults: any[] = [];
-  let allNormalised: any[] = [];
+  // Build the full list of {actor, keyword, input} jobs to start
+  const jobs: { actorKey: string; keyword: string; actor: ActorEntry; input: Record<string, any> }[] = [];
 
-  // ── Execute each source plan ──
   for (const plan of plans) {
     const actor = getActor(plan.source);
-    if (!actor) {
-      log("skip_unknown_actor", { source: plan.source });
-      continue;
-    }
-
-    log("source_start", { source: actor.label, key: actor.key });
+    if (!actor) continue;
 
     const keywordFields = ["keyword", "search", "searchQuery"];
     const keywordField = keywordFields.find(f => actor.inputSchema[f]);
@@ -485,10 +575,6 @@ async function processSignalRun(run: any, serviceClient: any) {
       : (plan.search_params?.[keywordField!] || plan.search_query || "");
     const keywords = splitCompoundKeywords(rawKeyword);
     const isMultiKeyword = keywords.length > 1;
-
-    log("keyword_split", { source: actor.key, original: rawKeyword, split: keywords, count: keywords.length });
-
-    let sourceRawResults: any[] = [];
 
     for (const keyword of keywords) {
       const iterPlan = { ...plan, search_query: keyword, search_params: { ...plan.search_params } };
@@ -507,85 +593,172 @@ async function processSignalRun(run: any, serviceClient: any) {
         iterPlan.search_params[maxField] = 100;
       }
 
-      const queryHash = btoa(JSON.stringify({ source: plan.source, query: keyword, params: iterPlan.search_params })).slice(0, 64);
-      const { data: cached } = await serviceClient
-        .from("signal_dataset_cache")
-        .select("*")
-        .eq("query_hash", queryHash)
-        .eq("source", plan.source)
-        .gte("created_at", new Date(Date.now() - 86400000).toISOString())
-        .maybeSingle();
-
-      if (cached?.dataset && Array.isArray(cached.dataset) && cached.dataset.length > 0 && !cached.dataset[0]?.error) {
-        sourceRawResults.push(...cached.dataset);
-        log("cache_hit", { source: actor.key, keyword, rows: cached.dataset.length });
-      } else {
-        const actorInput = buildGenericInput(actor, iterPlan);
-        if (actor.key === "linkedin_jobs" || actor.key === "linkedin_companies") {
-          actorInput.proxyConfiguration = { useApifyProxy: true };
-        }
-        log("apify_request", { source: actor.key, keyword, actorId: actor.actorId, input: actorInput });
-
-        const abortController = new AbortController();
-        const timeoutId = setTimeout(() => abortController.abort(), 5 * 60 * 1000);
-        let runResponse: Response;
-        try {
-          runResponse = await fetch(
-            `https://api.apify.com/v2/acts/${actor.actorId.replace("/", "~")}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
-            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(actorInput), signal: abortController.signal }
-          );
-        } catch (fetchErr: any) {
-          clearTimeout(timeoutId);
-          if (fetchErr.name === "AbortError") {
-            log("apify_timeout", { source: actor.key, keyword, message: "Timed out after 5 minutes" });
-            continue;
-          }
-          throw fetchErr;
-        }
-        clearTimeout(timeoutId);
-
-        if (!runResponse.ok) {
-          const errText = await runResponse.text();
-          log("apify_error", { source: actor.key, keyword, status: runResponse.status, body: errText.slice(0, 500) });
-          continue;
-        }
-
-        const keywordResults = await runResponse.json();
-        log("apify_response", { source: actor.key, keyword, rows: keywordResults.length });
-        sourceRawResults.push(...keywordResults);
-
-        const isValidData = keywordResults.length > 0 && !keywordResults[0]?.error;
-        if (isValidData) {
-          await serviceClient.from("signal_dataset_cache").upsert({
-            query_hash: queryHash, source: plan.source, dataset: keywordResults, row_count: keywordResults.length,
-          }, { onConflict: "query_hash,source" });
-        }
+      const actorInput = buildGenericInput(actor, iterPlan);
+      if (actor.key === "linkedin_jobs" || actor.key === "linkedin_companies") {
+        actorInput.proxyConfiguration = { useApifyProxy: true };
       }
-    }
 
-    // Deduplicate raw results from multi-keyword runs
-    if (isMultiKeyword && sourceRawResults.length > 0) {
-      const seen = new Set<string>();
-      const deduped: any[] = [];
-      for (const item of sourceRawResults) {
-        const url = item.url || item.link || item.companyUrl || item.applyLink || "";
-        const companyTitle = `${item.companyName || item.company || item.name || item.title || ""}::${item.jobTitle || item.title || item.positionName || ""}`.toLowerCase();
-        const key = url || companyTitle;
-        if (key && !seen.has(key)) { seen.add(key); deduped.push(item); }
-        else if (!key) { deduped.push(item); }
-      }
-      log("multi_keyword_dedup", { source: actor.key, before: sourceRawResults.length, after: deduped.length });
-      sourceRawResults = deduped;
+      jobs.push({ actorKey: actor.key, keyword, actor, input: actorInput });
     }
-
-    allRawResults.push(...sourceRawResults);
-    const normalised = normaliseGenericResults(actor, sourceRawResults);
-    for (const n of normalised) n._source_label = actor.label;
-    allNormalised.push(...normalised);
-    log("source_complete", { source: actor.key, rawRows: sourceRawResults.length, normalised: normalised.length });
   }
 
-  log("all_sources_complete", { totalRaw: allRawResults.length, totalNormalised: allNormalised.length });
+  // Start jobs in batches of 3 per invocation to stay within time limits
+  const currentIndex = run.current_keyword_index || 0;
+  const BATCH_SIZE = 3;
+  const batch = jobs.slice(currentIndex, currentIndex + BATCH_SIZE);
+  const existingRefs: ApifyRunRef[] = run.apify_run_ids || [];
+
+  console.log(`Starting batch: jobs ${currentIndex}-${currentIndex + batch.length - 1} of ${jobs.length}`);
+
+  for (const job of batch) {
+    try {
+      const { runId, datasetId } = await startApifyRun(job.actor, job.input, APIFY_API_TOKEN);
+      existingRefs.push({
+        actorKey: job.actorKey,
+        keyword: job.keyword,
+        runId,
+        datasetId,
+        status: "RUNNING",
+      });
+      console.log(`Started Apify run ${runId} for ${job.actorKey}:"${job.keyword}"`);
+    } catch (err) {
+      console.error(`Failed to start ${job.actorKey}:"${job.keyword}":`, err);
+      existingRefs.push({
+        actorKey: job.actorKey,
+        keyword: job.keyword,
+        runId: "",
+        datasetId: "",
+        status: "FAILED",
+      });
+    }
+  }
+
+  const newIndex = currentIndex + batch.length;
+  const allStarted = newIndex >= jobs.length;
+
+  await serviceClient.from("signal_runs").update({
+    apify_run_ids: existingRefs,
+    current_keyword_index: newIndex,
+    processing_phase: allStarted ? "scraping" : "starting",
+  }).eq("id", run.id);
+
+  console.log(`Signal ${run.id}: ${allStarted ? "All jobs started, moving to scraping" : `Started ${newIndex}/${jobs.length}, will continue next cycle`}`);
+}
+
+// ═══════════════════════════════════════════════════════════
+// ██  PHASE 2: SCRAPING — poll Apify for completion
+// ═══════════════════════════════════════════════════════════
+
+async function phaseScraping(run: any, serviceClient: any) {
+  const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN");
+  if (!APIFY_API_TOKEN) throw new Error("APIFY_API_TOKEN not configured");
+
+  const refs: ApifyRunRef[] = run.apify_run_ids || [];
+  let anyStillRunning = false;
+  let updated = false;
+
+  for (const ref of refs) {
+    if (!ref.runId || ref.status === "FAILED" || ref.status === "SUCCEEDED" || ref.status === "TIMED-OUT" || ref.status === "ABORTED") {
+      continue; // Skip already-resolved runs
+    }
+
+    try {
+      const newStatus = await pollApifyRun(ref.runId, APIFY_API_TOKEN);
+      if (newStatus !== ref.status) {
+        ref.status = newStatus;
+        updated = true;
+        console.log(`Apify run ${ref.runId} (${ref.actorKey}:"${ref.keyword}"): ${newStatus}`);
+      }
+
+      if (newStatus === "RUNNING" || newStatus === "READY") {
+        anyStillRunning = true;
+      }
+    } catch (err) {
+      console.error(`Poll error for ${ref.runId}:`, err);
+      ref.status = "FAILED";
+      updated = true;
+    }
+  }
+
+  const nextPhase = anyStillRunning ? "scraping" : "collecting";
+
+  if (updated || nextPhase !== "scraping") {
+    await serviceClient.from("signal_runs").update({
+      apify_run_ids: refs,
+      processing_phase: nextPhase,
+    }).eq("id", run.id);
+  }
+
+  console.log(`Signal ${run.id}: polling complete, phase=${nextPhase}, stillRunning=${anyStillRunning}`);
+}
+
+// ═══════════════════════════════════════════════════════════
+// ██  PHASE 3: COLLECTING — fetch results, normalize, store
+// ═══════════════════════════════════════════════════════════
+
+async function phaseCollecting(run: any, serviceClient: any) {
+  const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN");
+  if (!APIFY_API_TOKEN) throw new Error("APIFY_API_TOKEN not configured");
+
+  const workspace_id = run.workspace_id;
+  const run_id = run.id;
+  const refs: ApifyRunRef[] = run.apify_run_ids || [];
+  const storedPlan = run.signal_plan;
+  const plans: any[] = Array.isArray(storedPlan) ? storedPlan : [storedPlan];
+
+  const runLog: any[] = [];
+  const log = (step: string, data: any) => runLog.push({ step, ts: new Date().toISOString(), ...data });
+
+  let allRawResults: any[] = [];
+  let allNormalised: any[] = [];
+
+  // Collect results from all succeeded runs
+  for (const ref of refs) {
+    if (ref.status !== "SUCCEEDED" || !ref.datasetId) {
+      log("skip_run", { actorKey: ref.actorKey, keyword: ref.keyword, status: ref.status });
+      continue;
+    }
+
+    const actor = getActor(ref.actorKey);
+    if (!actor) continue;
+
+    try {
+      const items = await collectApifyResults(ref.datasetId, APIFY_API_TOKEN);
+      log("collected", { actorKey: ref.actorKey, keyword: ref.keyword, rows: items.length });
+
+      // Cache the results
+      const queryHash = btoa(JSON.stringify({ source: ref.actorKey, query: ref.keyword })).slice(0, 64);
+      if (items.length > 0 && !items[0]?.error) {
+        await serviceClient.from("signal_dataset_cache").upsert({
+          query_hash: queryHash, source: ref.actorKey, dataset: items, row_count: items.length,
+        }, { onConflict: "query_hash,source" }).then(() => {});
+      }
+
+      allRawResults.push(...items);
+      const normalised = normaliseGenericResults(actor, items);
+      for (const n of normalised) n._source_label = actor.label;
+      allNormalised.push(...normalised);
+    } catch (err) {
+      log("collect_error", { actorKey: ref.actorKey, keyword: ref.keyword, error: String(err) });
+    }
+  }
+
+  log("all_collected", { totalRaw: allRawResults.length, totalNormalised: allNormalised.length });
+
+  // ── Deduplicate raw results across keywords ──
+  if (allNormalised.length > 0) {
+    const seen = new Set<string>();
+    const deduped: any[] = [];
+    for (const item of allNormalised) {
+      const domain = extractDomain(item.website || "");
+      const companyTitle = `${item.company_name || ""}::${item.title || ""}`.toLowerCase();
+      const key = domain || companyTitle;
+      if (key && !seen.has(key)) { seen.add(key); deduped.push(item); }
+      else if (!key) { deduped.push(item); }
+    }
+    log("cross_keyword_dedup", { before: allNormalised.length, after: deduped.length });
+    allNormalised = deduped;
+  }
 
   // ── Apply non-AI filters ──
   const filters = plans[0]?.filters;
@@ -647,7 +820,7 @@ async function processSignalRun(run: any, serviceClient: any) {
     }
   }
 
-  // ── Deduplicate ──
+  // ── Workspace dedup ──
   const { data: existingKeys } = await serviceClient
     .from("signal_dedup_keys")
     .select("dedup_key, dedup_type")
@@ -711,6 +884,13 @@ async function processSignalRun(run: any, serviceClient: any) {
   }
 
   // ── Calculate actual cost ──
+  const { data: creditsData } = await serviceClient
+    .from("lead_credits")
+    .select("credits_balance")
+    .eq("workspace_id", workspace_id)
+    .maybeSingle();
+  const balance = creditsData?.credits_balance || 0;
+
   const scrapedRows = allRawResults.length;
   const scrapeCostUsd = (scrapedRows / 1000) * 0.25;
   const aiFilterCostUsd = aiFilteredCount * 0.001;
@@ -733,6 +913,7 @@ async function processSignalRun(run: any, serviceClient: any) {
   const isScheduled = run.schedule_type === "daily" || run.schedule_type === "weekly";
   await serviceClient.from("signal_runs").update({
     status: "completed",
+    processing_phase: "done",
     actual_cost: actualCredits,
     leads_discovered: (run.leads_discovered || 0) + uniqueLeads.length,
     last_run_at: new Date().toISOString(),
@@ -744,13 +925,15 @@ async function processSignalRun(run: any, serviceClient: any) {
   }).eq("id", run_id);
 
   // Notify user
-  if (uniqueLeads.length > 0 && run.user_id) {
+  if (run.user_id) {
+    const succeededCount = refs.filter(r => r.status === "SUCCEEDED").length;
+    const failedCount = refs.filter(r => r.status === "FAILED" || r.status === "TIMED-OUT" || r.status === "ABORTED").length;
     await serviceClient.from("notifications").insert({
       user_id: run.user_id, workspace_id,
       type: "signal_complete", title: "Signal Complete!",
-      message: `Your signal "${run.signal_name || run.signal_query}" found ${uniqueLeads.length} new leads. ${actualCredits} credits charged.`,
+      message: `Your signal "${run.signal_name || run.signal_query}" found ${uniqueLeads.length} new leads (${succeededCount} sources succeeded, ${failedCount} failed). ${actualCredits} credits charged.`,
     });
   }
 
-  console.log(`Signal ${run_id}: ${uniqueLeads.length} new leads, ${actualCredits} credits charged`);
+  console.log(`Signal ${run_id}: COMPLETED — ${uniqueLeads.length} new leads, ${actualCredits} credits charged`);
 }
