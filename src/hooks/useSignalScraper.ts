@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useToast } from '@/hooks/use-toast';
 
-export interface SignalPlan {
+export interface SignalPlanItem {
   signal_name: string;
   source: string;
   search_query: string;
@@ -15,6 +15,9 @@ export interface SignalPlan {
   estimated_rows: number;
   estimated_leads_after_filter: number;
 }
+
+// SignalPlan can be a single item (old format) or array (new multi-source format)
+export type SignalPlan = SignalPlanItem | SignalPlanItem[];
 
 export interface SignalEstimation {
   estimated_rows: number;

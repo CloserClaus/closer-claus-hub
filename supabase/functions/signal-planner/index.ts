@@ -15,7 +15,6 @@ interface InputField {
   type: "string" | "number" | "boolean" | "string[]" | "enum";
   required?: boolean;
   default?: any;
-  max?: number;
   values?: string[];
   description: string;
 }
@@ -32,7 +31,6 @@ interface ActorEntry {
 
 const ACTOR_CATALOG: ActorEntry[] = [
   // ── Hiring Intent ──
-  // ── Hiring Intent ──
   {
     key: "linkedin_jobs",
     actorId: "AtsAgajsFjMVfxXJZ",
@@ -42,7 +40,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       keyword:          { type: "string",  required: true, description: "Job search keyword (e.g. 'sales representative')" },
       location:         { type: "string",  default: "United States", description: "Location filter" },
-      maxResults:       { type: "number",  default: 100, max: 500, description: "Max job listings to scrape" },
+      maxResults:       { type: "number",  default: 100, description: "Max job listings to scrape" },
       timePosted:       { type: "enum",    values: ["any", "past24h", "pastWeek", "pastMonth"], default: "pastWeek", description: "Recency filter. Use 'past24h' for last 24 hours, 'pastWeek' for last 7 days, 'pastMonth' for last 30 days." },
       scrapeJobDetails: { type: "boolean", default: true, description: "Include full job descriptions" },
     },
@@ -73,7 +71,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       keyword:    { type: "string",  required: true, description: "Job search keyword" },
       location:   { type: "string",  default: "United States", description: "Location filter" },
-      maxItems:   { type: "number",  default: 100, max: 500, description: "Max results" },
+      maxItems:   { type: "number",  default: 100, description: "Max results" },
       datePosted: { type: "enum",    values: ["today", "3days", "7days", "14days"], default: "7days", description: "Recency" },
     },
     outputFields: {
@@ -102,7 +100,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     description: "Scrapes Google Maps places. Best for local businesses, agencies, service providers. Returns phone, website, reviews, ratings.",
     inputSchema: {
       searchStringsArray:        { type: "string[]", required: true, description: "Search queries (auto-set from search_query)" },
-      maxCrawledPlacesPerSearch: { type: "number",   default: 200, max: 3000, description: "Max places per search" },
+      maxCrawledPlacesPerSearch: { type: "number",   default: 200, description: "Max places per search" },
       language:                  { type: "string",   default: "en", description: "Language code" },
       locationQuery:             { type: "string",   description: "Optional city/state/country filter" },
     },
@@ -130,7 +128,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       searchTerms: { type: "string[]", required: true, description: "Search queries (auto-set)" },
       locations:   { type: "string[]", default: ["United States"], description: "City names to search" },
-      maxItems:    { type: "number",   default: 200, max: 1000, description: "Max items" },
+      maxItems:    { type: "number",   default: 200, description: "Max items" },
     },
     outputFields: {
       company_name: ["name", "title"],
@@ -155,7 +153,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       search:   { type: "string", required: true, description: "Business category to search" },
       location: { type: "string", required: true, description: "City, state or zip code" },
-      maxItems: { type: "number", default: 200, max: 1000, description: "Max results" },
+      maxItems: { type: "number", default: 200, description: "Max results" },
     },
     outputFields: {
       company_name: ["name", "businessName", "title"],
@@ -182,7 +180,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       urls:        { type: "string[]", description: "Array of LinkedIn company URLs" },
       searchQuery: { type: "string",   description: "OR a text search query" },
-      maxResults:  { type: "number",   default: 100, max: 500, description: "Max results" },
+      maxResults:  { type: "number",   default: 100, description: "Max results" },
     },
     outputFields: {
       company_name:   ["name", "title"],
@@ -209,8 +207,8 @@ const ACTOR_CATALOG: ActorEntry[] = [
     description: "Extracts emails, phone numbers, social media profiles, and contact details from company websites. Give it a list of URLs and it crawls contact/about pages to find emails and phones. Best used AFTER discovering companies from another source.",
     inputSchema: {
       startUrls:             { type: "string[]", required: true, description: "List of website URLs to extract contacts from" },
-      maxRequestsPerStartUrl: { type: "number",  default: 5, max: 20, description: "Pages to crawl per website" },
-      maxDepth:              { type: "number",   default: 2, max: 5, description: "Link depth to follow" },
+      maxRequestsPerStartUrl: { type: "number",  default: 5, description: "Pages to crawl per website" },
+      maxDepth:              { type: "number",   default: 2, description: "Link depth to follow" },
       sameDomain:            { type: "boolean",  default: true, description: "Stay within same domain" },
       mergeContacts:         { type: "boolean",  default: true, description: "Merge all contacts per domain into one row" },
     },
@@ -238,8 +236,8 @@ const ACTOR_CATALOG: ActorEntry[] = [
     description: "Scrapes Google Search results. Good for finding specific types of companies via targeted Google queries. Returns titles, URLs, descriptions.",
     inputSchema: {
       queries:          { type: "string[]", required: true, description: "Search queries (auto-set)" },
-      maxPagesPerQuery: { type: "number",   default: 3, max: 10, description: "Pages per query" },
-      resultsPerPage:   { type: "number",   default: 10, max: 100, description: "Results per page" },
+      maxPagesPerQuery: { type: "number",   default: 3, description: "Pages per query" },
+      resultsPerPage:   { type: "number",   default: 10, description: "Results per page" },
     },
     outputFields: {
       company_name: ["title"],
@@ -289,13 +287,8 @@ function buildGenericInput(actor: ActorEntry, plan: any): Record<string, any> {
 
     if (value === undefined) continue;
 
-    // Enforce max
-    if (schema.type === "number" && schema.max && typeof value === "number") {
-      value = Math.min(value, schema.max);
-    }
     // Enforce enum — also fix common AI mistakes
     if (schema.type === "enum" && schema.values) {
-      // Map common AI-generated synonyms to valid values
       const ENUM_ALIASES: Record<string, string> = {
         "pastDay": "past24h", "past_day": "past24h", "past24hours": "past24h", "last24h": "past24h",
         "past_week": "pastWeek", "last_week": "pastWeek", "7days": "pastWeek",
@@ -325,9 +318,7 @@ function normaliseGenericResults(actor: ActorEntry, items: any[]): any[] {
       for (const path of sourcePaths) {
         const v = item[path];
         if (v !== undefined && v !== null && v !== "") {
-          // Handle arrays (e.g. emails: ["a@b.com"])
           value = Array.isArray(v) ? v[0] : v;
-          // Handle category arrays for description (e.g. categories: ["Plumbing", "HVAC"])
           if (Array.isArray(v) && outputKey === "description") {
             value = v.join(", ");
           }
@@ -343,6 +334,15 @@ function normaliseGenericResults(actor: ActorEntry, items: any[]): any[] {
 }
 
 // ════════════════════════════════════════════════════════════════
+// ██  MULTI-SOURCE CATEGORY MAPPING
+// ════════════════════════════════════════════════════════════════
+
+const MULTI_SOURCE_GROUPS: Record<string, string[]> = {
+  hiring_intent: ["linkedin_jobs", "indeed_jobs"],
+  local_business: ["google_maps", "yelp"],
+};
+
+// ════════════════════════════════════════════════════════════════
 // ██  BUILD AI SYSTEM PROMPT — includes full catalog for selection
 // ════════════════════════════════════════════════════════════════
 
@@ -352,7 +352,6 @@ function buildPlannerSystemPrompt(): string {
       .map(([name, s]) => {
         let desc = `${name} (${s.type}${s.required ? ", REQUIRED" : ""})`;
         if (s.default !== undefined) desc += ` [default: ${JSON.stringify(s.default)}]`;
-        if (s.max) desc += ` [max: ${s.max}]`;
         if (s.values) desc += ` [values: ${s.values.join(", ")}]`;
         desc += ` — ${s.description}`;
         return `     ${desc}`;
@@ -372,36 +371,39 @@ ${params}
 ${outputs}`;
   }).join("\n\n");
 
-  return `You are a lead generation signal planner. Given a user's description of leads they want, create a structured scraping plan.
+  return `You are a lead generation signal planner. Given a user's description of leads they want, create structured scraping plans.
 
 AVAILABLE ACTORS (use ONLY these actor keys and ONLY the listed input params):
 
 ${catalogDescription}
 
 RULES:
-- You MUST pick an actor_key from the list above.
+- You MUST pick actor keys from the list above.
 - search_params MUST only contain fields listed in that actor's Input params.
-- For hiring intent queries (companies hiring X role), use "linkedin_jobs" or "indeed_jobs".
-- For local/service businesses, use "google_maps" or "yelp".
+- MULTI-SOURCE: When the query involves hiring intent, return plans for BOTH "linkedin_jobs" AND "indeed_jobs". When it involves local/service businesses, return plans for BOTH "google_maps" AND "yelp". Return a JSON ARRAY of plan objects, one per source. If only one source is appropriate, return a single-element array.
+- Each plan in the array has its own source, search_query, search_params, filters, and ai_classification tailored to that specific actor's input schema.
 - For company enrichment, use "linkedin_companies".
 - For general web discovery, use "google_search".
-- ai_classification is a text description of an AI filter applied AFTER scraping. Use it to narrow results by company type, size, or relevance.
-- You may suggest multiple sources by returning a SINGLE plan with the BEST-fit source. The user can modify later.
-- IMPORTANT: Put ALL keyword variations in "search_query" separated by " OR " (e.g. "SDR OR BDR OR Appointment Setter OR Sales Representative"). The engine will automatically split on OR and run each keyword as a separate search, then merge results. In "search_params", put only the FIRST/primary keyword in the "keyword" field as a fallback — the engine primarily reads from "search_query".
-- For hiring intent queries, ALWAYS prefer timePosted "pastWeek" unless the user explicitly says "today only" or "last 24 hours". The "past24h" window is extremely restrictive and frequently returns zero results for niche roles.
+- ai_classification is a text description of an AI filter applied AFTER scraping. Use it to narrow results by company type, size, or relevance. Use the SAME ai_classification across all plans in a multi-source array.
+- IMPORTANT: Put ALL keyword variations in "search_query" separated by " OR " (e.g. "SDR OR BDR OR Appointment Setter OR Sales Representative"). The engine will automatically split on OR and run each keyword as a separate search, then merge results. In "search_params", put only the FIRST/primary keyword in the keyword field as a fallback.
+- For hiring intent queries, ALWAYS prefer timePosted "pastWeek" / datePosted "7days" unless the user explicitly says "today only" or "last 24 hours". The "past24h"/"today" window is extremely restrictive and frequently returns zero results for niche roles.
 
-Return a JSON object with this exact structure:
+Return a JSON ARRAY of plan objects. Each object has this structure:
 {
   "signal_name": "short descriptive name",
   "source": "<actor_key from list above>",
-  "search_query": "the main search term (use OR to list variations, e.g. 'SDR OR BDR OR Sales Representative')",
+  "search_query": "the main search term (use OR to list variations)",
   "search_params": { ONLY valid params for the chosen actor },
   "fields_to_collect": ["field1", "field2"],
   "filters": [{"field": "field_name", "operator": "<|>|=|contains|not_contains", "value": "value"}],
   "ai_classification": "description of AI check to run on each result, or null if not needed",
-  "estimated_rows": number between 50-3000,
+  "estimated_rows": number,
   "estimated_leads_after_filter": number
 }
+
+Example for a hiring query: return an array of 2 plans (one for linkedin_jobs, one for indeed_jobs).
+Example for a local business query: return an array of 2 plans (one for google_maps, one for yelp).
+Example for a company enrichment query: return a single-element array.
 
 Be realistic with estimates. Always return valid JSON only, no markdown.`;
 }
@@ -502,71 +504,74 @@ async function handleGeneratePlan(
   let planText = aiResult.choices?.[0]?.message?.content || "";
   planText = planText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
-  let plan;
+  let parsedPlan: any;
   try {
-    plan = JSON.parse(planText);
+    parsedPlan = JSON.parse(planText);
   } catch {
     throw new Error("AI returned invalid plan. Please try rephrasing your query.");
   }
 
-  // Apply template overrides if provided
+  // Normalize to array (backward compat: AI might return single object)
+  let plans: any[] = Array.isArray(parsedPlan) ? parsedPlan : [parsedPlan];
+
+  // Apply template overrides if provided (apply to all plans)
   if (plan_override) {
-    if (plan_override.source) plan.source = plan_override.source;
-    if (plan_override.search_params) plan.search_params = { ...plan.search_params, ...plan_override.search_params };
-    if (plan_override.ai_classification) plan.ai_classification = plan_override.ai_classification;
+    plans = plans.map(p => {
+      const updated = { ...p };
+      if (plan_override.source) updated.source = plan_override.source;
+      if (plan_override.search_params) updated.search_params = { ...updated.search_params, ...plan_override.search_params };
+      if (plan_override.ai_classification) updated.ai_classification = plan_override.ai_classification;
+      return updated;
+    });
   }
 
-  // Validate actor key exists in catalog
-  const actor = getActor(plan.source);
-  if (!actor) {
-    // Fallback: try to find a reasonable match
-    console.warn(`AI selected unknown actor "${plan.source}", falling back to google_maps`);
-    plan.source = "google_maps";
-  }
-  const resolvedActor = getActor(plan.source)!;
+  // Validate all actor keys exist in catalog
+  plans = plans.map(p => {
+    const actor = getActor(p.source);
+    if (!actor) {
+      console.warn(`AI selected unknown actor "${p.source}", falling back to google_maps`);
+      p.source = "google_maps";
+    }
+    return p;
+  });
 
-  // Safety limits
-  if (plan.estimated_rows > 3000) {
-    return new Response(
-      JSON.stringify({
-        error: "This query may scan over 3,000 records. Please narrow the search by location or niche.",
-        plan,
-      }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
+  // Aggregate cost estimation across all plans
+  let totalEstimatedRows = 0;
+  let totalCreditsToCharge = 0;
+  let totalEstimatedLeads = 0;
+  const sourceLabels: string[] = [];
 
-  // Cost estimation
-  const scrapeCostUsd = (plan.estimated_rows / 1000) * 0.25;
-  const aiFilterRows = plan.ai_classification ? plan.estimated_rows : 0;
-  const aiFilterCostUsd = aiFilterRows * 0.001;
-  const actualCostUsd = (scrapeCostUsd + aiFilterCostUsd) * 1.2;
-  const chargedPriceUsd = actualCostUsd * 3;
-  const creditsToCharge = Math.max(5, Math.ceil(chargedPriceUsd * 5));
+  for (const plan of plans) {
+    const resolvedActor = getActor(plan.source)!;
+    sourceLabels.push(resolvedActor.label);
 
-  if (creditsToCharge > 200) {
-    return new Response(
-      JSON.stringify({
-        error: `Estimated cost is ${creditsToCharge} credits (max 200). Please narrow your search.`,
-        plan,
-      }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    const scrapeCostUsd = (plan.estimated_rows / 1000) * 0.25;
+    const aiFilterRows = plan.ai_classification ? plan.estimated_rows : 0;
+    const aiFilterCostUsd = aiFilterRows * 0.001;
+    const actualCostUsd = (scrapeCostUsd + aiFilterCostUsd) * 1.2;
+    const chargedPriceUsd = actualCostUsd * 3;
+    const credits = Math.max(5, Math.ceil(chargedPriceUsd * 5));
+
+    totalEstimatedRows += plan.estimated_rows;
+    totalCreditsToCharge += credits;
+    totalEstimatedLeads += plan.estimated_leads_after_filter || Math.floor(plan.estimated_rows * 0.15);
   }
 
-  const estimatedLeads = plan.estimated_leads_after_filter || Math.floor(plan.estimated_rows * 0.15);
-  const costPerLead = estimatedLeads > 0 ? (creditsToCharge / estimatedLeads).toFixed(1) : "N/A";
+  const costPerLead = totalEstimatedLeads > 0 ? (totalCreditsToCharge / totalEstimatedLeads).toFixed(1) : "N/A";
+
+  // Use the first plan's signal_name as the overall name
+  const signalName = plans[0]?.signal_name || "Signal";
 
   const { data: run, error: insertError } = await serviceClient
     .from("signal_runs")
     .insert({
       user_id: userId,
       workspace_id,
-      signal_name: plan.signal_name,
+      signal_name: signalName,
       signal_query: query,
-      signal_plan: plan,
-      estimated_cost: creditsToCharge,
-      estimated_leads: estimatedLeads,
+      signal_plan: plans, // Store as array in JSONB
+      estimated_cost: totalCreditsToCharge,
+      estimated_leads: totalEstimatedLeads,
       status: "planned",
     })
     .select()
@@ -577,13 +582,13 @@ async function handleGeneratePlan(
   return new Response(
     JSON.stringify({
       run_id: run.id,
-      plan,
+      plan: plans, // Return array
       estimation: {
-        estimated_rows: plan.estimated_rows,
-        estimated_leads: estimatedLeads,
-        credits_to_charge: creditsToCharge,
+        estimated_rows: totalEstimatedRows,
+        estimated_leads: totalEstimatedLeads,
+        credits_to_charge: totalCreditsToCharge,
         cost_per_lead: costPerLead,
-        source_label: resolvedActor.label,
+        source_label: sourceLabels.join(" + "),
       },
     }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -639,135 +644,151 @@ async function handleExecuteSignal(
     })
     .eq("id", run_id);
 
-  const plan = run.signal_plan;
-  const actor = getActor(plan.source);
-  if (!actor) throw new Error(`Unknown actor key: ${plan.source}`);
+  // Backward compat: signal_plan can be a single object (old) or array (new)
+  const storedPlan = run.signal_plan;
+  const plans: any[] = Array.isArray(storedPlan) ? storedPlan : [storedPlan];
 
   try {
-    // ── Step 0: Split compound keywords ──
-    const keywordFields = ["keyword", "search", "searchQuery"];
-    const keywordField = keywordFields.find(f => actor.inputSchema[f]);
-    // Prefer search_query (which has OR-separated variations) over search_params keyword
-    const searchQueryHasOR = plan.search_query && /\s+OR\s+/i.test(plan.search_query);
-    const rawKeyword = searchQueryHasOR
-      ? plan.search_query
-      : (plan.search_params?.[keywordField!] || plan.search_query || "");
-    const keywords = splitCompoundKeywords(rawKeyword);
-    const isMultiKeyword = keywords.length > 1;
-    
-    log("keyword_split", { original: rawKeyword, split: keywords, count: keywords.length });
+    let allRawResults: any[] = [];
+    let allNormalised: any[] = [];
 
-    let rawResults: any[] = [];
-
-    // ── Step 1: Execute Apify (possibly multiple calls for split keywords) ──
-    for (const keyword of keywords) {
-      // Override keyword in plan for this iteration
-      const iterPlan = { ...plan, search_query: keyword, search_params: { ...plan.search_params } };
-      if (keywordField && iterPlan.search_params[keywordField]) {
-        iterPlan.search_params[keywordField] = keyword;
+    // ── Execute each source plan ──
+    for (const plan of plans) {
+      const actor = getActor(plan.source);
+      if (!actor) {
+        log("skip_unknown_actor", { source: plan.source });
+        continue;
       }
-      // For array fields like searchStringsArray, queries, searchTerms
-      const arrayFields = ["searchStringsArray", "queries", "searchTerms"];
-      for (const af of arrayFields) {
-        if (actor.inputSchema[af]) {
-          iterPlan.search_params[af] = [keyword];
+
+      log("source_start", { source: actor.label, key: actor.key });
+
+      // Split compound keywords
+      const keywordFields = ["keyword", "search", "searchQuery"];
+      const keywordField = keywordFields.find(f => actor.inputSchema[f]);
+      const searchQueryHasOR = plan.search_query && /\s+OR\s+/i.test(plan.search_query);
+      const rawKeyword = searchQueryHasOR
+        ? plan.search_query
+        : (plan.search_params?.[keywordField!] || plan.search_query || "");
+      const keywords = splitCompoundKeywords(rawKeyword);
+      const isMultiKeyword = keywords.length > 1;
+
+      log("keyword_split", { source: actor.key, original: rawKeyword, split: keywords, count: keywords.length });
+
+      let sourceRawResults: any[] = [];
+
+      for (const keyword of keywords) {
+        const iterPlan = { ...plan, search_query: keyword, search_params: { ...plan.search_params } };
+        if (keywordField && iterPlan.search_params[keywordField]) {
+          iterPlan.search_params[keywordField] = keyword;
         }
-      }
-
-      // Divide maxResults across keywords, enforce minimum of 50 per keyword
-      const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max"));
-      if (maxField && isMultiKeyword && iterPlan.search_params[maxField]) {
-        iterPlan.search_params[maxField] = Math.max(50, Math.ceil(iterPlan.search_params[maxField] / keywords.length));
-      } else if (maxField && !iterPlan.search_params[maxField]) {
-        // Ensure a minimum is set even if not specified
-        iterPlan.search_params[maxField] = 100;
-      }
-
-      const queryHash = btoa(JSON.stringify({ source: plan.source, query: keyword, params: iterPlan.search_params })).slice(0, 64);
-      const { data: cached } = await serviceClient
-        .from("signal_dataset_cache")
-        .select("*")
-        .eq("query_hash", queryHash)
-        .eq("source", plan.source)
-        .gte("created_at", new Date(Date.now() - 86400000).toISOString())
-        .maybeSingle();
-
-      if (cached?.dataset && Array.isArray(cached.dataset) && cached.dataset.length > 0 && !cached.dataset[0]?.error) {
-        rawResults.push(...cached.dataset);
-        log("cache_hit", { keyword, rows: cached.dataset.length });
-      } else {
-        const actorInput = buildGenericInput(actor, iterPlan);
-        // Add proxy config for LinkedIn actors to improve success rates
-        if (actor.key === "linkedin_jobs" || actor.key === "linkedin_companies") {
-          actorInput.proxyConfiguration = { useApifyProxy: true };
-        }
-        log("apify_request", { keyword, actor_key: actor.key, actorId: actor.actorId, input: actorInput });
-
-        const runResponse = await fetch(
-          `https://api.apify.com/v2/acts/${actor.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(actorInput),
+        const arrayFields = ["searchStringsArray", "queries", "searchTerms"];
+        for (const af of arrayFields) {
+          if (actor.inputSchema[af]) {
+            iterPlan.search_params[af] = [keyword];
           }
-        );
+        }
 
-        if (!runResponse.ok) {
-          const errText = await runResponse.text();
-          log("apify_error", { keyword, status: runResponse.status, body: errText.slice(0, 500) });
-          // For multi-keyword, continue on individual failures
-          if (isMultiKeyword) {
-            console.error(`Apify error for keyword "${keyword}": ${errText.slice(0, 200)}`);
+        // Divide maxResults across keywords, ensure minimum of 50 per keyword
+        const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max"));
+        if (maxField && isMultiKeyword && iterPlan.search_params[maxField]) {
+          iterPlan.search_params[maxField] = Math.max(50, Math.ceil(iterPlan.search_params[maxField] / keywords.length));
+        } else if (maxField && !iterPlan.search_params[maxField]) {
+          iterPlan.search_params[maxField] = 100;
+        }
+
+        const queryHash = btoa(JSON.stringify({ source: plan.source, query: keyword, params: iterPlan.search_params })).slice(0, 64);
+        const { data: cached } = await serviceClient
+          .from("signal_dataset_cache")
+          .select("*")
+          .eq("query_hash", queryHash)
+          .eq("source", plan.source)
+          .gte("created_at", new Date(Date.now() - 86400000).toISOString())
+          .maybeSingle();
+
+        if (cached?.dataset && Array.isArray(cached.dataset) && cached.dataset.length > 0 && !cached.dataset[0]?.error) {
+          sourceRawResults.push(...cached.dataset);
+          log("cache_hit", { source: actor.key, keyword, rows: cached.dataset.length });
+        } else {
+          const actorInput = buildGenericInput(actor, iterPlan);
+          // Add proxy config for LinkedIn actors
+          if (actor.key === "linkedin_jobs" || actor.key === "linkedin_companies") {
+            actorInput.proxyConfiguration = { useApifyProxy: true };
+          }
+          log("apify_request", { source: actor.key, keyword, actorId: actor.actorId, input: actorInput });
+
+          const runResponse = await fetch(
+            `https://api.apify.com/v2/acts/${actor.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(actorInput),
+            }
+          );
+
+          if (!runResponse.ok) {
+            const errText = await runResponse.text();
+            log("apify_error", { source: actor.key, keyword, status: runResponse.status, body: errText.slice(0, 500) });
+            // Continue on individual failures for multi-keyword or multi-source
+            console.error(`Apify error for ${actor.key}/"${keyword}": ${errText.slice(0, 200)}`);
             continue;
           }
-          throw new Error(`Apify error [${runResponse.status}]: ${errText.slice(0, 300)}`);
-        }
 
-        const keywordResults = await runResponse.json();
-        log("apify_response", { keyword, rows: keywordResults.length });
-        rawResults.push(...keywordResults);
+          const keywordResults = await runResponse.json();
+          log("apify_response", { source: actor.key, keyword, rows: keywordResults.length });
+          sourceRawResults.push(...keywordResults);
 
-        // Cache per-keyword results
-        const isValidData = keywordResults.length > 0 && !keywordResults[0]?.error;
-        if (isValidData) {
-          await serviceClient.from("signal_dataset_cache").upsert({
-            query_hash: queryHash,
-            source: plan.source,
-            dataset: keywordResults,
-            row_count: keywordResults.length,
-          }, { onConflict: "query_hash,source" });
+          const isValidData = keywordResults.length > 0 && !keywordResults[0]?.error;
+          if (isValidData) {
+            await serviceClient.from("signal_dataset_cache").upsert({
+              query_hash: queryHash,
+              source: plan.source,
+              dataset: keywordResults,
+              row_count: keywordResults.length,
+            }, { onConflict: "query_hash,source" });
+          }
         }
       }
-    }
 
-    // Deduplicate raw results from multi-keyword runs (by URL or company+title)
-    if (isMultiKeyword && rawResults.length > 0) {
-      const seen = new Set<string>();
-      const deduped: any[] = [];
-      for (const item of rawResults) {
-        const url = item.url || item.link || item.companyUrl || item.applyLink || "";
-        const companyTitle = `${item.companyName || item.company || item.name || item.title || ""}::${item.jobTitle || item.title || item.positionName || ""}`.toLowerCase();
-        const key = url || companyTitle;
-        if (key && !seen.has(key)) {
-          seen.add(key);
-          deduped.push(item);
-        } else if (!key) {
-          deduped.push(item);
+      // Deduplicate raw results from multi-keyword runs per source
+      if (isMultiKeyword && sourceRawResults.length > 0) {
+        const seen = new Set<string>();
+        const deduped: any[] = [];
+        for (const item of sourceRawResults) {
+          const url = item.url || item.link || item.companyUrl || item.applyLink || "";
+          const companyTitle = `${item.companyName || item.company || item.name || item.title || ""}::${item.jobTitle || item.title || item.positionName || ""}`.toLowerCase();
+          const key = url || companyTitle;
+          if (key && !seen.has(key)) {
+            seen.add(key);
+            deduped.push(item);
+          } else if (!key) {
+            deduped.push(item);
+          }
         }
+        log("multi_keyword_dedup", { source: actor.key, before: sourceRawResults.length, after: deduped.length });
+        sourceRawResults = deduped;
       }
-      log("multi_keyword_dedup", { before: rawResults.length, after: deduped.length });
-      rawResults = deduped;
+
+      allRawResults.push(...sourceRawResults);
+
+      // Normalise this source's results using its own output field mapping
+      const normalised = normaliseGenericResults(actor, sourceRawResults);
+      // Tag each normalised result with its source for lead storage
+      for (const n of normalised) {
+        n._source_label = actor.label;
+      }
+      allNormalised.push(...normalised);
+
+      log("source_complete", { source: actor.key, rawRows: sourceRawResults.length, normalised: normalised.length });
     }
 
-    // ── Step 3: Normalise results generically from catalog ──
-    const normalised = normaliseGenericResults(actor, rawResults);
-    log("normalised", { count: normalised.length });
+    log("all_sources_complete", { totalRaw: allRawResults.length, totalNormalised: allNormalised.length });
 
-    // ── Step 4: Apply non-AI filters ──
-    let filtered = normalised;
-    if (plan.filters && plan.filters.length > 0) {
-      filtered = normalised.filter((item: any) => {
-        return plan.filters.every((f: any) => {
+    // ── Apply non-AI filters (use first plan's filters — they should be the same across plans) ──
+    const filters = plans[0]?.filters;
+    let filtered = allNormalised;
+    if (filters && filters.length > 0) {
+      filtered = allNormalised.filter((item: any) => {
+        return filters.every((f: any) => {
           const val = item[f.field] ?? item._raw?.[f.field];
           if (val === undefined || val === null) return false;
           switch (f.operator) {
@@ -780,12 +801,13 @@ async function handleExecuteSignal(
           }
         });
       });
-      log("static_filter", { before: normalised.length, after: filtered.length });
+      log("static_filter", { before: allNormalised.length, after: filtered.length });
     }
 
-    // ── Step 5: AI classification ──
+    // ── AI classification (use first plan's ai_classification) ──
+    const aiClassification = plans[0]?.ai_classification;
     let aiFilteredCount = 0;
-    if (plan.ai_classification && filtered.length > 0) {
+    if (aiClassification && filtered.length > 0) {
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
       if (LOVABLE_API_KEY) {
         const batchSize = 20;
@@ -803,7 +825,7 @@ async function handleExecuteSignal(
               messages: [
                 {
                   role: "system",
-                  content: `You are a lead classifier. For each business in the list, determine if it matches this criteria: "${plan.ai_classification}". Return a JSON array of booleans, one per business. Only return the JSON array, nothing else.`,
+                  content: `You are a lead classifier. For each business in the list, determine if it matches this criteria: "${aiClassification}". Return a JSON array of booleans, one per business. Only return the JSON array, nothing else.`,
                 },
                 {
                   role: "user",
@@ -841,7 +863,7 @@ async function handleExecuteSignal(
       }
     }
 
-    // ── Step 6: Deduplicate ──
+    // ── Deduplicate ──
     const { data: existingKeys } = await serviceClient
       .from("signal_dedup_keys")
       .select("dedup_key, dedup_type")
@@ -895,7 +917,7 @@ async function handleExecuteSignal(
     }
     log("dedup", { before: filtered.length, after: uniqueLeads.length, removed: dedupRemoved });
 
-    // ── Step 7: Store leads ──
+    // ── Store leads (use per-item source label) ──
     const leadsToInsert = uniqueLeads.map((item) => ({
       run_id,
       workspace_id,
@@ -906,7 +928,7 @@ async function handleExecuteSignal(
       email: item.email || null,
       linkedin: item.linkedin || null,
       location: item.location || null,
-      source: actor.label,
+      source: item._source_label || plans[0]?.source || "Unknown",
       extra_data: item._raw || item,
     }));
 
@@ -925,8 +947,8 @@ async function handleExecuteSignal(
       }
     }
 
-    // ── Step 8: Calculate actual cost — DON'T charge if 0 results ──
-    const scrapedRows = rawResults.length;
+    // ── Calculate actual cost ──
+    const scrapedRows = allRawResults.length;
     const scrapeCostUsd = (scrapedRows / 1000) * 0.25;
     const aiFilterCostUsd = aiFilteredCount * 0.001;
     const actualCostUsd = (scrapeCostUsd + aiFilterCostUsd) * 1.2;
@@ -965,7 +987,7 @@ async function handleExecuteSignal(
         success: true,
         leads_discovered: uniqueLeads.length,
         credits_charged: actualCredits,
-        total_scraped: rawResults.length,
+        total_scraped: allRawResults.length,
         total_filtered: filtered.length,
         run_log: runLog,
       }),
