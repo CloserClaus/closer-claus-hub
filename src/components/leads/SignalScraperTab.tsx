@@ -349,6 +349,11 @@ function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun;
           </div>
         </div>
         <div className="flex gap-1.5">
+          {isStale && (
+            <Button size="sm" variant="outline" className="text-destructive" onClick={markAsFailed}>
+              Mark Failed
+            </Button>
+          )}
           {run.status === 'completed' && (
             <Button size="sm" variant="outline" onClick={onView}>View Leads</Button>
           )}
