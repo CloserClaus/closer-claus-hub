@@ -7,12 +7,15 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const APIFY_ACTOR_MAP: Record<string, { actorId: string; label: string }> = {
-  google_maps: { actorId: "nwua9Gu5YrADL7ZDj", label: "Google Maps" },
-  linkedin_jobs: { actorId: "hMvNSpz3JnHgl5jkh", label: "LinkedIn Jobs" },
+// Shared actor registry — must stay in sync with signal-planner/index.ts
+const ACTOR_REGISTRY: Record<string, { actorId: string; label: string }> = {
+  google_maps:        { actorId: "nwua9Gu5YrADL7ZDj", label: "Google Maps" },
+  linkedin_jobs:      { actorId: "AtsAgajsFjMVfxXJZ", label: "LinkedIn Jobs" },
   linkedin_companies: { actorId: "2SyF0bVxmgGr8IVCZ", label: "LinkedIn Companies" },
-  google_search: { actorId: "nFJndFXA5zjCTuudP", label: "Google Search" },
-  yelp: { actorId: "yin5oHQaJGRfmJhlN", label: "Yelp" },
+  google_search:      { actorId: "nFJndFXA5zjCTuudP", label: "Google Search" },
+  yelp:               { actorId: "yin5oHQaJGRfmJhlN", label: "Yelp" },
+  indeed_jobs:        { actorId: "curious_coder/indeed-scraper", label: "Indeed Jobs" },
+  yellow_pages:       { actorId: "trudax/yellow-pages-us-scraper", label: "Yellow Pages" },
 };
 
 serve(async (req) => {
