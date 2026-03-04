@@ -441,7 +441,53 @@ serve(async (req) => {
     if (action === "generate_plan") {
       return await handleGeneratePlan(params, user.id, serviceClient);
     } else if (action === "execute_signal") {
-      return await handleExecuteSignal(params, user.id, serviceClient);
+      // Credit check before background execution
+      const { run_id, workspace_id } = params;
+      const { data: run, error: runError } = await serviceClient
+        .from("signal_runs")
+        .select("*")
+        .eq("id", run_id)
+        .single();
+      if (runError || !run) {
+        return new Response(JSON.stringify({ error: "Signal run not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (run.user_id !== user.id) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: credits } = await serviceClient
+        .from("lead_credits")
+        .select("credits_balance")
+        .eq("workspace_id", workspace_id)
+        .maybeSingle();
+      const balance = credits?.credits_balance || 0;
+      if (balance < run.estimated_cost) {
+        return new Response(
+          JSON.stringify({ error: `Insufficient credits. Need ${run.estimated_cost}, have ${balance}.` }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // Update status to running
+      await serviceClient
+        .from("signal_runs")
+        .update({
+          status: "running",
+          schedule_type: params.schedule_type || "once",
+          schedule_hour: params.schedule_hour || null,
+          next_run_at: params.schedule_type === "daily" ? new Date(Date.now() + 86400000).toISOString() : null,
+        })
+        .eq("id", run_id);
+      // Execute in background
+      EdgeRuntime.waitUntil(
+        handleExecuteSignal(run, workspace_id, balance, serviceClient)
+      );
+      return new Response(
+        JSON.stringify({ status: "running", run_id }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     } else {
       return new Response(JSON.stringify({ error: "Unknown action" }), {
         status: 400,
