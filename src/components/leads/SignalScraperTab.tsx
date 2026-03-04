@@ -391,12 +391,13 @@ function StatusBadge({ status }: { status: string }) {
     draft: 'bg-muted-foreground/20 text-muted-foreground',
     planned: 'bg-blue-500/20 text-blue-400',
     running: 'bg-yellow-500/20 text-yellow-400',
+    stale: 'bg-orange-500/20 text-orange-400',
     completed: 'bg-green-500/20 text-green-400',
     failed: 'bg-destructive/20 text-destructive',
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full ${variants[status] || variants.draft}`}>
-      {status}
+      {status === 'stale' ? '⚠ stale' : status}
     </span>
   );
 }
