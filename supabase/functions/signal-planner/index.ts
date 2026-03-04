@@ -387,12 +387,14 @@ RULES:
 - For general web discovery, use "google_search".
 - ai_classification is a text description of an AI filter applied AFTER scraping. Use it to narrow results by company type, size, or relevance.
 - You may suggest multiple sources by returning a SINGLE plan with the BEST-fit source. The user can modify later.
+- IMPORTANT: For the "keyword" field, use a SINGLE simple keyword per search (e.g. "SDR" or "Sales Representative"). Do NOT use boolean operators like OR, AND, or quoted phrases. If you need to search multiple keywords, put ONLY the most important one in "keyword" and list ALL variations in "search_query" separated by " OR " — the engine will automatically split and run them individually.
+- For hiring intent queries, prefer timePosted "pastWeek" unless the user explicitly asks for today's jobs only. "past24h" is too restrictive and often returns zero results.
 
 Return a JSON object with this exact structure:
 {
   "signal_name": "short descriptive name",
   "source": "<actor_key from list above>",
-  "search_query": "the main search term",
+  "search_query": "the main search term (use OR to list variations, e.g. 'SDR OR BDR OR Sales Representative')",
   "search_params": { ONLY valid params for the chosen actor },
   "fields_to_collect": ["field1", "field2"],
   "filters": [{"field": "field_name", "operator": "<|>|=|contains|not_contains", "value": "value"}],
@@ -642,54 +644,108 @@ async function handleExecuteSignal(
   if (!actor) throw new Error(`Unknown actor key: ${plan.source}`);
 
   try {
-    // ── Step 1: Check dataset cache ──
-    const queryHash = btoa(JSON.stringify({ source: plan.source, query: plan.search_query, params: plan.search_params })).slice(0, 64);
-    const { data: cached } = await serviceClient
-      .from("signal_dataset_cache")
-      .select("*")
-      .eq("query_hash", queryHash)
-      .eq("source", plan.source)
-      .gte("created_at", new Date(Date.now() - 86400000).toISOString())
-      .maybeSingle();
+    // ── Step 0: Split compound keywords ──
+    const keywordFields = ["keyword", "search", "searchQuery"];
+    const keywordField = keywordFields.find(f => actor.inputSchema[f]);
+    const rawKeyword = plan.search_params?.[keywordField!] || plan.search_query || "";
+    const keywords = splitCompoundKeywords(rawKeyword);
+    const isMultiKeyword = keywords.length > 1;
+    
+    log("keyword_split", { original: rawKeyword, split: keywords, count: keywords.length });
 
     let rawResults: any[] = [];
 
-    if (cached?.dataset && Array.isArray(cached.dataset) && cached.dataset.length > 0 && !cached.dataset[0]?.error) {
-      rawResults = cached.dataset;
-      log("cache_hit", { rows: rawResults.length });
-    } else {
-      // ── Step 2: Build input generically from catalog and run Apify ──
-      const actorInput = buildGenericInput(actor, plan);
-      log("apify_request", { actor_key: actor.key, actorId: actor.actorId, input: actorInput });
-
-      const runResponse = await fetch(
-        `https://api.apify.com/v2/acts/${actor.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(actorInput),
+    // ── Step 1: Execute Apify (possibly multiple calls for split keywords) ──
+    for (const keyword of keywords) {
+      // Override keyword in plan for this iteration
+      const iterPlan = { ...plan, search_query: keyword, search_params: { ...plan.search_params } };
+      if (keywordField && iterPlan.search_params[keywordField]) {
+        iterPlan.search_params[keywordField] = keyword;
+      }
+      // For array fields like searchStringsArray, queries, searchTerms
+      const arrayFields = ["searchStringsArray", "queries", "searchTerms"];
+      for (const af of arrayFields) {
+        if (actor.inputSchema[af]) {
+          iterPlan.search_params[af] = [keyword];
         }
-      );
-
-      if (!runResponse.ok) {
-        const errText = await runResponse.text();
-        log("apify_error", { status: runResponse.status, body: errText.slice(0, 500) });
-        throw new Error(`Apify error [${runResponse.status}]: ${errText.slice(0, 300)}`);
       }
 
-      rawResults = await runResponse.json();
-      log("apify_response", { rows: rawResults.length });
-
-      // Cache only valid data (not error responses)
-      const isValidData = rawResults.length > 0 && !rawResults[0]?.error;
-      if (isValidData) {
-        await serviceClient.from("signal_dataset_cache").upsert({
-          query_hash: queryHash,
-          source: plan.source,
-          dataset: rawResults,
-          row_count: rawResults.length,
-        }, { onConflict: "query_hash,source" });
+      // Divide maxResults across keywords
+      const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max"));
+      if (maxField && isMultiKeyword && iterPlan.search_params[maxField]) {
+        iterPlan.search_params[maxField] = Math.max(20, Math.ceil(iterPlan.search_params[maxField] / keywords.length));
       }
+
+      const queryHash = btoa(JSON.stringify({ source: plan.source, query: keyword, params: iterPlan.search_params })).slice(0, 64);
+      const { data: cached } = await serviceClient
+        .from("signal_dataset_cache")
+        .select("*")
+        .eq("query_hash", queryHash)
+        .eq("source", plan.source)
+        .gte("created_at", new Date(Date.now() - 86400000).toISOString())
+        .maybeSingle();
+
+      if (cached?.dataset && Array.isArray(cached.dataset) && cached.dataset.length > 0 && !cached.dataset[0]?.error) {
+        rawResults.push(...cached.dataset);
+        log("cache_hit", { keyword, rows: cached.dataset.length });
+      } else {
+        const actorInput = buildGenericInput(actor, iterPlan);
+        log("apify_request", { keyword, actor_key: actor.key, actorId: actor.actorId, input: actorInput });
+
+        const runResponse = await fetch(
+          `https://api.apify.com/v2/acts/${actor.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(actorInput),
+          }
+        );
+
+        if (!runResponse.ok) {
+          const errText = await runResponse.text();
+          log("apify_error", { keyword, status: runResponse.status, body: errText.slice(0, 500) });
+          // For multi-keyword, continue on individual failures
+          if (isMultiKeyword) {
+            console.error(`Apify error for keyword "${keyword}": ${errText.slice(0, 200)}`);
+            continue;
+          }
+          throw new Error(`Apify error [${runResponse.status}]: ${errText.slice(0, 300)}`);
+        }
+
+        const keywordResults = await runResponse.json();
+        log("apify_response", { keyword, rows: keywordResults.length });
+        rawResults.push(...keywordResults);
+
+        // Cache per-keyword results
+        const isValidData = keywordResults.length > 0 && !keywordResults[0]?.error;
+        if (isValidData) {
+          await serviceClient.from("signal_dataset_cache").upsert({
+            query_hash: queryHash,
+            source: plan.source,
+            dataset: keywordResults,
+            row_count: keywordResults.length,
+          }, { onConflict: "query_hash,source" });
+        }
+      }
+    }
+
+    // Deduplicate raw results from multi-keyword runs (by URL or company+title)
+    if (isMultiKeyword && rawResults.length > 0) {
+      const seen = new Set<string>();
+      const deduped: any[] = [];
+      for (const item of rawResults) {
+        const url = item.url || item.link || item.companyUrl || item.applyLink || "";
+        const companyTitle = `${item.companyName || item.company || item.name || item.title || ""}::${item.jobTitle || item.title || item.positionName || ""}`.toLowerCase();
+        const key = url || companyTitle;
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          deduped.push(item);
+        } else if (!key) {
+          deduped.push(item);
+        }
+      }
+      log("multi_keyword_dedup", { before: rawResults.length, after: deduped.length });
+      rawResults = deduped;
     }
 
     // ── Step 3: Normalise results generically from catalog ──
@@ -922,4 +978,33 @@ function extractDomain(url: string): string {
   } catch {
     return url.replace(/^(https?:\/\/)?(www\.)?/, "").split("/")[0] || "";
   }
+}
+
+/**
+ * Splits compound keyword strings into individual search terms.
+ * Handles: "SDR OR BDR OR 'Sales Rep'" → ["SDR", "BDR", "Sales Rep"]
+ * Also handles comma-separated: "SDR, BDR, Sales Rep" → ["SDR", "BDR", "Sales Rep"]
+ * Single keywords pass through as-is: "SDR" → ["SDR"]
+ */
+function splitCompoundKeywords(keyword: string): string[] {
+  if (!keyword) return [keyword || ""];
+  
+  // Check for OR separator (case insensitive, with spaces)
+  if (/\s+OR\s+/i.test(keyword)) {
+    return keyword
+      .split(/\s+OR\s+/i)
+      .map(k => k.replace(/^['"]|['"]$/g, "").trim())
+      .filter(k => k.length > 0);
+  }
+  
+  // Check for comma separator (but not inside quotes)
+  if (keyword.includes(",") && !keyword.startsWith("http")) {
+    return keyword
+      .split(",")
+      .map(k => k.replace(/^['"]|['"]$/g, "").trim())
+      .filter(k => k.length > 0);
+  }
+  
+  // Single keyword — strip quotes
+  return [keyword.replace(/^['"]|['"]$/g, "").trim()];
 }

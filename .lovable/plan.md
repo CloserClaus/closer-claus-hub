@@ -1,43 +1,23 @@
 
 
-## Root Cause
+## Diagnosis
 
-The breakpoint is at the **Apify API level** — the actor returned 0 rows. The input sent was:
+The database has the correct data — all 10 Bizvolve applications have `applicant_name` populated (verified via direct query). The root cause is a **code-level issue** in `JobDetail.tsx`:
 
-```text
-keyword: "SDR OR BDR OR 'Appointment Setter' OR 'Sales Representative' OR 'Business Development'"
-timePosted: "past24h"
-```
+1. The query uses `select('*')` but the code accesses the fields via `(app as any).applicant_name` — a fragile pattern that can fail if TypeScript's type narrowing or Supabase's PostgREST response doesn't include these columns as expected.
+2. The published site may be running an older version of the code before the `applicant_name` fallback was added.
 
-Two problems:
+## Plan
 
-1. **LinkedIn's search does not support boolean OR syntax in the keyword field.** The actor passes the keyword as-is to LinkedIn's URL search parameter. LinkedIn treats this entire string as a literal phrase search, not a boolean query. It searches for jobs literally titled "SDR OR BDR OR..." — which returns nothing.
+### 1. Fix `JobDetail.tsx` — Use explicit column selection and typed access
 
-2. **`past24h` is very restrictive.** Even with a correct keyword, searching only the last 24 hours for a niche role in a niche industry yields few or no results on many days.
+- Change the `select('*')` query to explicitly include `applicant_name, applicant_email` in the select string
+- Remove `(app as any)` casts — access `app.applicant_name` and `app.applicant_email` directly (these fields already exist in the generated Supabase types)
+- Add a hardcoded SDR level (1–2) fallback when profile lookup fails, instead of always defaulting to 1
 
-## Fix
+### 2. Fix `ApplicationsTable.tsx` — Same pattern fix
 
-### A. Multi-keyword execution strategy
+- Same change: remove `(app as any)` casts, use typed `a.applicant_name` and `a.applicant_email` directly since the types already include them
 
-When the AI planner generates a compound keyword like `"SDR OR BDR OR 'Sales Rep'"`, the execution engine should **split it into separate Apify calls** — one per keyword — then merge and deduplicate results.
-
-In `handleExecuteSignal`, after building the actor input:
-- Detect if `keyword` contains `OR` separators or is a comma-separated list
-- Split into individual keywords (e.g., `["SDR", "BDR", "Appointment Setter", "Sales Representative"]`)
-- Run each keyword as a separate Apify call (sequentially to avoid rate limits), each with `maxResults` divided by the number of keywords
-- Merge all raw results, deduplicate by job URL or company+title before continuing to normalization
-
-### B. Default `timePosted` to `pastWeek` for hiring intent
-
-Update the AI planner system prompt to instruct: "For hiring intent queries, prefer `pastWeek` unless the user explicitly asks for today's jobs only." The `past24h` window is too narrow for most use cases.
-
-### C. Update `buildGenericInput` with keyword splitting
-
-Add a utility that detects boolean-style keywords and converts them to an array of individual search terms. The execution loop handles running each term.
-
-### Changes
-
-| File | Change |
-|------|--------|
-| `supabase/functions/signal-planner/index.ts` | Add keyword splitting logic in `handleExecuteSignal`. Update system prompt to prefer `pastWeek` for hiring queries. Merge+dedup results from multiple keyword runs. |
+These are small, surgical changes to two files. Once saved, the preview and published site will correctly display applicant names from the denormalized columns without depending on profile/workspace membership lookups.
 
