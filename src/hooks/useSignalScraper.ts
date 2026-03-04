@@ -73,7 +73,7 @@ export function useSignalScraper() {
         .eq('workspace_id', currentWorkspace.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return (data || []) as SignalRun[];
+      return (data || []) as unknown as SignalRun[];
     },
     enabled: !!currentWorkspace?.id,
   });

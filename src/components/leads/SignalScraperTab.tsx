@@ -299,8 +299,9 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
   });
 
   const addToCRM = async (lead: SignalLead) => {
-    const { error } = await supabase.from('leads').insert({
+    const { error } = await supabase.from('leads').insert([{
       workspace_id: workspaceId,
+      created_by: (await supabase.auth.getUser()).data.user?.id || '',
       first_name: '',
       last_name: '',
       company: lead.company_name,
@@ -308,7 +309,7 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
       linkedin_url: lead.linkedin,
       source: `Signal: ${lead.source}`,
       notes: `Website: ${lead.website || ''}\nLocation: ${lead.location || ''}`,
-    });
+    }]);
     if (error) {
       toast({ title: 'Failed to add lead', description: error.message, variant: 'destructive' });
       return;
