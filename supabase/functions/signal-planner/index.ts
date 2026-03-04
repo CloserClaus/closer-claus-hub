@@ -22,9 +22,10 @@ function buildActorInput(source: string, plan: any): Record<string, any> {
     case "linkedin_jobs":
       return {
         keyword: sp.keyword || plan.search_query,
-        location: sp.location || "",
-        timePosted: sp.timePosted || "pastWeek",       // pastDay | pastWeek | pastMonth
-        rows: Math.min(sp.rows || plan.estimated_rows || 100, 500),
+        location: sp.location || "United States",
+        timePosted: sp.timePosted || "pastWeek",
+        maxResults: Math.min(sp.rows || sp.maxResults || plan.estimated_rows || 100, 500),
+        scrapeJobDetails: true,
         proxy: { useApifyProxy: true },
       };
     case "linkedin_companies":
