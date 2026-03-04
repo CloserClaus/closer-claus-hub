@@ -179,8 +179,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     category: "company_data",
     description: "Scrapes LinkedIn company profiles. Best for enriching companies found from other sources. Returns employee count, industry, headquarters.",
     inputSchema: {
-      urls:        { type: "string[]", description: "Array of LinkedIn company URLs" },
-      searchQuery: { type: "string",   description: "OR a text search query" },
+      profileUrls: { type: "string[]", required: true, description: "Array of LinkedIn company profile URLs to scrape" },
       maxResults:  { type: "number",   default: 100, description: "Max results" },
     },
     outputFields: {
