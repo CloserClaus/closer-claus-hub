@@ -40,7 +40,7 @@ serve(async (req) => {
     const { data: dueSignals, error: fetchError } = await serviceClient
       .from("signal_runs")
       .select("*")
-      .eq("schedule_type", "daily")
+      .in("schedule_type", ["daily", "weekly"])
       .in("status", ["completed", "running_daily"])
       .lte("next_run_at", new Date().toISOString());
 
