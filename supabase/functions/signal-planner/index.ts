@@ -751,14 +751,30 @@ async function handleExecuteSignal(
           }
           log("apify_request", { source: actor.key, keyword, actorId: actor.actorId, input: actorInput });
 
-          const runResponse = await fetch(
-            `https://api.apify.com/v2/acts/${actor.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(actorInput),
+          // 5 minute timeout per Apify call to prevent silent hangs
+          const abortController = new AbortController();
+          const timeoutId = setTimeout(() => abortController.abort(), 5 * 60 * 1000);
+          let runResponse: Response;
+          try {
+            runResponse = await fetch(
+              `https://api.apify.com/v2/acts/${actor.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(actorInput),
+                signal: abortController.signal,
+              }
+            );
+          } catch (fetchErr: any) {
+            clearTimeout(timeoutId);
+            if (fetchErr.name === "AbortError") {
+              log("apify_timeout", { source: actor.key, keyword, message: "Request timed out after 5 minutes" });
+              console.error(`Apify timeout for ${actor.key}/"${keyword}"`);
+              continue;
             }
-          );
+            throw fetchErr;
+          }
+          clearTimeout(timeoutId);
 
           if (!runResponse.ok) {
             const errText = await runResponse.text();

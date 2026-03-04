@@ -321,6 +321,9 @@ function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun;
             {run.schedule_type === 'daily' && (
               <Badge variant="outline" className="text-xs"><Clock className="h-3 w-3 mr-1" />Daily</Badge>
             )}
+            {run.schedule_type === 'weekly' && (
+              <Badge variant="outline" className="text-xs"><Clock className="h-3 w-3 mr-1" />Weekly</Badge>
+            )}
           </div>
           <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
             {run.last_run_at && (
