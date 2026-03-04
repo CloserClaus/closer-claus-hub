@@ -1,23 +1,81 @@
 
 
-## Diagnosis
+## Actor Selection: Registry-Based Approach
 
-The database has the correct data — all 10 Bizvolve applications have `applicant_name` populated (verified via direct query). The root cause is a **code-level issue** in `JobDetail.tsx`:
+### Problem
+Currently 5 actors are hardcoded. When a user query doesn't fit neatly into one of them, the AI either picks the wrong one or hallucinates parameters. Adding new actors requires code changes in 3 places (map, input builder, normalizer).
 
-1. The query uses `select('*')` but the code accesses the fields via `(app as any).applicant_name` — a fragile pattern that can fail if TypeScript's type narrowing or Supabase's PostgREST response doesn't include these columns as expected.
-2. The published site may be running an older version of the code before the `applicant_name` fallback was added.
+### Proposed Solution: Actor Catalog Registry
 
-## Plan
+Instead of listing "all actors on Apify" (thousands, impractical), we maintain a **curated catalog of 15-20 vetted actors** as a structured constant in the edge function. Each entry contains the actor's real ID, input schema, output fields, and a description of what it's best for. The AI planner receives this full catalog in its system prompt and selects the best-fit actor by its `key`.
 
-### 1. Fix `JobDetail.tsx` — Use explicit column selection and typed access
+This eliminates the hardcoded switch statements — the input builder and normalizer become generic, driven by the catalog metadata.
 
-- Change the `select('*')` query to explicitly include `applicant_name, applicant_email` in the select string
-- Remove `(app as any)` casts — access `app.applicant_name` and `app.applicant_email` directly (these fields already exist in the generated Supabase types)
-- Add a hardcoded SDR level (1–2) fallback when profile lookup fails, instead of always defaulting to 1
+### Actor Catalog Structure
 
-### 2. Fix `ApplicationsTable.tsx` — Same pattern fix
+```text
+{
+  key: "linkedin_jobs_v2",
+  actorId: "AtsAgajsFjMVfxXJZ",
+  label: "LinkedIn Jobs (Sovereign Taylor)",
+  category: "hiring_intent",
+  description: "Scrapes LinkedIn job postings. Best for hiring intent signals.",
+  inputSchema: {
+    keyword: { type: "string", required: true, description: "Job search term" },
+    location: { type: "string", default: "United States" },
+    maxResults: { type: "number", default: 100, max: 500 },
+    timePosted: { type: "enum", values: ["pastDay","pastWeek","pastMonth"], default: "pastWeek" },
+    scrapeJobDetails: { type: "boolean", default: true }
+  },
+  outputFields: {
+    company_name: ["companyName", "company"],
+    website: ["companyLink", "companyUrl"],
+    location: ["jobLocation", "location"],
+    phone: [],
+    email: ["email", "contactEmail"],
+    linkedin: ["companyLink"],
+    description: ["jobDescription", "description"]
+  }
+}
+```
 
-- Same change: remove `(app as any)` casts, use typed `a.applicant_name` and `a.applicant_email` directly since the types already include them
+### How It Works
 
-These are small, surgical changes to two files. Once saved, the preview and published site will correctly display applicant names from the denormalized columns without depending on profile/workspace membership lookups.
+1. **AI Planner** receives the full catalog in its system prompt. Instead of picking from 5 source names, it picks an `actor_key` from the catalog and constructs `search_params` using only the fields defined in that actor's `inputSchema`.
+
+2. **Input Builder** becomes generic: reads the selected actor's `inputSchema` from the catalog, maps `search_params` to valid fields, applies defaults for missing ones, enforces max limits.
+
+3. **Result Normalizer** becomes generic: reads the actor's `outputFields` mapping and extracts values by trying each field name in order (e.g., for `company_name`, try `item.companyName` then `item.company`).
+
+4. **Adding a new actor** = adding one entry to the catalog array. No switch cases, no new functions.
+
+### Catalog Contents (Initial ~15 actors)
+
+| Category | Actor | Use Case |
+|----------|-------|----------|
+| Hiring Intent | LinkedIn Jobs (Sovereign Taylor) | Companies hiring for specific roles |
+| Hiring Intent | Indeed Jobs Scraper | Broader job board coverage |
+| Company Data | LinkedIn Company Scraper | Enrich company profiles |
+| Company Data | Crunchbase Scraper | Startup/funding data |
+| Local Business | Google Maps Scraper | Local service businesses |
+| Local Business | Yelp Scraper | Local businesses with reviews |
+| Local Business | Yellow Pages Scraper | Traditional business listings |
+| People | LinkedIn People Scraper | Find founders/decision-makers |
+| Web Search | Google Search Scraper | General web search |
+| Directories | Clutch Scraper | Agency directories |
+| Directories | G2 Scraper | Software company listings |
+| Social | Instagram Profile Scraper | Social presence data |
+| Social | Facebook Pages Scraper | Business pages |
+| Reviews | Trustpilot Scraper | Company reviews |
+| E-commerce | Shopify Store Scraper | E-commerce businesses |
+
+We start with actors we can verify have correct IDs and schemas. Others get added incrementally after testing.
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `supabase/functions/signal-planner/index.ts` | Replace `APIFY_ACTOR_MAP`, `buildActorInput`, `normaliseResults` with catalog-driven generic versions. Update AI system prompt to include full catalog. |
+
+No database changes needed — the catalog lives in code since it changes rarely and must be version-controlled.
 
