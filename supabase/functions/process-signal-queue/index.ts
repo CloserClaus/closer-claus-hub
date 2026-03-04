@@ -286,7 +286,7 @@ serve(async (req) => {
       .in("status", ["completed"])
       .not("next_run_at", "is", null)
       .lte("next_run_at", new Date().toISOString())
-      .limit(5);
+      .limit(1);
 
     if (sErr) throw sErr;
 
