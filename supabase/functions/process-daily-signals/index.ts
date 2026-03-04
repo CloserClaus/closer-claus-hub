@@ -10,7 +10,7 @@ const corsHeaders = {
 // Shared actor registry — must stay in sync with signal-planner/index.ts
 const ACTOR_REGISTRY: Record<string, { actorId: string; label: string }> = {
   google_maps:         { actorId: "nwua9Gu5YrADL7ZDj", label: "Google Maps" },
-  linkedin_jobs:       { actorId: "AtsAgajsFjMVfxXJZ", label: "LinkedIn Jobs" },
+  linkedin_jobs:       { actorId: "sovereigntaylor/linkedin-jobs-scraper", label: "LinkedIn Jobs" },
   linkedin_companies:  { actorId: "2SyF0bVxmgGr8IVCZ", label: "LinkedIn Companies" },
   google_search:       { actorId: "nFJndFXA5zjCTuudP", label: "Google Search" },
   yelp:                { actorId: "yin5oHQaJGRfmJhlN", label: "Yelp" },
