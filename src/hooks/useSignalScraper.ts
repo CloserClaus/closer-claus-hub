@@ -84,11 +84,11 @@ export function useSignalScraper() {
       return (data || []) as unknown as SignalRun[];
     },
     enabled: !!currentWorkspace?.id,
-    // Poll every 5s when any run is in "running" status
+    // Poll every 5s when any run is queued or running
     refetchInterval: (query) => {
       const runs = query.state.data as SignalRun[] | undefined;
-      const hasRunning = runs?.some(r => r.status === 'running');
-      return hasRunning ? 5000 : false;
+      const hasActive = runs?.some(r => r.status === 'queued' || r.status === 'running');
+      return hasActive ? 5000 : false;
     },
   });
 
