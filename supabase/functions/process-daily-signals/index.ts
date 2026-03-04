@@ -66,8 +66,8 @@ serve(async (req) => {
         await serviceClient
           .from("signal_runs")
           .update({
-            status: "completed", // keep it active for next day
-            next_run_at: new Date(Date.now() + 86400000).toISOString(),
+            status: "completed",
+            next_run_at: new Date(Date.now() + (run.schedule_type === "weekly" ? 7 * 86400000 : 86400000)).toISOString(),
           })
           .eq("id", run.id);
       }
