@@ -476,7 +476,11 @@ serve(async (req) => {
           status: "running",
           schedule_type: params.schedule_type || "once",
           schedule_hour: params.schedule_hour || null,
-          next_run_at: params.schedule_type === "daily" ? new Date(Date.now() + 86400000).toISOString() : null,
+          next_run_at: params.schedule_type === "daily"
+            ? new Date(Date.now() + 86400000).toISOString()
+            : params.schedule_type === "weekly"
+              ? new Date(Date.now() + 7 * 86400000).toISOString()
+              : null,
         })
         .eq("id", run_id);
       // Execute in background
