@@ -589,6 +589,7 @@ async function handleExecuteSignal(
       website: item.website || null,
       domain: extractDomain(item.website || ""),
       phone: item.phone || null,
+      email: item.email || null,
       linkedin: item.linkedin || null,
       location: item.location || null,
       source: actorInfo.label,
