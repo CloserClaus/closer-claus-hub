@@ -272,9 +272,9 @@ serve(async (req) => {
     const { data: queuedRuns, error: qErr } = await serviceClient
       .from("signal_runs")
       .select("*")
-      .or(`status.eq.queued,and(status.eq.running,started_at.lt.${staleThreshold},retry_count.lt.${MAX_RETRIES})`)
+      .or(`status.eq.queued,and(status.eq.running,started_at.is.null),and(status.eq.running,started_at.lt.${staleThreshold},retry_count.lt.${MAX_RETRIES})`)
       .order("created_at", { ascending: true })
-      .limit(5);
+      .limit(1);
 
     if (qErr) throw qErr;
 
