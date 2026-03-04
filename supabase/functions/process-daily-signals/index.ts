@@ -113,7 +113,7 @@ async function processSignalRun(run: any, serviceClient: any) {
     return;
   }
 
-  const actorInfo = APIFY_ACTOR_MAP[plan.source];
+  const actorInfo = ACTOR_REGISTRY[plan.source];
   if (!actorInfo) throw new Error(`Unknown source: ${plan.source}`);
 
   // Check cache
