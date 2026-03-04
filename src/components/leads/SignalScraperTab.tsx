@@ -23,7 +23,7 @@ const ICON_MAP: Record<string, any> = { Briefcase, Rocket, MapPin, Zap, Sparkles
 
 export function SignalScraperTab() {
   const [query, setQuery] = useState('');
-  const [scheduleType, setScheduleType] = useState<'once' | 'daily'>('once');
+  const [scheduleType, setScheduleType] = useState<'once' | 'daily' | 'weekly'>('once');
   const [viewingRunId, setViewingRunId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const { toast } = useToast();
