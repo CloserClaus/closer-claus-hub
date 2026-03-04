@@ -660,15 +660,7 @@ async function handleExecuteSignal(
   const runLog: any[] = [];
   const log = (step: string, data: any) => runLog.push({ step, ts: new Date().toISOString(), ...data });
 
-  await serviceClient
-    .from("signal_runs")
-    .update({
-      status: "running",
-      schedule_type: schedule_type || "once",
-      schedule_hour: schedule_hour || null,
-      next_run_at: schedule_type === "daily" ? new Date(Date.now() + 86400000).toISOString() : null,
-    })
-    .eq("id", run_id);
+  // Status already set to "running" by the main handler
 
   // Backward compat: signal_plan can be a single object (old) or array (new)
   const storedPlan = run.signal_plan;
