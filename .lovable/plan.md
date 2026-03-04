@@ -1,23 +1,50 @@
 
 
-## Diagnosis
+## Fix: Stale Signal Detection + Stuck Run Recovery
 
-The database has the correct data — all 10 Bizvolve applications have `applicant_name` populated (verified via direct query). The root cause is a **code-level issue** in `JobDetail.tsx`:
+### Problem
+The queue worker's stale detection query:
+```
+status.eq.running,started_at.lt.${staleThreshold},retry_count.lt.3
+```
+...fails to match runs where `started_at IS NULL`. Two of three stuck runs have this condition (created by old code before queue architecture). They will remain stuck forever.
 
-1. The query uses `select('*')` but the code accesses the fields via `(app as any).applicant_name` — a fragile pattern that can fail if TypeScript's type narrowing or Supabase's PostgREST response doesn't include these columns as expected.
-2. The published site may be running an older version of the code before the `applicant_name` fallback was added.
+Additionally, the third run will keep timing out because complex multi-keyword searches exceed the edge function's runtime limit even with the 5-minute per-call timeout — the total wall-clock time across all keywords exceeds the edge function's ~60s container lifecycle.
 
-## Plan
+### Changes
 
-### 1. Fix `JobDetail.tsx` — Use explicit column selection and typed access
+**1. `supabase/functions/process-signal-queue/index.ts`** — Fix stale detection query
 
-- Change the `select('*')` query to explicitly include `applicant_name, applicant_email` in the select string
-- Remove `(app as any)` casts — access `app.applicant_name` and `app.applicant_email` directly (these fields already exist in the generated Supabase types)
-- Add a hardcoded SDR level (1–2) fallback when profile lookup fails, instead of always defaulting to 1
+Update the `.or()` filter to also match runs where `started_at` is null:
+```
+status.eq.queued,
+and(status.eq.running,started_at.is.null),
+and(status.eq.running,started_at.lt.${staleThreshold},retry_count.lt.${MAX_RETRIES})
+```
 
-### 2. Fix `ApplicationsTable.tsx` — Same pattern fix
+This ensures any "running" run with no `started_at` is always picked up.
 
-- Same change: remove `(app as any)` casts, use typed `a.applicant_name` and `a.applicant_email` directly since the types already include them
+**2. `supabase/functions/process-signal-queue/index.ts`** — Process one run per invocation
 
-These are small, surgical changes to two files. Once saved, the preview and published site will correctly display applicant names from the denormalized columns without depending on profile/workspace membership lookups.
+Currently the worker loops through up to 5 runs. Since each complex run can have 6+ keywords × multiple sources, a single run can exhaust the function's wall-clock time. Change to process only **1 run per invocation** (the cron fires every 2 minutes, so throughput is still good). This prevents one long run from blocking others.
+
+- Change `.limit(5)` to `.limit(1)` for queued runs
+- Change `.limit(5)` to `.limit(1)` for scheduled runs  
+- Process only the first available run
+
+**3. Immediate fix for the 3 stuck runs**
+
+Run a migration to reset the 3 stuck runs back to "queued" so the worker picks them up:
+```sql
+UPDATE signal_runs 
+SET status = 'queued', started_at = NULL, retry_count = 0 
+WHERE status = 'running' AND leads_discovered = 0;
+```
+
+### Files
+
+| File | Change |
+|------|--------|
+| `supabase/functions/process-signal-queue/index.ts` | Fix stale query to handle NULL `started_at`; limit to 1 run per invocation |
+| Database migration | Reset stuck runs to "queued" |
 
