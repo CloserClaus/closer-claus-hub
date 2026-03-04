@@ -674,10 +674,13 @@ async function handleExecuteSignal(
         }
       }
 
-      // Divide maxResults across keywords
+      // Divide maxResults across keywords, enforce minimum of 50 per keyword
       const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max"));
       if (maxField && isMultiKeyword && iterPlan.search_params[maxField]) {
-        iterPlan.search_params[maxField] = Math.max(20, Math.ceil(iterPlan.search_params[maxField] / keywords.length));
+        iterPlan.search_params[maxField] = Math.max(50, Math.ceil(iterPlan.search_params[maxField] / keywords.length));
+      } else if (maxField && !iterPlan.search_params[maxField]) {
+        // Ensure a minimum is set even if not specified
+        iterPlan.search_params[maxField] = 100;
       }
 
       const queryHash = btoa(JSON.stringify({ source: plan.source, query: keyword, params: iterPlan.search_params })).slice(0, 64);
