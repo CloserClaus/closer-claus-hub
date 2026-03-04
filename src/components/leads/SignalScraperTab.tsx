@@ -3,7 +3,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import {
   Zap, Loader2, Play, Clock, Trash2, RotateCcw, ExternalLink, Plus, History,
@@ -22,7 +23,7 @@ const ICON_MAP: Record<string, any> = { Briefcase, Rocket, MapPin, Zap, Sparkles
 
 export function SignalScraperTab() {
   const [query, setQuery] = useState('');
-  const [scheduleType, setScheduleType] = useState<'once' | 'daily'>('once');
+  const [scheduleType, setScheduleType] = useState<'once' | 'daily' | 'weekly'>('once');
   const [viewingRunId, setViewingRunId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const { toast } = useToast();
@@ -211,18 +212,24 @@ export function SignalScraperTab() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <span className="text-sm text-muted-foreground">Schedule:</span>
-                <div className="flex items-center gap-2">
-                  <span className={`text-sm ${scheduleType === 'once' ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                    Run once
-                  </span>
-                  <Switch
-                    checked={scheduleType === 'daily'}
-                    onCheckedChange={(checked) => setScheduleType(checked ? 'daily' : 'once')}
-                  />
-                  <span className={`text-sm ${scheduleType === 'daily' ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                    Run daily
-                  </span>
-                </div>
+                <RadioGroup
+                  value={scheduleType}
+                  onValueChange={(v) => setScheduleType(v as 'once' | 'daily' | 'weekly')}
+                  className="flex items-center gap-4"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <RadioGroupItem value="once" id="sched-once" />
+                    <Label htmlFor="sched-once" className="text-sm cursor-pointer">Once</Label>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <RadioGroupItem value="daily" id="sched-daily" />
+                    <Label htmlFor="sched-daily" className="text-sm cursor-pointer">Daily</Label>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <RadioGroupItem value="weekly" id="sched-weekly" />
+                    <Label htmlFor="sched-weekly" className="text-sm cursor-pointer">Weekly</Label>
+                  </div>
+                </RadioGroup>
               </div>
 
               <div className="flex gap-2">
@@ -303,6 +310,18 @@ export function SignalScraperTab() {
 function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun; onView: () => void; onRerun: () => void; onDelete: () => void }) {
   const [showLog, setShowLog] = useState(false);
   const runLog = (run as any).run_log as any[] | null;
+  const { toast } = useToast();
+
+  // Detect stale runs: "running" for more than 10 minutes
+  const isStale = run.status === 'running' && run.created_at &&
+    (Date.now() - new Date(run.created_at).getTime()) > 10 * 60 * 1000;
+
+  const markAsFailed = async () => {
+    await supabase.from('signal_runs').update({ status: 'failed' }).eq('id', run.id);
+    toast({ title: 'Signal marked as failed' });
+    // Trigger refetch
+    onRerun();
+  };
 
   return (
     <div className="p-3 rounded-lg bg-muted space-y-2">
@@ -310,9 +329,12 @@ function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun;
         <div className="space-y-1 flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm truncate">{run.signal_name || run.signal_query}</span>
-            <StatusBadge status={run.status} />
+            <StatusBadge status={isStale ? 'stale' : run.status} />
             {run.schedule_type === 'daily' && (
               <Badge variant="outline" className="text-xs"><Clock className="h-3 w-3 mr-1" />Daily</Badge>
+            )}
+            {run.schedule_type === 'weekly' && (
+              <Badge variant="outline" className="text-xs"><Clock className="h-3 w-3 mr-1" />Weekly</Badge>
             )}
           </div>
           <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
@@ -327,6 +349,11 @@ function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun;
           </div>
         </div>
         <div className="flex gap-1.5">
+          {isStale && (
+            <Button size="sm" variant="outline" className="text-destructive" onClick={markAsFailed}>
+              Mark Failed
+            </Button>
+          )}
           {run.status === 'completed' && (
             <Button size="sm" variant="outline" onClick={onView}>View Leads</Button>
           )}
@@ -364,12 +391,13 @@ function StatusBadge({ status }: { status: string }) {
     draft: 'bg-muted-foreground/20 text-muted-foreground',
     planned: 'bg-blue-500/20 text-blue-400',
     running: 'bg-yellow-500/20 text-yellow-400',
+    stale: 'bg-orange-500/20 text-orange-400',
     completed: 'bg-green-500/20 text-green-400',
     failed: 'bg-destructive/20 text-destructive',
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full ${variants[status] || variants.draft}`}>
-      {status}
+      {status === 'stale' ? '⚠ stale' : status}
     </span>
   );
 }

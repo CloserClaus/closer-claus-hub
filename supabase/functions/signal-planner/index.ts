@@ -476,7 +476,11 @@ serve(async (req) => {
           status: "running",
           schedule_type: params.schedule_type || "once",
           schedule_hour: params.schedule_hour || null,
-          next_run_at: params.schedule_type === "daily" ? new Date(Date.now() + 86400000).toISOString() : null,
+          next_run_at: params.schedule_type === "daily"
+            ? new Date(Date.now() + 86400000).toISOString()
+            : params.schedule_type === "weekly"
+              ? new Date(Date.now() + 7 * 86400000).toISOString()
+              : null,
         })
         .eq("id", run_id);
       // Execute in background
@@ -582,7 +586,7 @@ async function handleGeneratePlan(
     return p;
   });
 
-  // Aggregate cost estimation across all plans
+  // Aggregate cost estimation across all plans — override AI guesses with formula
   let totalEstimatedRows = 0;
   let totalCreditsToCharge = 0;
   let totalEstimatedLeads = 0;
@@ -591,6 +595,18 @@ async function handleGeneratePlan(
   for (const plan of plans) {
     const resolvedActor = getActor(plan.source)!;
     sourceLabels.push(resolvedActor.label);
+
+    // Formula-based estimation: count OR-separated keywords × actor's max results default
+    const keywords = plan.search_query ? plan.search_query.split(/\s+OR\s+/i) : [""];
+    const keywordCount = Math.max(1, keywords.length);
+    const maxField = Object.keys(resolvedActor.inputSchema).find(f => f.toLowerCase().includes("max"));
+    const maxPerKeyword = maxField
+      ? (plan.search_params?.[maxField] || resolvedActor.inputSchema[maxField]?.default || 100)
+      : 100;
+    // Each keyword gets maxPerKeyword/keywordCount results (since we split), so total ≈ maxPerKeyword
+    const formulaEstimatedRows = keywordCount * Math.max(50, Math.ceil(maxPerKeyword / keywordCount));
+    // Override AI's guess with formula-based estimate
+    plan.estimated_rows = formulaEstimatedRows;
 
     const scrapeCostUsd = (plan.estimated_rows / 1000) * 0.25;
     const aiFilterRows = plan.ai_classification ? plan.estimated_rows : 0;
@@ -601,7 +617,9 @@ async function handleGeneratePlan(
 
     totalEstimatedRows += plan.estimated_rows;
     totalCreditsToCharge += credits;
-    totalEstimatedLeads += plan.estimated_leads_after_filter || Math.floor(plan.estimated_rows * 0.15);
+    // Estimated leads: with AI filter ~30%, without ~60%
+    const filterRate = plan.ai_classification ? 0.3 : 0.6;
+    totalEstimatedLeads += plan.estimated_leads_after_filter || Math.floor(plan.estimated_rows * filterRate);
   }
 
   const costPerLead = totalEstimatedLeads > 0 ? (totalCreditsToCharge / totalEstimatedLeads).toFixed(1) : "N/A";
@@ -733,14 +751,30 @@ async function handleExecuteSignal(
           }
           log("apify_request", { source: actor.key, keyword, actorId: actor.actorId, input: actorInput });
 
-          const runResponse = await fetch(
-            `https://api.apify.com/v2/acts/${actor.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(actorInput),
+          // 5 minute timeout per Apify call to prevent silent hangs
+          const abortController = new AbortController();
+          const timeoutId = setTimeout(() => abortController.abort(), 5 * 60 * 1000);
+          let runResponse: Response;
+          try {
+            runResponse = await fetch(
+              `https://api.apify.com/v2/acts/${actor.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(actorInput),
+                signal: abortController.signal,
+              }
+            );
+          } catch (fetchErr: any) {
+            clearTimeout(timeoutId);
+            if (fetchErr.name === "AbortError") {
+              log("apify_timeout", { source: actor.key, keyword, message: "Request timed out after 5 minutes" });
+              console.error(`Apify timeout for ${actor.key}/"${keyword}"`);
+              continue;
             }
-          );
+            throw fetchErr;
+          }
+          clearTimeout(timeoutId);
 
           if (!runResponse.ok) {
             const errText = await runResponse.text();
