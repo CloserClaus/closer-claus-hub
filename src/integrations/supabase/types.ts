@@ -3242,7 +3242,9 @@ export type Database = {
       signal_runs: {
         Row: {
           actual_cost: number | null
+          apify_run_ids: Json | null
           created_at: string
+          current_keyword_index: number | null
           error_message: string | null
           estimated_cost: number
           estimated_leads: number | null
@@ -3250,6 +3252,7 @@ export type Database = {
           last_run_at: string | null
           leads_discovered: number | null
           next_run_at: string | null
+          processing_phase: string | null
           retry_count: number | null
           run_log: Json | null
           schedule_hour: number | null
@@ -3265,7 +3268,9 @@ export type Database = {
         }
         Insert: {
           actual_cost?: number | null
+          apify_run_ids?: Json | null
           created_at?: string
+          current_keyword_index?: number | null
           error_message?: string | null
           estimated_cost?: number
           estimated_leads?: number | null
@@ -3273,6 +3278,7 @@ export type Database = {
           last_run_at?: string | null
           leads_discovered?: number | null
           next_run_at?: string | null
+          processing_phase?: string | null
           retry_count?: number | null
           run_log?: Json | null
           schedule_hour?: number | null
@@ -3288,7 +3294,9 @@ export type Database = {
         }
         Update: {
           actual_cost?: number | null
+          apify_run_ids?: Json | null
           created_at?: string
+          current_keyword_index?: number | null
           error_message?: string | null
           estimated_cost?: number
           estimated_leads?: number | null
@@ -3296,6 +3304,7 @@ export type Database = {
           last_run_at?: string | null
           leads_discovered?: number | null
           next_run_at?: string | null
+          processing_phase?: string | null
           retry_count?: number | null
           run_log?: Json | null
           schedule_hour?: number | null
