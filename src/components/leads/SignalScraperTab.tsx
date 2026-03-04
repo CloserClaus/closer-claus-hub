@@ -247,7 +247,8 @@ export function SignalScraperTab() {
             )}
           </CardContent>
         </Card>
-      )}
+        );
+      })()}
 
       {/* Results for a specific run */}
       {viewingRunId && (
