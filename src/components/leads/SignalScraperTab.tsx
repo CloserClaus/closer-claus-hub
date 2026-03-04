@@ -312,14 +312,13 @@ function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun;
   const runLog = (run as any).run_log as any[] | null;
   const { toast } = useToast();
 
-  // Detect stale runs: "running" for more than 10 minutes
-  const isStale = run.status === 'running' && run.created_at &&
-    (Date.now() - new Date(run.created_at).getTime()) > 10 * 60 * 1000;
+  // Detect stale runs: "running" for more than 10 minutes based on started_at
+  const isStale = run.status === 'running' && run.started_at &&
+    (Date.now() - new Date(run.started_at).getTime()) > 10 * 60 * 1000;
 
   const markAsFailed = async () => {
     await supabase.from('signal_runs').update({ status: 'failed' }).eq('id', run.id);
     toast({ title: 'Signal marked as failed' });
-    // Trigger refetch
     onRerun();
   };
 
@@ -345,6 +344,14 @@ function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun;
             <span>{run.actual_cost ?? run.estimated_cost} credits</span>
             {run.actual_cost === 0 && run.status === 'completed' && (
               <span className="text-green-500">🛡️ No charge (0 results)</span>
+            )}
+            {run.retry_count > 0 && (
+              <span className="text-orange-400">⟳ {run.retry_count} retries</span>
+            )}
+            {run.error_message && run.status === 'failed' && (
+              <span className="text-destructive truncate max-w-[200px]" title={run.error_message}>
+                {run.error_message.slice(0, 60)}…
+              </span>
             )}
           </div>
         </div>
@@ -390,14 +397,20 @@ function StatusBadge({ status }: { status: string }) {
   const variants: Record<string, string> = {
     draft: 'bg-muted-foreground/20 text-muted-foreground',
     planned: 'bg-blue-500/20 text-blue-400',
-    running: 'bg-yellow-500/20 text-yellow-400',
+    queued: 'bg-blue-500/20 text-blue-400 animate-pulse',
+    running: 'bg-yellow-500/20 text-yellow-400 animate-pulse',
     stale: 'bg-orange-500/20 text-orange-400',
     completed: 'bg-green-500/20 text-green-400',
     failed: 'bg-destructive/20 text-destructive',
   };
+  const labels: Record<string, string> = {
+    queued: '⏳ queued',
+    stale: '⚠ stale',
+    running: '⚙ running',
+  };
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full ${variants[status] || variants.draft}`}>
-      {status === 'stale' ? '⚠ stale' : status}
+      {labels[status] || status}
     </span>
   );
 }

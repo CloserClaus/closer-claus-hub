@@ -40,6 +40,9 @@ export interface SignalRun {
   schedule_type: string;
   last_run_at: string | null;
   created_at: string;
+  started_at: string | null;
+  retry_count: number;
+  error_message: string | null;
 }
 
 export interface SignalLead {
@@ -81,11 +84,11 @@ export function useSignalScraper() {
       return (data || []) as unknown as SignalRun[];
     },
     enabled: !!currentWorkspace?.id,
-    // Poll every 5s when any run is in "running" status
+    // Poll every 5s when any run is queued or running
     refetchInterval: (query) => {
       const runs = query.state.data as SignalRun[] | undefined;
-      const hasRunning = runs?.some(r => r.status === 'running');
-      return hasRunning ? 5000 : false;
+      const hasActive = runs?.some(r => r.status === 'queued' || r.status === 'running');
+      return hasActive ? 5000 : false;
     },
   });
 
@@ -123,8 +126,8 @@ export function useSignalScraper() {
       return data;
     },
     onSuccess: (data) => {
-      if (data?.status === 'running') {
-        toast({ title: 'Signal Running', description: 'Scraping in background. Results will appear when complete.' });
+      if (data?.status === 'queued' || data?.status === 'running') {
+        toast({ title: 'Signal Queued', description: 'Your signal is in the queue. Results will appear shortly.' });
       } else {
         toast({ title: 'Signal Complete!', description: `${data.leads_discovered} leads discovered. ${data.credits_charged} credits charged.` });
       }
