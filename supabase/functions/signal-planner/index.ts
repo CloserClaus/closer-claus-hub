@@ -582,7 +582,7 @@ async function handleGeneratePlan(
     return p;
   });
 
-  // Aggregate cost estimation across all plans
+  // Aggregate cost estimation across all plans — override AI guesses with formula
   let totalEstimatedRows = 0;
   let totalCreditsToCharge = 0;
   let totalEstimatedLeads = 0;
@@ -591,6 +591,18 @@ async function handleGeneratePlan(
   for (const plan of plans) {
     const resolvedActor = getActor(plan.source)!;
     sourceLabels.push(resolvedActor.label);
+
+    // Formula-based estimation: count OR-separated keywords × actor's max results default
+    const keywords = plan.search_query ? plan.search_query.split(/\s+OR\s+/i) : [""];
+    const keywordCount = Math.max(1, keywords.length);
+    const maxField = Object.keys(resolvedActor.inputSchema).find(f => f.toLowerCase().includes("max"));
+    const maxPerKeyword = maxField
+      ? (plan.search_params?.[maxField] || resolvedActor.inputSchema[maxField]?.default || 100)
+      : 100;
+    // Each keyword gets maxPerKeyword/keywordCount results (since we split), so total ≈ maxPerKeyword
+    const formulaEstimatedRows = keywordCount * Math.max(50, Math.ceil(maxPerKeyword / keywordCount));
+    // Override AI's guess with formula-based estimate
+    plan.estimated_rows = formulaEstimatedRows;
 
     const scrapeCostUsd = (plan.estimated_rows / 1000) * 0.25;
     const aiFilterRows = plan.ai_classification ? plan.estimated_rows : 0;
@@ -601,7 +613,9 @@ async function handleGeneratePlan(
 
     totalEstimatedRows += plan.estimated_rows;
     totalCreditsToCharge += credits;
-    totalEstimatedLeads += plan.estimated_leads_after_filter || Math.floor(plan.estimated_rows * 0.15);
+    // Estimated leads: with AI filter ~30%, without ~60%
+    const filterRate = plan.ai_classification ? 0.3 : 0.6;
+    totalEstimatedLeads += plan.estimated_leads_after_filter || Math.floor(plan.estimated_rows * filterRate);
   }
 
   const costPerLead = totalEstimatedLeads > 0 ? (totalCreditsToCharge / totalEstimatedLeads).toFixed(1) : "N/A";
