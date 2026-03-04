@@ -91,7 +91,10 @@ async function processSignalRun(run: any, serviceClient: any) {
   if (!APIFY_API_TOKEN) throw new Error("APIFY_API_TOKEN not configured");
 
   const workspace_id = run.workspace_id;
-  const plan = run.signal_plan;
+
+  // Backward compat: signal_plan can be a single object (old) or array (new)
+  const storedPlan = run.signal_plan;
+  const plans: any[] = Array.isArray(storedPlan) ? storedPlan : [storedPlan];
 
   // Check credits
   const { data: credits } = await serviceClient
@@ -103,7 +106,6 @@ async function processSignalRun(run: any, serviceClient: any) {
   const balance = credits?.credits_balance || 0;
   if (balance < run.estimated_cost) {
     console.log(`Signal ${run.id}: Insufficient credits (${balance} < ${run.estimated_cost}), skipping`);
-    // Create notification for the user
     await serviceClient.from("notifications").insert({
       user_id: run.user_id,
       workspace_id,
@@ -114,59 +116,77 @@ async function processSignalRun(run: any, serviceClient: any) {
     return;
   }
 
-  const actorInfo = ACTOR_REGISTRY[plan.source];
-  if (!actorInfo) throw new Error(`Unknown source: ${plan.source}`);
+  let allRawResults: any[] = [];
+  let totalAiFilteredCount = 0;
 
-  // Check cache
-  const queryHash = btoa(JSON.stringify({ source: plan.source, query: plan.search_query, params: plan.search_params })).slice(0, 64);
-  const { data: cached } = await serviceClient
-    .from("signal_dataset_cache")
-    .select("*")
-    .eq("query_hash", queryHash)
-    .eq("source", plan.source)
-    .gte("created_at", new Date(Date.now() - 86400000).toISOString())
-    .maybeSingle();
-
-  let rawResults: any[] = [];
-
-  if (cached?.dataset) {
-    rawResults = cached.dataset;
-  } else {
-    const actorInput: Record<string, any> = {
-      searchStringsArray: [plan.search_query],
-      maxCrawledPlacesPerSearch: Math.min(plan.estimated_rows, 3000),
-      language: "en",
-      ...plan.search_params,
-    };
-
-    const runResponse = await fetch(
-      `https://api.apify.com/v2/acts/${actorInfo.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(actorInput),
-      }
-    );
-
-    if (!runResponse.ok) {
-      throw new Error(`Apify error [${runResponse.status}]`);
+  // Execute each source plan
+  for (const plan of plans) {
+    const actorInfo = ACTOR_REGISTRY[plan.source];
+    if (!actorInfo) {
+      console.error(`Unknown source: ${plan.source}, skipping`);
+      continue;
     }
 
-    rawResults = await runResponse.json();
+    // Check cache
+    const queryHash = btoa(JSON.stringify({ source: plan.source, query: plan.search_query, params: plan.search_params })).slice(0, 64);
+    const { data: cached } = await serviceClient
+      .from("signal_dataset_cache")
+      .select("*")
+      .eq("query_hash", queryHash)
+      .eq("source", plan.source)
+      .gte("created_at", new Date(Date.now() - 86400000).toISOString())
+      .maybeSingle();
 
-    await serviceClient.from("signal_dataset_cache").upsert({
-      query_hash: queryHash,
-      source: plan.source,
-      dataset: rawResults,
-      row_count: rawResults.length,
-    }, { onConflict: "query_hash,source" });
+    let sourceResults: any[] = [];
+
+    if (cached?.dataset) {
+      sourceResults = cached.dataset;
+    } else {
+      const actorInput: Record<string, any> = {
+        searchStringsArray: [plan.search_query],
+        maxCrawledPlacesPerSearch: plan.estimated_rows || 200,
+        language: "en",
+        ...plan.search_params,
+      };
+
+      // Add proxy for LinkedIn actors
+      if (plan.source === "linkedin_jobs" || plan.source === "linkedin_companies") {
+        actorInput.proxyConfiguration = { useApifyProxy: true };
+      }
+
+      const runResponse = await fetch(
+        `https://api.apify.com/v2/acts/${actorInfo.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(actorInput),
+        }
+      );
+
+      if (!runResponse.ok) {
+        console.error(`Apify error for ${plan.source} [${runResponse.status}]`);
+        continue; // Skip this source, try others
+      }
+
+      sourceResults = await runResponse.json();
+
+      await serviceClient.from("signal_dataset_cache").upsert({
+        query_hash: queryHash,
+        source: plan.source,
+        dataset: sourceResults,
+        row_count: sourceResults.length,
+      }, { onConflict: "query_hash,source" });
+    }
+
+    allRawResults.push(...sourceResults);
   }
 
-  // Apply filters
-  let filtered = rawResults;
-  if (plan.filters?.length > 0) {
-    filtered = rawResults.filter((item: any) => {
-      return plan.filters.every((f: any) => {
+  // Apply filters (use first plan's filters)
+  let filtered = allRawResults;
+  const filters = plans[0]?.filters;
+  if (filters?.length > 0) {
+    filtered = allRawResults.filter((item: any) => {
+      return filters.every((f: any) => {
         const val = item[f.field];
         if (val === undefined || val === null) return false;
         switch (f.operator) {
@@ -181,9 +201,9 @@ async function processSignalRun(run: any, serviceClient: any) {
     });
   }
 
-  // AI classification
-  let aiFilteredCount = 0;
-  if (plan.ai_classification && filtered.length > 0) {
+  // AI classification (use first plan's ai_classification)
+  const aiClassification = plans[0]?.ai_classification;
+  if (aiClassification && filtered.length > 0) {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (LOVABLE_API_KEY) {
       const batchSize = 20;
@@ -202,7 +222,7 @@ async function processSignalRun(run: any, serviceClient: any) {
               messages: [
                 {
                   role: "system",
-                  content: `You are a lead classifier. For each business in the list, determine if it matches this criteria: "${plan.ai_classification}". Return a JSON array of booleans, one per business. Only return the JSON array, nothing else.`,
+                  content: `You are a lead classifier. For each business in the list, determine if it matches this criteria: "${aiClassification}". Return a JSON array of booleans, one per business. Only return the JSON array, nothing else.`,
                 },
                 {
                   role: "user",
@@ -228,7 +248,7 @@ async function processSignalRun(run: any, serviceClient: any) {
             batch.forEach((item: any, idx: number) => {
               if (bools[idx]) classified.push(item);
             });
-            aiFilteredCount += batch.length;
+            totalAiFilteredCount += batch.length;
           } else {
             classified.push(...batch);
           }
@@ -300,7 +320,7 @@ async function processSignalRun(run: any, serviceClient: any) {
     phone: item.phone || item.telephone || null,
     linkedin: item.linkedin || item.linkedinUrl || null,
     location: item.address || item.city || item.location || null,
-    source: actorInfo.label,
+    source: ACTOR_REGISTRY[item._source || plans[0]?.source]?.label || "Unknown",
     extra_data: item,
   }));
 
@@ -320,11 +340,11 @@ async function processSignalRun(run: any, serviceClient: any) {
   }
 
   // Calculate actual cost
-  const scrapedRows = rawResults.length;
+  const scrapedRows = allRawResults.length;
   const scrapeCostUsd = (scrapedRows / 1000) * 0.25;
-  const aiFilterCostUsd = aiFilteredCount * 0.01;
+  const aiFilterCostUsd = totalAiFilteredCount * 0.001;
   const actualCostUsd = (scrapeCostUsd + aiFilterCostUsd) * 1.2;
-  const chargedPriceUsd = actualCostUsd / 0.05;
+  const chargedPriceUsd = actualCostUsd * 3;
   const actualCredits = Math.ceil(chargedPriceUsd * 5);
 
   // Deduct credits
