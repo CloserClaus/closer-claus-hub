@@ -3243,18 +3243,21 @@ export type Database = {
         Row: {
           actual_cost: number | null
           created_at: string
+          error_message: string | null
           estimated_cost: number
           estimated_leads: number | null
           id: string
           last_run_at: string | null
           leads_discovered: number | null
           next_run_at: string | null
+          retry_count: number | null
           run_log: Json | null
           schedule_hour: number | null
           schedule_type: string
           signal_name: string | null
           signal_plan: Json | null
           signal_query: string
+          started_at: string | null
           status: string
           updated_at: string
           user_id: string
@@ -3263,18 +3266,21 @@ export type Database = {
         Insert: {
           actual_cost?: number | null
           created_at?: string
+          error_message?: string | null
           estimated_cost?: number
           estimated_leads?: number | null
           id?: string
           last_run_at?: string | null
           leads_discovered?: number | null
           next_run_at?: string | null
+          retry_count?: number | null
           run_log?: Json | null
           schedule_hour?: number | null
           schedule_type?: string
           signal_name?: string | null
           signal_plan?: Json | null
           signal_query: string
+          started_at?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -3283,18 +3289,21 @@ export type Database = {
         Update: {
           actual_cost?: number | null
           created_at?: string
+          error_message?: string | null
           estimated_cost?: number
           estimated_leads?: number | null
           id?: string
           last_run_at?: string | null
           leads_discovered?: number | null
           next_run_at?: string | null
+          retry_count?: number | null
           run_log?: Json | null
           schedule_hour?: number | null
           schedule_type?: string
           signal_name?: string | null
           signal_plan?: Json | null
           signal_query?: string
+          started_at?: string | null
           status?: string
           updated_at?: string
           user_id?: string
