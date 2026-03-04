@@ -69,13 +69,15 @@ function normaliseResults(source: string, items: any[]): any[] {
     case "linkedin_jobs":
       return items.map((item) => ({
         company_name: item.companyName || item.company || null,
-        title: item.title || item.position || null,
-        website: item.companyUrl || item.companyLink || null,
-        linkedin: item.companyLinkedinUrl || item.companyUrl || null,
-        location: item.location || item.place || null,
+        title: item.jobTitle || item.title || item.position || null,
+        website: item.companyLink || item.companyUrl || null,
+        linkedin: item.companyLink || item.companyLinkedinUrl || item.companyUrl || null,
+        location: item.jobLocation || item.location || item.place || null,
         phone: null,
         email: item.email || item.contactEmail || null,
-        description: item.description || "",
+        description: item.jobDescription || item.description || "",
+        salary: item.salary || null,
+        apply_link: item.applyLink || null,
         _raw: item,
       }));
     case "linkedin_companies":
