@@ -329,7 +329,7 @@ function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun;
         <div className="space-y-1 flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm truncate">{run.signal_name || run.signal_query}</span>
-            <StatusBadge status={run.status} />
+            <StatusBadge status={isStale ? 'stale' : run.status} />
             {run.schedule_type === 'daily' && (
               <Badge variant="outline" className="text-xs"><Clock className="h-3 w-3 mr-1" />Daily</Badge>
             )}
