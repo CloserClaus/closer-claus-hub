@@ -1,31 +1,23 @@
 
 
-## Fix: Apify Actor URL Escaping + LinkedIn Companies Input
+## Diagnosis
 
-### Root Cause
+The database has the correct data — all 10 Bizvolve applications have `applicant_name` populated (verified via direct query). The root cause is a **code-level issue** in `JobDetail.tsx`:
 
-All 404 errors stem from a single issue: actor IDs with slashes (e.g., `sovereigntaylor/linkedin-jobs-scraper`) create broken URLs. The Apify API requires a tilde (`~`) instead of `/` for slug-format actor IDs.
+1. The query uses `select('*')` but the code accesses the fields via `(app as any).applicant_name` — a fragile pattern that can fail if TypeScript's type narrowing or Supabase's PostgREST response doesn't include these columns as expected.
+2. The published site may be running an older version of the code before the `applicant_name` fallback was added.
 
-The LinkedIn Companies 400 error is a separate issue: the actor requires `profileUrls` as input, but the catalog schema uses `urls` and `searchQuery`, neither of which match.
+## Plan
 
-### Changes
+### 1. Fix `JobDetail.tsx` — Use explicit column selection and typed access
 
-**1. `supabase/functions/signal-planner/index.ts`** (line 760)
+- Change the `select('*')` query to explicitly include `applicant_name, applicant_email` in the select string
+- Remove `(app as any)` casts — access `app.applicant_name` and `app.applicant_email` directly (these fields already exist in the generated Supabase types)
+- Add a hardcoded SDR level (1–2) fallback when profile lookup fails, instead of always defaulting to 1
 
-Replace the Apify fetch URL to escape `/` → `~`:
-```typescript
-const safeActorId = actor.actorId.replace("/", "~");
-`https://api.apify.com/v2/acts/${safeActorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`
-```
+### 2. Fix `ApplicationsTable.tsx` — Same pattern fix
 
-Update `linkedin_companies` inputSchema to use `profileUrls` instead of `urls`, matching what the actor actually requires. Remove `searchQuery` since the actor doesn't support text search — it only accepts LinkedIn company URLs.
+- Same change: remove `(app as any)` casts, use typed `a.applicant_name` and `a.applicant_email` directly since the types already include them
 
-**2. `supabase/functions/process-daily-signals/index.ts`** (line 158)
-
-Same URL escaping fix:
-```typescript
-const safeActorId = actorInfo.actorId.replace("/", "~");
-```
-
-These are two small, surgical fixes. The URL escaping is backward-compatible since hash-based IDs like `nwua9Gu5YrADL7ZDj` contain no `/`.
+These are small, surgical changes to two files. Once saved, the preview and published site will correctly display applicant names from the denormalized columns without depending on profile/workspace membership lookups.
 

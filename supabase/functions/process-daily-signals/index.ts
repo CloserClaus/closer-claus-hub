@@ -155,7 +155,7 @@ async function processSignalRun(run: any, serviceClient: any) {
       }
 
       const runResponse = await fetch(
-        `https://api.apify.com/v2/acts/${actorInfo.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
+        `https://api.apify.com/v2/acts/${actorInfo.actorId.replace("/", "~")}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

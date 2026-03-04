@@ -179,8 +179,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     category: "company_data",
     description: "Scrapes LinkedIn company profiles. Best for enriching companies found from other sources. Returns employee count, industry, headquarters.",
     inputSchema: {
-      urls:        { type: "string[]", description: "Array of LinkedIn company URLs" },
-      searchQuery: { type: "string",   description: "OR a text search query" },
+      profileUrls: { type: "string[]", required: true, description: "Array of LinkedIn company profile URLs to scrape" },
       maxResults:  { type: "number",   default: 100, description: "Max results" },
     },
     outputFields: {
@@ -757,7 +756,7 @@ async function handleExecuteSignal(
           let runResponse: Response;
           try {
             runResponse = await fetch(
-              `https://api.apify.com/v2/acts/${actor.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
+              `https://api.apify.com/v2/acts/${actor.actorId.replace("/", "~")}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
