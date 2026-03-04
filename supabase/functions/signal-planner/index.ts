@@ -648,39 +648,17 @@ async function handleGeneratePlan(
 // ════════════════════════════════════════════════════════════════
 
 async function handleExecuteSignal(
-  params: { run_id: string; workspace_id: string; schedule_type?: string; schedule_hour?: number },
-  userId: string,
+  run: any,
+  workspace_id: string,
+  balance: number,
   serviceClient: any
 ) {
-  const { run_id, workspace_id, schedule_type, schedule_hour } = params;
+  const run_id = run.id;
   const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN");
   if (!APIFY_API_TOKEN) throw new Error("APIFY_API_TOKEN not configured");
 
   const runLog: any[] = [];
   const log = (step: string, data: any) => runLog.push({ step, ts: new Date().toISOString(), ...data });
-
-  const { data: run, error: runError } = await serviceClient
-    .from("signal_runs")
-    .select("*")
-    .eq("id", run_id)
-    .single();
-
-  if (runError || !run) throw new Error("Signal run not found");
-  if (run.user_id !== userId) throw new Error("Unauthorized");
-
-  const { data: credits } = await serviceClient
-    .from("lead_credits")
-    .select("credits_balance")
-    .eq("workspace_id", workspace_id)
-    .maybeSingle();
-
-  const balance = credits?.credits_balance || 0;
-  if (balance < run.estimated_cost) {
-    return new Response(
-      JSON.stringify({ error: `Insufficient credits. Need ${run.estimated_cost}, have ${balance}.` }),
-      { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
 
   await serviceClient
     .from("signal_runs")
