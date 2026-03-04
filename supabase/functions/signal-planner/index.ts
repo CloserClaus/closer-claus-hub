@@ -437,8 +437,9 @@ async function handleExecuteSignal(
       rawResults = await runResponse.json();
       log("apify_response", { rows: rawResults.length });
 
-      // Cache the dataset
-      if (rawResults.length > 0) {
+      // Cache the dataset — but NOT error responses
+      const isValidData = rawResults.length > 0 && !rawResults[0]?.error;
+      if (isValidData) {
         await serviceClient.from("signal_dataset_cache").upsert({
           query_hash: queryHash,
           source: plan.source,
