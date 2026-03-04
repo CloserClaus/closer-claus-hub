@@ -475,10 +475,10 @@ async function handleExecuteSignal(
     // Step 7: Calculate actual cost and deduct credits
     const scrapedRows = rawResults.length;
     const scrapeCostUsd = (scrapedRows / 1000) * 0.25;
-    const aiFilterCostUsd = aiFilteredCount * 0.01;
+    const aiFilterCostUsd = aiFilteredCount * 0.001;
     const actualCostUsd = (scrapeCostUsd + aiFilterCostUsd) * 1.2;
-    const chargedPriceUsd = actualCostUsd / 0.05;
-    const actualCredits = Math.ceil(chargedPriceUsd * 5);
+    const chargedPriceUsd = actualCostUsd * 3;
+    const actualCredits = Math.max(5, Math.ceil(chargedPriceUsd * 5));
 
     // Deduct credits
     await serviceClient.rpc("", {}).catch(() => {}); // no rpc needed, direct update
