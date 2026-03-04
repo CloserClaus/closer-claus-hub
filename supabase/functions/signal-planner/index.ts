@@ -647,7 +647,11 @@ async function handleExecuteSignal(
     // ── Step 0: Split compound keywords ──
     const keywordFields = ["keyword", "search", "searchQuery"];
     const keywordField = keywordFields.find(f => actor.inputSchema[f]);
-    const rawKeyword = plan.search_params?.[keywordField!] || plan.search_query || "";
+    // Prefer search_query (which has OR-separated variations) over search_params keyword
+    const searchQueryHasOR = plan.search_query && /\s+OR\s+/i.test(plan.search_query);
+    const rawKeyword = searchQueryHasOR
+      ? plan.search_query
+      : (plan.search_params?.[keywordField!] || plan.search_query || "");
     const keywords = splitCompoundKeywords(rawKeyword);
     const isMultiKeyword = keywords.length > 1;
     
