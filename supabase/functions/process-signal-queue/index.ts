@@ -594,7 +594,15 @@ async function phaseStarting(run: any, serviceClient: any) {
       }
 
       const actorInput = buildGenericInput(actor, iterPlan);
+      // LinkedIn requires residential proxies to avoid blocking
       if (actor.key === "linkedin_jobs" || actor.key === "linkedin_companies") {
+        actorInput.proxyConfiguration = {
+          useApifyProxy: true,
+          apifyProxyGroups: ["RESIDENTIAL"],
+          apifyProxyCountry: "US",
+        };
+      } else if (!actorInput.proxyConfiguration) {
+        // Default proxy for all other actors
         actorInput.proxyConfiguration = { useApifyProxy: true };
       }
 
