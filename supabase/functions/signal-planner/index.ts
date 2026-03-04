@@ -73,6 +73,7 @@ function normaliseResults(source: string, items: any[]): any[] {
         linkedin: item.companyLinkedinUrl || item.companyUrl || null,
         location: item.location || item.place || null,
         phone: null,
+        email: item.email || item.contactEmail || null,
         description: item.description || "",
         _raw: item,
       }));
@@ -83,6 +84,7 @@ function normaliseResults(source: string, items: any[]): any[] {
         linkedin: item.linkedinUrl || item.url || null,
         location: item.headquarters || item.location || null,
         phone: item.phone || null,
+        email: item.email || null,
         description: item.description || item.tagline || "",
         employee_count: item.employeeCount || item.staffCount || null,
         _raw: item,
@@ -94,6 +96,7 @@ function normaliseResults(source: string, items: any[]): any[] {
         linkedin: null,
         location: item.address || item.city || null,
         phone: item.phone || item.telephone || null,
+        email: item.email || item.emails?.[0] || null,
         description: item.description || item.categoryName || "",
         _raw: item,
       }));
@@ -104,6 +107,7 @@ function normaliseResults(source: string, items: any[]): any[] {
         linkedin: null,
         location: item.address || item.neighborhood || null,
         phone: item.phone || null,
+        email: item.email || null,
         description: item.categories?.join(", ") || "",
         _raw: item,
       }));
@@ -114,6 +118,7 @@ function normaliseResults(source: string, items: any[]): any[] {
         linkedin: item.linkedin || item.linkedinUrl || null,
         location: item.address || item.city || item.location || null,
         phone: item.phone || item.telephone || null,
+        email: item.email || null,
         description: item.description || "",
         _raw: item,
       }));
