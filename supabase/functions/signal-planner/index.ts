@@ -7,126 +7,340 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const APIFY_ACTOR_MAP: Record<string, { actorId: string; label: string }> = {
-  google_maps: { actorId: "nwua9Gu5YrADL7ZDj", label: "Google Maps" },
-  linkedin_jobs: { actorId: "AtsAgajsFjMVfxXJZ", label: "LinkedIn Jobs" },
-  linkedin_companies: { actorId: "2SyF0bVxmgGr8IVCZ", label: "LinkedIn Companies" },
-  google_search: { actorId: "nFJndFXA5zjCTuudP", label: "Google Search" },
-  yelp: { actorId: "yin5oHQaJGRfmJhlN", label: "Yelp" },
-};
+// ════════════════════════════════════════════════════════════════
+// ██  ACTOR CATALOG — the single source of truth for all actors
+// ════════════════════════════════════════════════════════════════
 
-// ── Actor-specific input builders with REAL Apify schemas ──
-function buildActorInput(source: string, plan: any): Record<string, any> {
+interface InputField {
+  type: "string" | "number" | "boolean" | "string[]" | "enum";
+  required?: boolean;
+  default?: any;
+  max?: number;
+  values?: string[];
+  description: string;
+}
+
+interface ActorEntry {
+  key: string;
+  actorId: string;
+  label: string;
+  category: string;
+  description: string;
+  inputSchema: Record<string, InputField>;
+  outputFields: Record<string, string[]>;
+}
+
+const ACTOR_CATALOG: ActorEntry[] = [
+  // ── Hiring Intent ──
+  {
+    key: "linkedin_jobs",
+    actorId: "AtsAgajsFjMVfxXJZ",
+    label: "LinkedIn Jobs",
+    category: "hiring_intent",
+    description: "Scrapes LinkedIn job postings. Best for hiring intent — find companies actively hiring for specific roles like SDRs, sales reps, marketers, etc.",
+    inputSchema: {
+      keyword:        { type: "string",  required: true, description: "Job search keyword (e.g. 'sales representative')" },
+      location:       { type: "string",  default: "United States", description: "Location filter" },
+      maxResults:     { type: "number",  default: 100, max: 500, description: "Max job listings to scrape" },
+      timePosted:     { type: "enum",    values: ["pastDay", "pastWeek", "pastMonth"], default: "pastWeek", description: "Recency filter" },
+      scrapeJobDetails: { type: "boolean", default: true, description: "Include full job descriptions" },
+    },
+    outputFields: {
+      company_name: ["companyName", "company"],
+      title:        ["jobTitle", "title", "position"],
+      website:      ["companyLink", "companyUrl"],
+      linkedin:     ["companyLink", "companyLinkedinUrl", "companyUrl"],
+      location:     ["jobLocation", "location", "place"],
+      phone:        [],
+      email:        ["email", "contactEmail"],
+      description:  ["jobDescription", "description"],
+      salary:       ["salary"],
+      apply_link:   ["applyLink"],
+    },
+  },
+  {
+    key: "indeed_jobs",
+    actorId: "curious_coder/indeed-scraper",
+    label: "Indeed Jobs",
+    category: "hiring_intent",
+    description: "Scrapes Indeed job postings. Broader job board coverage than LinkedIn. Good for finding SMBs hiring in specific locations.",
+    inputSchema: {
+      keyword:    { type: "string",  required: true, description: "Job search keyword" },
+      location:   { type: "string",  default: "United States", description: "Location filter" },
+      maxItems:   { type: "number",  default: 100, max: 500, description: "Max results" },
+      datePosted: { type: "enum",    values: ["today", "3days", "7days", "14days"], default: "7days", description: "Recency" },
+    },
+    outputFields: {
+      company_name: ["company", "companyName"],
+      title:        ["positionName", "title", "jobTitle"],
+      website:      ["companyUrl", "url"],
+      linkedin:     [],
+      location:     ["location", "jobLocation"],
+      phone:        [],
+      email:        [],
+      description:  ["description", "jobDescription"],
+      salary:       ["salary"],
+      apply_link:   ["url", "applyLink"],
+    },
+  },
+
+  // ── Local Business ──
+  {
+    key: "google_maps",
+    actorId: "nwua9Gu5YrADL7ZDj",
+    label: "Google Maps",
+    category: "local_business",
+    description: "Scrapes Google Maps places. Best for local businesses, agencies, service providers. Returns phone, website, reviews, ratings.",
+    inputSchema: {
+      searchStringsArray:           { type: "string[]", required: true, description: "Search queries (auto-set from search_query)" },
+      maxCrawledPlacesPerSearch:     { type: "number",   default: 200, max: 3000, description: "Max places per search" },
+      language:                      { type: "string",   default: "en", description: "Language code" },
+      locationQuery:                 { type: "string",   description: "Optional city/state/country filter" },
+    },
+    outputFields: {
+      company_name: ["title", "name"],
+      website:      ["website", "url"],
+      linkedin:     [],
+      location:     ["address", "city", "location"],
+      phone:        ["phone", "telephone"],
+      email:        ["email", "emails"],
+      description:  ["description", "categoryName"],
+    },
+  },
+  {
+    key: "yelp",
+    actorId: "yin5oHQaJGRfmJhlN",
+    label: "Yelp",
+    category: "local_business",
+    description: "Scrapes Yelp business listings. Good for local service businesses with review data.",
+    inputSchema: {
+      searchTerms: { type: "string[]", required: true, description: "Search queries (auto-set)" },
+      locations:   { type: "string[]", default: ["United States"], description: "City names to search" },
+      maxItems:    { type: "number",   default: 200, max: 1000, description: "Max items" },
+    },
+    outputFields: {
+      company_name: ["name", "title"],
+      website:      ["website", "url"],
+      linkedin:     [],
+      location:     ["address", "neighborhood"],
+      phone:        ["phone"],
+      email:        ["email"],
+      description:  ["categories"],
+    },
+  },
+  {
+    key: "yellow_pages",
+    actorId: "trudax/yellow-pages-us-scraper",
+    label: "Yellow Pages",
+    category: "local_business",
+    description: "Scrapes Yellow Pages US listings. Traditional business directory with addresses and phone numbers.",
+    inputSchema: {
+      search:   { type: "string", required: true, description: "Business category to search" },
+      location: { type: "string", required: true, description: "City, state or zip code" },
+      maxItems: { type: "number", default: 200, max: 1000, description: "Max results" },
+    },
+    outputFields: {
+      company_name: ["name", "businessName", "title"],
+      website:      ["website", "url"],
+      linkedin:     [],
+      location:     ["address", "fullAddress", "city"],
+      phone:        ["phone", "phoneNumber"],
+      email:        ["email"],
+      description:  ["categories", "description"],
+    },
+  },
+
+  // ── Company Data ──
+  {
+    key: "linkedin_companies",
+    actorId: "2SyF0bVxmgGr8IVCZ",
+    label: "LinkedIn Companies",
+    category: "company_data",
+    description: "Scrapes LinkedIn company profiles. Best for enriching companies found from other sources. Returns employee count, industry, headquarters.",
+    inputSchema: {
+      urls:        { type: "string[]", description: "Array of LinkedIn company URLs" },
+      searchQuery: { type: "string",   description: "OR a text search query" },
+      maxResults:  { type: "number",   default: 100, max: 500, description: "Max results" },
+    },
+    outputFields: {
+      company_name:   ["name", "title"],
+      website:        ["website", "url"],
+      linkedin:       ["linkedinUrl", "url"],
+      location:       ["headquarters", "location"],
+      phone:          ["phone"],
+      email:          ["email"],
+      description:    ["description", "tagline"],
+      employee_count: ["employeeCount", "staffCount"],
+    },
+  },
+
+  // ── Web Search ──
+  {
+    key: "google_search",
+    actorId: "nFJndFXA5zjCTuudP",
+    label: "Google Search",
+    category: "web_search",
+    description: "Scrapes Google Search results. Good for finding specific types of companies via targeted Google queries. Returns titles, URLs, descriptions.",
+    inputSchema: {
+      queries:          { type: "string[]", required: true, description: "Search queries (auto-set)" },
+      maxPagesPerQuery: { type: "number",   default: 3, max: 10, description: "Pages per query" },
+      resultsPerPage:   { type: "number",   default: 10, max: 100, description: "Results per page" },
+    },
+    outputFields: {
+      company_name: ["title"],
+      website:      ["url", "link"],
+      linkedin:     [],
+      location:     [],
+      phone:        [],
+      email:        [],
+      description:  ["description", "snippet"],
+    },
+  },
+];
+
+// ── Lookup helpers ──
+const CATALOG_BY_KEY = new Map(ACTOR_CATALOG.map((a) => [a.key, a]));
+
+function getActor(key: string): ActorEntry | undefined {
+  return CATALOG_BY_KEY.get(key);
+}
+
+// ════════════════════════════════════════════════════════════════
+// ██  GENERIC INPUT BUILDER — driven by catalog inputSchema
+// ════════════════════════════════════════════════════════════════
+
+function buildGenericInput(actor: ActorEntry, plan: any): Record<string, any> {
   const sp = plan.search_params || {};
-  switch (source) {
-    case "linkedin_jobs":
-      return {
-        keyword: sp.keyword || plan.search_query,
-        location: sp.location || "United States",
-        timePosted: sp.timePosted || "pastWeek",
-        maxResults: Math.min(sp.rows || sp.maxResults || plan.estimated_rows || 100, 500),
-        scrapeJobDetails: true,
-        proxy: { useApifyProxy: true },
-      };
-    case "linkedin_companies":
-      return {
-        urls: sp.urls || [],
-        searchQuery: sp.searchQuery || plan.search_query,
-        maxResults: Math.min(sp.maxResults || plan.estimated_rows || 100, 500),
-        proxy: { useApifyProxy: true },
-      };
-    case "google_maps":
-      return {
-        searchStringsArray: [plan.search_query],
-        maxCrawledPlacesPerSearch: Math.min(plan.estimated_rows || 200, 3000),
-        language: "en",
-        ...(sp.locationQuery ? { locationQuery: sp.locationQuery } : {}),
-      };
-    case "google_search":
-      return {
-        queries: sp.queries || [plan.search_query],
-        maxPagesPerQuery: sp.maxPagesPerQuery || 3,
-        resultsPerPage: sp.resultsPerPage || 10,
-      };
-    case "yelp":
-      return {
-        searchTerms: [plan.search_query],
-        locations: sp.locations || ["United States"],
-        maxItems: Math.min(plan.estimated_rows || 200, 1000),
-      };
-    default:
-      return {
-        searchStringsArray: [plan.search_query],
-        maxCrawledPlacesPerSearch: Math.min(plan.estimated_rows || 200, 3000),
-        language: "en",
-      };
+  const result: Record<string, any> = {};
+
+  for (const [field, schema] of Object.entries(actor.inputSchema)) {
+    let value = sp[field];
+
+    // Auto-fill array fields from search_query
+    if (value === undefined && schema.type === "string[]" && schema.required) {
+      value = [plan.search_query];
+    }
+    // Auto-fill required string from search_query
+    if (value === undefined && schema.type === "string" && schema.required) {
+      value = plan.search_query;
+    }
+    // Apply default
+    if (value === undefined && schema.default !== undefined) {
+      value = schema.default;
+    }
+
+    if (value === undefined) continue;
+
+    // Enforce max
+    if (schema.type === "number" && schema.max && typeof value === "number") {
+      value = Math.min(value, schema.max);
+    }
+    // Enforce enum
+    if (schema.type === "enum" && schema.values && !schema.values.includes(value)) {
+      value = schema.default;
+    }
+
+    result[field] = value;
   }
+
+  return result;
 }
 
-// ── Normalise raw results from different actors into a common shape ──
-function normaliseResults(source: string, items: any[]): any[] {
-  switch (source) {
-    case "linkedin_jobs":
-      return items.map((item) => ({
-        company_name: item.companyName || item.company || null,
-        title: item.jobTitle || item.title || item.position || null,
-        website: item.companyLink || item.companyUrl || null,
-        linkedin: item.companyLink || item.companyLinkedinUrl || item.companyUrl || null,
-        location: item.jobLocation || item.location || item.place || null,
-        phone: null,
-        email: item.email || item.contactEmail || null,
-        description: item.jobDescription || item.description || "",
-        salary: item.salary || null,
-        apply_link: item.applyLink || null,
-        _raw: item,
-      }));
-    case "linkedin_companies":
-      return items.map((item) => ({
-        company_name: item.name || item.title || null,
-        website: item.website || item.url || null,
-        linkedin: item.linkedinUrl || item.url || null,
-        location: item.headquarters || item.location || null,
-        phone: item.phone || null,
-        email: item.email || null,
-        description: item.description || item.tagline || "",
-        employee_count: item.employeeCount || item.staffCount || null,
-        _raw: item,
-      }));
-    case "google_maps":
-      return items.map((item) => ({
-        company_name: item.title || item.name || null,
-        website: item.website || item.url || null,
-        linkedin: null,
-        location: item.address || item.city || null,
-        phone: item.phone || item.telephone || null,
-        email: item.email || item.emails?.[0] || null,
-        description: item.description || item.categoryName || "",
-        _raw: item,
-      }));
-    case "yelp":
-      return items.map((item) => ({
-        company_name: item.name || item.title || null,
-        website: item.website || item.url || null,
-        linkedin: null,
-        location: item.address || item.neighborhood || null,
-        phone: item.phone || null,
-        email: item.email || null,
-        description: item.categories?.join(", ") || "",
-        _raw: item,
-      }));
-    default:
-      return items.map((item) => ({
-        company_name: item.title || item.name || item.company_name || null,
-        website: item.website || item.url || null,
-        linkedin: item.linkedin || item.linkedinUrl || null,
-        location: item.address || item.city || item.location || null,
-        phone: item.phone || item.telephone || null,
-        email: item.email || null,
-        description: item.description || "",
-        _raw: item,
-      }));
-  }
+// ════════════════════════════════════════════════════════════════
+// ██  GENERIC RESULT NORMALIZER — driven by catalog outputFields
+// ════════════════════════════════════════════════════════════════
+
+function normaliseGenericResults(actor: ActorEntry, items: any[]): any[] {
+  return items.map((item) => {
+    const normalised: Record<string, any> = {};
+
+    for (const [outputKey, sourcePaths] of Object.entries(actor.outputFields)) {
+      let value: any = null;
+      for (const path of sourcePaths) {
+        const v = item[path];
+        if (v !== undefined && v !== null && v !== "") {
+          // Handle arrays (e.g. emails: ["a@b.com"])
+          value = Array.isArray(v) ? v[0] : v;
+          // Handle category arrays for description (e.g. categories: ["Plumbing", "HVAC"])
+          if (Array.isArray(v) && outputKey === "description") {
+            value = v.join(", ");
+          }
+          break;
+        }
+      }
+      normalised[outputKey] = value;
+    }
+
+    normalised._raw = item;
+    return normalised;
+  });
 }
+
+// ════════════════════════════════════════════════════════════════
+// ██  BUILD AI SYSTEM PROMPT — includes full catalog for selection
+// ════════════════════════════════════════════════════════════════
+
+function buildPlannerSystemPrompt(): string {
+  const catalogDescription = ACTOR_CATALOG.map((actor, idx) => {
+    const params = Object.entries(actor.inputSchema)
+      .map(([name, s]) => {
+        let desc = `${name} (${s.type}${s.required ? ", REQUIRED" : ""})`;
+        if (s.default !== undefined) desc += ` [default: ${JSON.stringify(s.default)}]`;
+        if (s.max) desc += ` [max: ${s.max}]`;
+        if (s.values) desc += ` [values: ${s.values.join(", ")}]`;
+        desc += ` — ${s.description}`;
+        return `     ${desc}`;
+      })
+      .join("\n");
+
+    const outputs = Object.entries(actor.outputFields)
+      .filter(([, paths]) => paths.length > 0)
+      .map(([key, paths]) => `     ${key} ← ${paths.join(" | ")}`)
+      .join("\n");
+
+    return `${idx + 1}. key: "${actor.key}" — ${actor.label} [${actor.category}]
+   ${actor.description}
+   Input params:
+${params}
+   Output fields:
+${outputs}`;
+  }).join("\n\n");
+
+  return `You are a lead generation signal planner. Given a user's description of leads they want, create a structured scraping plan.
+
+AVAILABLE ACTORS (use ONLY these actor keys and ONLY the listed input params):
+
+${catalogDescription}
+
+RULES:
+- You MUST pick an actor_key from the list above.
+- search_params MUST only contain fields listed in that actor's Input params.
+- For hiring intent queries (companies hiring X role), use "linkedin_jobs" or "indeed_jobs".
+- For local/service businesses, use "google_maps" or "yelp".
+- For company enrichment, use "linkedin_companies".
+- For general web discovery, use "google_search".
+- ai_classification is a text description of an AI filter applied AFTER scraping. Use it to narrow results by company type, size, or relevance.
+- You may suggest multiple sources by returning a SINGLE plan with the BEST-fit source. The user can modify later.
+
+Return a JSON object with this exact structure:
+{
+  "signal_name": "short descriptive name",
+  "source": "<actor_key from list above>",
+  "search_query": "the main search term",
+  "search_params": { ONLY valid params for the chosen actor },
+  "fields_to_collect": ["field1", "field2"],
+  "filters": [{"field": "field_name", "operator": "<|>|=|contains|not_contains", "value": "value"}],
+  "ai_classification": "description of AI check to run on each result, or null if not needed",
+  "estimated_rows": number between 50-3000,
+  "estimated_leads_after_filter": number
+}
+
+Be realistic with estimates. Always return valid JSON only, no markdown.`;
+}
+
+// ════════════════════════════════════════════════════════════════
+// ██  MAIN HANDLER
+// ════════════════════════════════════════════════════════════════
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -171,6 +385,10 @@ serve(async (req) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════════
+// ██  GENERATE PLAN
+// ════════════════════════════════════════════════════════════════
+
 async function handleGeneratePlan(
   params: { query: string; workspace_id: string; plan_override?: any },
   userId: string,
@@ -180,56 +398,7 @@ async function handleGeneratePlan(
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-  const systemPrompt = `You are a lead generation signal planner. Given a user's description of leads they want, create a structured scraping plan.
-
-Available data sources with their EXACT Apify input parameters:
-
-1. "google_maps" — Google Maps Places scraper
-   Input: searchStringsArray (auto-set), maxCrawledPlacesPerSearch, language, locationQuery (optional city/state filter)
-   Returns: title, website, phone, address, categoryName, totalScore, reviewsCount
-   Best for: Local businesses, agencies, service providers
-
-2. "linkedin_jobs" — LinkedIn Job Postings scraper
-   Input: keyword (job search term), location (city/country), timePosted ("pastDay" | "pastWeek" | "pastMonth"), maxResults (max results, up to 500), scrapeJobDetails (true/false)
-   Returns: jobTitle, companyName, companyLink, jobLocation, jobDescription, salary, applyLink
-   Best for: Hiring intent signals — companies actively hiring for roles
-
-3. "linkedin_companies" — LinkedIn Company Profiles scraper
-   Input: urls (array of LinkedIn company URLs) OR searchQuery, maxResults
-   Returns: name, website, headquarters, employeeCount, description, industry
-   Best for: Enriching company data after finding them from another source
-
-4. "google_search" — Google Search results scraper
-   Input: queries (array of search strings), maxPagesPerQuery, resultsPerPage
-   Returns: title, url, description
-   Best for: Finding specific types of companies via Google
-
-5. "yelp" — Yelp Business scraper
-   Input: searchTerms (array), locations (array of city names), maxItems
-   Returns: name, phone, address, categories, website
-   Best for: Local service businesses with reviews
-
-IMPORTANT RULES FOR search_params:
-- Only use parameter names listed above for each source
-- For linkedin_jobs: "keyword" is the job search term, NOT the company type
-- For hiring intent signals: use linkedin_jobs with job-related keywords (e.g. "sales representative", "SDR", "account executive")
-- For finding local businesses directly: use google_maps
-- ai_classification is a text description of an AI filter to apply AFTER scraping. Use it to filter by company type, size, relevance, etc.
-
-Return a JSON object with this exact structure:
-{
-  "signal_name": "short descriptive name",
-  "source": "one of: google_maps, linkedin_jobs, linkedin_companies, google_search, yelp",
-  "search_query": "the main search term",
-  "search_params": { ONLY valid params for the chosen source },
-  "fields_to_collect": ["field1", "field2"],
-  "filters": [{"field": "field_name", "operator": "<|>|=|contains|not_contains", "value": "value"}],
-  "ai_classification": "description of AI check to run on each result, or null if not needed",
-  "estimated_rows": number between 50-3000,
-  "estimated_leads_after_filter": number
-}
-
-Be realistic with estimates. Always return valid JSON only, no markdown.`;
+  const systemPrompt = buildPlannerSystemPrompt();
 
   const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -279,10 +448,14 @@ Be realistic with estimates. Always return valid JSON only, no markdown.`;
     if (plan_override.ai_classification) plan.ai_classification = plan_override.ai_classification;
   }
 
-  // Validate source
-  if (!APIFY_ACTOR_MAP[plan.source]) {
+  // Validate actor key exists in catalog
+  const actor = getActor(plan.source);
+  if (!actor) {
+    // Fallback: try to find a reasonable match
+    console.warn(`AI selected unknown actor "${plan.source}", falling back to google_maps`);
     plan.source = "google_maps";
   }
+  const resolvedActor = getActor(plan.source)!;
 
   // Safety limits
   if (plan.estimated_rows > 3000) {
@@ -342,12 +515,16 @@ Be realistic with estimates. Always return valid JSON only, no markdown.`;
         estimated_leads: estimatedLeads,
         credits_to_charge: creditsToCharge,
         cost_per_lead: costPerLead,
-        source_label: APIFY_ACTOR_MAP[plan.source]?.label || plan.source,
+        source_label: resolvedActor.label,
       },
     }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
 }
+
+// ════════════════════════════════════════════════════════════════
+// ██  EXECUTE SIGNAL
+// ════════════════════════════════════════════════════════════════
 
 async function handleExecuteSignal(
   params: { run_id: string; workspace_id: string; schedule_type?: string; schedule_hour?: number },
@@ -395,8 +572,8 @@ async function handleExecuteSignal(
     .eq("id", run_id);
 
   const plan = run.signal_plan;
-  const actorInfo = APIFY_ACTOR_MAP[plan.source];
-  if (!actorInfo) throw new Error(`Unknown source: ${plan.source}`);
+  const actor = getActor(plan.source);
+  if (!actor) throw new Error(`Unknown actor key: ${plan.source}`);
 
   try {
     // ── Step 1: Check dataset cache ──
@@ -415,12 +592,12 @@ async function handleExecuteSignal(
       rawResults = cached.dataset;
       log("cache_hit", { rows: rawResults.length });
     } else {
-      // ── Step 2: Build actor-specific input and run Apify ──
-      const actorInput = buildActorInput(plan.source, plan);
-      log("apify_request", { actor: actorInfo.actorId, source: plan.source, input: actorInput });
+      // ── Step 2: Build input generically from catalog and run Apify ──
+      const actorInput = buildGenericInput(actor, plan);
+      log("apify_request", { actor_key: actor.key, actorId: actor.actorId, input: actorInput });
 
       const runResponse = await fetch(
-        `https://api.apify.com/v2/acts/${actorInfo.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
+        `https://api.apify.com/v2/acts/${actor.actorId}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -437,7 +614,7 @@ async function handleExecuteSignal(
       rawResults = await runResponse.json();
       log("apify_response", { rows: rawResults.length });
 
-      // Cache the dataset — but NOT error responses
+      // Cache only valid data (not error responses)
       const isValidData = rawResults.length > 0 && !rawResults[0]?.error;
       if (isValidData) {
         await serviceClient.from("signal_dataset_cache").upsert({
@@ -449,8 +626,8 @@ async function handleExecuteSignal(
       }
     }
 
-    // ── Step 3: Normalise results ──
-    const normalised = normaliseResults(plan.source, rawResults);
+    // ── Step 3: Normalise results generically from catalog ──
+    const normalised = normaliseGenericResults(actor, rawResults);
     log("normalised", { count: normalised.length });
 
     // ── Step 4: Apply non-AI filters ──
@@ -596,7 +773,7 @@ async function handleExecuteSignal(
       email: item.email || null,
       linkedin: item.linkedin || null,
       location: item.location || null,
-      source: actorInfo.label,
+      source: actor.label,
       extra_data: item._raw || item,
     }));
 
@@ -623,13 +800,12 @@ async function handleExecuteSignal(
     const chargedPriceUsd = actualCostUsd * 3;
     let actualCredits = Math.max(5, Math.ceil(chargedPriceUsd * 5));
 
-    // Zero-result credit protection: don't charge if no leads found
+    // Zero-result credit protection
     if (uniqueLeads.length === 0) {
       actualCredits = 0;
       log("zero_result_protection", { message: "No leads discovered, credits not charged" });
     }
 
-    // Deduct credits only if > 0
     if (actualCredits > 0) {
       const { error: creditError } = await serviceClient
         .from("lead_credits")
@@ -640,7 +816,6 @@ async function handleExecuteSignal(
 
     log("complete", { leads: uniqueLeads.length, credits: actualCredits });
 
-    // Update run status with log
     await serviceClient
       .from("signal_runs")
       .update({
