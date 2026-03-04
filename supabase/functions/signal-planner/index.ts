@@ -9,7 +9,7 @@ const corsHeaders = {
 
 const APIFY_ACTOR_MAP: Record<string, { actorId: string; label: string }> = {
   google_maps: { actorId: "nwua9Gu5YrADL7ZDj", label: "Google Maps" },
-  linkedin_jobs: { actorId: "hMvNSpz3JnHgl5jkh", label: "LinkedIn Jobs" },
+  linkedin_jobs: { actorId: "AtsAgajsFjMVfxXJZ", label: "LinkedIn Jobs" },
   linkedin_companies: { actorId: "2SyF0bVxmgGr8IVCZ", label: "LinkedIn Companies" },
   google_search: { actorId: "nFJndFXA5zjCTuudP", label: "Google Search" },
   yelp: { actorId: "yin5oHQaJGRfmJhlN", label: "Yelp" },
@@ -22,9 +22,10 @@ function buildActorInput(source: string, plan: any): Record<string, any> {
     case "linkedin_jobs":
       return {
         keyword: sp.keyword || plan.search_query,
-        location: sp.location || "",
-        timePosted: sp.timePosted || "pastWeek",       // pastDay | pastWeek | pastMonth
-        rows: Math.min(sp.rows || plan.estimated_rows || 100, 500),
+        location: sp.location || "United States",
+        timePosted: sp.timePosted || "pastWeek",
+        maxResults: Math.min(sp.rows || sp.maxResults || plan.estimated_rows || 100, 500),
+        scrapeJobDetails: true,
         proxy: { useApifyProxy: true },
       };
     case "linkedin_companies":
@@ -68,13 +69,15 @@ function normaliseResults(source: string, items: any[]): any[] {
     case "linkedin_jobs":
       return items.map((item) => ({
         company_name: item.companyName || item.company || null,
-        title: item.title || item.position || null,
-        website: item.companyUrl || item.companyLink || null,
-        linkedin: item.companyLinkedinUrl || item.companyUrl || null,
-        location: item.location || item.place || null,
+        title: item.jobTitle || item.title || item.position || null,
+        website: item.companyLink || item.companyUrl || null,
+        linkedin: item.companyLink || item.companyLinkedinUrl || item.companyUrl || null,
+        location: item.jobLocation || item.location || item.place || null,
         phone: null,
         email: item.email || item.contactEmail || null,
-        description: item.description || "",
+        description: item.jobDescription || item.description || "",
+        salary: item.salary || null,
+        apply_link: item.applyLink || null,
         _raw: item,
       }));
     case "linkedin_companies":
@@ -187,8 +190,8 @@ Available data sources with their EXACT Apify input parameters:
    Best for: Local businesses, agencies, service providers
 
 2. "linkedin_jobs" — LinkedIn Job Postings scraper
-   Input: keyword (job search term), location (city/country), timePosted ("pastDay" | "pastWeek" | "pastMonth"), rows (max results)
-   Returns: title (job title), companyName, companyUrl, location, description
+   Input: keyword (job search term), location (city/country), timePosted ("pastDay" | "pastWeek" | "pastMonth"), maxResults (max results, up to 500), scrapeJobDetails (true/false)
+   Returns: jobTitle, companyName, companyLink, jobLocation, jobDescription, salary, applyLink
    Best for: Hiring intent signals — companies actively hiring for roles
 
 3. "linkedin_companies" — LinkedIn Company Profiles scraper
@@ -408,7 +411,7 @@ async function handleExecuteSignal(
 
     let rawResults: any[] = [];
 
-    if (cached?.dataset) {
+    if (cached?.dataset && Array.isArray(cached.dataset) && cached.dataset.length > 0 && !cached.dataset[0]?.error) {
       rawResults = cached.dataset;
       log("cache_hit", { rows: rawResults.length });
     } else {
@@ -434,8 +437,9 @@ async function handleExecuteSignal(
       rawResults = await runResponse.json();
       log("apify_response", { rows: rawResults.length });
 
-      // Cache the dataset
-      if (rawResults.length > 0) {
+      // Cache the dataset — but NOT error responses
+      const isValidData = rawResults.length > 0 && !rawResults[0]?.error;
+      if (isValidData) {
         await serviceClient.from("signal_dataset_cache").upsert({
           query_hash: queryHash,
           source: plan.source,

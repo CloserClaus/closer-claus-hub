@@ -1,44 +1,23 @@
 
-## Root Cause Analysis
 
-Three compounding issues are causing 0 results:
+## Diagnosis
 
-### 1. Wrong Apify Actor ID
-The actor ID `hMvNSpz3JnHgl5jkh` for `linkedin_jobs` does not correspond to an actor that accepts `keyword`/`location`/`timePosted` parameters. The correct actor is `sovereigntaylor/linkedin-jobs-scraper` with ID **`AtsAgajsFjMVfxXJZ`**, which accepts exactly those parameters plus `maxResults`, `scrapeJobDetails`, `jobType`, etc.
+The database has the correct data — all 10 Bizvolve applications have `applicant_name` populated (verified via direct query). The root cause is a **code-level issue** in `JobDetail.tsx`:
 
-### 2. Wrong Parameter Name
-The input builder sends `rows` but the correct actor expects `maxResults`. So even if the actor ID were correct, it would ignore the limit parameter.
+1. The query uses `select('*')` but the code accesses the fields via `(app as any).applicant_name` — a fragile pattern that can fail if TypeScript's type narrowing or Supabase's PostgREST response doesn't include these columns as expected.
+2. The published site may be running an older version of the code before the `applicant_name` fallback was added.
 
-### 3. Error Responses Are Being Cached
-The cache currently contains: `[{"error":"Scraper didn't find any jobs"}]` — a single error object mistakenly cached as "1 row of data." Every subsequent run with similar params hits this bad cache and processes the error object as if it were a lead, which AI classification then rightfully rejects, yielding 0 leads.
+## Plan
 
-### Evidence from Database
-```text
-signal_dataset_cache: row_count=1, dataset=[{"error":"Scraper didn't find any jobs"}]
-Latest run_log: cache_hit (rows: 1) → normalised (1) → ai_classification (passed: 0) → 0 leads
-```
+### 1. Fix `JobDetail.tsx` — Use explicit column selection and typed access
 
----
+- Change the `select('*')` query to explicitly include `applicant_name, applicant_email` in the select string
+- Remove `(app as any)` casts — access `app.applicant_name` and `app.applicant_email` directly (these fields already exist in the generated Supabase types)
+- Add a hardcoded SDR level (1–2) fallback when profile lookup fails, instead of always defaulting to 1
 
-## Fix Plan
+### 2. Fix `ApplicationsTable.tsx` — Same pattern fix
 
-### A. Fix Actor ID and Input Builder (`signal-planner/index.ts`)
-- Change `linkedin_jobs` actor ID from `hMvNSpz3JnHgl5jkh` to `AtsAgajsFjMVfxXJZ`
-- Change `rows` → `maxResults` in the input builder
-- Add `scrapeJobDetails: true` to get full job descriptions (needed for AI classification)
+- Same change: remove `(app as any)` casts, use typed `a.applicant_name` and `a.applicant_email` directly since the types already include them
 
-### B. Prevent Caching Error Responses (`signal-planner/index.ts`)
-- Before caching, validate that results are actual data (not error objects)
-- Check: `rawResults.length > 0 && !rawResults[0]?.error`
+These are small, surgical changes to two files. Once saved, the preview and published site will correctly display applicant names from the denormalized columns without depending on profile/workspace membership lookups.
 
-### C. Clear Stale Cache (SQL Migration)
-- Delete all existing `signal_dataset_cache` entries for `linkedin_jobs` source since they all contain error data
-
-### D. Update Result Normalizer
-- Map the new actor's output fields correctly (the `sovereigntaylor` actor returns `jobTitle`, `company`, `companyLink`, `jobLocation`, `salary`, `jobDescription`, `applyLink`)
-
-### Files to Change
-| File | Change |
-|------|--------|
-| `supabase/functions/signal-planner/index.ts` | Fix actor ID, input builder params, cache validation, result normalization |
-| SQL migration | Clear bad cache entries |
