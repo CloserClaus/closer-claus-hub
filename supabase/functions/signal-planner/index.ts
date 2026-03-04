@@ -43,7 +43,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
       keyword:          { type: "string",  required: true, description: "Job search keyword (e.g. 'sales representative')" },
       location:         { type: "string",  default: "United States", description: "Location filter" },
       maxResults:       { type: "number",  default: 100, max: 500, description: "Max job listings to scrape" },
-      timePosted:       { type: "enum",    values: ["pastDay", "pastWeek", "pastMonth"], default: "pastWeek", description: "Recency filter" },
+      timePosted:       { type: "enum",    values: ["any", "past24h", "pastWeek", "pastMonth"], default: "pastWeek", description: "Recency filter. Use 'past24h' for last 24 hours, 'pastWeek' for last 7 days, 'pastMonth' for last 30 days." },
       scrapeJobDetails: { type: "boolean", default: true, description: "Include full job descriptions" },
     },
     outputFields: {
