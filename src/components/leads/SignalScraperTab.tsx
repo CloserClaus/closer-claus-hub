@@ -212,18 +212,24 @@ export function SignalScraperTab() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <span className="text-sm text-muted-foreground">Schedule:</span>
-                <div className="flex items-center gap-2">
-                  <span className={`text-sm ${scheduleType === 'once' ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                    Run once
-                  </span>
-                  <Switch
-                    checked={scheduleType === 'daily'}
-                    onCheckedChange={(checked) => setScheduleType(checked ? 'daily' : 'once')}
-                  />
-                  <span className={`text-sm ${scheduleType === 'daily' ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                    Run daily
-                  </span>
-                </div>
+                <RadioGroup
+                  value={scheduleType}
+                  onValueChange={(v) => setScheduleType(v as 'once' | 'daily' | 'weekly')}
+                  className="flex items-center gap-4"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <RadioGroupItem value="once" id="sched-once" />
+                    <Label htmlFor="sched-once" className="text-sm cursor-pointer">Once</Label>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <RadioGroupItem value="daily" id="sched-daily" />
+                    <Label htmlFor="sched-daily" className="text-sm cursor-pointer">Daily</Label>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <RadioGroupItem value="weekly" id="sched-weekly" />
+                    <Label htmlFor="sched-weekly" className="text-sm cursor-pointer">Weekly</Label>
+                  </div>
+                </RadioGroup>
               </div>
 
               <div className="flex gap-2">
