@@ -697,6 +697,10 @@ async function handleExecuteSignal(
         log("cache_hit", { keyword, rows: cached.dataset.length });
       } else {
         const actorInput = buildGenericInput(actor, iterPlan);
+        // Add proxy config for LinkedIn actors to improve success rates
+        if (actor.key === "linkedin_jobs" || actor.key === "linkedin_companies") {
+          actorInput.proxyConfiguration = { useApifyProxy: true };
+        }
         log("apify_request", { keyword, actor_key: actor.key, actorId: actor.actorId, input: actorInput });
 
         const runResponse = await fetch(
