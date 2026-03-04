@@ -767,7 +767,7 @@ async function phaseCollecting(run: any, serviceClient: any) {
     filtered = allNormalised.filter((item: any) => {
       return filters.every((f: any) => {
         const val = item[f.field] ?? item._raw?.[f.field];
-        if (val === undefined || val === null) return false;
+        if (val === undefined || val === null) return true; // missing data = pass filter, let AI classify
         switch (f.operator) {
           case "<": return Number(val) < Number(f.value);
           case ">": return Number(val) > Number(f.value);

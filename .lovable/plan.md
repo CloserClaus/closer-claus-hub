@@ -1,51 +1,23 @@
 
 
-## Root Cause: Overly Strict Static Filters
+## Diagnosis
 
-The pipeline trace tells the full story:
+The database has the correct data — all 10 Bizvolve applications have `applicant_name` populated (verified via direct query). The root cause is a **code-level issue** in `JobDetail.tsx`:
 
-```text
-cross_keyword_dedup:  4 → 1   (expected — same company across keywords)
-static_filter:        1 → 0   ← the only lead was killed here
-```
+1. The query uses `select('*')` but the code accesses the fields via `(app as any).applicant_name` — a fragile pattern that can fail if TypeScript's type narrowing or Supabase's PostgREST response doesn't include these columns as expected.
+2. The published site may be running an older version of the code before the `applicant_name` fallback was added.
 
-The problem is on **line 770** of `process-signal-queue/index.ts`:
+## Plan
 
-```typescript
-if (val === undefined || val === null) return false;
-```
+### 1. Fix `JobDetail.tsx` — Use explicit column selection and typed access
 
-When the AI planner generates filters (e.g., `{field: "employee_count", operator: ">", value: "10"}`), and the scraped lead doesn't have that field at all (which is common — Apify actors return inconsistent schemas), the lead is **automatically rejected**. A missing field counts as a filter failure, not a pass.
+- Change the `select('*')` query to explicitly include `applicant_name, applicant_email` in the select string
+- Remove `(app as any)` casts — access `app.applicant_name` and `app.applicant_email` directly (these fields already exist in the generated Supabase types)
+- Add a hardcoded SDR level (1–2) fallback when profile lookup fails, instead of always defaulting to 1
 
-With only 1 lead surviving dedup, a single missing field on that lead wipes the entire result set to zero.
+### 2. Fix `ApplicationsTable.tsx` — Same pattern fix
 
-Additionally, 5 out of 8 LinkedIn runs returned 0 rows and 2 FAILED entirely, suggesting the LinkedIn actor input params or proxy config may need tuning — but that's secondary. The immediate fix is the filter behavior.
+- Same change: remove `(app as any)` casts, use typed `a.applicant_name` and `a.applicant_email` directly since the types already include them
 
-### Fix
-
-**`supabase/functions/process-signal-queue/index.ts` (~line 770)**
-
-Change the null/undefined handling: if the lead doesn't have the field the filter checks, **skip that filter** (treat as pass) rather than rejecting the lead. Missing data should not be penalized — it just means we don't have enough info to filter on that dimension.
-
-```typescript
-// Before:
-if (val === undefined || val === null) return false;
-
-// After:
-if (val === undefined || val === null) return true; // missing data = pass filter
-```
-
-This is the only change needed. One line.
-
-### Why This Is Safe
-
-- The AI classification step (lines 784+) runs after static filters and handles nuanced relevance checking with full context
-- Static filters are meant for hard numeric/text cutoffs on fields that exist — not for rejecting leads with incomplete data
-- The planner can still generate useful filters (e.g., location contains "US") but they'll only apply when the data is present
-
-### Files
-
-| File | Change |
-|------|--------|
-| `supabase/functions/process-signal-queue/index.ts` | Line 770: change `return false` to `return true` for null/undefined filter values |
+These are small, surgical changes to two files. Once saved, the preview and published site will correctly display applicant names from the denormalized columns without depending on profile/workspace membership lookups.
 
