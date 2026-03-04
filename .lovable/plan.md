@@ -1,23 +1,30 @@
 
 
-## Diagnosis
+## Problem
 
-The database has the correct data — all 10 Bizvolve applications have `applicant_name` populated (verified via direct query). The root cause is a **code-level issue** in `JobDetail.tsx`:
+Two broken actors causing zero results:
 
-1. The query uses `select('*')` but the code accesses the fields via `(app as any).applicant_name` — a fragile pattern that can fail if TypeScript's type narrowing or Supabase's PostgREST response doesn't include these columns as expected.
-2. The published site may be running an older version of the code before the `applicant_name` fallback was added.
+1. **Indeed Jobs**: Actor `curious_coder/indeed-scraper` returns 404 — it's been removed from Apify
+2. **LinkedIn Jobs**: Actor `AtsAgajsFjMVfxXJZ` returns 0 rows for all keywords — likely deprecated or broken
 
-## Plan
+## Fix: Replace both actors with verified working alternatives
 
-### 1. Fix `JobDetail.tsx` — Use explicit column selection and typed access
+### Indeed Jobs — Replace with `consummate_mandala/indeed-job-listings-scraper`
+- **New actorId**: `consummate_mandala/indeed-job-listings-scraper`
+- **Input change**: Uses `keywords` (string array) instead of `keyword` (string), and `maxResults` instead of `maxItems`. No `datePosted` enum — it doesn't have that filter.
+- Update `inputSchema` accordingly:
+  - `keywords`: `{ type: "string[]", required: true }` — the `buildGenericInput` auto-fill for `string[]` will populate from `search_query`
+  - `location`: `{ type: "string", default: "United States" }`
+  - `maxResults`: `{ type: "number", default: 100 }`
 
-- Change the `select('*')` query to explicitly include `applicant_name, applicant_email` in the select string
-- Remove `(app as any)` casts — access `app.applicant_name` and `app.applicant_email` directly (these fields already exist in the generated Supabase types)
-- Add a hardcoded SDR level (1–2) fallback when profile lookup fails, instead of always defaulting to 1
+### LinkedIn Jobs — Replace with `sovereigntaylor/linkedin-jobs-scraper`
+- **New actorId**: `sovereigntaylor/linkedin-jobs-scraper`
+- **Input schema is identical** to current: `keyword` (string), `location`, `timePosted` with same enum values, so no schema changes needed — just the actorId swap.
 
-### 2. Fix `ApplicationsTable.tsx` — Same pattern fix
+### Files to change
 
-- Same change: remove `(app as any)` casts, use typed `a.applicant_name` and `a.applicant_email` directly since the types already include them
-
-These are small, surgical changes to two files. Once saved, the preview and published site will correctly display applicant names from the denormalized columns without depending on profile/workspace membership lookups.
+| File | Changes |
+|------|---------|
+| `supabase/functions/signal-planner/index.ts` | Update `actorId` for `linkedin_jobs` and `indeed_jobs`, update Indeed's `inputSchema` |
+| `supabase/functions/process-daily-signals/index.ts` | Update `ACTOR_REGISTRY` with new actorIds for both |
 
