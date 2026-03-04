@@ -117,7 +117,11 @@ export function useSignalScraper() {
       return data;
     },
     onSuccess: (data) => {
-      toast({ title: 'Signal Complete!', description: `${data.leads_discovered} leads discovered. ${data.credits_charged} credits charged.` });
+      if (data?.status === 'running') {
+        toast({ title: 'Signal Running', description: 'Scraping in background. Results will appear when complete.' });
+      } else {
+        toast({ title: 'Signal Complete!', description: `${data.leads_discovered} leads discovered. ${data.credits_charged} credits charged.` });
+      }
       queryClient.invalidateQueries({ queryKey: ['signal-runs'] });
       queryClient.invalidateQueries({ queryKey: ['lead-credits'] });
       queryClient.invalidateQueries({ queryKey: ['signal-leads'] });

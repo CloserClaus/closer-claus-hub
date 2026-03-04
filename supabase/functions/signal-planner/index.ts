@@ -1000,17 +1000,8 @@ async function handleExecuteSignal(
       })
       .eq("id", run_id);
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        leads_discovered: uniqueLeads.length,
-        credits_charged: actualCredits,
-        total_scraped: allRawResults.length,
-        total_filtered: filtered.length,
-        run_log: runLog,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    // Background execution complete — no Response to return
+    console.log(`Signal ${run_id} completed: ${uniqueLeads.length} leads, ${actualCredits} credits`);
   } catch (error) {
     log("error", { message: error instanceof Error ? error.message : String(error) });
     await serviceClient
