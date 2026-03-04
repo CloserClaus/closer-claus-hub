@@ -345,6 +345,14 @@ function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun;
             {run.actual_cost === 0 && run.status === 'completed' && (
               <span className="text-green-500">🛡️ No charge (0 results)</span>
             )}
+            {run.retry_count > 0 && (
+              <span className="text-orange-400">⟳ {run.retry_count} retries</span>
+            )}
+            {run.error_message && run.status === 'failed' && (
+              <span className="text-destructive truncate max-w-[200px]" title={run.error_message}>
+                {run.error_message.slice(0, 60)}…
+              </span>
+            )}
           </div>
         </div>
         <div className="flex gap-1.5">
