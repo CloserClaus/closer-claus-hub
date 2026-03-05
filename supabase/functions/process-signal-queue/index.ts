@@ -954,7 +954,8 @@ async function phaseFinalizing(run: any, serviceClient: any) {
     .from("signal_leads")
     .select("*")
     .eq("run_id", run_id)
-    .order("discovered_at", { ascending: true });
+    .order("discovered_at", { ascending: true })
+    .limit(10000);
 
   if (fetchErr) throw fetchErr;
   const allLeads = rawLeads || [];
