@@ -13,7 +13,7 @@ const ACTORS_TO_TEST = [
     actorId: "curious_coder/linkedin-jobs-scraper",
     input: {
       urls: ["https://www.linkedin.com/jobs/search/?keywords=sales%20representative&location=New%20York&f_TPR=r604800"],
-      count: 5,
+      count: 10,
       scrapeCompany: true,
       splitByLocation: false,
     },
