@@ -154,7 +154,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       search:   { type: "string", required: true, description: "Business category to search" },
       location: { type: "string", required: true, description: "City, state or zip code" },
-      maxItems: { type: "number", default: 200, description: "Max results" },
+      maxItems: { type: "number", default: 500, description: "Max results. Set high (500+) because downstream filtering is aggressive." },
     },
     outputFields: {
       company_name: ["name", "businessName", "title"],
