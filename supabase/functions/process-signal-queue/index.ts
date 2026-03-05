@@ -967,15 +967,17 @@ async function phaseFinalizing(run: any, serviceClient: any) {
   }
 
   // ── Cross-keyword dedup ──
+  const JOB_BOARD_DOMAINS = new Set(["indeed.com", "linkedin.com", "yelp.com", "yellowpages.com", "google.com", "glassdoor.com", "ziprecruiter.com", "monster.com", "careerbuilder.com"]);
   const seen = new Set<string>();
   const dedupedIds: string[] = [];
   const removeIds: string[] = [];
   for (const lead of allLeads) {
     const domain = extractDomain(lead.website || "");
-    const companyTitle = `${lead.company_name || ""}::${lead.source || ""}`.toLowerCase();
-    const key = domain || companyTitle;
+    const effectiveDomain = (domain && !JOB_BOARD_DOMAINS.has(domain)) ? domain : "";
+    const companyTitle = (lead.company_name || "").trim().toLowerCase();
+    const key = effectiveDomain || (companyTitle ? `${companyTitle}::${lead.source || ""}` : "");
     if (key && !seen.has(key)) { seen.add(key); dedupedIds.push(lead.id); }
-    else if (!key) { dedupedIds.push(lead.id); }
+    else if (!key) { dedupedIds.push(lead.id); /* unique — no dedup key available */ }
     else { removeIds.push(lead.id); }
   }
   log("cross_keyword_dedup", { before: allLeads.length, after: dedupedIds.length, removed: removeIds.length });
