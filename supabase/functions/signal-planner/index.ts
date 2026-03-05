@@ -129,7 +129,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       searchTerms: { type: "string[]", required: true, description: "Search queries (auto-set)" },
       locations:   { type: "string[]", default: ["United States"], description: "City names to search" },
-      maxItems:    { type: "number",   default: 200, description: "Max items" },
+      maxItems:    { type: "number",   default: 500, description: "Max items. Set high (500+) because downstream filtering is aggressive." },
     },
     outputFields: {
       company_name: ["name", "title"],
