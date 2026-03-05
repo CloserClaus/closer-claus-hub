@@ -993,7 +993,8 @@ async function phaseFinalizing(run: any, serviceClient: any) {
   const { data: dedupedLeads } = await serviceClient
     .from("signal_leads")
     .select("*")
-    .eq("run_id", run_id);
+    .eq("run_id", run_id)
+    .limit(10000);
   let filtered = dedupedLeads || [];
 
   // ── Apply non-AI filters ──
