@@ -76,7 +76,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     description: "Google Maps places",
     inputSchema: {
       searchStringsArray:        { type: "string[]", required: true, description: "Search queries" },
-      maxCrawledPlacesPerSearch: { type: "number",   default: 200, description: "Max places per search" },
+      maxCrawledPlacesPerSearch: { type: "number",   default: 500, description: "Max places per search" },
       language:                  { type: "string",   default: "en", description: "Language code" },
       locationQuery:             { type: "string",   description: "Optional city/state/country filter" },
     },
