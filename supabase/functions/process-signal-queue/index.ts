@@ -416,7 +416,7 @@ serve(async (req) => {
       if (run.status === "completed" && (run.schedule_type === "daily" || run.schedule_type === "weekly")) {
         await serviceClient.from("signal_runs").update({
           status: "queued", started_at: null, processing_phase: "pending",
-          apify_run_ids: [], current_keyword_index: 0, error_message: null,
+          apify_run_ids: [], current_keyword_index: 0, collected_dataset_index: 0, error_message: null,
         }).eq("id", run.id);
         // Will be picked up next cycle
         continue;
