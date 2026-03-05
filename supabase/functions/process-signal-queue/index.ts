@@ -96,7 +96,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       searchTerms: { type: "string[]", required: true, description: "Search queries" },
       locations:   { type: "string[]", default: ["United States"], description: "City names" },
-      maxItems:    { type: "number",   default: 200, description: "Max items" },
+      maxItems:    { type: "number",   default: 500, description: "Max items" },
     },
     outputFields: {
       company_name: ["name", "title"], website: ["website", "url"], linkedin: [],
