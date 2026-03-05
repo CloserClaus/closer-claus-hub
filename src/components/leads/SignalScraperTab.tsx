@@ -312,9 +312,23 @@ function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun;
   const runLog = (run as any).run_log as any[] | null;
   const { toast } = useToast();
 
-  // Detect stale runs: "running" for more than 10 minutes based on started_at
-  const isStale = run.status === 'running' && run.started_at &&
-    (Date.now() - new Date(run.started_at).getTime()) > 10 * 60 * 1000;
+  // Detect stale runs: use updated_at heartbeat — stale only if no backend progress for 5+ minutes
+  // This aligns with the 2-min cron cycle; if 2+ cycles pass without updating, something is stuck
+  const STALE_HEARTBEAT_MS = 5 * 60 * 1000;
+  const heartbeatField = (run as any).updated_at || run.started_at;
+  const isStale = run.status === 'running' && heartbeatField &&
+    (Date.now() - new Date(heartbeatField).getTime()) > STALE_HEARTBEAT_MS;
+
+  // Extract job breakdown from apify_run_ids if available
+  const jobRefs = ((run as any).apify_run_ids as any[] | null) || [];
+  const jobBreakdown = jobRefs.length > 0 ? {
+    succeeded: jobRefs.filter((r: any) => r.status === 'SUCCEEDED').length,
+    failed: jobRefs.filter((r: any) => r.status === 'FAILED').length,
+    timedOut: jobRefs.filter((r: any) => r.status === 'TIMED-OUT').length,
+    deferred: jobRefs.filter((r: any) => r.status === 'DEFERRED').length,
+    running: jobRefs.filter((r: any) => r.status === 'RUNNING' || r.status === 'READY').length,
+    total: jobRefs.length,
+  } : null;
 
   const markAsFailed = async () => {
     await supabase.from('signal_runs').update({ status: 'failed' }).eq('id', run.id);
@@ -347,6 +361,21 @@ function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun;
             )}
             {run.retry_count > 0 && (
               <span className="text-orange-400">⟳ {run.retry_count} retries</span>
+            )}
+            {/* Job status breakdown for running signals */}
+            {run.status === 'running' && jobBreakdown && jobBreakdown.total > 0 && (
+              <span className="inline-flex gap-1.5 items-center">
+                {jobBreakdown.succeeded > 0 && <span className="text-green-400">✓{jobBreakdown.succeeded}</span>}
+                {jobBreakdown.running > 0 && <span className="text-yellow-400">⚙{jobBreakdown.running}</span>}
+                {jobBreakdown.deferred > 0 && <span className="text-blue-400">⏸{jobBreakdown.deferred}</span>}
+                {jobBreakdown.failed > 0 && <span className="text-destructive">✗{jobBreakdown.failed}</span>}
+                {jobBreakdown.timedOut > 0 && <span className="text-orange-400">⏱{jobBreakdown.timedOut}</span>}
+                <span className="text-muted-foreground">of {jobBreakdown.total} jobs</span>
+              </span>
+            )}
+            {/* Show capacity throttling hint */}
+            {jobBreakdown && jobBreakdown.deferred > 0 && (
+              <span className="text-blue-400 text-xs">Provider capacity throttling — retrying automatically</span>
             )}
             {run.error_message && run.status === 'failed' && (
               <span className="text-destructive truncate max-w-[200px]" title={run.error_message}>
