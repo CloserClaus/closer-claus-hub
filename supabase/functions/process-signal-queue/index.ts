@@ -343,7 +343,7 @@ serve(async (req) => {
       .select("*")
       .or(
         `status.eq.queued,` +
-        `and(status.eq.running,processing_phase.in.(starting,scraping,collecting)),` +
+        `and(status.eq.running,processing_phase.in.(starting,scraping,collecting,finalizing)),` +
         `and(status.eq.running,processing_phase.in.(pending),started_at.lt.${hardCeilingThreshold},retry_count.lt.${MAX_RETRIES}),` +
         `and(status.eq.running,started_at.lt.${hardCeilingThreshold},retry_count.lt.${MAX_RETRIES})`
       )
