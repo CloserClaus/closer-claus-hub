@@ -312,7 +312,7 @@ async function collectApifyResults(datasetId: string, token: string): Promise<an
 // ═══════════════════════════════════════════════════════════
 
 const MAX_RETRIES = 3;
-const HARD_CEILING_MS = 30 * 60 * 1000; // 30 minutes absolute max
+const HARD_CEILING_MS = 60 * 60 * 1000; // 60 minutes absolute max — large scrapes need more time
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
