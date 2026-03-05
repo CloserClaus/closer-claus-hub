@@ -43,6 +43,8 @@ export interface SignalRun {
   started_at: string | null;
   retry_count: number;
   error_message: string | null;
+  processing_phase: string | null;
+  collected_dataset_index: number | null;
 }
 
 export interface SignalLead {

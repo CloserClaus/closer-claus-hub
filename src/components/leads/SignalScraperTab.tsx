@@ -387,6 +387,18 @@ function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun;
                 <span className="text-muted-foreground">of {jobBreakdown.total} jobs</span>
               </span>
             )}
+            {/* Phase progress: show when all jobs done but still processing */}
+            {run.status === 'running' && jobBreakdown && jobBreakdown.running === 0 && jobBreakdown.deferred === 0 && (run as any).processing_phase && (
+              <span className="text-primary text-xs font-medium">
+                {(run as any).processing_phase === 'collecting'
+                  ? `📥 Collecting results ${((run as any).collected_dataset_index || 0) + 1}/${jobBreakdown.succeeded}...`
+                  : (run as any).processing_phase === 'finalizing'
+                    ? '🔍 Deduplicating & classifying leads...'
+                    : (run as any).processing_phase === 'scraping'
+                      ? '⏳ Waiting for scrapers to finish...'
+                      : `⚙ ${(run as any).processing_phase}`}
+              </span>
+            )}
             {/* Show capacity throttling hint */}
             {jobBreakdown && jobBreakdown.deferred > 0 && (
               <span className="text-blue-400 text-xs">Provider capacity throttling — retrying automatically</span>
