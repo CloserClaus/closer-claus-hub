@@ -624,15 +624,72 @@ async function phaseStarting(run: any, serviceClient: any) {
     }
   }
 
-  // Start jobs in batches of 3 per invocation to stay within time limits
+  // Heavy actors get lower concurrency to avoid hitting Apify memory ceiling
+  const HEAVY_ACTORS = new Set(["linkedin_jobs", "linkedin_companies", "indeed_jobs"]);
+  const MAX_START_ATTEMPTS = 5;
+
   const currentIndex = run.current_keyword_index || 0;
+  const existingRefs: ApifyRunRef[] = run.apify_run_ids || [];
+
+  // First, retry any DEFERRED refs from previous cycles
+  for (const ref of existingRefs) {
+    if (ref.status !== "DEFERRED") continue;
+    const attempts = (ref as any).startAttempts || 1;
+    if (attempts >= MAX_START_ATTEMPTS) {
+      console.log(`Ref ${ref.actorKey}:"${ref.keyword}" exhausted ${MAX_START_ATTEMPTS} start attempts, marking FAILED`);
+      ref.status = "FAILED";
+      continue;
+    }
+    // Exponential backoff: skip if not enough time has passed (30s * 2^attempts)
+    const backoffMs = 30_000 * Math.pow(2, attempts - 1);
+    const deferredAt = (ref as any).deferredAt ? new Date((ref as any).deferredAt).getTime() : 0;
+    if (Date.now() - deferredAt < backoffMs) continue;
+
+    const actor = getActor(ref.actorKey);
+    if (!actor) { ref.status = "FAILED"; continue; }
+    // Rebuild input for retry
+    const retryJob = jobs.find(j => j.actorKey === ref.actorKey && j.keyword === ref.keyword);
+    if (!retryJob) { ref.status = "FAILED"; continue; }
+
+    try {
+      const { runId, datasetId } = await startApifyRun(retryJob.actor, retryJob.input, APIFY_API_TOKEN);
+      ref.runId = runId;
+      ref.datasetId = datasetId;
+      ref.status = "RUNNING";
+      ref.startedAt = new Date().toISOString();
+      (ref as any).startAttempts = attempts + 1;
+      console.log(`Retry #${attempts + 1} started for ${ref.actorKey}:"${ref.keyword}" → run ${runId}`);
+    } catch (retryErr) {
+      const errMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+      if (isCapacityError(errMsg)) {
+        (ref as any).startAttempts = attempts + 1;
+        (ref as any).deferredAt = new Date().toISOString();
+        console.log(`Retry #${attempts + 1} for ${ref.actorKey}:"${ref.keyword}" hit capacity again, staying DEFERRED`);
+      } else {
+        ref.status = "FAILED";
+        console.error(`Retry for ${ref.actorKey}:"${ref.keyword}" failed permanently:`, retryErr);
+      }
+    }
+  }
+
+  // Start new jobs in batches — heavy actors get batch size 1, others 3
   const BATCH_SIZE = 3;
   const batch = jobs.slice(currentIndex, currentIndex + BATCH_SIZE);
-  const existingRefs: ApifyRunRef[] = run.apify_run_ids || [];
 
   console.log(`Starting batch: jobs ${currentIndex}-${currentIndex + batch.length - 1} of ${jobs.length}`);
 
+  // Throttle heavy actors: at most 2 heavy actor starts per batch
+  let heavyStarted = 0;
+  const MAX_HEAVY_PER_BATCH = 2;
+
   for (const job of batch) {
+    const isHeavy = HEAVY_ACTORS.has(job.actorKey);
+    if (isHeavy && heavyStarted >= MAX_HEAVY_PER_BATCH) {
+      // Skip this heavy job — it will be picked up next cycle
+      console.log(`Throttling heavy actor ${job.actorKey}:"${job.keyword}", deferring to next cycle`);
+      continue;
+    }
+
     try {
       const { runId, datasetId } = await startApifyRun(job.actor, job.input, APIFY_API_TOKEN);
       existingRefs.push({
@@ -643,29 +700,57 @@ async function phaseStarting(run: any, serviceClient: any) {
         status: "RUNNING",
         startedAt: new Date().toISOString(),
       });
+      if (isHeavy) heavyStarted++;
       console.log(`Started Apify run ${runId} for ${job.actorKey}:"${job.keyword}"`);
     } catch (err) {
-      console.error(`Failed to start ${job.actorKey}:"${job.keyword}":`, err);
-      existingRefs.push({
-        actorKey: job.actorKey,
-        keyword: job.keyword,
-        runId: "",
-        datasetId: "",
-        status: "FAILED",
-      });
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (isCapacityError(errMsg)) {
+        console.warn(`Capacity error starting ${job.actorKey}:"${job.keyword}", marking DEFERRED for retry`);
+        existingRefs.push({
+          actorKey: job.actorKey,
+          keyword: job.keyword,
+          runId: "",
+          datasetId: "",
+          status: "DEFERRED",
+          startedAt: undefined,
+          ...({ startAttempts: 1, deferredAt: new Date().toISOString() } as any),
+        });
+      } else {
+        console.error(`Failed to start ${job.actorKey}:"${job.keyword}":`, err);
+        existingRefs.push({
+          actorKey: job.actorKey,
+          keyword: job.keyword,
+          runId: "",
+          datasetId: "",
+          status: "FAILED",
+        });
+      }
     }
   }
 
   const newIndex = currentIndex + batch.length;
-  const allStarted = newIndex >= jobs.length;
+  // Check if all jobs are started AND no DEFERRED refs remain
+  const hasDeferredRefs = existingRefs.some(r => r.status === "DEFERRED");
+  const allStarted = newIndex >= jobs.length && !hasDeferredRefs;
 
+  const nextPhaseStarting = allStarted ? "scraping" : "starting";
   await serviceClient.from("signal_runs").update({
     apify_run_ids: existingRefs,
-    current_keyword_index: newIndex,
-    processing_phase: allStarted ? "scraping" : "starting",
+    current_keyword_index: allStarted ? newIndex : currentIndex + batch.length,
+    processing_phase: nextPhaseStarting,
+    updated_at: new Date().toISOString(),
   }).eq("id", run.id);
 
-  console.log(`Signal ${run.id}: ${allStarted ? "All jobs started, moving to scraping" : `Started ${newIndex}/${jobs.length}, will continue next cycle`}`);
+  console.log(`Signal ${run.id}: ${allStarted ? "All jobs started, moving to scraping" : `Started ${newIndex}/${jobs.length}${hasDeferredRefs ? ` (${existingRefs.filter(r => r.status === "DEFERRED").length} deferred)` : ""}, will continue next cycle`}`);
+}
+
+// ── Capacity error detection ──
+
+function isCapacityError(errMsg: string): boolean {
+  const lower = errMsg.toLowerCase();
+  return lower.includes("actor-memory-limit-exceeded") ||
+    lower.includes("memory limit") ||
+    (lower.includes("402") && (lower.includes("memory") || lower.includes("capacity")));
 }
 
 // ── Abort helper ──
@@ -701,8 +786,8 @@ async function phaseScraping(run: any, serviceClient: any) {
   let updated = false;
 
   for (const ref of refs) {
-    if (!ref.runId || ref.status === "FAILED" || ref.status === "SUCCEEDED" || ref.status === "TIMED-OUT" || ref.status === "ABORTED") {
-      continue; // Skip already-resolved runs
+    if (!ref.runId || ref.status === "FAILED" || ref.status === "SUCCEEDED" || ref.status === "TIMED-OUT" || ref.status === "ABORTED" || ref.status === "DEFERRED") {
+      continue; // Skip already-resolved or deferred runs
     }
 
     // Per-run timeout: abort runs that have been RUNNING for over 15 minutes
@@ -748,6 +833,7 @@ async function phaseScraping(run: any, serviceClient: any) {
     await serviceClient.from("signal_runs").update({
       apify_run_ids: refs,
       processing_phase: nextPhase,
+      updated_at: new Date().toISOString(),
     }).eq("id", run.id);
   }
 
