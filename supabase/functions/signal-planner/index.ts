@@ -575,7 +575,8 @@ async function handleGeneratePlan(
     const maxPerKeyword = maxField
       ? (plan.search_params?.[maxField] || resolvedActor.inputSchema[maxField]?.default || 100)
       : 100;
-    const formulaEstimatedRows = keywordCount * Math.max(50, Math.ceil(maxPerKeyword / keywordCount));
+    // Each keyword gets the full max — no division
+    const formulaEstimatedRows = keywordCount * maxPerKeyword;
     plan.estimated_rows = formulaEstimatedRows;
 
     const scrapeCostUsd = (plan.estimated_rows / 1000) * 0.25;
@@ -587,8 +588,11 @@ async function handleGeneratePlan(
 
     totalEstimatedRows += plan.estimated_rows;
     totalCreditsToCharge += credits;
-    const filterRate = plan.ai_classification ? 0.3 : 0.6;
-    totalEstimatedLeads += plan.estimated_leads_after_filter || Math.floor(plan.estimated_rows * filterRate);
+    // Realistic filter rates: AI classification passes 5-15%, no AI passes 40%
+    const filterRate = plan.ai_classification ? 0.10 : 0.40;
+    const dedupRate = 0.90; // ~10% workspace duplicates for returning users
+    const estimatedAfterFilter = plan.estimated_leads_after_filter || Math.floor(plan.estimated_rows * filterRate * dedupRate);
+    totalEstimatedLeads += estimatedAfterFilter;
   }
 
   const costPerLead = totalEstimatedLeads > 0 ? (totalCreditsToCharge / totalEstimatedLeads).toFixed(1) : "N/A";

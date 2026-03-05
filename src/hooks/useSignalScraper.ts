@@ -60,6 +60,13 @@ export interface SignalLead {
   added_to_crm: boolean;
   enriched: boolean;
   discovered_at: string;
+  contact_name: string | null;
+  title: string | null;
+  industry: string | null;
+  employee_count: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
 }
 
 export function useSignalScraper() {
@@ -155,7 +162,8 @@ export function useSignalScraper() {
           .from('signal_leads')
           .select('*')
           .eq('run_id', runId)
-          .order('discovered_at', { ascending: false });
+          .order('discovered_at', { ascending: false })
+          .limit(10000);
         if (error) throw error;
         return (data || []) as SignalLead[];
       },
