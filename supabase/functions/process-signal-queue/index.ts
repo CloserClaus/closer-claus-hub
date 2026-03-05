@@ -102,7 +102,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
   },
   {
     key: "yelp",
-    actorId: "yin5oHQaJGRfmJhlN",
+    actorId: "api-ninja/yelp-ultimate-scraper",
     label: "Yelp",
     category: "local_business",
     description: "Yelp business listings",
@@ -112,7 +112,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
       maxItems:    { type: "number",   default: 1000, description: "Max items" },
     },
     outputFields: {
-      company_name: ["name", "title"], website: ["website", "url"], linkedin: [],
+      company_name: ["name", "title", "businessName"], website: ["website", "url"], linkedin: [],
       location: ["address", "neighborhood", "fullAddress"], city: ["city"], state: ["state"],
       country: ["country"], phone: ["phone", "displayPhone"], email: ["email"],
       description: ["categories"], industry: ["categories"],
