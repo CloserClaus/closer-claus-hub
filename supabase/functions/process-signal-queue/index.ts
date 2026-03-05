@@ -429,7 +429,7 @@ serve(async (req) => {
           .update({
             status: "running", started_at: new Date().toISOString(),
             error_message: null, processing_phase: "starting",
-            apify_run_ids: [], current_keyword_index: 0,
+            apify_run_ids: [], current_keyword_index: 0, collected_dataset_index: 0,
           })
           .eq("id", run.id)
           .eq("status", "queued")
