@@ -68,6 +68,7 @@ export function useSignalScraper() {
     run_id: string;
     plan: SignalPlan;
     estimation: SignalEstimation;
+    warnings?: string[];
   } | null>(null);
 
   // Fetch signal history

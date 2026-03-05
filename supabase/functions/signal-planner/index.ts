@@ -1,8 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Execution is now handled by process-signal-queue worker
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -35,16 +33,16 @@ const ACTOR_CATALOG: ActorEntry[] = [
   // ── Hiring Intent ──
   {
     key: "linkedin_jobs",
-    actorId: "openclaw/linkedin-jobs-scraper",
+    actorId: "curious_coder/linkedin-jobs-scraper",
     label: "LinkedIn Jobs",
     category: "hiring_intent",
-    description: "Scrapes LinkedIn job postings via public pages. Best for hiring intent — find companies actively hiring for specific roles like SDRs, sales reps, marketers, etc.",
+    description: "Scrapes LinkedIn job postings via public pages. Best for hiring intent. IMPORTANT: This actor requires LinkedIn job search URLs in the 'urls' field. Construct URLs like: https://www.linkedin.com/jobs/search/?keywords=KEYWORD&location=LOCATION&f_TPR=r604800 (pastWeek). Use splitByLocation + splitCountry to bypass 1000-result cap.",
     inputSchema: {
-      searchKeywords:   { type: "string[]", required: true, description: "Job search keywords (e.g. ['sales representative'])" },
-      searchLocation:   { type: "string",  default: "United States", description: "Location filter" },
-      maxItems:         { type: "number",  default: 500, description: "Max job listings to scrape. Set high (500+) because downstream filtering is aggressive." },
-      scrapeCompany:    { type: "boolean", default: true, description: "Include company details (website, industry, employee count)" },
-      scrapeJobDetails: { type: "boolean", default: true, description: "Include full job descriptions" },
+      urls:              { type: "string[]", required: true, description: "LinkedIn job search URLs. Construct from keywords: https://www.linkedin.com/jobs/search/?keywords=KEYWORD&location=LOCATION&f_TPR=r604800" },
+      count:             { type: "number",  default: 2500, description: "Max job listings to scrape. Set high (2000+) because downstream filtering discards 80-95%." },
+      scrapeCompany:     { type: "boolean", default: true, description: "Include company details (website, industry, employee count)" },
+      splitByLocation:   { type: "boolean", default: true, description: "Split search by city locations to bypass LinkedIn's 1000-result cap" },
+      splitCountry:      { type: "string",  default: "US", description: "Country whose cities will be used to split the search (e.g. US, CA, GB)" },
     },
     outputFields: {
       company_name:   ["companyName", "company"],
@@ -69,28 +67,30 @@ const ACTOR_CATALOG: ActorEntry[] = [
     actorId: "valig/indeed-jobs-scraper",
     label: "Indeed Jobs",
     category: "hiring_intent",
-    description: "Scrapes Indeed job postings. Broader job board coverage than LinkedIn. Good for finding SMBs hiring in specific locations. Very reliable with 99.8% success rate.",
+    description: "Scrapes Indeed job postings. Broader job board coverage than LinkedIn. Good for finding SMBs hiring in specific locations. Very reliable with 99.8% success rate. Output has nested structure (employer.name, location.city, etc.).",
     inputSchema: {
       title:      { type: "string",  required: true, description: "Job title or keywords (e.g. 'sales representative')" },
       location:   { type: "string",  default: "United States", description: "Location filter" },
       country:    { type: "string",  default: "us", description: "Country code (e.g. us, uk, ca)" },
-      limit:      { type: "number",  default: 500, description: "Max results. Set high (500+) because downstream filtering is aggressive." },
+      limit:      { type: "number",  default: 1000, description: "Max results. Set high (1000+) because downstream filtering is aggressive." },
       datePosted: { type: "string",  default: "7", description: "Days since posted (1, 3, 7, 14)" },
     },
     outputFields: {
-      company_name: ["company", "companyName"],
-      title:        ["positionName", "title", "jobTitle"],
-      website:      ["companyUrl", "url"],
-      linkedin:     [],
-      location:     ["location", "jobLocation"],
-      city:         ["city"],
-      state:        ["state"],
-      country:      ["country"],
-      phone:        [],
-      email:        [],
-      description:  ["description", "jobDescription"],
-      salary:       ["salary"],
-      apply_link:   ["url", "applyLink"],
+      company_name:   ["company", "companyName", "employer.name"],
+      title:          ["positionName", "title", "jobTitle"],
+      website:        ["companyUrl", "url", "employer.corporateWebsite"],
+      linkedin:       [],
+      location:       ["location", "jobLocation", "location.city"],
+      city:           ["city", "location.city"],
+      state:          ["state", "location.state"],
+      country:        ["country", "location.countryName"],
+      phone:          [],
+      email:          [],
+      description:    ["description", "jobDescription", "description.text"],
+      salary:         ["salary", "baseSalary"],
+      apply_link:     ["url", "applyLink"],
+      industry:       ["employer.industry"],
+      employee_count: ["employer.employeesCount"],
     },
   },
 
@@ -103,7 +103,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     description: "Scrapes Google Maps places. Best for local businesses, agencies, service providers. Returns phone, website, reviews, ratings.",
     inputSchema: {
       searchStringsArray:        { type: "string[]", required: true, description: "Search queries (auto-set from search_query)" },
-      maxCrawledPlacesPerSearch: { type: "number",   default: 500, description: "Max places per search. Set high (500+) because downstream filtering is aggressive." },
+      maxCrawledPlacesPerSearch: { type: "number",   default: 2000, description: "Max places per search. Set high (1000+) because downstream filtering is aggressive." },
       language:                  { type: "string",   default: "en", description: "Language code" },
       locationQuery:             { type: "string",   description: "Optional city/state/country filter" },
     },
@@ -124,17 +124,17 @@ const ACTOR_CATALOG: ActorEntry[] = [
   },
   {
     key: "yelp",
-    actorId: "yin5oHQaJGRfmJhlN",
+    actorId: "sovereigntaylor/yelp-scraper",
     label: "Yelp",
     category: "local_business",
     description: "Scrapes Yelp business listings. Good for local service businesses with review data.",
     inputSchema: {
       searchTerms: { type: "string[]", required: true, description: "Search queries (auto-set)" },
       locations:   { type: "string[]", default: ["United States"], description: "City names to search" },
-      maxItems:    { type: "number",   default: 500, description: "Max items. Set high (500+) because downstream filtering is aggressive." },
+      maxItems:    { type: "number",   default: 1000, description: "Max items. Set high (1000+) because downstream filtering is aggressive." },
     },
     outputFields: {
-      company_name: ["name", "title"],
+      company_name: ["name", "title", "businessName"],
       website:      ["website", "url"],
       linkedin:     [],
       location:     ["address", "neighborhood", "fullAddress"],
@@ -156,7 +156,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       search:   { type: "string", required: true, description: "Business category to search" },
       location: { type: "string", required: true, description: "City, state or zip code" },
-      maxItems: { type: "number", default: 500, description: "Max results. Set high (500+) because downstream filtering is aggressive." },
+      maxItems: { type: "number", default: 1000, description: "Max results. Set high (1000+) because downstream filtering is aggressive." },
     },
     outputFields: {
       company_name: ["name", "businessName", "title"],
@@ -182,7 +182,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     description: "Scrapes LinkedIn company profiles. Best for enriching companies found from other sources. Returns employee count, industry, headquarters.",
     inputSchema: {
       profileUrls: { type: "string[]", required: true, description: "Array of LinkedIn company profile URLs to scrape" },
-      maxResults:  { type: "number",   default: 500, description: "Max results. Set high (500+) because downstream filtering is aggressive." },
+      maxResults:  { type: "number",   default: 500, description: "Max results." },
     },
     outputFields: {
       company_name:   ["name", "title"],
@@ -206,7 +206,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     actorId: "9Sk4JJhEma9vBKqrg",
     label: "Contact Enrichment",
     category: "enrichment",
-    description: "Extracts emails, phone numbers, social media profiles, and contact details from company websites. Give it a list of URLs and it crawls contact/about pages to find emails and phones. Best used AFTER discovering companies from another source.",
+    description: "Extracts emails, phone numbers, social media profiles, and contact details from company websites.",
     inputSchema: {
       startUrls:             { type: "string[]", required: true, description: "List of website URLs to extract contacts from" },
       maxRequestsPerStartUrl: { type: "number",  default: 5, description: "Pages to crawl per website" },
@@ -235,10 +235,10 @@ const ACTOR_CATALOG: ActorEntry[] = [
     actorId: "nFJndFXA5zjCTuudP",
     label: "Google Search",
     category: "web_search",
-    description: "Scrapes Google Search results. Good for finding specific types of companies via targeted Google queries. Returns titles, URLs, descriptions.",
+    description: "Scrapes Google Search results. Good for finding specific types of companies via targeted Google queries.",
     inputSchema: {
       queries:          { type: "string[]", required: true, description: "Search queries (auto-set)" },
-      maxPagesPerQuery: { type: "number",   default: 3, description: "Pages per query" },
+      maxPagesPerQuery: { type: "number",   default: 10, description: "Pages per query (up to 10 for broader coverage)" },
       resultsPerPage:   { type: "number",   default: 10, description: "Results per page" },
     },
     outputFields: {
@@ -264,78 +264,6 @@ function getActor(key: string): ActorEntry | undefined {
 }
 
 // ════════════════════════════════════════════════════════════════
-// ██  GENERIC INPUT BUILDER — driven by catalog inputSchema
-// ════════════════════════════════════════════════════════════════
-
-function buildGenericInput(actor: ActorEntry, plan: any): Record<string, any> {
-  const sp = plan.search_params || {};
-  const result: Record<string, any> = {};
-
-  for (const [field, schema] of Object.entries(actor.inputSchema)) {
-    let value = sp[field];
-
-    // Auto-fill array fields from search_query
-    if (value === undefined && schema.type === "string[]" && schema.required) {
-      value = [plan.search_query];
-    }
-    // Auto-fill required string from search_query
-    if (value === undefined && schema.type === "string" && schema.required) {
-      value = plan.search_query;
-    }
-    // Apply default
-    if (value === undefined && schema.default !== undefined) {
-      value = schema.default;
-    }
-
-    if (value === undefined) continue;
-
-    // Enforce enum — also fix common AI mistakes
-    if (schema.type === "enum" && schema.values) {
-      const ENUM_ALIASES: Record<string, string> = {
-        "pastDay": "past24h", "past_day": "past24h", "past24hours": "past24h", "last24h": "past24h",
-        "past_week": "pastWeek", "last_week": "pastWeek", "7days": "pastWeek",
-        "past_month": "pastMonth", "last_month": "pastMonth", "30days": "pastMonth",
-      };
-      if (typeof value === "string" && !schema.values.includes(value)) {
-        value = ENUM_ALIASES[value] ?? schema.default;
-      }
-    }
-
-    result[field] = value;
-  }
-
-  return result;
-}
-
-// ════════════════════════════════════════════════════════════════
-// ██  GENERIC RESULT NORMALIZER — driven by catalog outputFields
-// ════════════════════════════════════════════════════════════════
-
-function normaliseGenericResults(actor: ActorEntry, items: any[]): any[] {
-  return items.map((item) => {
-    const normalised: Record<string, any> = {};
-
-    for (const [outputKey, sourcePaths] of Object.entries(actor.outputFields)) {
-      let value: any = null;
-      for (const path of sourcePaths) {
-        const v = item[path];
-        if (v !== undefined && v !== null && v !== "") {
-          value = Array.isArray(v) ? v[0] : v;
-          if (Array.isArray(v) && outputKey === "description") {
-            value = v.join(", ");
-          }
-          break;
-        }
-      }
-      normalised[outputKey] = value;
-    }
-
-    normalised._raw = item;
-    return normalised;
-  });
-}
-
-// ════════════════════════════════════════════════════════════════
 // ██  MULTI-SOURCE CATEGORY MAPPING
 // ════════════════════════════════════════════════════════════════
 
@@ -345,7 +273,7 @@ const MULTI_SOURCE_GROUPS: Record<string, string[]> = {
 };
 
 // ════════════════════════════════════════════════════════════════
-// ██  BUILD AI SYSTEM PROMPT — includes full catalog for selection
+// ██  BUILD AI SYSTEM PROMPT
 // ════════════════════════════════════════════════════════════════
 
 function buildPlannerSystemPrompt(): string {
@@ -389,7 +317,8 @@ RULES:
 - ai_classification is a text description of an AI filter applied AFTER scraping. Use it to narrow results by company type, size, or relevance. Use the SAME ai_classification across all plans in a multi-source array.
 - IMPORTANT: Put ALL keyword variations in "search_query" separated by " OR " (e.g. "SDR OR BDR OR Appointment Setter OR Sales Representative"). The engine will automatically split on OR and run each keyword as a separate search, then merge results. In "search_params", put only the FIRST/primary keyword in the keyword field as a fallback.
 - For hiring intent queries, ALWAYS prefer timePosted "pastWeek" / datePosted "7days" unless the user explicitly says "today only" or "last 24 hours". The "past24h"/"today" window is extremely restrictive and frequently returns zero results for niche roles.
-- IMPORTANT: Always set maxResults / maxItems to 500 or higher. Downstream filtering (dedup, AI classification, static filters) is very aggressive and will discard 80-95% of raw results. Scraping more upfront ensures enough leads survive the pipeline. Do NOT set low limits.
+- IMPORTANT: Always set maxResults / maxItems to the MAXIMUM default value shown above (e.g. 2500 for LinkedIn, 1000 for Indeed, 2000 for Google Maps, 1000 for Yelp). Downstream filtering (dedup, AI classification, static filters) is VERY aggressive and discards 80-95% of raw results. High intent leads are rare — we need maximum coverage to find them. Do NOT set low limits.
+- For LinkedIn Jobs, always include splitSearchByLocation: true and targetCountry to bypass the 1000-result cap.
 
 Return a JSON ARRAY of plan objects. Each object has this structure:
 {
@@ -409,6 +338,52 @@ Example for a local business query: return an array of 2 plans (one for google_m
 Example for a company enrichment query: return a single-element array.
 
 Be realistic with estimates. Always return valid JSON only, no markdown.`;
+}
+
+// ════════════════════════════════════════════════════════════════
+// ██  PLAN-TIME WARNINGS & VALIDATION
+// ════════════════════════════════════════════════════════════════
+
+function validatePlan(plans: any[], query: string): string[] {
+  const warnings: string[] = [];
+
+  // Check for too-narrow search
+  const totalEstimatedLeads = plans.reduce((sum, p) => sum + (p.estimated_leads_after_filter || 0), 0);
+  if (totalEstimatedLeads < 5 && totalEstimatedLeads > 0) {
+    warnings.push("⚠️ This search is very specific and may return very few leads. Consider broadening your criteria (e.g., wider location, more keyword variations, or fewer filters) to find more results.");
+  }
+
+  // Check for too-broad search (no AI classification and no filters)
+  const hasAiFilter = plans.some(p => p.ai_classification);
+  const hasFilters = plans.some(p => p.filters && p.filters.length > 0);
+  if (!hasAiFilter && !hasFilters) {
+    warnings.push("⚠️ This search has no filtering criteria. Results may include many irrelevant leads. Consider adding specific criteria about company type, size, or industry to improve quality.");
+  }
+
+  // Check for hiring intent using wrong sources
+  const hiringKeywords = ["hiring", "hire", "recruit", "job", "position", "role", "vacancy", "opening", "sdr", "bdr", "sales rep"];
+  const queryLower = query.toLowerCase();
+  const mentionsHiring = hiringKeywords.some(k => queryLower.includes(k));
+  const usesJobSources = plans.some(p => p.source === "linkedin_jobs" || p.source === "indeed_jobs");
+  const usesLocalOnly = plans.every(p => ["google_maps", "yelp", "yellow_pages"].includes(p.source));
+  if (mentionsHiring && usesLocalOnly && !usesJobSources) {
+    warnings.push("💡 Your query mentions hiring intent, but the plan uses local business sources. Job board sources (LinkedIn/Indeed) are much better for finding companies that are actively hiring. Consider rephrasing to target job postings.");
+  }
+
+  // Check for data that can't be scraped
+  const unscrappablePatterns = [
+    { pattern: /funding|raised|series [a-z]|venture capital|investor/i, msg: "Funding/investment data isn't available through our current scraping sources. Try rephrasing to target observable signals like job postings (companies that just raised usually start hiring) or business listings." },
+    { pattern: /revenue|income|profit|financial/i, msg: "Financial data (revenue, profit) isn't directly available through scraping. Consider using employee count or hiring activity as proxy indicators for company size/growth." },
+    { pattern: /intent data|buyer intent|technographics/i, msg: "Buyer intent and technographic data require specialized providers. Our scrapers focus on job postings, business listings, and public web data." },
+  ];
+  for (const { pattern, msg } of unscrappablePatterns) {
+    if (pattern.test(query)) {
+      warnings.push(`⚠️ ${msg}`);
+      break; // Only show one unscrappable warning
+    }
+  }
+
+  return warnings;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -442,7 +417,6 @@ serve(async (req) => {
     if (action === "generate_plan") {
       return await handleGeneratePlan(params, user.id, serviceClient);
     } else if (action === "execute_signal") {
-      // Credit check before background execution
       const { run_id, workspace_id } = params;
       const { data: run, error: runError } = await serviceClient
         .from("signal_runs")
@@ -471,7 +445,6 @@ serve(async (req) => {
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      // Enqueue for the worker to pick up
       await serviceClient
         .from("signal_runs")
         .update({
@@ -560,10 +533,9 @@ async function handleGeneratePlan(
     throw new Error("AI returned invalid plan. Please try rephrasing your query.");
   }
 
-  // Normalize to array (backward compat: AI might return single object)
   let plans: any[] = Array.isArray(parsedPlan) ? parsedPlan : [parsedPlan];
 
-  // Apply template overrides if provided (apply to all plans)
+  // Apply template overrides
   if (plan_override) {
     plans = plans.map(p => {
       const updated = { ...p };
@@ -574,7 +546,7 @@ async function handleGeneratePlan(
     });
   }
 
-  // Validate all actor keys exist in catalog
+  // Validate all actor keys
   plans = plans.map(p => {
     const actor = getActor(p.source);
     if (!actor) {
@@ -584,7 +556,10 @@ async function handleGeneratePlan(
     return p;
   });
 
-  // Aggregate cost estimation across all plans — override AI guesses with formula
+  // ── Plan-time warnings ──
+  const warnings = validatePlan(plans, query);
+
+  // Aggregate cost estimation
   let totalEstimatedRows = 0;
   let totalCreditsToCharge = 0;
   let totalEstimatedLeads = 0;
@@ -594,16 +569,13 @@ async function handleGeneratePlan(
     const resolvedActor = getActor(plan.source)!;
     sourceLabels.push(resolvedActor.label);
 
-    // Formula-based estimation: count OR-separated keywords × actor's max results default
     const keywords = plan.search_query ? plan.search_query.split(/\s+OR\s+/i) : [""];
     const keywordCount = Math.max(1, keywords.length);
     const maxField = Object.keys(resolvedActor.inputSchema).find(f => f.toLowerCase().includes("max"));
     const maxPerKeyword = maxField
       ? (plan.search_params?.[maxField] || resolvedActor.inputSchema[maxField]?.default || 100)
       : 100;
-    // Each keyword gets maxPerKeyword/keywordCount results (since we split), so total ≈ maxPerKeyword
     const formulaEstimatedRows = keywordCount * Math.max(50, Math.ceil(maxPerKeyword / keywordCount));
-    // Override AI's guess with formula-based estimate
     plan.estimated_rows = formulaEstimatedRows;
 
     const scrapeCostUsd = (plan.estimated_rows / 1000) * 0.25;
@@ -615,14 +587,12 @@ async function handleGeneratePlan(
 
     totalEstimatedRows += plan.estimated_rows;
     totalCreditsToCharge += credits;
-    // Estimated leads: with AI filter ~30%, without ~60%
     const filterRate = plan.ai_classification ? 0.3 : 0.6;
     totalEstimatedLeads += plan.estimated_leads_after_filter || Math.floor(plan.estimated_rows * filterRate);
   }
 
   const costPerLead = totalEstimatedLeads > 0 ? (totalCreditsToCharge / totalEstimatedLeads).toFixed(1) : "N/A";
 
-  // Use the first plan's signal_name as the overall name
   const signalName = plans[0]?.signal_name || "Signal";
 
   const { data: run, error: insertError } = await serviceClient
@@ -632,7 +602,7 @@ async function handleGeneratePlan(
       workspace_id,
       signal_name: signalName,
       signal_query: query,
-      signal_plan: plans, // Store as array in JSONB
+      signal_plan: plans,
       estimated_cost: totalCreditsToCharge,
       estimated_leads: totalEstimatedLeads,
       status: "planned",
@@ -645,7 +615,7 @@ async function handleGeneratePlan(
   return new Response(
     JSON.stringify({
       run_id: run.id,
-      plan: plans, // Return array
+      plan: plans,
       estimation: {
         estimated_rows: totalEstimatedRows,
         estimated_leads: totalEstimatedLeads,
@@ -653,12 +623,11 @@ async function handleGeneratePlan(
         cost_per_lead: costPerLead,
         source_label: sourceLabels.join(" + "),
       },
+      warnings, // New: plan-time warnings
     }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
 }
-
-// Execution logic has been moved to process-signal-queue/index.ts
 
 function extractDomain(url: string): string {
   if (!url) return "";

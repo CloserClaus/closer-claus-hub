@@ -30,16 +30,16 @@ interface ActorEntry {
 const ACTOR_CATALOG: ActorEntry[] = [
   {
     key: "linkedin_jobs",
-    actorId: "openclaw/linkedin-jobs-scraper",
+    actorId: "curious_coder/linkedin-jobs-scraper",
     label: "LinkedIn Jobs",
     category: "hiring_intent",
     description: "LinkedIn job postings",
     inputSchema: {
-      searchKeywords:   { type: "string[]", required: true, description: "Job search keywords" },
-      searchLocation:   { type: "string",  default: "United States", description: "Location filter" },
-      maxItems:         { type: "number",  default: 500, description: "Max job listings" },
-      scrapeCompany:    { type: "boolean", default: true, description: "Include company details" },
-      scrapeJobDetails: { type: "boolean", default: true, description: "Include full job descriptions" },
+      urls:              { type: "string[]", required: true, description: "LinkedIn job search URLs (constructed from keywords)" },
+      count:             { type: "number",  default: 2500, description: "Max job listings" },
+      scrapeCompany:     { type: "boolean", default: true, description: "Include company details" },
+      splitByLocation:   { type: "boolean", default: true, description: "Split by location to bypass 1000-result cap" },
+      splitCountry:      { type: "string",  default: "US", description: "Country for location splitting" },
     },
     outputFields: {
       company_name: ["companyName", "company"], title: ["title", "jobTitle", "position"],
@@ -60,14 +60,25 @@ const ACTOR_CATALOG: ActorEntry[] = [
       title:      { type: "string",  required: true, description: "Job title or keywords" },
       location:   { type: "string",  default: "United States", description: "Location filter" },
       country:    { type: "string",  default: "us", description: "Country code (e.g. us, uk, ca)" },
-      limit:      { type: "number",  default: 500, description: "Max results" },
+      limit:      { type: "number",  default: 1000, description: "Max results" },
       datePosted: { type: "string",  default: "7", description: "Days since posted (1, 3, 7, 14)" },
     },
     outputFields: {
-      company_name: ["company", "companyName"], title: ["positionName", "title", "jobTitle"],
-      website: ["companyUrl", "url"], linkedin: [], location: ["location", "jobLocation"],
-      city: ["city"], state: ["state"], country: ["country"], phone: [], email: [],
-      description: ["description", "jobDescription"], salary: ["salary"], apply_link: ["url", "applyLink"],
+      company_name: ["company", "companyName", "employer.name"],
+      title:        ["positionName", "title", "jobTitle"],
+      website:      ["companyUrl", "url", "employer.corporateWebsite"],
+      linkedin:     [],
+      location:     ["location", "jobLocation", "location.city"],
+      city:         ["city", "location.city"],
+      state:        ["state", "location.state"],
+      country:      ["country", "location.countryName"],
+      phone:        [],
+      email:        [],
+      description:  ["description", "jobDescription", "description.text"],
+      salary:       ["salary", "baseSalary"],
+      apply_link:   ["url", "applyLink"],
+      industry:     ["employer.industry"],
+      employee_count: ["employer.employeesCount"],
     },
   },
   {
@@ -78,7 +89,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     description: "Google Maps places",
     inputSchema: {
       searchStringsArray:        { type: "string[]", required: true, description: "Search queries" },
-      maxCrawledPlacesPerSearch: { type: "number",   default: 500, description: "Max places per search" },
+      maxCrawledPlacesPerSearch: { type: "number",   default: 2000, description: "Max places per search" },
       language:                  { type: "string",   default: "en", description: "Language code" },
       locationQuery:             { type: "string",   description: "Optional city/state/country filter" },
     },
@@ -91,17 +102,17 @@ const ACTOR_CATALOG: ActorEntry[] = [
   },
   {
     key: "yelp",
-    actorId: "yin5oHQaJGRfmJhlN",
+    actorId: "sovereigntaylor/yelp-scraper",
     label: "Yelp",
     category: "local_business",
     description: "Yelp business listings",
     inputSchema: {
       searchTerms: { type: "string[]", required: true, description: "Search queries" },
       locations:   { type: "string[]", default: ["United States"], description: "City names" },
-      maxItems:    { type: "number",   default: 500, description: "Max items" },
+      maxItems:    { type: "number",   default: 1000, description: "Max items" },
     },
     outputFields: {
-      company_name: ["name", "title"], website: ["website", "url"], linkedin: [],
+      company_name: ["name", "title", "businessName"], website: ["website", "url"], linkedin: [],
       location: ["address", "neighborhood", "fullAddress"], city: ["city"], state: ["state"],
       country: ["country"], phone: ["phone", "displayPhone"], email: ["email"],
       description: ["categories"], industry: ["categories"],
@@ -116,7 +127,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       search:   { type: "string", required: true, description: "Business category" },
       location: { type: "string", required: true, description: "City, state or zip" },
-      maxItems: { type: "number", default: 500, description: "Max results" },
+      maxItems: { type: "number", default: 1000, description: "Max results" },
     },
     outputFields: {
       company_name: ["name", "businessName", "title"], website: ["website", "url"], linkedin: [],
@@ -172,7 +183,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     description: "Google Search results",
     inputSchema: {
       queries:          { type: "string[]", required: true, description: "Search queries" },
-      maxPagesPerQuery: { type: "number",   default: 3, description: "Pages per query" },
+      maxPagesPerQuery: { type: "number",   default: 10, description: "Pages per query" },
       resultsPerPage:   { type: "number",   default: 10, description: "Results per page" },
     },
     outputFields: {
@@ -187,6 +198,12 @@ const CATALOG_BY_KEY = new Map(ACTOR_CATALOG.map((a) => [a.key, a]));
 function getActor(key: string): ActorEntry | undefined { return CATALOG_BY_KEY.get(key); }
 
 // ── Utility functions ──
+
+// Dot-path traversal: resolves "employer.name" → item.employer.name
+function getNestedValue(obj: any, path: string): any {
+  if (!path.includes('.')) return obj[path];
+  return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+}
 
 function buildGenericInput(actor: ActorEntry, plan: any): Record<string, any> {
   const sp = plan.search_params || {};
@@ -218,7 +235,7 @@ function normaliseGenericResults(actor: ActorEntry, items: any[]): any[] {
     for (const [outputKey, sourcePaths] of Object.entries(actor.outputFields)) {
       let value: any = null;
       for (const path of sourcePaths) {
-        const v = item[path];
+        const v = getNestedValue(item, path);
         if (v !== undefined && v !== null && v !== "") {
           value = Array.isArray(v) ? v[0] : v;
           if (Array.isArray(v) && outputKey === "description") value = v.join(", ");
@@ -262,8 +279,8 @@ interface ApifyRunRef {
   keyword: string;
   runId: string;
   datasetId: string;
-  status: string; // READY, RUNNING, SUCCEEDED, FAILED, TIMED-OUT, ABORTED
-  startedAt?: string; // ISO timestamp when this individual run was started
+  status: string;
+  startedAt?: string;
 }
 
 async function startApifyRun(actor: ActorEntry, input: Record<string, any>, token: string): Promise<{ runId: string; datasetId: string }> {
@@ -296,11 +313,10 @@ async function pollApifyRun(runId: string, token: string): Promise<string> {
     throw new Error(`Apify poll failed (${resp.status})`);
   }
   const data = await resp.json();
-  return data.data.status; // READY, RUNNING, SUCCEEDED, FAILED, TIMED-OUT, ABORTED
+  return data.data.status;
 }
 
 async function collectApifyResults(datasetId: string, token: string): Promise<any[]> {
-  // Paginate large datasets to avoid memory issues
   const PAGE_SIZE = 500;
   let allItems: any[] = [];
   let offset = 0;
@@ -314,18 +330,18 @@ async function collectApifyResults(datasetId: string, token: string): Promise<an
     }
     const items = await resp.json();
     allItems.push(...items);
-    if (items.length < PAGE_SIZE) break; // Last page
+    if (items.length < PAGE_SIZE) break;
     offset += PAGE_SIZE;
   }
   return allItems;
 }
 
 // ═══════════════════════════════════════════════════════════
-// ██  MAIN HANDLER — processes queued + in-progress signals
+// ██  MAIN HANDLER
 // ═══════════════════════════════════════════════════════════
 
 const MAX_RETRIES = 3;
-const HARD_CEILING_MS = 60 * 60 * 1000; // 60 minutes absolute max — large scrapes need more time
+const HARD_CEILING_MS = 60 * 60 * 1000;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -337,10 +353,6 @@ serve(async (req) => {
 
     const hardCeilingThreshold = new Date(Date.now() - HARD_CEILING_MS).toISOString();
 
-    // 1) Pick up runs that need work:
-    //    - queued runs (new)
-    //    - running runs in active phases (starting, scraping, collecting) — these need polling
-    //    - running runs that are truly stale (pending phase + old, or past hard ceiling)
     const { data: activeRuns, error: qErr } = await serviceClient
       .from("signal_runs")
       .select("*")
@@ -355,7 +367,6 @@ serve(async (req) => {
 
     if (qErr) throw qErr;
 
-    // 2) Pick up scheduled runs that are due
     const { data: scheduledRuns, error: sErr } = await serviceClient
       .from("signal_runs")
       .select("*")
@@ -385,7 +396,6 @@ serve(async (req) => {
       const phase = run.processing_phase || "pending";
       const isActivePhase = ["starting", "scraping", "collecting", "finalizing"].includes(phase);
 
-      // For truly stale runs (not in active phase), handle retries
       if (run.status === "running" && !isActivePhase) {
         const newRetryCount = (run.retry_count || 0) + 1;
         if (newRetryCount >= MAX_RETRIES) {
@@ -406,7 +416,6 @@ serve(async (req) => {
           failed++;
           continue;
         }
-        // Reset to queued for retry
         await serviceClient.from("signal_runs").update({
           status: "queued", retry_count: newRetryCount, started_at: null,
           processing_phase: "pending", apify_run_ids: [], current_keyword_index: 0, collected_dataset_index: 0,
@@ -415,17 +424,14 @@ serve(async (req) => {
         continue;
       }
 
-      // For scheduled re-runs, reset to queued
       if (run.status === "completed" && (run.schedule_type === "daily" || run.schedule_type === "weekly")) {
         await serviceClient.from("signal_runs").update({
           status: "queued", started_at: null, processing_phase: "pending",
           apify_run_ids: [], current_keyword_index: 0, collected_dataset_index: 0, error_message: null,
         }).eq("id", run.id);
-        // Will be picked up next cycle
         continue;
       }
 
-      // Lease queued runs
       if (run.status === "queued") {
         const { data: leased, error: leaseErr } = await serviceClient
           .from("signal_runs")
@@ -443,7 +449,6 @@ serve(async (req) => {
           console.log(`Could not lease signal ${run.id}, skipping`);
           continue;
         }
-        // Process starting phase immediately
         try {
           await processPhase(leased, serviceClient);
           processed++;
@@ -455,7 +460,6 @@ serve(async (req) => {
         continue;
       }
 
-      // Process active-phase runs (starting, scraping, collecting)
       if (run.status === "running" && isActivePhase) {
         try {
           await processPhase(run, serviceClient);
@@ -512,7 +516,7 @@ async function handlePhaseError(run: any, err: unknown, serviceClient: any) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ██  PHASE ROUTER — dispatches to the right phase handler
+// ██  PHASE ROUTER
 // ═══════════════════════════════════════════════════════════
 
 async function processPhase(run: any, serviceClient: any) {
@@ -539,7 +543,7 @@ async function processPhase(run: any, serviceClient: any) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ██  PHASE 1: STARTING — kick off Apify actor runs
+// ██  PHASE 1: STARTING
 // ═══════════════════════════════════════════════════════════
 
 async function phaseStarting(run: any, serviceClient: any) {
@@ -548,7 +552,6 @@ async function phaseStarting(run: any, serviceClient: any) {
 
   const workspace_id = run.workspace_id;
 
-  // Check credits first
   const { data: credits } = await serviceClient
     .from("lead_credits")
     .select("credits_balance")
@@ -576,7 +579,6 @@ async function phaseStarting(run: any, serviceClient: any) {
   const storedPlan = run.signal_plan;
   const plans: any[] = Array.isArray(storedPlan) ? storedPlan : [storedPlan];
 
-  // Build the full list of {actor, keyword, input} jobs to start
   const jobs: { actorKey: string; keyword: string; actor: ActorEntry; input: Record<string, any> }[] = [];
 
   for (const plan of plans) {
@@ -592,31 +594,40 @@ async function phaseStarting(run: any, serviceClient: any) {
       ? plan.search_query
       : (plan.search_params?.[keywordField!] || plan.search_query || "");
     const keywords = splitCompoundKeywords(rawKeyword);
-    const isMultiKeyword = keywords.length > 1;
 
     for (const keyword of keywords) {
       const iterPlan = { ...plan, search_query: keyword, search_params: { ...plan.search_params } };
-      if (keywordField && iterPlan.search_params[keywordField]) {
-        iterPlan.search_params[keywordField] = keyword;
-      }
-      // Set array keyword fields for actors that expect arrays
-      if (arrayKeywordField) {
-        iterPlan.search_params[arrayKeywordField] = [keyword];
-      }
-      const otherArrayFields = ["searchStringsArray", "queries", "searchTerms"];
-      for (const af of otherArrayFields) {
-        if (af !== arrayKeywordField && actor.inputSchema[af]) iterPlan.search_params[af] = [keyword];
+
+      // Special handling for LinkedIn: construct search URLs from keywords
+      if (actor.key === "linkedin_jobs" && actor.inputSchema["urls"]) {
+        const location = iterPlan.search_params?.searchLocation || iterPlan.search_params?.location || "United States";
+        const encodedKeyword = encodeURIComponent(keyword);
+        const encodedLocation = encodeURIComponent(location);
+        const linkedinUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=r604800`;
+        iterPlan.search_params["urls"] = [linkedinUrl];
+        // Remove non-schema fields the AI might have set
+        delete iterPlan.search_params["searchKeywords"];
+        delete iterPlan.search_params["searchLocation"];
+      } else {
+        if (keywordField && iterPlan.search_params[keywordField]) {
+          iterPlan.search_params[keywordField] = keyword;
+        }
+        if (arrayKeywordField) {
+          iterPlan.search_params[arrayKeywordField] = [keyword];
+        }
+        const otherArrayFields = ["searchStringsArray", "queries", "searchTerms"];
+        for (const af of otherArrayFields) {
+          if (af !== arrayKeywordField && actor.inputSchema[af]) iterPlan.search_params[af] = [keyword];
+        }
       }
 
-      // Ensure max field has a high default — do NOT divide by keyword count.
-      // Each keyword gets the full limit; dedup handles overlaps downstream.
-      const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max"));
+      // Use the actor's configured default max (already increased in catalog)
+      const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
       if (maxField && !iterPlan.search_params[maxField]) {
-        iterPlan.search_params[maxField] = 500;
+        iterPlan.search_params[maxField] = actor.inputSchema[maxField]?.default || 500;
       }
 
       const actorInput = buildGenericInput(actor, iterPlan);
-      // Default proxy for actors that don't specify their own
       if (!actorInput.proxyConfiguration) {
         actorInput.proxyConfiguration = { useApifyProxy: true };
       }
@@ -625,14 +636,13 @@ async function phaseStarting(run: any, serviceClient: any) {
     }
   }
 
-  // Heavy actors get lower concurrency to avoid hitting Apify memory ceiling
   const HEAVY_ACTORS = new Set(["linkedin_jobs", "linkedin_companies", "indeed_jobs"]);
   const MAX_START_ATTEMPTS = 5;
 
   const currentIndex = run.current_keyword_index || 0;
   const existingRefs: ApifyRunRef[] = run.apify_run_ids || [];
 
-  // First, retry any DEFERRED refs from previous cycles
+  // Retry DEFERRED refs
   for (const ref of existingRefs) {
     if (ref.status !== "DEFERRED") continue;
     const attempts = (ref as any).startAttempts || 1;
@@ -641,14 +651,12 @@ async function phaseStarting(run: any, serviceClient: any) {
       ref.status = "FAILED";
       continue;
     }
-    // Exponential backoff: skip if not enough time has passed (30s * 2^attempts)
     const backoffMs = 30_000 * Math.pow(2, attempts - 1);
     const deferredAt = (ref as any).deferredAt ? new Date((ref as any).deferredAt).getTime() : 0;
     if (Date.now() - deferredAt < backoffMs) continue;
 
     const actor = getActor(ref.actorKey);
     if (!actor) { ref.status = "FAILED"; continue; }
-    // Rebuild input for retry
     const retryJob = jobs.find(j => j.actorKey === ref.actorKey && j.keyword === ref.keyword);
     if (!retryJob) { ref.status = "FAILED"; continue; }
 
@@ -673,20 +681,17 @@ async function phaseStarting(run: any, serviceClient: any) {
     }
   }
 
-  // Start new jobs in batches — heavy actors get batch size 1, others 3
   const BATCH_SIZE = 3;
   const batch = jobs.slice(currentIndex, currentIndex + BATCH_SIZE);
 
   console.log(`Starting batch: jobs ${currentIndex}-${currentIndex + batch.length - 1} of ${jobs.length}`);
 
-  // Throttle heavy actors: at most 2 heavy actor starts per batch
   let heavyStarted = 0;
   const MAX_HEAVY_PER_BATCH = 2;
 
   for (const job of batch) {
     const isHeavy = HEAVY_ACTORS.has(job.actorKey);
     if (isHeavy && heavyStarted >= MAX_HEAVY_PER_BATCH) {
-      // Skip this heavy job — it will be picked up next cycle
       console.log(`Throttling heavy actor ${job.actorKey}:"${job.keyword}", deferring to next cycle`);
       continue;
     }
@@ -730,7 +735,6 @@ async function phaseStarting(run: any, serviceClient: any) {
   }
 
   const newIndex = currentIndex + batch.length;
-  // Check if all jobs are started AND no DEFERRED refs remain
   const hasDeferredRefs = existingRefs.some(r => r.status === "DEFERRED");
   const allStarted = newIndex >= jobs.length && !hasDeferredRefs;
 
@@ -756,7 +760,7 @@ function isCapacityError(errMsg: string): boolean {
 
 // ── Abort helper ──
 
-const PER_RUN_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes per individual Apify run
+const PER_RUN_TIMEOUT_MS = 15 * 60 * 1000;
 
 async function abortApifyRun(runId: string, token: string): Promise<void> {
   try {
@@ -775,7 +779,7 @@ async function abortApifyRun(runId: string, token: string): Promise<void> {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ██  PHASE 2: SCRAPING — poll Apify for completion
+// ██  PHASE 2: SCRAPING
 // ═══════════════════════════════════════════════════════════
 
 async function phaseScraping(run: any, serviceClient: any) {
@@ -788,10 +792,9 @@ async function phaseScraping(run: any, serviceClient: any) {
 
   for (const ref of refs) {
     if (!ref.runId || ref.status === "FAILED" || ref.status === "SUCCEEDED" || ref.status === "TIMED-OUT" || ref.status === "ABORTED" || ref.status === "DEFERRED") {
-      continue; // Skip already-resolved or deferred runs
+      continue;
     }
 
-    // Per-run timeout: abort runs that have been RUNNING for over 15 minutes
     if ((ref.status === "RUNNING" || ref.status === "READY") && ref.startedAt) {
       const elapsedMs = Date.now() - new Date(ref.startedAt).getTime();
       if (elapsedMs > PER_RUN_TIMEOUT_MS) {
@@ -821,12 +824,11 @@ async function phaseScraping(run: any, serviceClient: any) {
     }
   }
 
-  // Log breakdown of run statuses
   const succeeded = refs.filter(r => r.status === "SUCCEEDED").length;
-  const failed = refs.filter(r => r.status === "FAILED").length;
+  const failedCount = refs.filter(r => r.status === "FAILED").length;
   const timedOut = refs.filter(r => r.status === "TIMED-OUT").length;
   const running = refs.filter(r => r.status === "RUNNING" || r.status === "READY").length;
-  console.log(`Signal ${run.id} run breakdown: ${succeeded} succeeded, ${failed} failed, ${timedOut} timed-out, ${running} still running`);
+  console.log(`Signal ${run.id} run breakdown: ${succeeded} succeeded, ${failedCount} failed, ${timedOut} timed-out, ${running} still running`);
 
   const nextPhase = anyStillRunning ? "scraping" : "collecting";
 
@@ -842,7 +844,7 @@ async function phaseScraping(run: any, serviceClient: any) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ██  PHASE 3: COLLECTING (incremental) — one dataset per invocation
+// ██  PHASE 3: COLLECTING (incremental)
 // ═══════════════════════════════════════════════════════════
 
 async function phaseCollectingIncremental(run: any, serviceClient: any) {
@@ -852,11 +854,9 @@ async function phaseCollectingIncremental(run: any, serviceClient: any) {
   const refs: ApifyRunRef[] = run.apify_run_ids || [];
   const collectedIndex = run.collected_dataset_index || 0;
 
-  // Find the next SUCCEEDED dataset that hasn't been collected yet
   const succeededRefs = refs.filter(r => r.status === "SUCCEEDED" && r.datasetId);
   
   if (collectedIndex >= succeededRefs.length) {
-    // All datasets collected — move to finalizing
     console.log(`Signal ${run.id}: all ${succeededRefs.length} datasets collected, moving to finalizing`);
     await serviceClient.from("signal_runs").update({
       processing_phase: "finalizing",
@@ -867,7 +867,6 @@ async function phaseCollectingIncremental(run: any, serviceClient: any) {
   const ref = succeededRefs[collectedIndex];
   const actor = getActor(ref.actorKey);
   if (!actor) {
-    // Skip this dataset and advance index
     await serviceClient.from("signal_runs").update({
       collected_dataset_index: collectedIndex + 1,
     }).eq("id", run.id);
@@ -879,12 +878,11 @@ async function phaseCollectingIncremental(run: any, serviceClient: any) {
   try {
     const items = await collectApifyResults(ref.datasetId, APIFY_API_TOKEN);
     
-    // Zero-result warning: detect silent actor failures (actor succeeds but returns no data)
+    // Zero-result warning
     if (items.length === 0) {
       console.warn(`⚠️ Actor ${ref.actorKey}:"${ref.keyword}" returned SUCCEEDED but 0 results — possible input schema mismatch or site blocking`);
     } else if (items.length === 1 && items[0]?.jobTitle?.includes?.("Sample Job Listing")) {
       console.warn(`⚠️ Actor ${ref.actorKey}:"${ref.keyword}" returned a placeholder/fallback result — site is likely blocking the scraper`);
-      // Don't store placeholder results
       await serviceClient.from("signal_runs").update({ collected_dataset_index: collectedIndex + 1 }).eq("id", run.id);
       return;
     }
@@ -899,12 +897,11 @@ async function phaseCollectingIncremental(run: any, serviceClient: any) {
       }, { onConflict: "query_hash,source" }).then(() => {});
     }
 
-    // Normalize and store leads immediately (raw, pre-dedup, pre-AI)
+    // Normalize and store leads
     const normalised = normaliseGenericResults(actor, items);
     const storedPlan = run.signal_plan;
     const plans: any[] = Array.isArray(storedPlan) ? storedPlan : [storedPlan];
 
-    // Store raw collected leads in signal_leads with enriched=false
     const leadsToInsert = normalised.map((item: any) => ({
       run_id: run.id, workspace_id: run.workspace_id,
       company_name: item.company_name || null, website: item.website || null,
@@ -916,7 +913,6 @@ async function phaseCollectingIncremental(run: any, serviceClient: any) {
     }));
 
     if (leadsToInsert.length > 0) {
-      // Insert in batches of 200 to avoid payload limits
       for (let i = 0; i < leadsToInsert.length; i += 200) {
         const batch = leadsToInsert.slice(i, i + 200);
         await serviceClient.from("signal_leads").insert(batch);
@@ -926,17 +922,15 @@ async function phaseCollectingIncremental(run: any, serviceClient: any) {
     console.log(`Signal ${run.id}: stored ${leadsToInsert.length} raw leads from dataset ${collectedIndex + 1}`);
   } catch (err) {
     console.error(`Signal ${run.id}: error collecting dataset ${collectedIndex + 1}:`, err);
-    // Continue to next dataset even on error
   }
 
-  // Advance to next dataset
   await serviceClient.from("signal_runs").update({
     collected_dataset_index: collectedIndex + 1,
   }).eq("id", run.id);
 }
 
 // ═══════════════════════════════════════════════════════════
-// ██  PHASE 4: FINALIZING — dedup, AI classify, charge credits
+// ██  PHASE 4: FINALIZING
 // ═══════════════════════════════════════════════════════════
 
 async function phaseFinalizing(run: any, serviceClient: any) {
@@ -951,7 +945,6 @@ async function phaseFinalizing(run: any, serviceClient: any) {
 
   console.log(`Signal ${run_id}: FINALIZING — dedup + AI classify`);
 
-  // Fetch all raw leads stored during collecting phase
   const { data: rawLeads, error: fetchErr } = await serviceClient
     .from("signal_leads")
     .select("*")
@@ -963,13 +956,12 @@ async function phaseFinalizing(run: any, serviceClient: any) {
   log("loaded_raw_leads", { count: allLeads.length });
 
   if (allLeads.length === 0) {
-    // No leads at all — complete with zero cost
     log("zero_result_protection", { message: "No leads discovered, credits not charged" });
     await finalizeRun(run, serviceClient, 0, 0, runLog);
     return;
   }
 
-  // ── Cross-keyword dedup within collected leads ──
+  // ── Cross-keyword dedup ──
   const seen = new Set<string>();
   const dedupedIds: string[] = [];
   const removeIds: string[] = [];
@@ -983,7 +975,6 @@ async function phaseFinalizing(run: any, serviceClient: any) {
   }
   log("cross_keyword_dedup", { before: allLeads.length, after: dedupedIds.length, removed: removeIds.length });
 
-  // Delete duplicate leads
   if (removeIds.length > 0) {
     for (let i = 0; i < removeIds.length; i += 200) {
       const batch = removeIds.slice(i, i + 200);
@@ -991,7 +982,6 @@ async function phaseFinalizing(run: any, serviceClient: any) {
     }
   }
 
-  // Re-fetch deduped leads
   const { data: dedupedLeads } = await serviceClient
     .from("signal_leads")
     .select("*")
@@ -1018,7 +1008,6 @@ async function phaseFinalizing(run: any, serviceClient: any) {
       if (!passes) failedIds.push(item.id);
       return passes;
     });
-    // Delete filtered-out leads
     if (failedIds.length > 0) {
       for (let i = 0; i < failedIds.length; i += 200) {
         await serviceClient.from("signal_leads").delete().in("id", failedIds.slice(i, i + 200));
@@ -1061,7 +1050,6 @@ async function phaseFinalizing(run: any, serviceClient: any) {
           }
         } catch { /* keep all on error */ }
       }
-      // Delete AI-rejected leads
       if (failedAiIds.length > 0) {
         for (let i = 0; i < failedAiIds.length; i += 200) {
           await serviceClient.from("signal_leads").delete().in("id", failedAiIds.slice(i, i + 200));
@@ -1121,14 +1109,12 @@ async function phaseFinalizing(run: any, serviceClient: any) {
   }
   log("workspace_dedup", { before: finalLeads?.length || 0, after: uniqueLeads.length, removed: duplicateIds.length });
 
-  // Delete workspace-level duplicates
   if (duplicateIds.length > 0) {
     for (let i = 0; i < duplicateIds.length; i += 200) {
       await serviceClient.from("signal_leads").delete().in("id", duplicateIds.slice(i, i + 200));
     }
   }
 
-  // Store dedup keys
   if (newDedupKeys.length > 0) {
     for (let i = 0; i < newDedupKeys.length; i += 200) {
       await serviceClient.from("signal_dedup_keys").insert(newDedupKeys.slice(i, i + 200)).select();
@@ -1136,7 +1122,7 @@ async function phaseFinalizing(run: any, serviceClient: any) {
   }
 
   // ── Calculate actual cost ──
-  const scrapedRows = (finalLeads || []).length; // approximate from what we collected
+  const scrapedRows = (finalLeads || []).length;
   const scrapeCostUsd = (scrapedRows / 1000) * 0.25;
   const aiFilterCostUsd = aiFilteredCount * 0.001;
   const actualCostUsd = (scrapeCostUsd + aiFilterCostUsd) * 1.2;
