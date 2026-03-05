@@ -180,7 +180,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     description: "Scrapes LinkedIn company profiles. Best for enriching companies found from other sources. Returns employee count, industry, headquarters.",
     inputSchema: {
       profileUrls: { type: "string[]", required: true, description: "Array of LinkedIn company profile URLs to scrape" },
-      maxResults:  { type: "number",   default: 100, description: "Max results" },
+      maxResults:  { type: "number",   default: 500, description: "Max results. Set high (500+) because downstream filtering is aggressive." },
     },
     outputFields: {
       company_name:   ["name", "title"],
