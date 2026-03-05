@@ -44,7 +44,7 @@ const ACTORS_TO_TEST = [
   },
   {
     key: "yelp",
-    actorId: "api-ninja/yelp-ultimate-scraper",
+    actorId: "sovereigntaylor/yelp-scraper",
     input: {
       searchTerms: ["marketing agency"],
       locations: ["New York, NY"],

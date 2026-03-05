@@ -102,7 +102,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
   },
   {
     key: "yelp",
-    actorId: "api-ninja/yelp-ultimate-scraper",
+    actorId: "sovereigntaylor/yelp-scraper",
     label: "Yelp",
     category: "local_business",
     description: "Yelp business listings",
