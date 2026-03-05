@@ -41,8 +41,8 @@ const ACTOR_CATALOG: ActorEntry[] = [
       urls:              { type: "string[]", required: true, description: "LinkedIn job search URLs. Construct from keywords: https://www.linkedin.com/jobs/search/?keywords=KEYWORD&location=LOCATION&f_TPR=r604800" },
       count:             { type: "number",  default: 2500, description: "Max job listings to scrape. Set high (2000+) because downstream filtering discards 80-95%." },
       scrapeCompany:     { type: "boolean", default: true, description: "Include company details (website, industry, employee count)" },
-      splitByLocation:   { type: "boolean", default: true, description: "Split search by city locations to bypass LinkedIn's 1000-result cap" },
-      splitCountry:      { type: "string",  default: "US", description: "Country whose cities will be used to split the search (e.g. US, CA, GB)" },
+      splitByLocation:   { type: "boolean", default: false, description: "Split search by city locations to bypass LinkedIn's 1000-result cap. Only enable for broad US searches." },
+      splitCountry:      { type: "string",  description: "Country whose cities will be used to split the search. Only set when splitByLocation=true." },
     },
     outputFields: {
       company_name:   ["companyName", "company"],
