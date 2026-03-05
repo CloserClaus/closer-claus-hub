@@ -10,6 +10,8 @@ import { TourProvider } from "@/components/tour/TourProvider";
 import { TourOverlay } from "@/components/tour/TourOverlay";
 import { TourTrigger } from "@/components/tour/TourTrigger";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { EmailVerificationGuard } from "@/components/layout/EmailVerificationGuard";
+import { SubscriptionGuard } from "@/components/layout/SubscriptionGuard";
 import Auth from "./pages/Auth";
 import RoleSelect from "./pages/RoleSelect";
 import Onboarding from "./pages/Onboarding";
@@ -68,23 +70,28 @@ const App = () => (
                 <Route path="/billing" element={<Billing />} />
                 <Route path="/dashboard" element={<ErrorBoundary fallbackTitle="Dashboard error"><Dashboard /></ErrorBoundary>} />
                 <Route path="/settings" element={<Settings />} />
-                <Route path="/jobs" element={<Jobs />} />
-                <Route path="/jobs/new" element={<JobForm />} />
-                <Route path="/jobs/:id" element={<JobDetail />} />
-                <Route path="/jobs/:id/edit" element={<JobForm />} />
-                <Route path="/crm" element={<ErrorBoundary fallbackTitle="CRM error"><CRM /></ErrorBoundary>} />
-                <Route path="/leads" element={<Leads />} />
+                {/* Email verification required */}
+                <Route path="/crm" element={<ErrorBoundary fallbackTitle="CRM error"><EmailVerificationGuard feature="the CRM"><CRM /></EmailVerificationGuard></ErrorBoundary>} />
+                <Route path="/app/offer-diagnostic" element={<EmailVerificationGuard feature="the Offer Diagnostic"><OfferDiagnostic /></EmailVerificationGuard>} />
+                <Route path="/app/script-builder" element={<EmailVerificationGuard feature="the Script Builder"><ScriptBuilder /></EmailVerificationGuard>} />
+                {/* Subscription required */}
+                <Route path="/jobs" element={<EmailVerificationGuard feature="Jobs"><SubscriptionGuard feature="Jobs"><Jobs /></SubscriptionGuard></EmailVerificationGuard>} />
+                <Route path="/jobs/new" element={<EmailVerificationGuard feature="Jobs"><SubscriptionGuard feature="Jobs"><JobForm /></SubscriptionGuard></EmailVerificationGuard>} />
+                <Route path="/jobs/:id" element={<EmailVerificationGuard feature="Jobs"><SubscriptionGuard feature="Jobs"><JobDetail /></SubscriptionGuard></EmailVerificationGuard>} />
+                <Route path="/jobs/:id/edit" element={<EmailVerificationGuard feature="Jobs"><SubscriptionGuard feature="Jobs"><JobForm /></SubscriptionGuard></EmailVerificationGuard>} />
+                <Route path="/leads" element={<EmailVerificationGuard feature="Leads"><SubscriptionGuard feature="the Leads Marketplace"><Leads /></SubscriptionGuard></EmailVerificationGuard>} />
+                <Route path="/dialer" element={<ErrorBoundary fallbackTitle="Dialer error"><EmailVerificationGuard feature="the Dialer"><SubscriptionGuard feature="the Dialer"><Dialer /></SubscriptionGuard></EmailVerificationGuard></ErrorBoundary>} />
+                <Route path="/email" element={<EmailVerificationGuard feature="Email"><SubscriptionGuard feature="Email Campaigns"><Email /></SubscriptionGuard></EmailVerificationGuard>} />
+                <Route path="/trainings" element={<EmailVerificationGuard feature="Training"><SubscriptionGuard feature="Training"><Training /></SubscriptionGuard></EmailVerificationGuard>} />
+                <Route path="/contracts" element={<EmailVerificationGuard feature="Contracts"><SubscriptionGuard feature="Contracts"><Contracts /></SubscriptionGuard></EmailVerificationGuard>} />
+                <Route path="/team" element={<EmailVerificationGuard feature="Team Management"><SubscriptionGuard feature="Team Management"><TeamManagement /></SubscriptionGuard></EmailVerificationGuard>} />
+                {/* No guards needed */}
                 <Route path="/conversations" element={<Conversations />} />
-                <Route path="/dialer" element={<ErrorBoundary fallbackTitle="Dialer error"><Dialer /></ErrorBoundary>} />
-                <Route path="/email" element={<Email />} />
-                <Route path="/trainings" element={<Training />} />
-                <Route path="/contracts" element={<Contracts />} />
                 <Route path="/sign/:contractId" element={<SignContract />} />
                 <Route path="/commissions" element={<Commissions />} />
                 <Route path="/payouts" element={<Navigate to="/commissions" replace />} />
                 <Route path="/earnings" element={<Navigate to="/commissions" replace />} />
                 <Route path="/notifications" element={<Notifications />} />
-                <Route path="/team" element={<TeamManagement />} />
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/feature-requests" element={<FeatureRequests />} />
@@ -92,8 +99,6 @@ const App = () => (
                 <Route path="/roadmap" element={<Roadmap />} />
                 <Route path="/offer-diagnostic" element={<PublicOfferDiagnostic />} />
                 <Route path="/offer-diagnostic/results" element={<PublicOfferDiagnosticResults />} />
-                <Route path="/app/offer-diagnostic" element={<OfferDiagnostic />} />
-                <Route path="/app/script-builder" element={<ScriptBuilder />} />
                 <Route path="/refer" element={<ReferAndEarn />} />
                 <Route path="/example" element={<DemoWalkthrough />} />
                 <Route path="/demo" element={<DemoVideo />} />

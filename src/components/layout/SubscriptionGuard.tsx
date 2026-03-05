@@ -2,68 +2,85 @@ import { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { AlertTriangle, CreditCard } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { useState } from 'react';
 
 interface SubscriptionGuardProps {
   children: ReactNode;
-  feature?: 'jobs' | 'team';
+  feature?: string;
 }
 
-export function SubscriptionGuard({ children, feature = 'jobs' }: SubscriptionGuardProps) {
+export function SubscriptionGuard({ children, feature = 'this feature' }: SubscriptionGuardProps) {
   const { userRole } = useAuth();
   const { currentWorkspace, hasActiveSubscription, loading } = useWorkspace();
   const navigate = useNavigate();
+  const [dismissed, setDismissed] = useState(false);
 
-  // Only agency owners need subscription for these features
-  if (userRole !== 'agency_owner') {
-    return <>{children}</>;
-  }
+  // Platform admins bypass all guards
+  if (userRole === 'platform_admin') return <>{children}</>;
 
-  // Show loading state
-  if (loading) {
-    return null;
-  }
+  if (loading) return null;
 
-  // If agency owner has workspace but no active subscription, show paywall
-  if (currentWorkspace && !hasActiveSubscription) {
-    const featureText = feature === 'jobs' 
-      ? { title: 'Post Jobs', description: 'post job listings and hire SDRs' }
-      : { title: 'Manage Team', description: 'manage your team and SDRs' };
+  // SDRs inherit subscription from their workspace
+  // Agency owners need their own subscription
+  const needsSubscription = !hasActiveSubscription;
 
+  if (needsSubscription && !dismissed) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh] p-4">
-        <Card className="max-w-md glass">
-          <CardHeader className="text-center">
-            <div className="w-16 h-16 rounded-2xl bg-warning/10 flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="w-8 h-8 text-warning" />
+      <>
+        {children}
+        <Dialog open={true} onOpenChange={() => setDismissed(true)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader className="text-center">
+              <div className="w-14 h-14 rounded-2xl bg-warning/10 flex items-center justify-center mx-auto mb-3">
+                <AlertTriangle className="w-7 h-7 text-warning" />
+              </div>
+              <DialogTitle>Subscription Required</DialogTitle>
+              <DialogDescription>
+                To use {feature}, you need an active subscription plan.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <div className="text-sm text-muted-foreground space-y-2">
+                <p>Subscribe to unlock:</p>
+                <ul className="list-disc list-inside space-y-1 ml-2">
+                  <li>Leads marketplace & signal scraper</li>
+                  <li>Power dialer with call recording</li>
+                  <li>Email campaigns & sequences</li>
+                  <li>Job posting & SDR hiring</li>
+                  <li>Team management & training</li>
+                  <li>Contract generation</li>
+                </ul>
+              </div>
+              {currentWorkspace && (
+                <Button
+                  className="w-full"
+                  onClick={() => navigate(`/subscription?workspace=${currentWorkspace.id}`)}
+                >
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Choose a Plan
+                </Button>
+              )}
+              {!currentWorkspace && userRole === 'agency_owner' && (
+                <Button
+                  className="w-full"
+                  onClick={() => navigate('/onboarding')}
+                >
+                  Complete Setup First
+                </Button>
+              )}
             </div>
-            <CardTitle>Subscription Required</CardTitle>
-            <CardDescription>
-              You need an active subscription to {featureText.description}.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="text-sm text-muted-foreground space-y-2">
-              <p>Subscribe to unlock:</p>
-              <ul className="list-disc list-inside space-y-1 ml-2">
-                <li>Post unlimited job listings</li>
-                <li>Hire and manage SDRs</li>
-                <li>Track team performance</li>
-                <li>Pay commissions seamlessly</li>
-              </ul>
-            </div>
-            <Button 
-              className="w-full bg-primary hover:bg-primary/90"
-              onClick={() => navigate(`/subscription?workspace=${currentWorkspace.id}`)}
-            >
-              <CreditCard className="w-4 h-4 mr-2" />
-              Choose a Plan
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+          </DialogContent>
+        </Dialog>
+      </>
     );
   }
 
