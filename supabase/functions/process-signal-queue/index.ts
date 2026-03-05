@@ -641,6 +641,7 @@ async function phaseStarting(run: any, serviceClient: any) {
         runId,
         datasetId,
         status: "RUNNING",
+        startedAt: new Date().toISOString(),
       });
       console.log(`Started Apify run ${runId} for ${job.actorKey}:"${job.keyword}"`);
     } catch (err) {
