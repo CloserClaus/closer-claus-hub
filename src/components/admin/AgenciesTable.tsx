@@ -39,7 +39,7 @@ const TIER_CONFIG: Record<string, { maxSdrs: number; rake: number }> = {
 };
 
 export function AgenciesTable() {
-  const [selectedAgency, setSelectedAgency] = useState<{ id: string; name: string; currentTier: SubscriptionTier } | null>(null);
+  const [selectedAgency, setSelectedAgency] = useState<{ id: string; name: string; currentTier: SubscriptionTier; isActive: boolean } | null>(null);
   const [newTier, setNewTier] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -239,6 +239,7 @@ export function AgenciesTable() {
                               id: agency.id,
                               name: agency.name,
                               currentTier: displayTier as SubscriptionTier,
+                              isActive: hasActiveSubscription(agency),
                             })}
                             title="Manage subscription"
                           >
@@ -317,7 +318,7 @@ export function AgenciesTable() {
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            {selectedAgency?.currentTier && (
+            {(selectedAgency?.currentTier || selectedAgency?.isActive) && (
               <Button
                 variant="destructive"
                 onClick={handleRemoveSubscription}
