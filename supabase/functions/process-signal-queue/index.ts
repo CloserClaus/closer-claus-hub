@@ -1072,7 +1072,8 @@ async function phaseFinalizing(run: any, serviceClient: any) {
   const { data: finalLeads } = await serviceClient
     .from("signal_leads")
     .select("*")
-    .eq("run_id", run_id);
+    .eq("run_id", run_id)
+    .limit(10000);
 
   const { data: existingKeys } = await serviceClient
     .from("signal_dedup_keys")
