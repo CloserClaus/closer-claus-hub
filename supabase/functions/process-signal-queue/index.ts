@@ -297,14 +297,24 @@ async function pollApifyRun(runId: string, token: string): Promise<string> {
 }
 
 async function collectApifyResults(datasetId: string, token: string): Promise<any[]> {
-  const resp = await fetch(
-    `https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}&clean=true&limit=1000`,
-    { method: "GET" }
-  );
-  if (!resp.ok) {
-    throw new Error(`Apify collect failed (${resp.status})`);
+  // Paginate large datasets to avoid memory issues
+  const PAGE_SIZE = 500;
+  let allItems: any[] = [];
+  let offset = 0;
+  while (true) {
+    const resp = await fetch(
+      `https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}&clean=true&limit=${PAGE_SIZE}&offset=${offset}`,
+      { method: "GET" }
+    );
+    if (!resp.ok) {
+      throw new Error(`Apify collect failed (${resp.status})`);
+    }
+    const items = await resp.json();
+    allItems.push(...items);
+    if (items.length < PAGE_SIZE) break; // Last page
+    offset += PAGE_SIZE;
   }
-  return await resp.json();
+  return allItems;
 }
 
 // ═══════════════════════════════════════════════════════════
