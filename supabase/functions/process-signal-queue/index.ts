@@ -878,6 +878,17 @@ async function phaseCollectingIncremental(run: any, serviceClient: any) {
 
   try {
     const items = await collectApifyResults(ref.datasetId, APIFY_API_TOKEN);
+    
+    // Zero-result warning: detect silent actor failures (actor succeeds but returns no data)
+    if (items.length === 0) {
+      console.warn(`⚠️ Actor ${ref.actorKey}:"${ref.keyword}" returned SUCCEEDED but 0 results — possible input schema mismatch or site blocking`);
+    } else if (items.length === 1 && items[0]?.jobTitle?.includes?.("Sample Job Listing")) {
+      console.warn(`⚠️ Actor ${ref.actorKey}:"${ref.keyword}" returned a placeholder/fallback result — site is likely blocking the scraper`);
+      // Don't store placeholder results
+      await serviceClient.from("signal_runs").update({ collected_dataset_index: collectedIndex + 1 }).eq("id", run.id);
+      return;
+    }
+    
     console.log(`Signal ${run.id}: fetched ${items.length} items from ${ref.actorKey}:"${ref.keyword}"`);
 
     // Cache the results
