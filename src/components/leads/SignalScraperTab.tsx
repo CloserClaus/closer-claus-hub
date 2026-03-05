@@ -9,8 +9,9 @@ import { Separator } from '@/components/ui/separator';
 import {
   Zap, Loader2, Play, Clock, Trash2, RotateCcw, ExternalLink, Plus, History,
   Globe, Phone, MapPin, Building2, ChevronDown, ChevronUp, Search, Mail, Sparkles,
-  Briefcase, Rocket, FileText,
+  Briefcase, Rocket, FileText, AlertTriangle,
 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useSignalScraper, SignalRun, SignalLead } from '@/hooks/useSignalScraper';
 import { useLeadCredits } from '@/hooks/useLeadCredits';
 import { formatDistanceToNow } from 'date-fns';
