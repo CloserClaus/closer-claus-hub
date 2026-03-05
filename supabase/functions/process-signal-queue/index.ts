@@ -131,7 +131,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     description: "LinkedIn company profiles",
     inputSchema: {
       profileUrls: { type: "string[]", required: true, description: "LinkedIn company profile URLs" },
-      maxResults:  { type: "number",   default: 100, description: "Max results" },
+      maxResults:  { type: "number",   default: 500, description: "Max results" },
     },
     outputFields: {
       company_name: ["name", "title"], website: ["website", "url"], linkedin: ["linkedinUrl", "url"],
