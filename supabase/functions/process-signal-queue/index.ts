@@ -502,7 +502,7 @@ async function handlePhaseError(run: any, err: unknown, serviceClient: any) {
   } else {
     await serviceClient.from("signal_runs").update({
       status: "queued", retry_count: retryCount, started_at: null,
-      processing_phase: "pending", apify_run_ids: [], current_keyword_index: 0,
+      processing_phase: "pending", apify_run_ids: [], current_keyword_index: 0, collected_dataset_index: 0,
       error_message: `Attempt ${retryCount} failed: ${errorMsg}`,
     }).eq("id", run.id);
   }
