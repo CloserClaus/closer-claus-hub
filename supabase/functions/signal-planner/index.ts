@@ -387,6 +387,7 @@ RULES:
 - ai_classification is a text description of an AI filter applied AFTER scraping. Use it to narrow results by company type, size, or relevance. Use the SAME ai_classification across all plans in a multi-source array.
 - IMPORTANT: Put ALL keyword variations in "search_query" separated by " OR " (e.g. "SDR OR BDR OR Appointment Setter OR Sales Representative"). The engine will automatically split on OR and run each keyword as a separate search, then merge results. In "search_params", put only the FIRST/primary keyword in the keyword field as a fallback.
 - For hiring intent queries, ALWAYS prefer timePosted "pastWeek" / datePosted "7days" unless the user explicitly says "today only" or "last 24 hours". The "past24h"/"today" window is extremely restrictive and frequently returns zero results for niche roles.
+- IMPORTANT: Always set maxResults / maxItems to 500 or higher. Downstream filtering (dedup, AI classification, static filters) is very aggressive and will discard 80-95% of raw results. Scraping more upfront ensures enough leads survive the pipeline. Do NOT set low limits.
 
 Return a JSON ARRAY of plan objects. Each object has this structure:
 {

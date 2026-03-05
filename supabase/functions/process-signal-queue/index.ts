@@ -586,11 +586,11 @@ async function phaseStarting(run: any, serviceClient: any) {
         if (actor.inputSchema[af]) iterPlan.search_params[af] = [keyword];
       }
 
+      // Ensure max field has a high default — do NOT divide by keyword count.
+      // Each keyword gets the full limit; dedup handles overlaps downstream.
       const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max"));
-      if (maxField && isMultiKeyword && iterPlan.search_params[maxField]) {
-        iterPlan.search_params[maxField] = Math.max(50, Math.ceil(iterPlan.search_params[maxField] / keywords.length));
-      } else if (maxField && !iterPlan.search_params[maxField]) {
-        iterPlan.search_params[maxField] = 100;
+      if (maxField && !iterPlan.search_params[maxField]) {
+        iterPlan.search_params[maxField] = 500;
       }
 
       const actorInput = buildGenericInput(actor, iterPlan);
