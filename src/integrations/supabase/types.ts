@@ -3243,6 +3243,7 @@ export type Database = {
         Row: {
           actual_cost: number | null
           apify_run_ids: Json | null
+          collected_dataset_index: number | null
           created_at: string
           current_keyword_index: number | null
           error_message: string | null
@@ -3269,6 +3270,7 @@ export type Database = {
         Insert: {
           actual_cost?: number | null
           apify_run_ids?: Json | null
+          collected_dataset_index?: number | null
           created_at?: string
           current_keyword_index?: number | null
           error_message?: string | null
@@ -3295,6 +3297,7 @@ export type Database = {
         Update: {
           actual_cost?: number | null
           apify_run_ids?: Json | null
+          collected_dataset_index?: number | null
           created_at?: string
           current_keyword_index?: number | null
           error_message?: string | null
