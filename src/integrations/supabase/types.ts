@@ -3174,6 +3174,7 @@ export type Database = {
         Row: {
           added_to_crm: boolean
           city: string | null
+          company_linkedin_url: string | null
           company_name: string | null
           contact_name: string | null
           country: string | null
@@ -3186,18 +3187,22 @@ export type Database = {
           id: string
           industry: string | null
           linkedin: string | null
+          linkedin_profile_url: string | null
           location: string | null
           phone: string | null
+          pipeline_stage: string | null
           run_id: string
           source: string | null
           state: string | null
           title: string | null
           website: string | null
+          website_content: string | null
           workspace_id: string
         }
         Insert: {
           added_to_crm?: boolean
           city?: string | null
+          company_linkedin_url?: string | null
           company_name?: string | null
           contact_name?: string | null
           country?: string | null
@@ -3210,18 +3215,22 @@ export type Database = {
           id?: string
           industry?: string | null
           linkedin?: string | null
+          linkedin_profile_url?: string | null
           location?: string | null
           phone?: string | null
+          pipeline_stage?: string | null
           run_id: string
           source?: string | null
           state?: string | null
           title?: string | null
           website?: string | null
+          website_content?: string | null
           workspace_id: string
         }
         Update: {
           added_to_crm?: boolean
           city?: string | null
+          company_linkedin_url?: string | null
           company_name?: string | null
           contact_name?: string | null
           country?: string | null
@@ -3234,13 +3243,16 @@ export type Database = {
           id?: string
           industry?: string | null
           linkedin?: string | null
+          linkedin_profile_url?: string | null
           location?: string | null
           phone?: string | null
+          pipeline_stage?: string | null
           run_id?: string
           source?: string | null
           state?: string | null
           title?: string | null
           website?: string | null
+          website_content?: string | null
           workspace_id?: string
         }
         Relationships: [
@@ -3267,6 +3279,7 @@ export type Database = {
           collected_dataset_index: number | null
           created_at: string
           current_keyword_index: number | null
+          current_pipeline_stage: number
           error_message: string | null
           estimated_cost: number
           estimated_leads: number | null
@@ -3274,6 +3287,7 @@ export type Database = {
           last_run_at: string | null
           leads_discovered: number | null
           next_run_at: string | null
+          pipeline_stage_count: number
           processing_phase: string | null
           retry_count: number | null
           run_log: Json | null
@@ -3294,6 +3308,7 @@ export type Database = {
           collected_dataset_index?: number | null
           created_at?: string
           current_keyword_index?: number | null
+          current_pipeline_stage?: number
           error_message?: string | null
           estimated_cost?: number
           estimated_leads?: number | null
@@ -3301,6 +3316,7 @@ export type Database = {
           last_run_at?: string | null
           leads_discovered?: number | null
           next_run_at?: string | null
+          pipeline_stage_count?: number
           processing_phase?: string | null
           retry_count?: number | null
           run_log?: Json | null
@@ -3321,6 +3337,7 @@ export type Database = {
           collected_dataset_index?: number | null
           created_at?: string
           current_keyword_index?: number | null
+          current_pipeline_stage?: number
           error_message?: string | null
           estimated_cost?: number
           estimated_leads?: number | null
@@ -3328,6 +3345,7 @@ export type Database = {
           last_run_at?: string | null
           leads_discovered?: number | null
           next_run_at?: string | null
+          pipeline_stage_count?: number
           processing_phase?: string | null
           retry_count?: number | null
           run_log?: Json | null

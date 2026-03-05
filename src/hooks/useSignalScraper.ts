@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useToast } from '@/hooks/use-toast';
 
+// ── Legacy flat plan format ──
 export interface SignalPlanItem {
   signal_name: string;
   source: string;
@@ -16,8 +17,37 @@ export interface SignalPlanItem {
   estimated_leads_after_filter: number;
 }
 
-// SignalPlan can be a single item (old format) or array (new multi-source format)
-export type SignalPlan = SignalPlanItem | SignalPlanItem[];
+// ── New pipeline format ──
+export interface PipelineStage {
+  stage: number;
+  name: string;
+  type: 'scrape' | 'ai_filter';
+  actors?: string[];
+  params_per_actor?: Record<string, any>;
+  input_from?: string | null;
+  search_titles?: string[];
+  dedup_after?: boolean;
+  updates_fields?: string[];
+  search_query?: string;
+  expected_output_count?: number;
+  prompt?: string;
+  input_fields?: string[];
+  expected_pass_rate?: number;
+}
+
+export interface PipelinePlan {
+  signal_name: string;
+  pipeline: PipelineStage[];
+}
+
+// SignalPlan can be legacy flat array or new pipeline format
+export type SignalPlan = SignalPlanItem | SignalPlanItem[] | PipelinePlan;
+
+export interface StageFunnelItem {
+  stage: number;
+  name: string;
+  estimated_count: number;
+}
 
 export interface SignalEstimation {
   estimated_rows: number;
@@ -25,6 +55,7 @@ export interface SignalEstimation {
   credits_to_charge: number;
   cost_per_lead: string;
   source_label: string;
+  stage_funnel?: StageFunnelItem[];
 }
 
 export interface SignalRun {
@@ -45,6 +76,8 @@ export interface SignalRun {
   error_message: string | null;
   processing_phase: string | null;
   collected_dataset_index: number | null;
+  current_pipeline_stage: number;
+  pipeline_stage_count: number;
 }
 
 export interface SignalLead {
@@ -67,6 +100,16 @@ export interface SignalLead {
   city: string | null;
   state: string | null;
   country: string | null;
+  pipeline_stage: string | null;
+  website_content: string | null;
+  linkedin_profile_url: string | null;
+  company_linkedin_url: string | null;
+}
+
+// ── Helpers ──
+
+export function isPipelinePlan(plan: SignalPlan | null): plan is PipelinePlan {
+  return plan !== null && typeof plan === 'object' && !Array.isArray(plan) && 'pipeline' in plan;
 }
 
 export function useSignalScraper() {
@@ -80,7 +123,6 @@ export function useSignalScraper() {
     warnings?: string[];
   } | null>(null);
 
-  // Fetch signal history
   const { data: signalHistory = [], isLoading: historyLoading } = useQuery({
     queryKey: ['signal-runs', currentWorkspace?.id],
     queryFn: async () => {
@@ -94,7 +136,6 @@ export function useSignalScraper() {
       return (data || []) as unknown as SignalRun[];
     },
     enabled: !!currentWorkspace?.id,
-    // Poll every 5s when any run is queued or running
     refetchInterval: (query) => {
       const runs = query.state.data as SignalRun[] | undefined;
       const hasActive = runs?.some(r => r.status === 'queued' || r.status === 'running');
@@ -102,7 +143,6 @@ export function useSignalScraper() {
     },
   });
 
-  // Generate plan mutation
   const generatePlanMutation = useMutation({
     mutationFn: async (params: { query: string; plan_override?: any } | string) => {
       if (!currentWorkspace?.id) throw new Error('No workspace selected');
@@ -124,7 +164,6 @@ export function useSignalScraper() {
     },
   });
 
-  // Execute signal mutation
   const executeSignalMutation = useMutation({
     mutationFn: async (params: { run_id: string; schedule_type: string; schedule_hour?: number }) => {
       if (!currentWorkspace?.id) throw new Error('No workspace selected');
@@ -152,7 +191,6 @@ export function useSignalScraper() {
     },
   });
 
-  // Fetch leads for a specific run
   const useSignalLeads = (runId: string | null) => {
     return useQuery({
       queryKey: ['signal-leads', runId],
@@ -171,7 +209,6 @@ export function useSignalScraper() {
     });
   };
 
-  // Delete signal run
   const deleteSignalMutation = useMutation({
     mutationFn: async (runId: string) => {
       const { error } = await supabase.from('signal_runs').delete().eq('id', runId);
