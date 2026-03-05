@@ -583,8 +583,10 @@ async function phaseStarting(run: any, serviceClient: any) {
     const actor = getActor(plan.source);
     if (!actor) continue;
 
-    const keywordFields = ["keyword", "search", "searchQuery"];
+    const keywordFields = ["title", "search", "searchQuery"];
     const keywordField = keywordFields.find(f => actor.inputSchema[f]);
+    const arrayKeywordFields = ["searchKeywords", "searchStringsArray", "queries", "searchTerms"];
+    const arrayKeywordField = arrayKeywordFields.find(f => actor.inputSchema[f]);
     const searchQueryHasOR = plan.search_query && /\s+OR\s+/i.test(plan.search_query);
     const rawKeyword = searchQueryHasOR
       ? plan.search_query
@@ -597,9 +599,13 @@ async function phaseStarting(run: any, serviceClient: any) {
       if (keywordField && iterPlan.search_params[keywordField]) {
         iterPlan.search_params[keywordField] = keyword;
       }
-      const arrayFields = ["searchStringsArray", "queries", "searchTerms"];
-      for (const af of arrayFields) {
-        if (actor.inputSchema[af]) iterPlan.search_params[af] = [keyword];
+      // Set array keyword fields for actors that expect arrays
+      if (arrayKeywordField) {
+        iterPlan.search_params[arrayKeywordField] = [keyword];
+      }
+      const otherArrayFields = ["searchStringsArray", "queries", "searchTerms"];
+      for (const af of otherArrayFields) {
+        if (af !== arrayKeywordField && actor.inputSchema[af]) iterPlan.search_params[af] = [keyword];
       }
 
       // Ensure max field has a high default — do NOT divide by keyword count.
