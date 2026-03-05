@@ -38,8 +38,8 @@ const ACTOR_CATALOG: ActorEntry[] = [
       urls:              { type: "string[]", required: true, description: "LinkedIn job search URLs (constructed from keywords)" },
       count:             { type: "number",  default: 2500, description: "Max job listings" },
       scrapeCompany:     { type: "boolean", default: true, description: "Include company details" },
-      splitByLocation:   { type: "boolean", default: true, description: "Split by location to bypass 1000-result cap" },
-      splitCountry:      { type: "string",  default: "US", description: "Country for location splitting" },
+      splitByLocation:   { type: "boolean", default: false, description: "Split by location to bypass 1000-result cap" },
+      splitCountry:      { type: "string",  description: "Country for location splitting (only when splitByLocation=true)" },
     },
     outputFields: {
       company_name: ["companyName", "company"], title: ["title", "jobTitle", "position"],
