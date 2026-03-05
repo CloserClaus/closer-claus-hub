@@ -1,153 +1,209 @@
 
 
-## Signal Scraper: Comprehensive Fix Plan
+## Signal Scraper: Multi-Stage Pipeline Redesign
 
-### Problems Identified
+### The Core Problem
 
-1. **AI classification is not filtering properly** — The run shows 423 leads but "View Leads" displays 1000. The AI classifier receives only `company_name`, `description`, `website`, `location`, and `employee_count` but the `description` field for job board leads contains job descriptions (e.g., "We're looking for a Sales Rep to..."), NOT company descriptions. So the AI sees "Meta is hiring a Sales Rep" and thinks "Meta is a marketing agency" because the description mentions marketing keywords. The classifier needs the raw job title and company info to make correct decisions.
+The current system is a **flat scrape-and-filter** model: it runs all actors in parallel, collects results, then does dedup + AI classification in a single pass. This means:
 
-2. **Leads have no useful data** — Signal leads only store: `company_name`, `website`, `domain`, `phone`, `email`, `linkedin`, `location`. No founder name, no title, no industry, no employee count. The `extra_data` JSON blob has raw scrape data but it's never surfaced. There's no post-filtering enrichment step to look up the actual company owner/founder.
+1. AI classification only sees company names + job posting text (no website content to verify)
+2. No sequential enrichment — can't use Stage 1 output as input for Stage 2 actors
+3. Results are company-level shells with no person-level data (no founder/CEO names)
+4. Every query gets the same flow — the AI planner has no ability to design multi-step pipelines
+5. The desired output (Name, Title, Company, Headcount, Location, LinkedIn profile URL, LinkedIn company URL, Website, Email, Phone) requires at least 3-4 sequential scraping steps that the current architecture can't express
 
-3. **CRM import is broken** — The `addToCRM` function maps: `first_name: ''`, `last_name: ''`, `company: lead.company_name`, `notes: "Website: ...\nLocation: ..."`. This produces gibberish because the CRM expects person-level data (name, title) but signal leads are company-level. No proper field mapping exists.
+### Target Architecture
 
-4. **Lead results UI is a card grid** — Currently uses a 3-column card layout. User wants a table like the Apollo search results tab (Name, Title, Company, Location, Links, Contact).
+Replace the flat plan format with a **dynamic pipeline of stages**. The AI planner designs a sequence of stages, and the processor executes them one at a time, feeding each stage's output as the next stage's input.
 
-5. **Estimates are unrealistic** — The formula `keywordCount * Math.max(50, Math.ceil(maxPerKeyword / keywordCount))` divides max by keyword count, deflating estimates. Plus the 30%/60% filter rate assumptions are arbitrary.
+```text
+Example: "Marketing agencies (1-10) employees hiring sales reps"
 
-6. **leads_discovered count mismatch** — Shows 423 in history but 1000 when viewing. The `leads_discovered` is set from `uniqueLeads.length` after workspace dedup, but the query fetching leads for display has no filter — it fetches ALL leads for the run_id including ones that should have been deleted.
+Stage 1: SCRAPE    — LinkedIn Jobs + Indeed (discover companies hiring for sales)
+                     → ~2000 raw company names + websites + LinkedIn company URLs
+Stage 2: AI_FILTER — "Is this COMPANY a marketing/advertising agency?" (name + domain only)
+                     → ~400 candidates (removes Meta, Amazon, hospitals, etc.)
+Stage 3: SCRAPE    — LinkedIn Company profiles (get headcount, industry, HQ)
+                     → Enriches surviving leads with real employee counts
+Stage 4: AI_FILTER — "Does this company have 1-10 employees?"
+                     → ~60 qualified small agencies
+Stage 5: SCRAPE    — LinkedIn People Search (title: CEO/Founder/Owner at company)
+                     → Finds decision makers: name, title, LinkedIn profile URL
+Stage 6: SCRAPE    — Contact Enrichment (scrape company websites for email/phone)
+                     → Stores email/phone hidden until user enriches
+```
+
+Different queries produce different pipelines:
+- "Chiropractors in Dallas" → Google Maps → Contact Enrichment (2 stages)
+- "SaaS startups with 50+ employees" → Google Search → Website Crawler → AI Verify → LinkedIn Companies → AI Headcount → Find People → Contacts (7 stages)
+
+### Implementation Plan
+
+This is a large change touching the planner, processor, database, UI, and hook. I'll implement it in **3 phases** within this task.
 
 ---
 
-### Phase 1: Fix AI Classification Quality
+#### Phase 1: Database + New Plan Format
 
-**File: `supabase/functions/process-signal-queue/index.ts`** (lines 1028-1068)
+**Database migration** — Add to `signal_runs`:
+- `current_pipeline_stage` (integer, default 0) — tracks which stage the pipeline is executing
+- `pipeline_stage_count` (integer, default 1) — total stages for progress display
 
-The AI classifier prompt is too vague. It sends `name`, `description`, `website`, `location`, `employee_count` — but `description` is the job posting text, not a company description.
+Add to `signal_leads`:
+- `pipeline_stage` (text, nullable) — which stage produced/last updated this lead
+- `website_content` (text, nullable) — scraped website text for deep AI analysis
+- `linkedin_profile_url` (text, nullable) — decision maker's personal LinkedIn
+- `company_linkedin_url` (text, nullable) — company's LinkedIn page
 
-Fix: Send more discriminating data to the classifier:
-- Include `title` (the job title — "Sales Representative at Meta" helps reject Meta as non-agency)
-- Include `industry` from extra_data
-- Include `employee_count` from extra_data
-- Rewrite the prompt to be explicit: "Determine if the COMPANY (not the job) matches the criteria. The description is a job posting, not a company description. Focus on the company name, industry, and employee count."
+**New actors** added to catalog in both edge functions:
+- `website_crawler` — `apify/website-content-crawler` — scrapes company about pages for AI verification
+- `linkedin_people` — `curious_coder/linkedin-people-scraper` — finds employees by title at a company
 
-Also fix the `extra_data` access — currently tries `item.extra_data?.employee_count` but extra_data stores the raw Apify output with fields like `companyEmployeesCount`, not `employee_count`.
+---
 
-### Phase 2: Add Founder/Contact Enrichment Step
+#### Phase 2: Planner Rewrite (`signal-planner/index.ts`)
 
-**File: `supabase/functions/process-signal-queue/index.ts`**
+Replace the current AI prompt that outputs a flat `[{source, search_query, ...}]` array with a new prompt that outputs a **pipeline**:
 
-After AI classification and workspace dedup, add a new enrichment phase that runs the `contact_enrichment` actor (already in the catalog, key: `contact_enrichment`, actor ID: `9Sk4JJhEma9vBKqrg`) on the surviving leads' websites. This scrapes each company's website for:
-- Contact names, titles, emails, phones, LinkedIn URLs
-
-Store the enriched data back into `signal_leads` fields and `extra_data`.
-
-This is expensive per-lead, so only run it on the final filtered set (post AI-classification, post-dedup). Batch websites into groups of 50 for the actor.
-
-**Database: `signal_leads` table** — Add columns:
-- `contact_name` (text, nullable) — founder/owner name
-- `title` (text, nullable) — their title
-- `industry` (text, nullable)
-- `employee_count` (text, nullable)
-- `city` (text, nullable)
-- `state` (text, nullable)  
-- `country` (text, nullable)
-
-### Phase 3: Fix CRM Import Mapping
-
-**File: `src/components/leads/SignalScraperTab.tsx`** (lines 490-537)
-
-Update `addToCRM` and `addAllToCRM` to properly map signal lead fields to CRM lead fields:
-
-```typescript
+```json
 {
-  workspace_id: workspaceId,
-  created_by: userId,
-  first_name: lead.contact_name?.split(' ')[0] || '',
-  last_name: lead.contact_name?.split(' ').slice(1).join(' ') || '',
-  company: lead.company_name || '',
-  company_domain: lead.domain || '',
-  title: lead.title || '',
-  phone: lead.enriched ? lead.phone : null,
-  email: lead.enriched ? lead.email : null,
-  linkedin_url: lead.linkedin || '',
-  city: lead.city || '',
-  state: lead.state || '',
-  country: lead.country || '',
-  industry: lead.industry || '',
-  employee_count: lead.employee_count || '',
-  source: `Signal: ${lead.source}`,
+  "signal_name": "Marketing agencies hiring sales reps",
+  "pipeline": [
+    {
+      "stage": 1, "name": "Discover hiring companies",
+      "type": "scrape", "actors": ["linkedin_jobs", "indeed_jobs"],
+      "params_per_actor": { "linkedin_jobs": {...}, "indeed_jobs": {...} },
+      "dedup_after": true
+    },
+    {
+      "stage": 2, "name": "Filter to marketing agencies",
+      "type": "ai_filter",
+      "prompt": "Is this company a marketing/advertising/digital agency based on its name and domain?",
+      "expected_pass_rate": 0.20
+    },
+    {
+      "stage": 3, "name": "Get company details from LinkedIn",
+      "type": "scrape", "actors": ["linkedin_companies"],
+      "input_from": "company_linkedin_url",
+      "updates_fields": ["employee_count", "industry", "website"]
+    },
+    {
+      "stage": 4, "name": "Filter to 1-10 employees",
+      "type": "ai_filter",
+      "prompt": "Does this company have 1-10 employees based on employee_count?",
+      "expected_pass_rate": 0.50
+    },
+    {
+      "stage": 5, "name": "Find decision makers",
+      "type": "scrape", "actors": ["linkedin_people"],
+      "input_from": "company_linkedin_url",
+      "search_titles": ["CEO", "Founder", "Owner", "Managing Director"],
+      "updates_fields": ["contact_name", "title", "linkedin_profile_url"]
+    },
+    {
+      "stage": 6, "name": "Get contact info",
+      "type": "scrape", "actors": ["contact_enrichment"],
+      "input_from": "website",
+      "updates_fields": ["email", "phone"]
+    }
+  ]
 }
 ```
 
-No more dumping website/location into `notes`.
+The AI prompt will include:
+- Full actor catalog with input/output schemas
+- 4-5 example pipelines for different query types (hiring intent, local business, web discovery, enrichment-only)
+- Rules: always end with person-finding + contact enrichment unless query is purely company-level
+- The desired output schema users expect
+- Instructions on when to use `ai_filter` vs `scrape` stages
+- How `input_from` works (takes a field from surviving leads and passes as actor input)
 
-### Phase 4: Redesign Lead Results as Table
+**Backward compatibility**: The processor detects the format — if `signal_plan.pipeline` exists, use the new pipeline executor; otherwise fall back to the legacy flat flow so in-progress runs don't break.
 
-**File: `src/components/leads/SignalScraperTab.tsx`** (lines 604-706)
-
-Replace the card grid (`SignalResultsView`) with a proper table matching the Apollo search tab style:
-
-| Select | Name | Title | Company | Location | Links | Contact | Actions |
-|--------|------|-------|---------|----------|-------|---------|---------|
-| ☐ | John Smith | CEO | Acme Marketing | Dallas, TX | 🔗 🌐 | 📧 📞 (hidden until enriched) | Add to CRM / Enrich |
-
-- Checkbox column for bulk select
-- Name + Title columns from enriched data  
-- Company column with domain
-- Location column
-- Links column with LinkedIn and website icons
-- Contact column (hidden until enriched, shows "Reveal" button)
-- Actions column (Add to CRM, Enrich, Start Outreach)
-- Bulk actions bar: "Add All to CRM", "Enrich Selected"
-
-Update `SignalLead` interface in `useSignalScraper.ts` to include the new fields.
-
-### Phase 5: Fix Estimates
-
-**File: `supabase/functions/signal-planner/index.ts`** (lines 562-592)
-
-Current formula: `keywordCount * Math.max(50, Math.ceil(maxPerKeyword / keywordCount))` — this divides by keyword count, underestimating.
-
-Fix to: `keywordCount * maxPerKeyword` (each keyword gets the full max). Then apply realistic filter rates:
-- With AI classification: 5-15% pass rate (not 30%) — most raw scrapes are irrelevant
-- Without AI: 40% pass rate (not 60%)
-- Workspace dedup: subtract 10% for returning users
-
-Also add `estimated_after_ai` and `estimated_after_dedup` to show the user a funnel, not just one number.
-
-### Phase 6: Fix leads_discovered vs displayed count mismatch
-
-**File: `supabase/functions/process-signal-queue/index.ts`**
-
-The finalizing phase deletes rejected leads from `signal_leads` table. But the deletion might fail silently or the count might not reflect reality. Add a final count query after all deletions:
-
-```sql
-SELECT count(*) FROM signal_leads WHERE run_id = $1
-```
-
-Use this as the authoritative `leads_discovered` count.
-
-**File: `src/hooks/useSignalScraper.ts`** — The leads query has no `.limit()`, so Supabase defaults to 1000. Add `.limit(10000)` to the signal leads fetch.
+**Cost estimation**: Sum across all scrape stages. Each stage estimates its input size from the previous stage's expected pass rate, then calculates credits. Show a funnel in the plan display.
 
 ---
 
-### Summary of Changes
+#### Phase 3: Processor Rewrite (`process-signal-queue/index.ts`)
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/process-signal-queue/index.ts` | Fix AI classifier prompt + data sent; add post-filter contact enrichment phase; fix leads_discovered count |
-| `supabase/functions/signal-planner/index.ts` | Fix estimate formula; add funnel-style estimates |
-| `src/components/leads/SignalScraperTab.tsx` | Replace card grid with table view; fix CRM import mapping; add bulk actions |
-| `src/hooks/useSignalScraper.ts` | Add new fields to SignalLead; add .limit(10000) to leads query |
-| Database migration | Add columns to `signal_leads`: `contact_name`, `title`, `industry`, `employee_count`, `city`, `state`, `country` |
+Replace the fixed 4-phase model (starting → scraping → collecting → finalizing) with a **stage-aware pipeline executor**.
+
+The `processing_phase` field encodes both stage and sub-phase: `stage_1_starting`, `stage_1_scraping`, `stage_1_collecting`, `stage_2_ai_filter`, `stage_3_starting`, etc.
+
+**Pipeline executor logic:**
+
+```text
+1. Read current_pipeline_stage from run
+2. Get stage definition from signal_plan.pipeline[current_pipeline_stage]
+3. If stage.type == "scrape":
+   a. stage_N_starting: Build actor inputs FROM surviving leads' fields
+      - For stage 1: use original query params
+      - For stage 3+: read leads from DB, extract input_from field values,
+        pass as actor input (e.g., company_linkedin_url → profileUrls)
+   b. stage_N_scraping: Poll Apify runs
+   c. stage_N_collecting: Collect results, UPDATE existing leads
+      (not insert new ones — enrich the survivors)
+      Exception: person-finding stages INSERT person-level sub-leads
+   d. Advance to next stage
+4. If stage.type == "ai_filter":
+   a. Load surviving leads from DB
+   b. Run AI classification using stage.prompt
+   c. Delete failures
+   d. Advance to next stage
+5. After last stage: run workspace dedup, calculate cost, finalize
+```
+
+**Key design decisions:**
+- Scrape stages after stage 1 take input FROM existing leads (e.g., company_linkedin_url values become `profileUrls` for the linkedin_companies actor)
+- AI filter stages operate on the current lead set, deleting non-matches
+- Person-finding stages (stage 5) create person-level records linked to the company lead — or update the existing lead with contact_name/title/linkedin_profile_url
+- Each stage can span multiple cron cycles (scraping takes time)
+- The cron worker picks up where it left off using `current_pipeline_stage` + `processing_phase`
+
+**Batch sizes for enrichment stages:**
+- Website crawler: batch 50 URLs per actor run
+- LinkedIn companies: batch 100 URLs per run
+- LinkedIn people: batch 50 company URLs per run
+- Contact enrichment: batch 50 websites per run
+
+---
+
+#### UI Updates (`SignalScraperTab.tsx` + `useSignalScraper.ts`)
+
+**Plan display**: Show the pipeline as a visual funnel with stage names and estimated counts at each stage.
+
+**Progress display**: When a pipeline run is active, show:
+- "Stage 3/6: Get company details from LinkedIn... 45/80 done"
+- A funnel: "2000 → 400 → 80 → 60 → 25 leads"
+
+**Hook updates**: Add `current_pipeline_stage`, `pipeline_stage_count`, `linkedin_profile_url`, `company_linkedin_url` to the interfaces.
+
+**Results table**: Already has the right columns — just needs `linkedin_profile_url` and `company_linkedin_url` added as link icons.
+
+---
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `supabase/migrations/...` | Add columns to `signal_runs` and `signal_leads` |
+| `supabase/functions/signal-planner/index.ts` | New pipeline AI prompt; new actors in catalog; pipeline cost estimation; backward-compatible plan format |
+| `supabase/functions/process-signal-queue/index.ts` | Pipeline executor with stage-aware processing; new actors; enrichment stage logic; legacy fallback |
+| `src/hooks/useSignalScraper.ts` | New fields on `SignalRun` and `SignalLead` interfaces |
+| `src/components/leads/SignalScraperTab.tsx` | Pipeline progress UI; funnel visualization in plan display; LinkedIn profile link in results table |
 
 ### Implementation Order
 
 1. Database migration (new columns)
-2. Fix AI classifier (Phase 1) — most critical, stops bad leads
-3. Add enrichment step (Phase 2) — provides the data users need
-4. Fix CRM mapping (Phase 3) — proper field mapping
-5. Redesign results table (Phase 4) — better UI
-6. Fix estimates (Phase 5) — realistic numbers
-7. Fix count mismatch (Phase 6) — consistency
+2. Add new actors to catalog in both edge functions
+3. Rewrite planner prompt to generate pipeline format + cost estimation
+4. Rewrite processor with pipeline executor (keeping legacy fallback)
+5. Update hook interfaces and UI for pipeline progress
+
+### Risk Mitigation
+
+- **Backward compatibility**: Legacy flat plans still work — the processor checks for `pipeline` key
+- **Partial failures**: If any stage's actors fail, the pipeline can retry from that stage
+- **Cost control**: Enrichment stages only run on the filtered set (post-AI), keeping Apify costs proportional to actual quality leads
+- **Cron timeout**: Each stage's sub-phases are designed to complete within the edge function timeout (~60s), with state persisted between cron cycles
 
