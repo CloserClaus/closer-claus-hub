@@ -1100,17 +1100,18 @@ async function phaseFinalizing(run: any, serviceClient: any) {
 
   for (const item of (finalLeads || [])) {
     const domain = extractDomain(item.website || "");
+    const effectiveDomain = (domain && !JOB_BOARD_DOMAINS.has(domain)) ? domain : "";
     const phone = (item.phone || "").replace(/\D/g, "");
     const linkedin = item.linkedin || "";
 
     let isDuplicate = false;
-    if (domain && (existingSet.has(`domain:${domain}`) || crmSet.has(`domain:${domain}`))) isDuplicate = true;
+    if (effectiveDomain && (existingSet.has(`domain:${effectiveDomain}`) || crmSet.has(`domain:${effectiveDomain}`))) isDuplicate = true;
     if (!isDuplicate && phone && (existingSet.has(`phone:${phone}`) || crmSet.has(`phone:${phone}`))) isDuplicate = true;
     if (!isDuplicate && linkedin && (existingSet.has(`linkedin:${linkedin}`) || crmSet.has(`linkedin:${linkedin}`))) isDuplicate = true;
 
     if (!isDuplicate) {
       uniqueLeads.push(item);
-      if (domain) { existingSet.add(`domain:${domain}`); newDedupKeys.push({ workspace_id, dedup_key: domain, dedup_type: "domain", signal_lead_id: item.id }); }
+      if (effectiveDomain) { existingSet.add(`domain:${effectiveDomain}`); newDedupKeys.push({ workspace_id, dedup_key: effectiveDomain, dedup_type: "domain", signal_lead_id: item.id }); }
       if (phone) { existingSet.add(`phone:${phone}`); newDedupKeys.push({ workspace_id, dedup_key: phone, dedup_type: "phone", signal_lead_id: item.id }); }
       if (linkedin) { existingSet.add(`linkedin:${linkedin}`); newDedupKeys.push({ workspace_id, dedup_key: linkedin, dedup_type: "linkedin", signal_lead_id: item.id }); }
     } else {
