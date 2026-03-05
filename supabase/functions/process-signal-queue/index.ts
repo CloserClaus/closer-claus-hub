@@ -37,7 +37,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       keyword:          { type: "string",  required: true, description: "Job search keyword" },
       location:         { type: "string",  default: "United States", description: "Location filter" },
-      maxResults:       { type: "number",  default: 100, description: "Max job listings" },
+      maxResults:       { type: "number",  default: 500, description: "Max job listings" },
       timePosted:       { type: "enum",    values: ["any", "past24h", "pastWeek", "pastMonth"], default: "pastWeek", description: "Recency filter" },
       scrapeJobDetails: { type: "boolean", default: true, description: "Include full job descriptions" },
     },
@@ -59,7 +59,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       keywords:   { type: "string[]", required: true, description: "Job search keywords" },
       location:   { type: "string",  default: "United States", description: "Location filter" },
-      maxResults: { type: "number",  default: 100, description: "Max results" },
+      maxResults: { type: "number",  default: 500, description: "Max results" },
     },
     outputFields: {
       company_name: ["company", "companyName"], title: ["positionName", "title", "jobTitle"],
@@ -76,7 +76,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     description: "Google Maps places",
     inputSchema: {
       searchStringsArray:        { type: "string[]", required: true, description: "Search queries" },
-      maxCrawledPlacesPerSearch: { type: "number",   default: 200, description: "Max places per search" },
+      maxCrawledPlacesPerSearch: { type: "number",   default: 500, description: "Max places per search" },
       language:                  { type: "string",   default: "en", description: "Language code" },
       locationQuery:             { type: "string",   description: "Optional city/state/country filter" },
     },
@@ -96,7 +96,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       searchTerms: { type: "string[]", required: true, description: "Search queries" },
       locations:   { type: "string[]", default: ["United States"], description: "City names" },
-      maxItems:    { type: "number",   default: 200, description: "Max items" },
+      maxItems:    { type: "number",   default: 500, description: "Max items" },
     },
     outputFields: {
       company_name: ["name", "title"], website: ["website", "url"], linkedin: [],
@@ -114,7 +114,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       search:   { type: "string", required: true, description: "Business category" },
       location: { type: "string", required: true, description: "City, state or zip" },
-      maxItems: { type: "number", default: 200, description: "Max results" },
+      maxItems: { type: "number", default: 500, description: "Max results" },
     },
     outputFields: {
       company_name: ["name", "businessName", "title"], website: ["website", "url"], linkedin: [],
@@ -131,7 +131,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     description: "LinkedIn company profiles",
     inputSchema: {
       profileUrls: { type: "string[]", required: true, description: "LinkedIn company profile URLs" },
-      maxResults:  { type: "number",   default: 100, description: "Max results" },
+      maxResults:  { type: "number",   default: 500, description: "Max results" },
     },
     outputFields: {
       company_name: ["name", "title"], website: ["website", "url"], linkedin: ["linkedinUrl", "url"],
@@ -298,7 +298,7 @@ async function pollApifyRun(runId: string, token: string): Promise<string> {
 
 async function collectApifyResults(datasetId: string, token: string): Promise<any[]> {
   const resp = await fetch(
-    `https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}&clean=true&limit=500`,
+    `https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}&clean=true&limit=1000`,
     { method: "GET" }
   );
   if (!resp.ok) {
@@ -586,11 +586,11 @@ async function phaseStarting(run: any, serviceClient: any) {
         if (actor.inputSchema[af]) iterPlan.search_params[af] = [keyword];
       }
 
+      // Ensure max field has a high default — do NOT divide by keyword count.
+      // Each keyword gets the full limit; dedup handles overlaps downstream.
       const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max"));
-      if (maxField && isMultiKeyword && iterPlan.search_params[maxField]) {
-        iterPlan.search_params[maxField] = Math.max(50, Math.ceil(iterPlan.search_params[maxField] / keywords.length));
-      } else if (maxField && !iterPlan.search_params[maxField]) {
-        iterPlan.search_params[maxField] = 100;
+      if (maxField && !iterPlan.search_params[maxField]) {
+        iterPlan.search_params[maxField] = 500;
       }
 
       const actorInput = buildGenericInput(actor, iterPlan);
