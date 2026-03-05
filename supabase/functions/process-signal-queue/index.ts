@@ -43,7 +43,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     },
     outputFields: {
       company_name: ["companyName", "company"], title: ["title", "jobTitle", "position"],
-      website: ["companyWebsite", "companyUrl"], linkedin: ["companyLinkedinUrl", "companyUrl"],
+      website: ["companyWebsite"], linkedin: ["companyLinkedinUrl", "companyUrl"],
       location: ["location", "jobLocation", "place"], city: ["city", "jobLocation"], state: ["state"], country: ["country"],
       phone: [], email: ["email", "contactEmail"], description: ["descriptionHtml", "description"],
       industry: ["companyIndustry", "industries"], employee_count: ["companyEmployeesCount", "companySize"],
