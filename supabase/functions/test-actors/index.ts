@@ -6,7 +6,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Smoke test: run each actor with maxItems=5 to verify schemas
+// Smoke test: start actors, wait briefly, check results
 const ACTORS_TO_TEST = [
   {
     key: "linkedin_jobs",
@@ -14,7 +14,7 @@ const ACTORS_TO_TEST = [
     input: {
       searchKeywords: ["sales representative"],
       searchLocation: "New York",
-      maxItems: 5,
+      maxItems: 3,
       scrapeCompany: true,
       scrapeJobDetails: false,
       splitSearchByLocation: false,
@@ -28,7 +28,7 @@ const ACTORS_TO_TEST = [
       title: "sales representative",
       location: "New York",
       country: "us",
-      limit: 5,
+      limit: 3,
       datePosted: "14",
     },
     expectedFields: ["positionName", "company", "location"],
@@ -38,7 +38,7 @@ const ACTORS_TO_TEST = [
     actorId: "nwua9Gu5YrADL7ZDj",
     input: {
       searchStringsArray: ["marketing agency"],
-      maxCrawledPlacesPerSearch: 5,
+      maxCrawledPlacesPerSearch: 3,
       language: "en",
       locationQuery: "New York, NY",
     },
@@ -50,7 +50,7 @@ const ACTORS_TO_TEST = [
     input: {
       searchTerms: ["marketing agency"],
       locations: ["New York, NY"],
-      maxItems: 5,
+      maxItems: 3,
     },
     expectedFields: ["name", "phone"],
   },
@@ -60,7 +60,7 @@ const ACTORS_TO_TEST = [
     input: {
       search: "marketing agency",
       location: "New York, NY",
-      maxItems: 5,
+      maxItems: 3,
     },
     expectedFields: ["name", "phone"],
   },
@@ -76,85 +76,117 @@ serve(async (req) => {
     });
   }
 
-  const results: any[] = [];
+  let body: any = {};
+  try { body = await req.json(); } catch {}
+  const action = body.action || "start"; // "start" or "check"
+  const runIds = body.run_ids || {}; // { key: { runId, datasetId } }
 
-  for (const actor of ACTORS_TO_TEST) {
-    const result: any = { key: actor.key, actorId: actor.actorId, started: false, succeeded: false, resultCount: 0, sampleFields: [], matchesExpected: false, error: null };
-
-    try {
-      // Start the run
-      const actorIdEncoded = actor.actorId.replace("/", "~");
-      const startResp = await fetch(
-        `https://api.apify.com/v2/acts/${actorIdEncoded}/runs?token=${APIFY_API_TOKEN}&waitForFinish=120`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(actor.input),
-        }
-      );
-
-      if (!startResp.ok) {
-        const errText = await startResp.text();
-        result.error = `Start failed (${startResp.status}): ${errText.slice(0, 200)}`;
-        results.push(result);
-        continue;
-      }
-
-      const runData = await startResp.json();
-      result.started = true;
-      const runStatus = runData.data?.status;
-      const datasetId = runData.data?.defaultDatasetId;
-
-      if (runStatus !== "SUCCEEDED") {
-        result.error = `Run status: ${runStatus}`;
-        results.push(result);
-        continue;
-      }
-
-      result.succeeded = true;
-
-      // Fetch results
-      const dataResp = await fetch(
-        `https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_API_TOKEN}&clean=true&limit=5`
-      );
-      if (!dataResp.ok) {
-        result.error = `Dataset fetch failed (${dataResp.status})`;
-        results.push(result);
-        continue;
-      }
-
-      const items = await dataResp.json();
-      result.resultCount = items.length;
-
-      if (items.length > 0) {
-        result.sampleFields = Object.keys(items[0]).slice(0, 20);
-        // Check if expected fields exist (directly or nested)
-        const firstItem = items[0];
-        const foundFields = actor.expectedFields.filter(f => {
-          if (firstItem[f] !== undefined) return true;
-          // Check nested
-          const parts = f.split(".");
-          let obj = firstItem;
-          for (const p of parts) {
-            if (obj && typeof obj === "object") obj = obj[p];
-            else return false;
+  if (action === "start") {
+    // Start all actors, return run IDs
+    const started: any = {};
+    for (const actor of ACTORS_TO_TEST) {
+      try {
+        const actorIdEncoded = actor.actorId.replace("/", "~");
+        const resp = await fetch(
+          `https://api.apify.com/v2/acts/${actorIdEncoded}/runs?token=${APIFY_API_TOKEN}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(actor.input),
           }
-          return obj !== undefined;
-        });
-        result.matchesExpected = foundFields.length === actor.expectedFields.length;
-        result.foundExpectedFields = foundFields;
-        result.missingExpectedFields = actor.expectedFields.filter(f => !foundFields.includes(f));
-        // Show first item as sample (truncated)
-        result.sampleItem = JSON.stringify(items[0]).slice(0, 500);
+        );
+        if (!resp.ok) {
+          const errText = await resp.text();
+          started[actor.key] = { error: `Start failed (${resp.status}): ${errText.slice(0, 200)}` };
+          continue;
+        }
+        const data = await resp.json();
+        started[actor.key] = {
+          runId: data.data.id,
+          datasetId: data.data.defaultDatasetId,
+          status: data.data.status,
+        };
+      } catch (err) {
+        started[actor.key] = { error: err instanceof Error ? err.message : String(err) };
       }
-    } catch (err) {
-      result.error = err instanceof Error ? err.message : String(err);
     }
-
-    results.push(result);
+    return new Response(JSON.stringify({ action: "started", run_ids: started }, null, 2), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
-  return new Response(JSON.stringify({ results }, null, 2), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  if (action === "check") {
+    // Check status and collect results for all run IDs
+    const results: any = {};
+    for (const actor of ACTORS_TO_TEST) {
+      const ref = runIds[actor.key];
+      if (!ref || ref.error) {
+        results[actor.key] = { status: "SKIPPED", error: ref?.error || "No run ID" };
+        continue;
+      }
+
+      try {
+        // Poll status
+        const pollResp = await fetch(
+          `https://api.apify.com/v2/actor-runs/${ref.runId}?token=${APIFY_API_TOKEN}`
+        );
+        if (!pollResp.ok) {
+          results[actor.key] = { status: "POLL_ERROR", error: `${pollResp.status}` };
+          continue;
+        }
+        const pollData = await pollResp.json();
+        const status = pollData.data.status;
+
+        if (status !== "SUCCEEDED") {
+          results[actor.key] = { status, message: status === "RUNNING" ? "Still running, try again" : "Not succeeded" };
+          continue;
+        }
+
+        // Fetch results
+        const dataResp = await fetch(
+          `https://api.apify.com/v2/datasets/${ref.datasetId}/items?token=${APIFY_API_TOKEN}&clean=true&limit=3`
+        );
+        if (!dataResp.ok) {
+          results[actor.key] = { status: "SUCCEEDED", resultError: `Dataset fetch: ${dataResp.status}` };
+          continue;
+        }
+        const items = await dataResp.json();
+
+        const result: any = {
+          status: "SUCCEEDED",
+          resultCount: items.length,
+          sampleFields: items.length > 0 ? Object.keys(items[0]).slice(0, 25) : [],
+        };
+
+        if (items.length > 0) {
+          const firstItem = items[0];
+          const foundFields = actor.expectedFields.filter(f => {
+            if (firstItem[f] !== undefined) return true;
+            const parts = f.split(".");
+            let obj = firstItem;
+            for (const p of parts) {
+              if (obj && typeof obj === "object") obj = obj[p];
+              else return false;
+            }
+            return obj !== undefined;
+          });
+          result.matchesExpected = foundFields.length === actor.expectedFields.length;
+          result.foundExpectedFields = foundFields;
+          result.missingExpectedFields = actor.expectedFields.filter(f => !foundFields.includes(f));
+          result.sampleItem = JSON.stringify(items[0]).slice(0, 800);
+        }
+
+        results[actor.key] = result;
+      } catch (err) {
+        results[actor.key] = { status: "ERROR", error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+    return new Response(JSON.stringify({ action: "checked", results }, null, 2), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  return new Response(JSON.stringify({ error: "Unknown action. Use 'start' or 'check' with run_ids." }), {
+    status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 });
