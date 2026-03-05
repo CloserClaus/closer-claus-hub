@@ -37,7 +37,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       keyword:          { type: "string",  required: true, description: "Job search keyword" },
       location:         { type: "string",  default: "United States", description: "Location filter" },
-      maxResults:       { type: "number",  default: 100, description: "Max job listings" },
+      maxResults:       { type: "number",  default: 500, description: "Max job listings" },
       timePosted:       { type: "enum",    values: ["any", "past24h", "pastWeek", "pastMonth"], default: "pastWeek", description: "Recency filter" },
       scrapeJobDetails: { type: "boolean", default: true, description: "Include full job descriptions" },
     },
