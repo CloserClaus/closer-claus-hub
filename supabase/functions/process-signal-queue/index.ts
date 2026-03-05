@@ -261,6 +261,7 @@ interface ApifyRunRef {
   runId: string;
   datasetId: string;
   status: string; // READY, RUNNING, SUCCEEDED, FAILED, TIMED-OUT, ABORTED
+  startedAt?: string; // ISO timestamp when this individual run was started
 }
 
 async function startApifyRun(actor: ActorEntry, input: Record<string, any>, token: string): Promise<{ runId: string; datasetId: string }> {
