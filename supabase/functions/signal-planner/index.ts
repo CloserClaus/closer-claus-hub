@@ -47,7 +47,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     outputFields: {
       company_name:   ["companyName", "company"],
       title:          ["title", "jobTitle", "position"],
-      website:        ["companyWebsite", "companyUrl"],
+      website:        ["companyWebsite"],
       linkedin:       ["companyLinkedinUrl", "companyUrl"],
       location:       ["location", "jobLocation", "place"],
       city:           ["city", "jobLocation"],
