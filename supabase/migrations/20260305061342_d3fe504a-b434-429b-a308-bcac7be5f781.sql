@@ -1,0 +1,1 @@
+ALTER TABLE public.signal_runs ADD COLUMN IF NOT EXISTS collected_dataset_index integer DEFAULT 0;

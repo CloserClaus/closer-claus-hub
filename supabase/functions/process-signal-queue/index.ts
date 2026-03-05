@@ -297,14 +297,24 @@ async function pollApifyRun(runId: string, token: string): Promise<string> {
 }
 
 async function collectApifyResults(datasetId: string, token: string): Promise<any[]> {
-  const resp = await fetch(
-    `https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}&clean=true&limit=1000`,
-    { method: "GET" }
-  );
-  if (!resp.ok) {
-    throw new Error(`Apify collect failed (${resp.status})`);
+  // Paginate large datasets to avoid memory issues
+  const PAGE_SIZE = 500;
+  let allItems: any[] = [];
+  let offset = 0;
+  while (true) {
+    const resp = await fetch(
+      `https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}&clean=true&limit=${PAGE_SIZE}&offset=${offset}`,
+      { method: "GET" }
+    );
+    if (!resp.ok) {
+      throw new Error(`Apify collect failed (${resp.status})`);
+    }
+    const items = await resp.json();
+    allItems.push(...items);
+    if (items.length < PAGE_SIZE) break; // Last page
+    offset += PAGE_SIZE;
   }
-  return await resp.json();
+  return allItems;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -312,7 +322,7 @@ async function collectApifyResults(datasetId: string, token: string): Promise<an
 // ═══════════════════════════════════════════════════════════
 
 const MAX_RETRIES = 3;
-const HARD_CEILING_MS = 30 * 60 * 1000; // 30 minutes absolute max
+const HARD_CEILING_MS = 60 * 60 * 1000; // 60 minutes absolute max — large scrapes need more time
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -333,7 +343,7 @@ serve(async (req) => {
       .select("*")
       .or(
         `status.eq.queued,` +
-        `and(status.eq.running,processing_phase.in.(starting,scraping,collecting)),` +
+        `and(status.eq.running,processing_phase.in.(starting,scraping,collecting,finalizing)),` +
         `and(status.eq.running,processing_phase.in.(pending),started_at.lt.${hardCeilingThreshold},retry_count.lt.${MAX_RETRIES}),` +
         `and(status.eq.running,started_at.lt.${hardCeilingThreshold},retry_count.lt.${MAX_RETRIES})`
       )
@@ -370,7 +380,7 @@ serve(async (req) => {
 
     for (const run of allRuns) {
       const phase = run.processing_phase || "pending";
-      const isActivePhase = ["starting", "scraping", "collecting"].includes(phase);
+      const isActivePhase = ["starting", "scraping", "collecting", "finalizing"].includes(phase);
 
       // For truly stale runs (not in active phase), handle retries
       if (run.status === "running" && !isActivePhase) {
@@ -396,7 +406,7 @@ serve(async (req) => {
         // Reset to queued for retry
         await serviceClient.from("signal_runs").update({
           status: "queued", retry_count: newRetryCount, started_at: null,
-          processing_phase: "pending", apify_run_ids: [], current_keyword_index: 0,
+          processing_phase: "pending", apify_run_ids: [], current_keyword_index: 0, collected_dataset_index: 0,
           error_message: `Stale recovery attempt ${newRetryCount}`,
         }).eq("id", run.id);
         continue;
@@ -406,7 +416,7 @@ serve(async (req) => {
       if (run.status === "completed" && (run.schedule_type === "daily" || run.schedule_type === "weekly")) {
         await serviceClient.from("signal_runs").update({
           status: "queued", started_at: null, processing_phase: "pending",
-          apify_run_ids: [], current_keyword_index: 0, error_message: null,
+          apify_run_ids: [], current_keyword_index: 0, collected_dataset_index: 0, error_message: null,
         }).eq("id", run.id);
         // Will be picked up next cycle
         continue;
@@ -419,7 +429,7 @@ serve(async (req) => {
           .update({
             status: "running", started_at: new Date().toISOString(),
             error_message: null, processing_phase: "starting",
-            apify_run_ids: [], current_keyword_index: 0,
+            apify_run_ids: [], current_keyword_index: 0, collected_dataset_index: 0,
           })
           .eq("id", run.id)
           .eq("status", "queued")
@@ -492,7 +502,7 @@ async function handlePhaseError(run: any, err: unknown, serviceClient: any) {
   } else {
     await serviceClient.from("signal_runs").update({
       status: "queued", retry_count: retryCount, started_at: null,
-      processing_phase: "pending", apify_run_ids: [], current_keyword_index: 0,
+      processing_phase: "pending", apify_run_ids: [], current_keyword_index: 0, collected_dataset_index: 0,
       error_message: `Attempt ${retryCount} failed: ${errorMsg}`,
     }).eq("id", run.id);
   }
@@ -515,7 +525,10 @@ async function processPhase(run: any, serviceClient: any) {
       await phaseScraping(run, serviceClient);
       break;
     case "collecting":
-      await phaseCollecting(run, serviceClient);
+      await phaseCollectingIncremental(run, serviceClient);
+      break;
+    case "finalizing":
+      await phaseFinalizing(run, serviceClient);
       break;
     default:
       throw new Error(`Unknown phase: ${phase}`);
@@ -701,13 +714,93 @@ async function phaseScraping(run: any, serviceClient: any) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ██  PHASE 3: COLLECTING — fetch results, normalize, store
+// ██  PHASE 3: COLLECTING (incremental) — one dataset per invocation
 // ═══════════════════════════════════════════════════════════
 
-async function phaseCollecting(run: any, serviceClient: any) {
+async function phaseCollectingIncremental(run: any, serviceClient: any) {
   const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN");
   if (!APIFY_API_TOKEN) throw new Error("APIFY_API_TOKEN not configured");
 
+  const refs: ApifyRunRef[] = run.apify_run_ids || [];
+  const collectedIndex = run.collected_dataset_index || 0;
+
+  // Find the next SUCCEEDED dataset that hasn't been collected yet
+  const succeededRefs = refs.filter(r => r.status === "SUCCEEDED" && r.datasetId);
+  
+  if (collectedIndex >= succeededRefs.length) {
+    // All datasets collected — move to finalizing
+    console.log(`Signal ${run.id}: all ${succeededRefs.length} datasets collected, moving to finalizing`);
+    await serviceClient.from("signal_runs").update({
+      processing_phase: "finalizing",
+    }).eq("id", run.id);
+    return;
+  }
+
+  const ref = succeededRefs[collectedIndex];
+  const actor = getActor(ref.actorKey);
+  if (!actor) {
+    // Skip this dataset and advance index
+    await serviceClient.from("signal_runs").update({
+      collected_dataset_index: collectedIndex + 1,
+    }).eq("id", run.id);
+    return;
+  }
+
+  console.log(`Signal ${run.id}: collecting dataset ${collectedIndex + 1}/${succeededRefs.length} (${ref.actorKey}:"${ref.keyword}")`);
+
+  try {
+    const items = await collectApifyResults(ref.datasetId, APIFY_API_TOKEN);
+    console.log(`Signal ${run.id}: fetched ${items.length} items from ${ref.actorKey}:"${ref.keyword}"`);
+
+    // Cache the results
+    const queryHash = btoa(JSON.stringify({ source: ref.actorKey, query: ref.keyword })).slice(0, 64);
+    if (items.length > 0 && !items[0]?.error) {
+      await serviceClient.from("signal_dataset_cache").upsert({
+        query_hash: queryHash, source: ref.actorKey, dataset: items, row_count: items.length,
+      }, { onConflict: "query_hash,source" }).then(() => {});
+    }
+
+    // Normalize and store leads immediately (raw, pre-dedup, pre-AI)
+    const normalised = normaliseGenericResults(actor, items);
+    const storedPlan = run.signal_plan;
+    const plans: any[] = Array.isArray(storedPlan) ? storedPlan : [storedPlan];
+
+    // Store raw collected leads in signal_leads with enriched=false
+    const leadsToInsert = normalised.map((item: any) => ({
+      run_id: run.id, workspace_id: run.workspace_id,
+      company_name: item.company_name || null, website: item.website || null,
+      domain: extractDomain(item.website || ""), phone: item.phone || null,
+      email: item.email || null, linkedin: item.linkedin || null,
+      location: item.location || null, source: actor.label || plans[0]?.source || "Unknown",
+      extra_data: item._raw || item,
+      added_to_crm: false, enriched: false,
+    }));
+
+    if (leadsToInsert.length > 0) {
+      // Insert in batches of 200 to avoid payload limits
+      for (let i = 0; i < leadsToInsert.length; i += 200) {
+        const batch = leadsToInsert.slice(i, i + 200);
+        await serviceClient.from("signal_leads").insert(batch);
+      }
+    }
+
+    console.log(`Signal ${run.id}: stored ${leadsToInsert.length} raw leads from dataset ${collectedIndex + 1}`);
+  } catch (err) {
+    console.error(`Signal ${run.id}: error collecting dataset ${collectedIndex + 1}:`, err);
+    // Continue to next dataset even on error
+  }
+
+  // Advance to next dataset
+  await serviceClient.from("signal_runs").update({
+    collected_dataset_index: collectedIndex + 1,
+  }).eq("id", run.id);
+}
+
+// ═══════════════════════════════════════════════════════════
+// ██  PHASE 4: FINALIZING — dedup, AI classify, charge credits
+// ═══════════════════════════════════════════════════════════
+
+async function phaseFinalizing(run: any, serviceClient: any) {
   const workspace_id = run.workspace_id;
   const run_id = run.id;
   const refs: ApifyRunRef[] = run.apify_run_ids || [];
@@ -717,65 +810,63 @@ async function phaseCollecting(run: any, serviceClient: any) {
   const runLog: any[] = [];
   const log = (step: string, data: any) => runLog.push({ step, ts: new Date().toISOString(), ...data });
 
-  let allRawResults: any[] = [];
-  let allNormalised: any[] = [];
+  console.log(`Signal ${run_id}: FINALIZING — dedup + AI classify`);
 
-  // Collect results from all succeeded runs
-  for (const ref of refs) {
-    if (ref.status !== "SUCCEEDED" || !ref.datasetId) {
-      log("skip_run", { actorKey: ref.actorKey, keyword: ref.keyword, status: ref.status });
-      continue;
-    }
+  // Fetch all raw leads stored during collecting phase
+  const { data: rawLeads, error: fetchErr } = await serviceClient
+    .from("signal_leads")
+    .select("*")
+    .eq("run_id", run_id)
+    .order("discovered_at", { ascending: true });
 
-    const actor = getActor(ref.actorKey);
-    if (!actor) continue;
+  if (fetchErr) throw fetchErr;
+  const allLeads = rawLeads || [];
+  log("loaded_raw_leads", { count: allLeads.length });
 
-    try {
-      const items = await collectApifyResults(ref.datasetId, APIFY_API_TOKEN);
-      log("collected", { actorKey: ref.actorKey, keyword: ref.keyword, rows: items.length });
+  if (allLeads.length === 0) {
+    // No leads at all — complete with zero cost
+    log("zero_result_protection", { message: "No leads discovered, credits not charged" });
+    await finalizeRun(run, serviceClient, 0, 0, runLog);
+    return;
+  }
 
-      // Cache the results
-      const queryHash = btoa(JSON.stringify({ source: ref.actorKey, query: ref.keyword })).slice(0, 64);
-      if (items.length > 0 && !items[0]?.error) {
-        await serviceClient.from("signal_dataset_cache").upsert({
-          query_hash: queryHash, source: ref.actorKey, dataset: items, row_count: items.length,
-        }, { onConflict: "query_hash,source" }).then(() => {});
-      }
+  // ── Cross-keyword dedup within collected leads ──
+  const seen = new Set<string>();
+  const dedupedIds: string[] = [];
+  const removeIds: string[] = [];
+  for (const lead of allLeads) {
+    const domain = extractDomain(lead.website || "");
+    const companyTitle = `${lead.company_name || ""}::${lead.source || ""}`.toLowerCase();
+    const key = domain || companyTitle;
+    if (key && !seen.has(key)) { seen.add(key); dedupedIds.push(lead.id); }
+    else if (!key) { dedupedIds.push(lead.id); }
+    else { removeIds.push(lead.id); }
+  }
+  log("cross_keyword_dedup", { before: allLeads.length, after: dedupedIds.length, removed: removeIds.length });
 
-      allRawResults.push(...items);
-      const normalised = normaliseGenericResults(actor, items);
-      for (const n of normalised) n._source_label = actor.label;
-      allNormalised.push(...normalised);
-    } catch (err) {
-      log("collect_error", { actorKey: ref.actorKey, keyword: ref.keyword, error: String(err) });
+  // Delete duplicate leads
+  if (removeIds.length > 0) {
+    for (let i = 0; i < removeIds.length; i += 200) {
+      const batch = removeIds.slice(i, i + 200);
+      await serviceClient.from("signal_leads").delete().in("id", batch);
     }
   }
 
-  log("all_collected", { totalRaw: allRawResults.length, totalNormalised: allNormalised.length });
-
-  // ── Deduplicate raw results across keywords ──
-  if (allNormalised.length > 0) {
-    const seen = new Set<string>();
-    const deduped: any[] = [];
-    for (const item of allNormalised) {
-      const domain = extractDomain(item.website || "");
-      const companyTitle = `${item.company_name || ""}::${item.title || ""}`.toLowerCase();
-      const key = domain || companyTitle;
-      if (key && !seen.has(key)) { seen.add(key); deduped.push(item); }
-      else if (!key) { deduped.push(item); }
-    }
-    log("cross_keyword_dedup", { before: allNormalised.length, after: deduped.length });
-    allNormalised = deduped;
-  }
+  // Re-fetch deduped leads
+  const { data: dedupedLeads } = await serviceClient
+    .from("signal_leads")
+    .select("*")
+    .eq("run_id", run_id);
+  let filtered = dedupedLeads || [];
 
   // ── Apply non-AI filters ──
   const filters = plans[0]?.filters;
-  let filtered = allNormalised;
   if (filters && filters.length > 0) {
-    filtered = allNormalised.filter((item: any) => {
-      return filters.every((f: any) => {
-        const val = item[f.field] ?? item._raw?.[f.field];
-        if (val === undefined || val === null) return true; // missing data = pass filter, let AI classify
+    const failedIds: string[] = [];
+    filtered = filtered.filter((item: any) => {
+      const passes = filters.every((f: any) => {
+        const val = item[f.field] ?? item.extra_data?.[f.field];
+        if (val === undefined || val === null) return true;
         switch (f.operator) {
           case "<": return Number(val) < Number(f.value);
           case ">": return Number(val) > Number(f.value);
@@ -785,8 +876,16 @@ async function phaseCollecting(run: any, serviceClient: any) {
           default: return true;
         }
       });
+      if (!passes) failedIds.push(item.id);
+      return passes;
     });
-    log("static_filter", { before: allNormalised.length, after: filtered.length });
+    // Delete filtered-out leads
+    if (failedIds.length > 0) {
+      for (let i = 0; i < failedIds.length; i += 200) {
+        await serviceClient.from("signal_leads").delete().in("id", failedIds.slice(i, i + 200));
+      }
+    }
+    log("static_filter", { before: dedupedLeads?.length || 0, after: filtered.length });
   }
 
   // ── AI classification ──
@@ -796,7 +895,7 @@ async function phaseCollecting(run: any, serviceClient: any) {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (LOVABLE_API_KEY) {
       const batchSize = 20;
-      const classified: any[] = [];
+      const failedAiIds: string[] = [];
       for (let i = 0; i < filtered.length; i += batchSize) {
         const batch = filtered.slice(i, i + batchSize);
         try {
@@ -807,7 +906,7 @@ async function phaseCollecting(run: any, serviceClient: any) {
               model: "google/gemini-2.5-flash-lite",
               messages: [
                 { role: "system", content: `You are a lead classifier. For each business in the list, determine if it matches this criteria: "${aiClassification}". Return a JSON array of booleans, one per business. Only return the JSON array, nothing else.` },
-                { role: "user", content: JSON.stringify(batch.map((b: any) => ({ name: b.company_name || b.title, description: b.description || "", website: b.website || "", location: b.location || "", employee_count: b.employee_count || null }))) },
+                { role: "user", content: JSON.stringify(batch.map((b: any) => ({ name: b.company_name, description: b.extra_data?.description || "", website: b.website || "", location: b.location || "", employee_count: b.extra_data?.employee_count || null }))) },
               ],
             }),
           });
@@ -818,17 +917,27 @@ async function phaseCollecting(run: any, serviceClient: any) {
               const content = classResult.choices?.[0]?.message?.content || "[]";
               bools = JSON.parse(content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
             } catch { bools = batch.map(() => true); }
-            batch.forEach((item: any, idx: number) => { if (bools[idx]) classified.push(item); });
+            batch.forEach((item: any, idx: number) => { if (!bools[idx]) failedAiIds.push(item.id); });
             aiFilteredCount += batch.length;
-          } else { classified.push(...batch); }
-        } catch { classified.push(...batch); }
+          }
+        } catch { /* keep all on error */ }
       }
-      filtered = classified;
-      log("ai_classification", { processed: aiFilteredCount, passed: filtered.length });
+      // Delete AI-rejected leads
+      if (failedAiIds.length > 0) {
+        for (let i = 0; i < failedAiIds.length; i += 200) {
+          await serviceClient.from("signal_leads").delete().in("id", failedAiIds.slice(i, i + 200));
+        }
+      }
+      log("ai_classification", { processed: aiFilteredCount, rejected: failedAiIds.length });
     }
   }
 
   // ── Workspace dedup ──
+  const { data: finalLeads } = await serviceClient
+    .from("signal_leads")
+    .select("*")
+    .eq("run_id", run_id);
+
   const { data: existingKeys } = await serviceClient
     .from("signal_dedup_keys")
     .select("dedup_key, dedup_type")
@@ -849,10 +958,10 @@ async function phaseCollecting(run: any, serviceClient: any) {
   });
 
   const uniqueLeads: any[] = [];
+  const duplicateIds: string[] = [];
   const newDedupKeys: any[] = [];
-  let dedupRemoved = 0;
 
-  for (const item of filtered) {
+  for (const item of (finalLeads || [])) {
     const domain = extractDomain(item.website || "");
     const phone = (item.phone || "").replace(/\D/g, "");
     const linkedin = item.linkedin || "";
@@ -864,42 +973,31 @@ async function phaseCollecting(run: any, serviceClient: any) {
 
     if (!isDuplicate) {
       uniqueLeads.push(item);
-      if (domain) { existingSet.add(`domain:${domain}`); newDedupKeys.push({ workspace_id, dedup_key: domain, dedup_type: "domain" }); }
-      if (phone) { existingSet.add(`phone:${phone}`); newDedupKeys.push({ workspace_id, dedup_key: phone, dedup_type: "phone" }); }
-      if (linkedin) { existingSet.add(`linkedin:${linkedin}`); newDedupKeys.push({ workspace_id, dedup_key: linkedin, dedup_type: "linkedin" }); }
-    } else { dedupRemoved++; }
+      if (domain) { existingSet.add(`domain:${domain}`); newDedupKeys.push({ workspace_id, dedup_key: domain, dedup_type: "domain", signal_lead_id: item.id }); }
+      if (phone) { existingSet.add(`phone:${phone}`); newDedupKeys.push({ workspace_id, dedup_key: phone, dedup_type: "phone", signal_lead_id: item.id }); }
+      if (linkedin) { existingSet.add(`linkedin:${linkedin}`); newDedupKeys.push({ workspace_id, dedup_key: linkedin, dedup_type: "linkedin", signal_lead_id: item.id }); }
+    } else {
+      duplicateIds.push(item.id);
+    }
   }
-  log("dedup", { before: filtered.length, after: uniqueLeads.length, removed: dedupRemoved });
+  log("workspace_dedup", { before: finalLeads?.length || 0, after: uniqueLeads.length, removed: duplicateIds.length });
 
-  // ── Store leads ──
-  const leadsToInsert = uniqueLeads.map((item) => ({
-    run_id, workspace_id,
-    company_name: item.company_name || null, website: item.website || null,
-    domain: extractDomain(item.website || ""), phone: item.phone || null,
-    email: item.email || null, linkedin: item.linkedin || null,
-    location: item.location || null, source: item._source_label || plans[0]?.source || "Unknown",
-    extra_data: item._raw || item,
-  }));
+  // Delete workspace-level duplicates
+  if (duplicateIds.length > 0) {
+    for (let i = 0; i < duplicateIds.length; i += 200) {
+      await serviceClient.from("signal_leads").delete().in("id", duplicateIds.slice(i, i + 200));
+    }
+  }
 
-  if (leadsToInsert.length > 0) {
-    const { data: insertedLeads } = await serviceClient.from("signal_leads").insert(leadsToInsert).select("id");
-    if (insertedLeads && newDedupKeys.length > 0) {
-      const dedupWithIds = newDedupKeys.map((dk, idx) => ({
-        ...dk, signal_lead_id: insertedLeads[Math.min(idx, insertedLeads.length - 1)]?.id || null,
-      }));
-      await serviceClient.from("signal_dedup_keys").insert(dedupWithIds).select();
+  // Store dedup keys
+  if (newDedupKeys.length > 0) {
+    for (let i = 0; i < newDedupKeys.length; i += 200) {
+      await serviceClient.from("signal_dedup_keys").insert(newDedupKeys.slice(i, i + 200)).select();
     }
   }
 
   // ── Calculate actual cost ──
-  const { data: creditsData } = await serviceClient
-    .from("lead_credits")
-    .select("credits_balance")
-    .eq("workspace_id", workspace_id)
-    .maybeSingle();
-  const balance = creditsData?.credits_balance || 0;
-
-  const scrapedRows = allRawResults.length;
+  const scrapedRows = (finalLeads || []).length; // approximate from what we collected
   const scrapeCostUsd = (scrapedRows / 1000) * 0.25;
   const aiFilterCostUsd = aiFilteredCount * 0.001;
   const actualCostUsd = (scrapeCostUsd + aiFilterCostUsd) * 1.2;
@@ -911,37 +1009,47 @@ async function phaseCollecting(run: any, serviceClient: any) {
     log("zero_result_protection", { message: "No leads discovered, credits not charged" });
   }
 
+  await finalizeRun(run, serviceClient, uniqueLeads.length, actualCredits, runLog);
+}
+
+// ── Finalize run helper ──
+async function finalizeRun(run: any, serviceClient: any, leadsCount: number, actualCredits: number, runLog: any[]) {
+  const workspace_id = run.workspace_id;
+  const refs: ApifyRunRef[] = run.apify_run_ids || [];
+
   if (actualCredits > 0) {
+    const { data: creditsData } = await serviceClient
+      .from("lead_credits")
+      .select("credits_balance")
+      .eq("workspace_id", workspace_id)
+      .maybeSingle();
+    const balance = creditsData?.credits_balance || 0;
     await serviceClient.from("lead_credits").update({ credits_balance: balance - actualCredits }).eq("workspace_id", workspace_id);
   }
 
-  log("complete", { leads: uniqueLeads.length, credits: actualCredits });
-
-  // ── Update run status ──
   const isScheduled = run.schedule_type === "daily" || run.schedule_type === "weekly";
   await serviceClient.from("signal_runs").update({
     status: "completed",
     processing_phase: "done",
     actual_cost: actualCredits,
-    leads_discovered: (run.leads_discovered || 0) + uniqueLeads.length,
+    leads_discovered: leadsCount,
     last_run_at: new Date().toISOString(),
     run_log: runLog,
     error_message: null,
     next_run_at: isScheduled
       ? new Date(Date.now() + (run.schedule_type === "weekly" ? 7 * 86400000 : 86400000)).toISOString()
       : null,
-  }).eq("id", run_id);
+  }).eq("id", run.id);
 
-  // Notify user
   if (run.user_id) {
-    const succeededCount = refs.filter(r => r.status === "SUCCEEDED").length;
-    const failedCount = refs.filter(r => r.status === "FAILED" || r.status === "TIMED-OUT" || r.status === "ABORTED").length;
+    const succeededCount = refs.filter((r: ApifyRunRef) => r.status === "SUCCEEDED").length;
+    const failedCount = refs.filter((r: ApifyRunRef) => r.status === "FAILED" || r.status === "TIMED-OUT" || r.status === "ABORTED").length;
     await serviceClient.from("notifications").insert({
       user_id: run.user_id, workspace_id,
       type: "signal_complete", title: "Signal Complete!",
-      message: `Your signal "${run.signal_name || run.signal_query}" found ${uniqueLeads.length} new leads (${succeededCount} sources succeeded, ${failedCount} failed). ${actualCredits} credits charged.`,
+      message: `Your signal "${run.signal_name || run.signal_query}" found ${leadsCount} new leads (${succeededCount} sources succeeded, ${failedCount} failed). ${actualCredits} credits charged.`,
     });
   }
 
-  console.log(`Signal ${run_id}: COMPLETED — ${uniqueLeads.length} new leads, ${actualCredits} credits charged`);
+  console.log(`Signal ${run.id}: COMPLETED — ${leadsCount} new leads, ${actualCredits} credits charged`);
 }
