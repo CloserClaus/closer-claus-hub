@@ -101,7 +101,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     description: "Scrapes Google Maps places. Best for local businesses, agencies, service providers. Returns phone, website, reviews, ratings.",
     inputSchema: {
       searchStringsArray:        { type: "string[]", required: true, description: "Search queries (auto-set from search_query)" },
-      maxCrawledPlacesPerSearch: { type: "number",   default: 200, description: "Max places per search" },
+      maxCrawledPlacesPerSearch: { type: "number",   default: 500, description: "Max places per search. Set high (500+) because downstream filtering is aggressive." },
       language:                  { type: "string",   default: "en", description: "Language code" },
       locationQuery:             { type: "string",   description: "Optional city/state/country filter" },
     },
