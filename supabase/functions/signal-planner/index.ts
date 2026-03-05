@@ -73,7 +73,7 @@ const ACTOR_CATALOG: ActorEntry[] = [
     inputSchema: {
       keywords:   { type: "string[]", required: true, description: "Job search keywords (auto-set from search_query)" },
       location:   { type: "string",  default: "United States", description: "Location filter" },
-      maxResults: { type: "number",  default: 100, description: "Max results" },
+      maxResults: { type: "number",  default: 500, description: "Max results. Set high (500+) because downstream filtering is aggressive." },
     },
     outputFields: {
       company_name: ["company", "companyName"],
