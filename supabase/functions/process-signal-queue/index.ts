@@ -261,6 +261,7 @@ interface ApifyRunRef {
   runId: string;
   datasetId: string;
   status: string; // READY, RUNNING, SUCCEEDED, FAILED, TIMED-OUT, ABORTED
+  startedAt?: string; // ISO timestamp when this individual run was started
 }
 
 async function startApifyRun(actor: ActorEntry, input: Record<string, any>, token: string): Promise<{ runId: string; datasetId: string }> {
@@ -640,6 +641,7 @@ async function phaseStarting(run: any, serviceClient: any) {
         runId,
         datasetId,
         status: "RUNNING",
+        startedAt: new Date().toISOString(),
       });
       console.log(`Started Apify run ${runId} for ${job.actorKey}:"${job.keyword}"`);
     } catch (err) {
@@ -666,6 +668,26 @@ async function phaseStarting(run: any, serviceClient: any) {
   console.log(`Signal ${run.id}: ${allStarted ? "All jobs started, moving to scraping" : `Started ${newIndex}/${jobs.length}, will continue next cycle`}`);
 }
 
+// ── Abort helper ──
+
+const PER_RUN_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes per individual Apify run
+
+async function abortApifyRun(runId: string, token: string): Promise<void> {
+  try {
+    const resp = await fetch(
+      `https://api.apify.com/v2/actor-runs/${runId}/abort?token=${token}`,
+      { method: "POST" }
+    );
+    if (!resp.ok) {
+      console.warn(`Abort request for run ${runId} returned ${resp.status}`);
+    } else {
+      console.log(`Aborted hung Apify run ${runId}`);
+    }
+  } catch (err) {
+    console.warn(`Failed to abort Apify run ${runId}:`, err);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════
 // ██  PHASE 2: SCRAPING — poll Apify for completion
 // ═══════════════════════════════════════════════════════════
@@ -681,6 +703,18 @@ async function phaseScraping(run: any, serviceClient: any) {
   for (const ref of refs) {
     if (!ref.runId || ref.status === "FAILED" || ref.status === "SUCCEEDED" || ref.status === "TIMED-OUT" || ref.status === "ABORTED") {
       continue; // Skip already-resolved runs
+    }
+
+    // Per-run timeout: abort runs that have been RUNNING for over 15 minutes
+    if ((ref.status === "RUNNING" || ref.status === "READY") && ref.startedAt) {
+      const elapsedMs = Date.now() - new Date(ref.startedAt).getTime();
+      if (elapsedMs > PER_RUN_TIMEOUT_MS) {
+        console.log(`Apify run ${ref.runId} (${ref.actorKey}:"${ref.keyword}") exceeded 15-min timeout (${Math.round(elapsedMs / 60000)}min), aborting`);
+        await abortApifyRun(ref.runId, APIFY_API_TOKEN);
+        ref.status = "TIMED-OUT";
+        updated = true;
+        continue;
+      }
     }
 
     try {
@@ -700,6 +734,13 @@ async function phaseScraping(run: any, serviceClient: any) {
       updated = true;
     }
   }
+
+  // Log breakdown of run statuses
+  const succeeded = refs.filter(r => r.status === "SUCCEEDED").length;
+  const failed = refs.filter(r => r.status === "FAILED").length;
+  const timedOut = refs.filter(r => r.status === "TIMED-OUT").length;
+  const running = refs.filter(r => r.status === "RUNNING" || r.status === "READY").length;
+  console.log(`Signal ${run.id} run breakdown: ${succeeded} succeeded, ${failed} failed, ${timedOut} timed-out, ${running} still running`);
 
   const nextPhase = anyStillRunning ? "scraping" : "collecting";
 
