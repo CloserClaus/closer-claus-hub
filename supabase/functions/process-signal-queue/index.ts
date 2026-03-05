@@ -406,7 +406,7 @@ serve(async (req) => {
         // Reset to queued for retry
         await serviceClient.from("signal_runs").update({
           status: "queued", retry_count: newRetryCount, started_at: null,
-          processing_phase: "pending", apify_run_ids: [], current_keyword_index: 0,
+          processing_phase: "pending", apify_run_ids: [], current_keyword_index: 0, collected_dataset_index: 0,
           error_message: `Stale recovery attempt ${newRetryCount}`,
         }).eq("id", run.id);
         continue;
