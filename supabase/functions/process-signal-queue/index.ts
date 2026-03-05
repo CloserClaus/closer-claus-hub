@@ -597,19 +597,32 @@ async function phaseStarting(run: any, serviceClient: any) {
 
     for (const keyword of keywords) {
       const iterPlan = { ...plan, search_query: keyword, search_params: { ...plan.search_params } };
-      if (keywordField && iterPlan.search_params[keywordField]) {
-        iterPlan.search_params[keywordField] = keyword;
-      }
-      if (arrayKeywordField) {
-        iterPlan.search_params[arrayKeywordField] = [keyword];
-      }
-      const otherArrayFields = ["searchStringsArray", "queries", "searchTerms"];
-      for (const af of otherArrayFields) {
-        if (af !== arrayKeywordField && actor.inputSchema[af]) iterPlan.search_params[af] = [keyword];
+
+      // Special handling for LinkedIn: construct search URLs from keywords
+      if (actor.key === "linkedin_jobs" && actor.inputSchema["urls"]) {
+        const location = iterPlan.search_params?.searchLocation || iterPlan.search_params?.location || "United States";
+        const encodedKeyword = encodeURIComponent(keyword);
+        const encodedLocation = encodeURIComponent(location);
+        const linkedinUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=r604800`;
+        iterPlan.search_params["urls"] = [linkedinUrl];
+        // Remove non-schema fields the AI might have set
+        delete iterPlan.search_params["searchKeywords"];
+        delete iterPlan.search_params["searchLocation"];
+      } else {
+        if (keywordField && iterPlan.search_params[keywordField]) {
+          iterPlan.search_params[keywordField] = keyword;
+        }
+        if (arrayKeywordField) {
+          iterPlan.search_params[arrayKeywordField] = [keyword];
+        }
+        const otherArrayFields = ["searchStringsArray", "queries", "searchTerms"];
+        for (const af of otherArrayFields) {
+          if (af !== arrayKeywordField && actor.inputSchema[af]) iterPlan.search_params[af] = [keyword];
+        }
       }
 
       // Use the actor's configured default max (already increased in catalog)
-      const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max"));
+      const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
       if (maxField && !iterPlan.search_params[maxField]) {
         iterPlan.search_params[maxField] = actor.inputSchema[maxField]?.default || 500;
       }
