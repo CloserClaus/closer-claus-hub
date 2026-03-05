@@ -1,23 +1,30 @@
 
 
-## Diagnosis
+## Why the Search Went Stale
 
-The database has the correct data — all 10 Bizvolve applications have `applicant_name` populated (verified via direct query). The root cause is a **code-level issue** in `JobDetail.tsx`:
+The logs show run `1f1a96af` has been stuck in the `scraping` phase for many polling cycles. With `maxResults` raised to 500, each Apify actor run takes significantly longer to complete (minutes instead of seconds). The system has two problems:
 
-1. The query uses `select('*')` but the code accesses the fields via `(app as any).applicant_name` — a fragile pattern that can fail if TypeScript's type narrowing or Supabase's PostgREST response doesn't include these columns as expected.
-2. The published site may be running an older version of the code before the `applicant_name` fallback was added.
+### Problem 1: Longer Apify Runs + 30-Minute Hard Ceiling
 
-## Plan
+With 10 keyword×actor jobs each requesting 500 results, the Apify runs take much longer. The `HARD_CEILING_MS` is 30 minutes. If the total scraping time exceeds that, the run gets marked stale, reset to queued, retried, and eventually fails after 3 attempts.
 
-### 1. Fix `JobDetail.tsx` — Use explicit column selection and typed access
+### Problem 2: Collecting Phase Will Timeout
 
-- Change the `select('*')` query to explicitly include `applicant_name, applicant_email` in the select string
-- Remove `(app as any)` casts — access `app.applicant_name` and `app.applicant_email` directly (these fields already exist in the generated Supabase types)
-- Add a hardcoded SDR level (1–2) fallback when profile lookup fails, instead of always defaulting to 1
+Even if scraping completes, `phaseCollecting` processes **everything in a single edge function invocation**: fetches all datasets (up to 10 HTTP calls), normalizes thousands of rows, runs AI classification in batches of 20 (dozens of API calls), then stores. Edge functions have a ~60s execution limit. With 500 results × 10 jobs, collection alone will timeout.
 
-### 2. Fix `ApplicationsTable.tsx` — Same pattern fix
+### Fix Plan
 
-- Same change: remove `(app as any)` casts, use typed `a.applicant_name` and `a.applicant_email` directly since the types already include them
+**File: `supabase/functions/process-signal-queue/index.ts`**
 
-These are small, surgical changes to two files. Once saved, the preview and published site will correctly display applicant names from the denormalized columns without depending on profile/workspace membership lookups.
+1. **Increase hard ceiling** from 30 minutes to 60 minutes — larger scrapes legitimately take longer
+2. **Split collecting into incremental sub-phases** — process one dataset per invocation instead of all at once:
+   - Track which dataset refs have been collected via a `collected_refs` index on the run
+   - Each invocation of `phaseCollecting` processes the next unprocessed dataset: fetch, normalize, store leads immediately
+   - After all datasets are processed, run dedup + AI classification as a final "finalizing" sub-phase
+3. **Save leads incrementally** after each dataset is processed (per the stack overflow pattern), so partial progress survives timeouts
+4. **Paginate large datasets** — if a dataset has >500 items, fetch in pages of 500 using Apify's `offset` parameter
+
+| File | Change |
+|------|--------|
+| `supabase/functions/process-signal-queue/index.ts` | Increase hard ceiling to 60min, split collecting into per-dataset incremental processing, save leads after each dataset, paginate large dataset fetches |
 
