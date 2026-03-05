@@ -44,11 +44,11 @@ const ACTORS_TO_TEST = [
   },
   {
     key: "yelp",
-    actorId: "yin5oHQaJGRfmJhlN",
+    actorId: "api-ninja/yelp-ultimate-scraper",
     input: {
       searchTerms: ["marketing agency"],
       locations: ["New York, NY"],
-      maxItems: 3,
+      maxItems: 5,
     },
     expectedFields: ["name", "phone"],
   },
