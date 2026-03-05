@@ -525,7 +525,10 @@ async function processPhase(run: any, serviceClient: any) {
       await phaseScraping(run, serviceClient);
       break;
     case "collecting":
-      await phaseCollecting(run, serviceClient);
+      await phaseCollectingIncremental(run, serviceClient);
+      break;
+    case "finalizing":
+      await phaseFinalizing(run, serviceClient);
       break;
     default:
       throw new Error(`Unknown phase: ${phase}`);
