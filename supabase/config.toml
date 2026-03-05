@@ -162,5 +162,3 @@ verify_jwt = false
 [functions.process-signal-queue]
 verify_jwt = false
 
-[functions.test-actors]
-verify_jwt = false
