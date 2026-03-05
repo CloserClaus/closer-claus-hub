@@ -79,6 +79,7 @@ export function MultiSelectCombobox({
   };
 
   const removeOption = (value: string, e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     onSelectionChange(selected.filter((v) => v !== value));
   };
@@ -121,7 +122,7 @@ export function MultiSelectCombobox({
                     {getLabel(value)}
                     <X
                       className="h-3 w-3 cursor-pointer hover:text-destructive"
-                      onClick={(e) => removeOption(value, e)}
+                      onMouseDown={(e) => removeOption(value, e)}
                     />
                   </Badge>
                 ))}

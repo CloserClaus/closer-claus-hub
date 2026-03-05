@@ -33,12 +33,14 @@ export function SubscriptionGuard({ children, feature = 'this feature' }: Subscr
   // Agency owners need their own subscription
   const needsSubscription = !hasActiveSubscription;
 
-  if (needsSubscription && !dismissed) {
+  if (needsSubscription) {
     return (
       <>
-        {children}
-        <Dialog open={true} onOpenChange={() => setDismissed(true)}>
-          <DialogContent className="sm:max-w-md">
+        <div className="pointer-events-none opacity-50 select-none" aria-hidden="true">
+          {children}
+        </div>
+        <Dialog open={true} onOpenChange={() => {}}>
+          <DialogContent className="sm:max-w-md [&>button.absolute]:hidden" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
             <DialogHeader className="text-center">
               <div className="w-14 h-14 rounded-2xl bg-warning/10 flex items-center justify-center mx-auto mb-3">
                 <AlertTriangle className="w-7 h-7 text-warning" />
