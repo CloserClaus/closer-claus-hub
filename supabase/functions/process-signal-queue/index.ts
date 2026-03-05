@@ -30,36 +30,38 @@ interface ActorEntry {
 const ACTOR_CATALOG: ActorEntry[] = [
   {
     key: "linkedin_jobs",
-    actorId: "sovereigntaylor/linkedin-jobs-scraper",
+    actorId: "openclaw/linkedin-jobs-scraper",
     label: "LinkedIn Jobs",
     category: "hiring_intent",
     description: "LinkedIn job postings",
     inputSchema: {
-      keyword:          { type: "string",  required: true, description: "Job search keyword" },
-      location:         { type: "string",  default: "United States", description: "Location filter" },
-      maxResults:       { type: "number",  default: 500, description: "Max job listings" },
-      timePosted:       { type: "enum",    values: ["any", "past24h", "pastWeek", "pastMonth"], default: "pastWeek", description: "Recency filter" },
+      searchKeywords:   { type: "string[]", required: true, description: "Job search keywords" },
+      searchLocation:   { type: "string",  default: "United States", description: "Location filter" },
+      maxItems:         { type: "number",  default: 500, description: "Max job listings" },
+      scrapeCompany:    { type: "boolean", default: true, description: "Include company details" },
       scrapeJobDetails: { type: "boolean", default: true, description: "Include full job descriptions" },
     },
     outputFields: {
-      company_name: ["companyName", "company"], title: ["jobTitle", "title", "position"],
-      website: ["companyLink", "companyUrl", "companyWebsite"], linkedin: ["companyLink", "companyLinkedinUrl", "companyUrl"],
-      location: ["jobLocation", "location", "place"], city: ["city", "jobLocation"], state: ["state"], country: ["country"],
-      phone: [], email: ["email", "contactEmail"], description: ["jobDescription", "description"],
-      industry: ["industry", "companyIndustry"], employee_count: ["employeeCount", "companySize"],
-      salary: ["salary"], apply_link: ["applyLink"],
+      company_name: ["companyName", "company"], title: ["title", "jobTitle", "position"],
+      website: ["companyWebsite", "companyUrl"], linkedin: ["companyLinkedinUrl", "companyUrl"],
+      location: ["location", "jobLocation", "place"], city: ["city", "jobLocation"], state: ["state"], country: ["country"],
+      phone: [], email: ["email", "contactEmail"], description: ["descriptionHtml", "description"],
+      industry: ["companyIndustry", "industries"], employee_count: ["companyEmployeesCount", "companySize"],
+      salary: ["salaryInfo", "salary"], apply_link: ["link", "applyLink"],
     },
   },
   {
     key: "indeed_jobs",
-    actorId: "consummate_mandala/indeed-job-listings-scraper",
+    actorId: "valig/indeed-jobs-scraper",
     label: "Indeed Jobs",
     category: "hiring_intent",
     description: "Indeed job postings",
     inputSchema: {
-      keywords:   { type: "string[]", required: true, description: "Job search keywords" },
+      title:      { type: "string",  required: true, description: "Job title or keywords" },
       location:   { type: "string",  default: "United States", description: "Location filter" },
-      maxResults: { type: "number",  default: 500, description: "Max results" },
+      country:    { type: "string",  default: "us", description: "Country code (e.g. us, uk, ca)" },
+      limit:      { type: "number",  default: 500, description: "Max results" },
+      datePosted: { type: "string",  default: "7", description: "Days since posted (1, 3, 7, 14)" },
     },
     outputFields: {
       company_name: ["company", "companyName"], title: ["positionName", "title", "jobTitle"],
@@ -581,8 +583,10 @@ async function phaseStarting(run: any, serviceClient: any) {
     const actor = getActor(plan.source);
     if (!actor) continue;
 
-    const keywordFields = ["keyword", "search", "searchQuery"];
+    const keywordFields = ["title", "search", "searchQuery"];
     const keywordField = keywordFields.find(f => actor.inputSchema[f]);
+    const arrayKeywordFields = ["searchKeywords", "searchStringsArray", "queries", "searchTerms"];
+    const arrayKeywordField = arrayKeywordFields.find(f => actor.inputSchema[f]);
     const searchQueryHasOR = plan.search_query && /\s+OR\s+/i.test(plan.search_query);
     const rawKeyword = searchQueryHasOR
       ? plan.search_query
@@ -595,9 +599,13 @@ async function phaseStarting(run: any, serviceClient: any) {
       if (keywordField && iterPlan.search_params[keywordField]) {
         iterPlan.search_params[keywordField] = keyword;
       }
-      const arrayFields = ["searchStringsArray", "queries", "searchTerms"];
-      for (const af of arrayFields) {
-        if (actor.inputSchema[af]) iterPlan.search_params[af] = [keyword];
+      // Set array keyword fields for actors that expect arrays
+      if (arrayKeywordField) {
+        iterPlan.search_params[arrayKeywordField] = [keyword];
+      }
+      const otherArrayFields = ["searchStringsArray", "queries", "searchTerms"];
+      for (const af of otherArrayFields) {
+        if (af !== arrayKeywordField && actor.inputSchema[af]) iterPlan.search_params[af] = [keyword];
       }
 
       // Ensure max field has a high default — do NOT divide by keyword count.
@@ -608,15 +616,8 @@ async function phaseStarting(run: any, serviceClient: any) {
       }
 
       const actorInput = buildGenericInput(actor, iterPlan);
-      // LinkedIn requires residential proxies to avoid blocking
-      if (actor.key === "linkedin_jobs" || actor.key === "linkedin_companies") {
-        actorInput.proxyConfiguration = {
-          useApifyProxy: true,
-          apifyProxyGroups: ["RESIDENTIAL"],
-          apifyProxyCountry: "US",
-        };
-      } else if (!actorInput.proxyConfiguration) {
-        // Default proxy for all other actors
+      // Default proxy for actors that don't specify their own
+      if (!actorInput.proxyConfiguration) {
         actorInput.proxyConfiguration = { useApifyProxy: true };
       }
 
@@ -877,6 +878,17 @@ async function phaseCollectingIncremental(run: any, serviceClient: any) {
 
   try {
     const items = await collectApifyResults(ref.datasetId, APIFY_API_TOKEN);
+    
+    // Zero-result warning: detect silent actor failures (actor succeeds but returns no data)
+    if (items.length === 0) {
+      console.warn(`⚠️ Actor ${ref.actorKey}:"${ref.keyword}" returned SUCCEEDED but 0 results — possible input schema mismatch or site blocking`);
+    } else if (items.length === 1 && items[0]?.jobTitle?.includes?.("Sample Job Listing")) {
+      console.warn(`⚠️ Actor ${ref.actorKey}:"${ref.keyword}" returned a placeholder/fallback result — site is likely blocking the scraper`);
+      // Don't store placeholder results
+      await serviceClient.from("signal_runs").update({ collected_dataset_index: collectedIndex + 1 }).eq("id", run.id);
+      return;
+    }
+    
     console.log(`Signal ${run.id}: fetched ${items.length} items from ${ref.actorKey}:"${ref.keyword}"`);
 
     // Cache the results

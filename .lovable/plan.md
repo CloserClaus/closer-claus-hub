@@ -1,47 +1,61 @@
 
+Root cause identified: this run is being flagged “stale” for two different reasons, and one is a UI false-positive.
 
-## Why the Search Returned 0 Leads
+1) What is actually happening in this run
+- In backend logs, two jobs failed to start with:
+  - `actor-memory-limit-exceeded (402)` from Apify
+  - Message indicates account-wide actor memory already at 8192MB and new run requested 1024MB.
+- Current run state confirms:
+  - 4 LinkedIn jobs succeeded
+  - 2 jobs failed at start (memory-cap failures)
+  - 4 Indeed jobs still `RUNNING`
+  - phase remains `scraping` until those 4 resolve
 
-### Root Cause
+2) Why it appears stale “again”
+- UI marks stale at 10 minutes (`SignalScraperTab.tsx`), based only on `started_at`.
+- Worker timeout for each actor run is 15 minutes (`process-signal-queue/index.ts`).
+- So between minute 10 and 15, UI says stale even when backend is still within expected timeout window.
+- This is why it feels stale “again” even though timeout logic hasn’t triggered yet.
 
-The LinkedIn Jobs actor (`sovereigntaylor/linkedin-jobs-scraper`) has **never returned any data** — zero cached results across all runs. The Apify runs finish with status `SUCCEEDED` but produce empty datasets. This means the actor accepts our input without error but doesn't find anything because our field names likely don't match its expected input schema.
+3) Is this a LinkedIn-only issue?
+- No. The `402 actor-memory-limit-exceeded` is account-level capacity pressure, so any actor type can hit it (Indeed/Google Maps/Yelp/etc.), not just LinkedIn.
 
-Our catalog sends: `{ keyword: "Sales Representative", location: "United States", maxResults: 500, timePosted: "pastWeek", scrapeJobDetails: true }`
+Implementation plan to prevent repeats:
 
-But common LinkedIn job scraper actors on Apify typically expect fields like `searchUrl`, `queries`, `searchQueries`, or `title` — not `keyword`. The actor silently ignores unrecognized fields, runs with no search criteria, and returns an empty dataset.
+A) Make start-phase resilient to provider capacity (primary fix)
+- File: `supabase/functions/process-signal-queue/index.ts`
+- Change behavior for Apify start errors:
+  - Detect memory-capacity errors (`402`, `actor-memory-limit-exceeded`).
+  - Do NOT permanently mark those refs as `FAILED` immediately.
+  - Mark as retryable (`DEFERRED`/`START_RETRY`) and attempt again in next cycles with backoff.
+- Add per-run start-attempt tracking and cap (e.g., 5 attempts per job) to avoid infinite loops.
+- Keep partial-success model: continue pipeline once all jobs are terminal or retry budget exhausted.
 
-Additionally, all 3 Indeed jobs timed out, so the backup source also produced nothing.
+B) Reduce burst concurrency during job start
+- File: `supabase/functions/process-signal-queue/index.ts`
+- Lower/parameterize `BATCH_SIZE` (currently 3), and apply actor-aware throttling:
+  - Heavy actors (LinkedIn/Indeed): start fewer at once (e.g., 1–2).
+  - Lighter actors can remain higher.
+- Goal: avoid triggering provider memory ceiling spikes.
 
-### Fix Plan
+C) Align stale UX with backend reality
+- File: `src/components/leads/SignalScraperTab.tsx`
+- Replace fixed 10-min stale rule with phase-aware logic:
+  - “Long-running” warning at 15+ min (or based on no `updated_at` heartbeat for >2 polling intervals).
+  - “Stale” only when truly stuck (no state progress/heartbeat beyond threshold).
+- Prevent users from seeing healthy long jobs as stale prematurely.
 
-**Step 1: Verify correct input fields for both actors**
+D) Improve operator visibility
+- File: `src/components/leads/SignalScraperTab.tsx` (+ existing run log data)
+- Display status breakdown inline: succeeded / failed / running / timed-out.
+- Show failure reason category (e.g., “Provider capacity throttling”) so users know it’s recoverable.
 
-Call the Apify API from an edge function to fetch the actual input schema for:
-- `sovereigntaylor/linkedin-jobs-scraper` (LinkedIn)
-- `consummate_mandala/indeed-job-listings-scraper` (Indeed — timing out consistently suggests input issues too)
+E) Optional guardrail for large fan-out searches
+- File: `supabase/functions/signal-planner/index.ts` and/or queue worker
+- Add adaptive keyword fan-out cap when provider is under capacity pressure.
+- Keep broad discovery intent but degrade gracefully (queue rest for next cycle) instead of hard-failing starts.
 
-**Step 2: Update the Actor Catalog**
-
-File: `supabase/functions/process-signal-queue/index.ts` and `supabase/functions/signal-planner/index.ts`
-
-- Fix `inputSchema` field names to match what the actors actually expect
-- This is the only change needed — the rest of the pipeline (normalisation, dedup, AI classification) works correctly; it just has no data to process
-
-**Step 3: Add actor validation logging**
-
-File: `supabase/functions/process-signal-queue/index.ts`
-
-- In `phaseCollectingIncremental`, when a SUCCEEDED dataset returns 0 items, log a warning: "Actor returned SUCCEEDED but 0 results — possible input schema mismatch"
-- This makes future silent failures immediately visible
-
-### Implementation
-
-1. Create a one-off diagnostic edge function (or use `curl_edge_functions`) to call `GET https://api.apify.com/v2/acts/sovereigntaylor~linkedin-jobs-scraper?token=APIFY_API_TOKEN` and inspect `data.defaultRunInput` / `data.inputSchema` for the correct field names
-2. Update the `ACTOR_CATALOG` entries for `linkedin_jobs` and `indeed_jobs` with the correct field mappings
-3. Add a zero-result warning log in the collecting phase
-
-| File | Change |
-|------|--------|
-| `supabase/functions/process-signal-queue/index.ts` | Fix actor catalog input fields, add 0-result warning |
-| `supabase/functions/signal-planner/index.ts` | Sync actor catalog if duplicated there |
-
+Expected outcome after implementation
+- Capacity throttling won’t cause immediate hard failures.
+- Runs will progress with retries and partial completion instead of appearing stuck.
+- UI “stale” label will reflect true stuck state, not normal long execution windows.
