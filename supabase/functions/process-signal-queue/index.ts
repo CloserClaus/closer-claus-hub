@@ -38,8 +38,8 @@ const ACTOR_CATALOG: ActorEntry[] = [
       urls:              { type: "string[]", required: true, description: "LinkedIn job search URLs (constructed from keywords)" },
       count:             { type: "number",  default: 2500, description: "Max job listings" },
       scrapeCompany:     { type: "boolean", default: true, description: "Include company details" },
-      splitByLocation:   { type: "boolean", default: true, description: "Split by location to bypass 1000-result cap" },
-      splitCountry:      { type: "string",  default: "US", description: "Country for location splitting" },
+      splitByLocation:   { type: "boolean", default: false, description: "Split by location to bypass 1000-result cap" },
+      splitCountry:      { type: "string",  description: "Country for location splitting (only when splitByLocation=true)" },
     },
     outputFields: {
       company_name: ["companyName", "company"], title: ["title", "jobTitle", "position"],
@@ -599,6 +599,7 @@ async function phaseStarting(run: any, serviceClient: any) {
       const iterPlan = { ...plan, search_query: keyword, search_params: { ...plan.search_params } };
 
       // Special handling for LinkedIn: construct search URLs from keywords
+      // Actor expects urls as array of strings (plain URLs)
       if (actor.key === "linkedin_jobs" && actor.inputSchema["urls"]) {
         const location = iterPlan.search_params?.searchLocation || iterPlan.search_params?.location || "United States";
         const encodedKeyword = encodeURIComponent(keyword);
@@ -608,6 +609,10 @@ async function phaseStarting(run: any, serviceClient: any) {
         // Remove non-schema fields the AI might have set
         delete iterPlan.search_params["searchKeywords"];
         delete iterPlan.search_params["searchLocation"];
+        // Don't pass splitCountry unless splitByLocation is explicitly enabled
+        if (!iterPlan.search_params["splitByLocation"]) {
+          delete iterPlan.search_params["splitCountry"];
+        }
       } else {
         if (keywordField && iterPlan.search_params[keywordField]) {
           iterPlan.search_params[keywordField] = keyword;
