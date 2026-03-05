@@ -95,11 +95,24 @@ export default function RoleSelect() {
 
           await refreshProfile();
 
+          // Trigger verification email on signup
+          try {
+            await supabase.functions.invoke('send-verification-email', {
+              body: {
+                user_id: user.id,
+                email: user.email,
+                full_name: user.user_metadata?.full_name,
+              }
+            });
+          } catch (e) {
+            console.error('Failed to send verification email:', e);
+          }
+
           toast({
             title: 'Welcome to Closer Claus!',
             description: signupRole === 'agency_owner' 
-              ? 'Complete your agency setup.'
-              : 'Start browsing jobs!',
+              ? 'Complete your agency setup. Check your email to verify your account.'
+              : 'Start browsing jobs! Check your email to verify your account.',
           });
 
           navigate('/onboarding');
