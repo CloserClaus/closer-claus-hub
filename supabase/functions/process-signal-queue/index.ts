@@ -35,13 +35,11 @@ const ACTOR_CATALOG: ActorEntry[] = [
     category: "hiring_intent",
     description: "LinkedIn job postings",
     inputSchema: {
-      searchKeywords:        { type: "string[]", required: true, description: "Job search keywords" },
-      searchLocation:        { type: "string",  default: "United States", description: "Location filter" },
-      maxItems:              { type: "number",  default: 2500, description: "Max job listings" },
-      scrapeCompany:         { type: "boolean", default: true, description: "Include company details" },
-      scrapeJobDetails:      { type: "boolean", default: true, description: "Include full job descriptions" },
-      splitSearchByLocation: { type: "boolean", default: true, description: "Split by location to bypass 1000-result cap" },
-      targetCountry:         { type: "string",  default: "US", description: "Target country for location splitting" },
+      urls:              { type: "string[]", required: true, description: "LinkedIn job search URLs (constructed from keywords)" },
+      count:             { type: "number",  default: 2500, description: "Max job listings" },
+      scrapeCompany:     { type: "boolean", default: true, description: "Include company details" },
+      splitByLocation:   { type: "boolean", default: true, description: "Split by location to bypass 1000-result cap" },
+      splitCountry:      { type: "string",  default: "US", description: "Country for location splitting" },
     },
     outputFields: {
       company_name: ["companyName", "company"], title: ["title", "jobTitle", "position"],
