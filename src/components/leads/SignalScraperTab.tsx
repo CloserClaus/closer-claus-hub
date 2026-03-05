@@ -164,6 +164,19 @@ export function SignalScraperTab() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Plan-time warnings */}
+            {currentPlan.warnings && currentPlan.warnings.length > 0 && (
+              <div className="space-y-2">
+                {currentPlan.warnings.map((warning, i) => (
+                  <Alert key={i} className="border-yellow-500/50 bg-yellow-500/10">
+                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                    <AlertDescription className="text-sm text-yellow-200">
+                      {warning}
+                    </AlertDescription>
+                  </Alert>
+                ))}
+              </div>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center p-3 rounded-lg bg-muted">
                 <div className="text-2xl font-bold text-foreground">~{currentPlan.estimation.estimated_rows}</div>
