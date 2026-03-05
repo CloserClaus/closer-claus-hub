@@ -298,7 +298,7 @@ async function pollApifyRun(runId: string, token: string): Promise<string> {
 
 async function collectApifyResults(datasetId: string, token: string): Promise<any[]> {
   const resp = await fetch(
-    `https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}&clean=true&limit=500`,
+    `https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}&clean=true&limit=1000`,
     { method: "GET" }
   );
   if (!resp.ok) {
