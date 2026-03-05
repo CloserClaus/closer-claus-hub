@@ -1,23 +1,61 @@
 
+Root cause identified: this run is being flagged “stale” for two different reasons, and one is a UI false-positive.
 
-## Diagnosis
+1) What is actually happening in this run
+- In backend logs, two jobs failed to start with:
+  - `actor-memory-limit-exceeded (402)` from Apify
+  - Message indicates account-wide actor memory already at 8192MB and new run requested 1024MB.
+- Current run state confirms:
+  - 4 LinkedIn jobs succeeded
+  - 2 jobs failed at start (memory-cap failures)
+  - 4 Indeed jobs still `RUNNING`
+  - phase remains `scraping` until those 4 resolve
 
-The database has the correct data — all 10 Bizvolve applications have `applicant_name` populated (verified via direct query). The root cause is a **code-level issue** in `JobDetail.tsx`:
+2) Why it appears stale “again”
+- UI marks stale at 10 minutes (`SignalScraperTab.tsx`), based only on `started_at`.
+- Worker timeout for each actor run is 15 minutes (`process-signal-queue/index.ts`).
+- So between minute 10 and 15, UI says stale even when backend is still within expected timeout window.
+- This is why it feels stale “again” even though timeout logic hasn’t triggered yet.
 
-1. The query uses `select('*')` but the code accesses the fields via `(app as any).applicant_name` — a fragile pattern that can fail if TypeScript's type narrowing or Supabase's PostgREST response doesn't include these columns as expected.
-2. The published site may be running an older version of the code before the `applicant_name` fallback was added.
+3) Is this a LinkedIn-only issue?
+- No. The `402 actor-memory-limit-exceeded` is account-level capacity pressure, so any actor type can hit it (Indeed/Google Maps/Yelp/etc.), not just LinkedIn.
 
-## Plan
+Implementation plan to prevent repeats:
 
-### 1. Fix `JobDetail.tsx` — Use explicit column selection and typed access
+A) Make start-phase resilient to provider capacity (primary fix)
+- File: `supabase/functions/process-signal-queue/index.ts`
+- Change behavior for Apify start errors:
+  - Detect memory-capacity errors (`402`, `actor-memory-limit-exceeded`).
+  - Do NOT permanently mark those refs as `FAILED` immediately.
+  - Mark as retryable (`DEFERRED`/`START_RETRY`) and attempt again in next cycles with backoff.
+- Add per-run start-attempt tracking and cap (e.g., 5 attempts per job) to avoid infinite loops.
+- Keep partial-success model: continue pipeline once all jobs are terminal or retry budget exhausted.
 
-- Change the `select('*')` query to explicitly include `applicant_name, applicant_email` in the select string
-- Remove `(app as any)` casts — access `app.applicant_name` and `app.applicant_email` directly (these fields already exist in the generated Supabase types)
-- Add a hardcoded SDR level (1–2) fallback when profile lookup fails, instead of always defaulting to 1
+B) Reduce burst concurrency during job start
+- File: `supabase/functions/process-signal-queue/index.ts`
+- Lower/parameterize `BATCH_SIZE` (currently 3), and apply actor-aware throttling:
+  - Heavy actors (LinkedIn/Indeed): start fewer at once (e.g., 1–2).
+  - Lighter actors can remain higher.
+- Goal: avoid triggering provider memory ceiling spikes.
 
-### 2. Fix `ApplicationsTable.tsx` — Same pattern fix
+C) Align stale UX with backend reality
+- File: `src/components/leads/SignalScraperTab.tsx`
+- Replace fixed 10-min stale rule with phase-aware logic:
+  - “Long-running” warning at 15+ min (or based on no `updated_at` heartbeat for >2 polling intervals).
+  - “Stale” only when truly stuck (no state progress/heartbeat beyond threshold).
+- Prevent users from seeing healthy long jobs as stale prematurely.
 
-- Same change: remove `(app as any)` casts, use typed `a.applicant_name` and `a.applicant_email` directly since the types already include them
+D) Improve operator visibility
+- File: `src/components/leads/SignalScraperTab.tsx` (+ existing run log data)
+- Display status breakdown inline: succeeded / failed / running / timed-out.
+- Show failure reason category (e.g., “Provider capacity throttling”) so users know it’s recoverable.
 
-These are small, surgical changes to two files. Once saved, the preview and published site will correctly display applicant names from the denormalized columns without depending on profile/workspace membership lookups.
+E) Optional guardrail for large fan-out searches
+- File: `supabase/functions/signal-planner/index.ts` and/or queue worker
+- Add adaptive keyword fan-out cap when provider is under capacity pressure.
+- Keep broad discovery intent but degrade gracefully (queue rest for next cycle) instead of hard-failing starts.
 
+Expected outcome after implementation
+- Capacity throttling won’t cause immediate hard failures.
+- Runs will progress with retries and partial completion instead of appearing stuck.
+- UI “stale” label will reflect true stuck state, not normal long execution windows.
