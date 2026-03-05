@@ -3173,52 +3173,73 @@ export type Database = {
       signal_leads: {
         Row: {
           added_to_crm: boolean
+          city: string | null
           company_name: string | null
+          contact_name: string | null
+          country: string | null
           discovered_at: string
           domain: string | null
           email: string | null
+          employee_count: string | null
           enriched: boolean
           extra_data: Json | null
           id: string
+          industry: string | null
           linkedin: string | null
           location: string | null
           phone: string | null
           run_id: string
           source: string | null
+          state: string | null
+          title: string | null
           website: string | null
           workspace_id: string
         }
         Insert: {
           added_to_crm?: boolean
+          city?: string | null
           company_name?: string | null
+          contact_name?: string | null
+          country?: string | null
           discovered_at?: string
           domain?: string | null
           email?: string | null
+          employee_count?: string | null
           enriched?: boolean
           extra_data?: Json | null
           id?: string
+          industry?: string | null
           linkedin?: string | null
           location?: string | null
           phone?: string | null
           run_id: string
           source?: string | null
+          state?: string | null
+          title?: string | null
           website?: string | null
           workspace_id: string
         }
         Update: {
           added_to_crm?: boolean
+          city?: string | null
           company_name?: string | null
+          contact_name?: string | null
+          country?: string | null
           discovered_at?: string
           domain?: string | null
           email?: string | null
+          employee_count?: string | null
           enriched?: boolean
           extra_data?: Json | null
           id?: string
+          industry?: string | null
           linkedin?: string | null
           location?: string | null
           phone?: string | null
           run_id?: string
           source?: string | null
+          state?: string | null
+          title?: string | null
           website?: string | null
           workspace_id?: string
         }

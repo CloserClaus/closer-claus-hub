@@ -907,15 +907,26 @@ async function phaseCollectingIncremental(run: any, serviceClient: any) {
     const storedPlan = run.signal_plan;
     const plans: any[] = Array.isArray(storedPlan) ? storedPlan : [storedPlan];
 
-    const leadsToInsert = normalised.map((item: any) => ({
-      run_id: run.id, workspace_id: run.workspace_id,
-      company_name: item.company_name || null, website: item.website || null,
-      domain: extractDomain(item.website || ""), phone: item.phone || null,
-      email: item.email || null, linkedin: item.linkedin || null,
-      location: item.location || null, source: actor.label || plans[0]?.source || "Unknown",
-      extra_data: item._raw || item,
-      added_to_crm: false, enriched: false,
-    }));
+    const leadsToInsert = normalised.map((item: any) => {
+      const raw = item._raw || item;
+      return {
+        run_id: run.id, workspace_id: run.workspace_id,
+        company_name: item.company_name || null, website: item.website || null,
+        domain: extractDomain(item.website || ""), phone: item.phone || null,
+        email: item.email || null, linkedin: item.linkedin || null,
+        location: item.location || null, source: actor.label || plans[0]?.source || "Unknown",
+        extra_data: raw,
+        added_to_crm: false, enriched: false,
+        // New structured fields from raw data
+        title: item.title || raw.positionName || raw.title || raw.jobTitle || null,
+        industry: item.industry || raw.companyIndustry || raw.industries || raw["employer.industry"] || raw.categoryName || null,
+        employee_count: item.employee_count || raw.companyEmployeesCount || raw.companySize || raw["employer.employeesCount"] || null,
+        city: item.city || raw.city || null,
+        state: item.state || raw.state || null,
+        country: item.country || raw.countryCode || raw.country || null,
+        contact_name: raw.contactName || raw.ownerName || raw.founderName || null,
+      };
+    });
 
     if (leadsToInsert.length > 0) {
       for (let i = 0; i < leadsToInsert.length; i += 200) {
@@ -1042,8 +1053,27 @@ async function phaseFinalizing(run: any, serviceClient: any) {
             body: JSON.stringify({
               model: "google/gemini-2.5-flash-lite",
               messages: [
-                { role: "system", content: `You are a lead classifier. For each business in the list, determine if it matches this criteria: "${aiClassification}". Return a JSON array of booleans, one per business. Only return the JSON array, nothing else.` },
-                { role: "user", content: JSON.stringify(batch.map((b: any) => ({ name: b.company_name, description: b.extra_data?.description || "", website: b.website || "", location: b.location || "", employee_count: b.extra_data?.employee_count || null }))) },
+                { role: "system", content: `You are a strict lead classifier. For each business in the list, determine if the COMPANY itself (not the job posting) matches this criteria: "${aiClassification}".
+
+IMPORTANT RULES:
+- The "description" field is a JOB POSTING, NOT a company description. Do not use job posting content to classify the company.
+- Focus on: company_name, industry, employee_count, and website domain to determine what the company actually does.
+- Large enterprises (Meta, Amazon, Google, Oracle, etc.) are NOT small agencies — reject them unless the criteria specifically targets large companies.
+- If the company name clearly indicates a different industry (e.g., "EOS Hospitality" for a hospitality query about marketing agencies), reject it.
+- When in doubt, reject rather than accept.
+
+Return a JSON array of booleans, one per business. Only return the JSON array, nothing else.` },
+                { role: "user", content: JSON.stringify(batch.map((b: any) => {
+                  const extra = b.extra_data || {};
+                  return {
+                    company_name: b.company_name || "",
+                    job_title: extra.positionName || extra.title || extra.jobTitle || b.title || "",
+                    industry: extra.companyIndustry || extra.industries || extra["employer.industry"] || extra.categoryName || b.industry || "",
+                    employee_count: extra.companyEmployeesCount || extra.companySize || extra["employer.employeesCount"] || b.employee_count || "",
+                    website: b.website || "",
+                    location: b.location || "",
+                  };
+                })) },
               ],
             }),
           });
@@ -1145,7 +1175,15 @@ async function phaseFinalizing(run: any, serviceClient: any) {
     log("zero_result_protection", { message: "No leads discovered, credits not charged" });
   }
 
-  await finalizeRun(run, serviceClient, uniqueLeads.length, actualCredits, runLog);
+  // ── Final authoritative count ──
+  const { count: finalCount } = await serviceClient
+    .from("signal_leads")
+    .select("*", { count: "exact", head: true })
+    .eq("run_id", run_id);
+  const authoritativeCount = finalCount ?? uniqueLeads.length;
+  log("final_count", { count: authoritativeCount });
+
+  await finalizeRun(run, serviceClient, authoritativeCount, actualCredits, runLog);
 }
 
 // ── Finalize run helper ──
