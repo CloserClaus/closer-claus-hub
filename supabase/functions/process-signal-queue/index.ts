@@ -380,7 +380,7 @@ serve(async (req) => {
 
     for (const run of allRuns) {
       const phase = run.processing_phase || "pending";
-      const isActivePhase = ["starting", "scraping", "collecting"].includes(phase);
+      const isActivePhase = ["starting", "scraping", "collecting", "finalizing"].includes(phase);
 
       // For truly stale runs (not in active phase), handle retries
       if (run.status === "running" && !isActivePhase) {
