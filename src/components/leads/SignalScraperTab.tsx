@@ -18,7 +18,6 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { AddToListDialog } from '@/components/leads/AddToListDialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useSignalScraper, SignalRun, SignalLead, isPipelinePlan, PipelinePlan, StageFunnelItem } from '@/hooks/useSignalScraper';
 import { useLeadCredits } from '@/hooks/useLeadCredits';
 import { formatDistanceToNow } from 'date-fns';
