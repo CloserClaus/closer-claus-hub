@@ -834,15 +834,39 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
                     </td>
                     <td className="p-3 align-middle text-right">
                       <div className="flex gap-1 justify-end">
-                        {!lead.added_to_crm ? (
+                        {!lead.added_to_crm && (
                           <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => addToCRM(lead)}>
                             <Plus className="h-3 w-3 mr-1" /> CRM
                           </Button>
-                        ) : (
-                          <Button size="sm" variant="outline" className="text-xs h-7" asChild>
-                            <a href="/crm"><Mail className="h-3 w-3 mr-1" /> Outreach</a>
-                          </Button>
                         )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="bg-popover border-border">
+                            <DropdownMenuItem onClick={() => saveLeadMutation.mutate(lead)}>
+                              <Bookmark className="h-4 w-4 mr-2" /> Save Lead
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={async () => {
+                              try {
+                                const ids = await saveToApolloLeads([lead]);
+                                setSavedApolloIds(ids);
+                                setAddToListOpen(true);
+                              } catch (err: any) {
+                                toast({ title: 'Failed', description: err.message, variant: 'destructive' });
+                              }
+                            }}>
+                              <List className="h-4 w-4 mr-2" /> Add to List
+                            </DropdownMenuItem>
+                            {lead.added_to_crm && (
+                              <DropdownMenuItem asChild>
+                                <a href="/crm"><Mail className="h-4 w-4 mr-2" /> Outreach</a>
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </td>
                   </tr>
@@ -852,6 +876,17 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
           </div>
         )}
       </CardContent>
+
+      {/* Add to List Dialog */}
+      <AddToListDialog
+        open={addToListOpen}
+        onOpenChange={setAddToListOpen}
+        selectedLeadIds={savedApolloIds}
+        onSuccess={() => {
+          setSavedApolloIds([]);
+          toast({ title: 'Leads added to list' });
+        }}
+      />
     </Card>
   );
 }
