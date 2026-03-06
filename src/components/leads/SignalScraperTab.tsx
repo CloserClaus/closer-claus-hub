@@ -8,11 +8,16 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import {
-  Zap, Loader2, Play, Clock, Trash2, RotateCcw, ExternalLink, Plus, History,
-  Globe, Phone, MapPin, Building2, ChevronDown, ChevronUp, Search, Mail, Sparkles,
+  Zap, Loader2, Play, Clock, Trash2, RotateCcw, Plus, History,
+  Globe, Phone, MapPin, Building2, Search, Mail, Sparkles,
   Briefcase, Rocket, FileText, AlertTriangle, ArrowRight, Filter, Users, User,
+  Bookmark, List, MoreHorizontal,
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { AddToListDialog } from '@/components/leads/AddToListDialog';
 import { useSignalScraper, SignalRun, SignalLead, isPipelinePlan, PipelinePlan, StageFunnelItem } from '@/hooks/useSignalScraper';
 import { useLeadCredits } from '@/hooks/useLeadCredits';
 import { formatDistanceToNow } from 'date-fns';
@@ -27,7 +32,7 @@ export function SignalScraperTab() {
   const [query, setQuery] = useState('');
   const [scheduleType, setScheduleType] = useState<'once' | 'daily' | 'weekly'>('once');
   const [viewingRunId, setViewingRunId] = useState<string | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { currentWorkspace } = useWorkspace();
@@ -167,42 +172,56 @@ export function SignalScraperTab() {
         />
       )}
 
-      {/* Signal History */}
+      {/* Signal History — always visible */}
       <Card>
-        <CardHeader className="pb-3 cursor-pointer" onClick={() => setShowHistory(!showHistory)}>
+        <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
               <History className="h-5 w-5" />
               My Signals
+              {signalHistory.length > 0 && (
+                <Badge variant="secondary" className="text-xs">{signalHistory.length}</Badge>
+              )}
             </CardTitle>
-            {showHistory ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </div>
         </CardHeader>
-        {showHistory && (
-          <CardContent>
-            {historyLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : signalHistory.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                No signals yet. Describe the leads you want above to get started.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {signalHistory.map((run) => (
-                  <SignalHistoryItem
-                    key={run.id}
-                    run={run}
-                    onView={() => setViewingRunId(run.id)}
-                    onRerun={() => handleRerun(run)}
-                    onDelete={() => deleteSignal(run.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        )}
+        <CardContent>
+          {historyLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : signalHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No signals yet. Describe the leads you want above to get started.
+            </p>
+          ) : (
+            <div className="relative w-full overflow-auto">
+              <table className="w-full caption-bottom text-sm">
+                <thead className="[&_tr]:border-b">
+                  <tr className="border-b transition-colors">
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Signal</th>
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">Status</th>
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden sm:table-cell">Leads</th>
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden lg:table-cell">Credits</th>
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">Run</th>
+                    <th className="h-10 px-3 text-right align-middle font-medium text-muted-foreground">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="[&_tr:last-child]:border-0">
+                  {signalHistory.map((run) => (
+                    <SignalHistoryRow
+                      key={run.id}
+                      run={run}
+                      onView={() => setViewingRunId(run.id)}
+                      onRerun={() => handleRerun(run)}
+                      onDelete={() => deleteSignal(run.id)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
       </Card>
     </div>
   );
@@ -404,11 +423,9 @@ function PlanActions({ scheduleType, setScheduleType, onExecute, onCancel, isExe
   );
 }
 
-// ── Signal History Item ──
+// ── Signal History Row (table format) ──
 
-function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun; onView: () => void; onRerun: () => void; onDelete: () => void }) {
-  const [showLog, setShowLog] = useState(false);
-  const runLog = (run as any).run_log as any[] | null;
+function SignalHistoryRow({ run, onView, onRerun, onDelete }: { run: SignalRun; onView: () => void; onRerun: () => void; onDelete: () => void }) {
   const { toast } = useToast();
 
   const STALE_HEARTBEAT_MS = 5 * 60 * 1000;
@@ -418,21 +435,11 @@ function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun;
 
   const isPipeline = run.signal_plan && typeof run.signal_plan === 'object' && !Array.isArray(run.signal_plan) && 'pipeline' in (run.signal_plan as any);
   const pipelineStages = isPipeline ? ((run.signal_plan as any).pipeline || []) : [];
-
-  // Parse pipeline phase progress
   const phase = run.processing_phase || '';
   const stageMatch = phase.match(/^stage_(\d+)_(.+)$/);
   const currentStage = stageMatch ? parseInt(stageMatch[1]) : 0;
   const currentSubPhase = stageMatch ? stageMatch[2] : phase;
   const totalStages = run.pipeline_stage_count || pipelineStages.length || 1;
-
-  const jobRefs = ((run as any).apify_run_ids as any[] | null) || [];
-  const jobBreakdown = jobRefs.length > 0 ? {
-    succeeded: jobRefs.filter((r: any) => r.status === 'SUCCEEDED').length,
-    failed: jobRefs.filter((r: any) => r.status === 'FAILED').length,
-    running: jobRefs.filter((r: any) => r.status === 'RUNNING' || r.status === 'READY').length,
-    total: jobRefs.length,
-  } : null;
 
   const markAsFailed = async () => {
     await supabase.from('signal_runs').update({ status: 'failed' }).eq('id', run.id);
@@ -440,96 +447,79 @@ function SignalHistoryItem({ run, onView, onRerun, onDelete }: { run: SignalRun;
     onRerun();
   };
 
-  const getPhaseLabel = () => {
+  const displayStatus = isStale ? 'stale' : run.status;
+
+  const getProgressLabel = () => {
     if (isPipeline && currentStage > 0) {
-      const stageName = pipelineStages[currentStage - 1]?.name || `Stage ${currentStage}`;
       const subLabels: Record<string, string> = {
-        starting: '🚀 Starting scrapers...',
-        scraping: '⏳ Scraping data...',
-        collecting: '📥 Collecting results...',
-        ai_filter: '🤖 AI filtering...',
+        starting: 'Starting...', scraping: 'Scraping...', collecting: 'Collecting...', ai_filter: 'AI filtering...',
       };
-      return `Stage ${currentStage}/${totalStages}: ${stageName} — ${subLabels[currentSubPhase] || currentSubPhase}`;
+      return `${currentStage}/${totalStages} — ${subLabels[currentSubPhase] || currentSubPhase}`;
     }
-    const labels: Record<string, string> = {
-      collecting: `📥 Collecting results...`,
-      finalizing: '🔍 Deduplicating & classifying...',
-      scraping: '⏳ Waiting for scrapers...',
-    };
-    return labels[phase] || `⚙ ${phase}`;
+    const labels: Record<string, string> = { collecting: 'Collecting...', finalizing: 'Deduplicating...', scraping: 'Scraping...' };
+    return labels[phase] || phase;
   };
 
   return (
-    <div className="p-3 rounded-lg bg-muted space-y-2">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="space-y-1 flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-sm truncate">{run.signal_name || run.signal_query}</span>
-            <StatusBadge status={isStale ? 'stale' : run.status} />
-            {isPipeline && totalStages > 1 && (
-              <Badge variant="outline" className="text-xs">{totalStages} stages</Badge>
-            )}
-            {run.schedule_type !== 'once' && (
-              <Badge variant="outline" className="text-xs"><Clock className="h-3 w-3 mr-1" />{run.schedule_type}</Badge>
-            )}
-          </div>
-          <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
-            {run.last_run_at && (
-              <span>Last run: {formatDistanceToNow(new Date(run.last_run_at), { addSuffix: true })}</span>
-            )}
-            <span>{run.leads_discovered} leads</span>
-            <span>{run.actual_cost ?? run.estimated_cost} credits</span>
-            {run.actual_cost === 0 && run.status === 'completed' && (
-              <span className="text-green-500">🛡️ No charge</span>
-            )}
-            {run.retry_count > 0 && <span className="text-orange-400">⟳ {run.retry_count} retries</span>}
-          </div>
-          {/* Pipeline progress */}
-          {run.status === 'running' && isPipeline && currentStage > 0 && (
-            <div className="space-y-1 mt-1">
-              <div className="text-xs text-primary font-medium">{getPhaseLabel()}</div>
-              <Progress value={(currentStage / totalStages) * 100} className="h-1.5" />
+    <tr className="border-b transition-colors hover:bg-muted/50">
+      <td className="p-3 align-middle">
+        <div className="min-w-0">
+          <div className="font-medium text-sm truncate max-w-[250px]">{run.signal_name || run.signal_query}</div>
+          {run.created_at && (
+            <div className="text-xs text-muted-foreground">
+              {formatDistanceToNow(new Date(run.created_at), { addSuffix: true })}
             </div>
-          )}
-          {/* Legacy progress */}
-          {run.status === 'running' && !isPipeline && phase && phase !== 'pending' && (
-            <div className="text-xs text-primary font-medium mt-1">{getPhaseLabel()}</div>
           )}
           {run.error_message && run.status === 'failed' && (
-            <span className="text-destructive text-xs truncate block max-w-[300px]" title={run.error_message}>
-              {run.error_message.slice(0, 80)}…
-            </span>
-          )}
-        </div>
-        <div className="flex gap-1.5">
-          {isStale && (
-            <Button size="sm" variant="outline" className="text-destructive" onClick={markAsFailed}>Mark Failed</Button>
-          )}
-          {run.status === 'completed' && (
-            <Button size="sm" variant="outline" onClick={onView}>View Leads</Button>
-          )}
-          {runLog && runLog.length > 0 && (
-            <Button size="sm" variant="ghost" onClick={() => setShowLog(!showLog)}>
-              <FileText className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          <Button size="sm" variant="ghost" onClick={onRerun}><RotateCcw className="h-3.5 w-3.5" /></Button>
-          <Button size="sm" variant="ghost" className="text-destructive" onClick={onDelete}><Trash2 className="h-3.5 w-3.5" /></Button>
-        </div>
-      </div>
-      {showLog && runLog && (
-        <div className="mt-2 p-2 rounded bg-background border text-xs font-mono space-y-1 max-h-48 overflow-y-auto">
-          {runLog.map((entry: any, i: number) => (
-            <div key={i} className="flex gap-2">
-              <span className="text-muted-foreground whitespace-nowrap">{entry.step}</span>
-              <span className="text-foreground">
-                {Object.entries(entry).filter(([k]) => k !== 'step' && k !== 'ts').map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(' ')}
-              </span>
+            <div className="text-destructive text-xs truncate max-w-[250px] mt-0.5" title={run.error_message}>
+              {run.error_message.slice(0, 60)}…
             </div>
-          ))}
+          )}
         </div>
-      )}
-    </div>
+      </td>
+      <td className="p-3 align-middle hidden md:table-cell">
+        <div className="space-y-1">
+          <StatusBadge status={displayStatus} />
+          {run.status === 'running' && (
+            <div className="space-y-1">
+              <div className="text-xs text-primary">{getProgressLabel()}</div>
+              {isPipeline && currentStage > 0 && (
+                <Progress value={(currentStage / totalStages) * 100} className="h-1 w-24" />
+              )}
+            </div>
+          )}
+        </div>
+      </td>
+      <td className="p-3 align-middle hidden sm:table-cell">
+        <span className="text-sm font-medium">{run.leads_discovered}</span>
+      </td>
+      <td className="p-3 align-middle hidden lg:table-cell">
+        <span className="text-sm">{run.actual_cost ?? run.estimated_cost}</span>
+        {run.actual_cost === 0 && run.status === 'completed' && (
+          <span className="text-xs text-green-500 ml-1">free</span>
+        )}
+      </td>
+      <td className="p-3 align-middle hidden md:table-cell">
+        <div className="flex items-center gap-1.5">
+          {run.schedule_type !== 'once' && (
+            <Badge variant="outline" className="text-xs"><Clock className="h-3 w-3 mr-1" />{run.schedule_type}</Badge>
+          )}
+          {run.retry_count > 0 && <span className="text-xs text-orange-400">⟳{run.retry_count}</span>}
+        </div>
+      </td>
+      <td className="p-3 align-middle text-right">
+        <div className="flex gap-1 justify-end">
+          {isStale && (
+            <Button size="sm" variant="outline" className="text-destructive h-7 text-xs" onClick={markAsFailed}>Mark Failed</Button>
+          )}
+          {run.status === 'completed' && run.leads_discovered > 0 && (
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onView}>View</Button>
+          )}
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={onRerun}><RotateCcw className="h-3.5 w-3.5" /></Button>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={onDelete}><Trash2 className="h-3.5 w-3.5" /></Button>
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -559,6 +549,8 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [addToListOpen, setAddToListOpen] = useState(false);
+  const [savedApolloIds, setSavedApolloIds] = useState<string[]>([]);
 
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['signal-leads', runId],
@@ -670,6 +662,56 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
     },
   });
 
+  // Save signal leads to apollo_leads (for list functionality)
+  const saveToApolloLeads = async (targetLeads: SignalLead[]): Promise<string[]> => {
+    const userId = (await supabase.auth.getUser()).data.user?.id || '';
+    const rows = targetLeads.map((lead) => ({
+      workspace_id: workspaceId,
+      apollo_id: `signal_${lead.id}`,
+      first_name: (lead.contact_name || '').trim().split(/\s+/)[0] || lead.company_name || '',
+      last_name: (lead.contact_name || '').trim().split(/\s+/).slice(1).join(' ') || '',
+      company_name: lead.company_name || '',
+      company_domain: lead.domain || '',
+      title: lead.title || '',
+      email: lead.enriched ? lead.email : null,
+      phone: lead.enriched ? lead.phone : null,
+      linkedin_url: lead.linkedin_profile_url || lead.linkedin || '',
+      city: lead.city || '', state: lead.state || '', country: lead.country || '',
+      industry: lead.industry || '', employee_count: lead.employee_count || '',
+      enrichment_status: lead.enriched ? 'enriched' : 'pending',
+    }));
+    const { data, error } = await supabase.from('apollo_leads').upsert(rows, { onConflict: 'workspace_id,apollo_id', ignoreDuplicates: true }).select('id');
+    if (error) throw error;
+    return (data || []).map(d => d.id);
+  };
+
+  const saveLeadMutation = useMutation({
+    mutationFn: async (lead: SignalLead) => {
+      const ids = await saveToApolloLeads([lead]);
+      return ids;
+    },
+    onSuccess: () => {
+      toast({ title: 'Lead saved to marketplace' });
+      queryClient.invalidateQueries({ queryKey: ['apollo-leads'] });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Failed to save lead', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const handleAddToList = async () => {
+    const targetLeads = selectedIds.size > 0
+      ? leads.filter(l => selectedIds.has(l.id))
+      : leads;
+    try {
+      const ids = await saveToApolloLeads(targetLeads);
+      setSavedApolloIds(ids);
+      setAddToListOpen(true);
+    } catch (err: any) {
+      toast({ title: 'Failed to save leads', description: err.message, variant: 'destructive' });
+    }
+  };
+
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   };
@@ -696,11 +738,15 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
       <CardHeader className="pb-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <CardTitle className="text-lg">Signal Results — {leads.length} leads</CardTitle>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <Button size="sm" variant="outline" onClick={handleAddToList}>
+              <List className="h-3.5 w-3.5 mr-1" />
+              {selectedIds.size > 0 ? `Add to List (${selectedIds.size})` : 'Add All to List'}
+            </Button>
             {notInCrmCount > 0 && (
               <Button size="sm" variant="outline" onClick={addAllToCRM}>
                 <Plus className="h-3.5 w-3.5 mr-1" />
-                {selectedIds.size > 0 ? `Add Selected to CRM (${notInCrmCount})` : `Add All to CRM (${notInCrmCount})`}
+                {selectedIds.size > 0 ? `Add to CRM (${notInCrmCount})` : `Add All to CRM (${notInCrmCount})`}
               </Button>
             )}
             <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
@@ -788,15 +834,39 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
                     </td>
                     <td className="p-3 align-middle text-right">
                       <div className="flex gap-1 justify-end">
-                        {!lead.added_to_crm ? (
+                        {!lead.added_to_crm && (
                           <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => addToCRM(lead)}>
                             <Plus className="h-3 w-3 mr-1" /> CRM
                           </Button>
-                        ) : (
-                          <Button size="sm" variant="outline" className="text-xs h-7" asChild>
-                            <a href="/crm"><Mail className="h-3 w-3 mr-1" /> Outreach</a>
-                          </Button>
                         )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="bg-popover border-border">
+                            <DropdownMenuItem onClick={() => saveLeadMutation.mutate(lead)}>
+                              <Bookmark className="h-4 w-4 mr-2" /> Save Lead
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={async () => {
+                              try {
+                                const ids = await saveToApolloLeads([lead]);
+                                setSavedApolloIds(ids);
+                                setAddToListOpen(true);
+                              } catch (err: any) {
+                                toast({ title: 'Failed', description: err.message, variant: 'destructive' });
+                              }
+                            }}>
+                              <List className="h-4 w-4 mr-2" /> Add to List
+                            </DropdownMenuItem>
+                            {lead.added_to_crm && (
+                              <DropdownMenuItem asChild>
+                                <a href="/crm"><Mail className="h-4 w-4 mr-2" /> Outreach</a>
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </td>
                   </tr>
@@ -806,6 +876,17 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
           </div>
         )}
       </CardContent>
+
+      {/* Add to List Dialog */}
+      <AddToListDialog
+        open={addToListOpen}
+        onOpenChange={setAddToListOpen}
+        selectedLeadIds={savedApolloIds}
+        onSuccess={() => {
+          setSavedApolloIds([]);
+          toast({ title: 'Leads added to list' });
+        }}
+      />
     </Card>
   );
 }
