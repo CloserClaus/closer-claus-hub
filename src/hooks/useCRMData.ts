@@ -438,6 +438,34 @@ export function useCRMData() {
     }
   };
 
+  const handleBulkAssignDeals = async (assignToUserId: string | null) => {
+    if (selectedDealIds.size === 0) return;
+    setIsBulkProcessing(true);
+    try {
+      const dealIdsArray = Array.from(selectedDealIds);
+      const { error } = await supabase.from('deals').update({ assigned_to: assignToUserId || user?.id }).in('id', dealIdsArray);
+      if (error) throw error;
+
+      // Also update the associated leads to keep assignment in sync
+      const dealsToUpdate = deals.filter(d => dealIdsArray.includes(d.id) && d.lead_id);
+      const leadIds = dealsToUpdate.map(d => d.lead_id).filter(Boolean) as string[];
+      if (leadIds.length > 0) {
+        await supabase.from('leads').update({ assigned_to: assignToUserId }).in('id', leadIds);
+      }
+
+      toast({
+        title: `Assigned ${selectedDealIds.size} deals`,
+        description: assignToUserId ? 'Deals and associated leads assigned to team member' : 'Deals returned to agency owner',
+      });
+      setSelectedDealIds(new Set());
+      fetchData();
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Error', description: error.message || 'Failed to assign deals' });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
   const handleDeleteLead = async (leadId: string) => {
     try {
       const { error } = await supabase.from('leads').delete().eq('id', leadId);
@@ -509,6 +537,7 @@ export function useCRMData() {
     handleBulkDeleteDeals,
     handleBulkStageChange,
     handleBulkAssignLeads,
+    handleBulkAssignDeals,
     handleDeleteLead,
     handleDeleteDeal,
     fetchData,

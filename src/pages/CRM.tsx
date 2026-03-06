@@ -143,7 +143,7 @@ export default function CRM() {
                   id: '',
                   workspace_id: crm.currentWorkspace!.id,
                   lead_id: lead.id,
-                  assigned_to: crm.user?.id || '',
+                  assigned_to: lead.assigned_to || crm.user?.id || '',
                   title: `${lead.first_name} ${lead.last_name}${lead.company ? ` - ${lead.company}` : ''}`,
                   value: 0,
                   stage: 'new',
@@ -203,6 +203,10 @@ export default function CRM() {
               onAddDeal={() => setShowDealForm(true)}
               onDispute={(deal) => { setDisputeDeal(deal); setShowDisputeForm(true); }}
               onDeleteDeal={(id) => setDeleteDealConfirm({ open: true, dealId: id })}
+              teamMembers={crm.teamMembers}
+              workspaceId={crm.currentWorkspace!.id}
+              userId={crm.user?.id}
+              fetchData={crm.fetchData}
             />
           </TabsContent>
 
@@ -251,8 +255,10 @@ export default function CRM() {
           onClearSelection={() => crm.setSelectedDealIds(new Set())}
           onBulkDelete={() => setBulkDeleteDealsConfirm(true)}
           onBulkStageChange={crm.handleBulkStageChange}
+          onBulkAssign={crm.handleBulkAssignDeals}
           isAgencyOwner={crm.isAgencyOwner}
           isProcessing={crm.isBulkProcessing}
+          teamMembers={crm.teamMembers}
         />
 
         <BulkConvertDialog

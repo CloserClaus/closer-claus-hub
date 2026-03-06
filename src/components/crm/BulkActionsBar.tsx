@@ -96,7 +96,7 @@ export function BulkActionsBar({
         </Button>
       )}
 
-      {/* Advanced Assign for Leads - Agency Owner Only */}
+      {/* Advanced Assign - Agency Owner Only */}
       {type === 'leads' && isAgencyOwner && onAdvancedAssign && teamMembers.length > 0 && (
         <Button
           variant="outline"
@@ -110,8 +110,8 @@ export function BulkActionsBar({
         </Button>
       )}
 
-      {/* Bulk Assign for Leads - Agency Owner Only */}
-      {type === 'leads' && isAgencyOwner && onBulkAssign && teamMembers.length > 0 && (
+      {/* Bulk Assign - Agency Owner Only */}
+      {isAgencyOwner && onBulkAssign && teamMembers.length > 0 && (
         <div className="flex items-center gap-2">
           <UserPlus className="h-4 w-4 text-muted-foreground" />
           <Select onValueChange={(val) => onBulkAssign(val === 'unassigned' ? null : val)} disabled={isProcessing}>

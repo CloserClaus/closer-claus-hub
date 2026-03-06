@@ -1,4 +1,5 @@
-import { Plus, DollarSign, AlertTriangle, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { Plus, DollarSign, AlertTriangle, Trash2, User, UserPlus, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -6,6 +7,24 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { CRMFilters, FilterState } from '@/components/crm/CRMFilters';
 import { CRMPagination } from '@/components/crm/Pagination';
 import { Deal } from '@/hooks/useCRMData';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+
+interface TeamMember {
+  id: string;
+  user_id: string;
+  profile: {
+    full_name: string | null;
+    email: string;
+  };
+}
 
 interface DealsTabProps {
   deals: Deal[];
@@ -24,6 +43,71 @@ interface DealsTabProps {
   onAddDeal: () => void;
   onDispute: (deal: Deal) => void;
   onDeleteDeal: (dealId: string) => void;
+  teamMembers?: TeamMember[];
+  workspaceId?: string;
+  userId?: string;
+  fetchData?: () => void;
+}
+
+function DealAssignmentDropdown({
+  dealId, leadId, currentAssignee, teamMembers, workspaceId, onAssignmentChange,
+}: {
+  dealId: string;
+  leadId: string | null;
+  currentAssignee: string;
+  teamMembers: TeamMember[];
+  workspaceId: string;
+  onAssignmentChange: () => void;
+}) {
+  const { toast } = useToast();
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const handleAssign = async (userId: string) => {
+    if (userId === currentAssignee) return;
+    const actualUserId = userId === 'unassigned' ? null : userId;
+    setIsUpdating(true);
+    try {
+      const { error } = await supabase
+        .from('deals')
+        .update({ assigned_to: actualUserId || currentAssignee })
+        .eq('id', dealId);
+      if (error) throw error;
+
+      // Also update the associated lead to keep in sync
+      if (leadId && actualUserId) {
+        await supabase.from('leads').update({ assigned_to: actualUserId }).eq('id', leadId);
+      }
+
+      toast({ title: 'Deal assigned', description: actualUserId ? 'Deal assigned to team member' : 'Deal assignment updated' });
+      onAssignmentChange();
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Error', description: error.message || 'Failed to assign deal' });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const getAssigneeName = () => {
+    const member = teamMembers.find(m => m.user_id === currentAssignee);
+    return member?.profile.full_name || member?.profile.email || 'Owner';
+  };
+
+  return (
+    <Select value={currentAssignee || 'unassigned'} onValueChange={handleAssign} disabled={isUpdating}>
+      <SelectTrigger className="w-36 h-8 text-xs bg-muted border-border" onClick={(e) => e.stopPropagation()}>
+        {isUpdating ? <Loader2 className="h-3 w-3 animate-spin" /> : (
+          <SelectValue><span className="flex items-center gap-1"><User className="h-3 w-3" />{getAssigneeName()}</span></SelectValue>
+        )}
+      </SelectTrigger>
+      <SelectContent onClick={(e) => e.stopPropagation()}>
+        {teamMembers.map((member) => (
+          <SelectItem key={member.user_id} value={member.user_id}>
+            {member.profile.full_name || member.profile.email}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 }
 
 export function DealsTab({
@@ -31,6 +115,7 @@ export function DealsTab({
   isAgencyOwner, selectedDealIds, toggleDealSelection, selectAllDeals,
   dealsPage, setDealsPage, totalDealsPages,
   onOpenDealDetail, onAddDeal, onDispute, onDeleteDeal,
+  teamMembers = [], workspaceId, userId, fetchData,
 }: DealsTabProps) {
   return (
     <div className="space-y-4">
@@ -95,7 +180,17 @@ export function DealsTab({
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
+                      {isAgencyOwner && teamMembers.length > 0 && workspaceId && fetchData && (
+                        <DealAssignmentDropdown
+                          dealId={deal.id}
+                          leadId={deal.lead_id}
+                          currentAssignee={deal.assigned_to}
+                          teamMembers={teamMembers}
+                          workspaceId={workspaceId}
+                          onAssignmentChange={fetchData}
+                        />
+                      )}
                       <Badge variant="outline" className="capitalize">
                         {deal.stage.replace('_', ' ')}
                       </Badge>
