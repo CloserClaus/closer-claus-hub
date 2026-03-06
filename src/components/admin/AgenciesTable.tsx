@@ -95,20 +95,40 @@ export function AgenciesTable() {
 
     try {
       const tierConfig = TIER_CONFIG[newTier];
+      const now = new Date();
+      const dueDateOneMonth = new Date(now);
+      dueDateOneMonth.setMonth(dueDateOneMonth.getMonth() + 1);
       
+      const updateData: any = {
+        subscription_tier: newTier as 'omega' | 'beta' | 'alpha',
+        subscription_status: 'active',
+        max_sdrs: tierConfig.maxSdrs,
+        rake_percentage: tierConfig.rake,
+        subscription_due_date: dueDateOneMonth.toISOString(),
+        subscription_anchor_day: Math.min(now.getDate(), 28),
+        grace_period_end: null,
+        is_locked: false,
+      };
+
+      // Check if first_subscription_at needs to be set
+      const { data: wsData } = await supabase
+        .from('workspaces')
+        .select('first_subscription_at')
+        .eq('id', selectedAgency.id)
+        .single();
+
+      if (!wsData?.first_subscription_at) {
+        updateData.first_subscription_at = now.toISOString();
+      }
+
       const { error } = await supabase
         .from('workspaces')
-        .update({
-          subscription_tier: newTier as 'omega' | 'beta' | 'alpha',
-          subscription_status: 'active',
-          max_sdrs: tierConfig.maxSdrs,
-          rake_percentage: tierConfig.rake,
-        })
+        .update(updateData)
         .eq('id', selectedAgency.id);
 
       if (error) throw error;
 
-      toast.success(`Subscription updated to ${newTier.toUpperCase()} for ${selectedAgency.name}`);
+      toast.success(`Subscription updated to ${newTier.toUpperCase()} for ${selectedAgency.name} (1-month admin grant)`);
       setSelectedAgency(null);
       setNewTier('');
       refetch();

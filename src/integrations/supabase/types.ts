@@ -864,6 +864,7 @@ export type Database = {
           id: string
           is_active: boolean
           max_uses: number | null
+          skip_two_month_minimum: boolean
           updated_at: string
           valid_from: string
           valid_until: string | null
@@ -877,6 +878,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           max_uses?: number | null
+          skip_two_month_minimum?: boolean
           updated_at?: string
           valid_from?: string
           valid_until?: string | null
@@ -890,6 +892,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           max_uses?: number | null
+          skip_two_month_minimum?: boolean
           updated_at?: string
           valid_from?: string
           valid_until?: string | null
@@ -3884,6 +3887,7 @@ export type Database = {
         Row: {
           created_at: string | null
           first_subscription_at: string | null
+          grace_period_end: string | null
           id: string
           is_locked: boolean | null
           max_sdrs: number | null
@@ -3894,6 +3898,7 @@ export type Database = {
           stripe_default_payment_method: string | null
           stripe_subscription_id: string | null
           subscription_anchor_day: number | null
+          subscription_due_date: string | null
           subscription_status: string | null
           subscription_tier:
             | Database["public"]["Enums"]["subscription_tier"]
@@ -3903,6 +3908,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           first_subscription_at?: string | null
+          grace_period_end?: string | null
           id?: string
           is_locked?: boolean | null
           max_sdrs?: number | null
@@ -3913,6 +3919,7 @@ export type Database = {
           stripe_default_payment_method?: string | null
           stripe_subscription_id?: string | null
           subscription_anchor_day?: number | null
+          subscription_due_date?: string | null
           subscription_status?: string | null
           subscription_tier?:
             | Database["public"]["Enums"]["subscription_tier"]
@@ -3922,6 +3929,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           first_subscription_at?: string | null
+          grace_period_end?: string | null
           id?: string
           is_locked?: boolean | null
           max_sdrs?: number | null
@@ -3932,6 +3940,7 @@ export type Database = {
           stripe_default_payment_method?: string | null
           stripe_subscription_id?: string | null
           subscription_anchor_day?: number | null
+          subscription_due_date?: string | null
           subscription_status?: string | null
           subscription_tier?:
             | Database["public"]["Enums"]["subscription_tier"]

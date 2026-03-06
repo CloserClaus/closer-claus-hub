@@ -17,6 +17,8 @@ interface Workspace {
   rake_percentage: number | null;
   is_locked: boolean | null;
   stripe_customer_id: string | null;
+  subscription_due_date: string | null;
+  grace_period_end: string | null;
 }
 
 interface WorkspaceContextType {
@@ -77,7 +79,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         // Agency owners see workspaces they own
         const { data } = await supabase
           .from('workspaces')
-          .select('id, name, owner_id, subscription_tier, subscription_status, max_sdrs, rake_percentage, is_locked, stripe_customer_id')
+          .select('id, name, owner_id, subscription_tier, subscription_status, max_sdrs, rake_percentage, is_locked, stripe_customer_id, subscription_due_date, grace_period_end')
           .eq('owner_id', user.id);
 
         const ws = (data || []) as Workspace[];
@@ -108,7 +110,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           const workspaceIds = memberships.map(m => m.workspace_id);
           const { data } = await supabase
             .from('workspaces')
-            .select('id, name, owner_id, subscription_tier, subscription_status, max_sdrs, rake_percentage, is_locked, stripe_customer_id')
+            .select('id, name, owner_id, subscription_tier, subscription_status, max_sdrs, rake_percentage, is_locked, stripe_customer_id, subscription_due_date, grace_period_end')
             .in('id', workspaceIds);
 
           const ws = (data || []) as Workspace[];

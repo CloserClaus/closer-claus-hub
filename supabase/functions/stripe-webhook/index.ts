@@ -302,7 +302,7 @@ serve(async (req) => {
         }
 
         // Handle subscription checkout
-        const { workspace_id, tier, billing_period, coupon_code, coupon_id, discount_percentage, is_first_subscription } = metadata;
+        const { workspace_id, tier, billing_period, coupon_code, coupon_id, discount_percentage, is_first_subscription, skip_two_month_minimum } = metadata;
 
         if (workspace_id && tier) {
           const limits = TIER_LIMITS[tier as keyof typeof TIER_LIMITS];
@@ -356,12 +356,25 @@ serve(async (req) => {
             console.log(`Recording first subscription for workspace ${workspace_id}`);
           }
 
+          // Calculate subscription_due_date
+          const dueDate = new Date();
+          if (billing_period === 'yearly') {
+            dueDate.setFullYear(dueDate.getFullYear() + 1);
+          } else if (is_first_subscription === 'true' && skip_two_month_minimum !== 'true') {
+            // First-time 2-month subscriber
+            dueDate.setMonth(dueDate.getMonth() + 2);
+          } else {
+            dueDate.setMonth(dueDate.getMonth() + 1);
+          }
+          workspaceUpdate.subscription_due_date = dueDate.toISOString();
+          workspaceUpdate.grace_period_end = null; // Clear any grace period
+
           await supabase
             .from('workspaces')
             .update(workspaceUpdate)
             .eq('id', workspace_id);
 
-          console.log(`Activated ${tier} subscription for workspace ${workspace_id}`);
+          console.log(`Activated ${tier} subscription for workspace ${workspace_id}, due date: ${dueDate.toISOString()}`);
 
           // Initialize or update free minutes for the subscriber
           await supabase
@@ -391,6 +404,29 @@ serve(async (req) => {
               message: `Your ${tier.charAt(0).toUpperCase() + tier.slice(1)} plan is now active! You have 1000 free calling minutes this month.`,
               data: { tier, maxSdrs: limits?.max_sdrs },
             });
+
+            // Send purchase confirmation email
+            const { data: ownerProfile } = await supabase
+              .from('profiles')
+              .select('email, full_name')
+              .eq('id', workspace.owner_id)
+              .single();
+
+            if (ownerProfile?.email) {
+              try {
+                await supabase.functions.invoke('send-subscription-email', {
+                  body: {
+                    type: 'purchase',
+                    to_email: ownerProfile.email,
+                    to_name: ownerProfile.full_name || 'there',
+                    tier,
+                    workspace_name: workspace.name,
+                  },
+                });
+              } catch (emailError) {
+                console.error('Failed to send subscription purchase email:', emailError);
+              }
+            }
           }
 
           // Record coupon redemption after successful payment
@@ -495,7 +531,7 @@ serve(async (req) => {
         if (invoice.subscription && invoice.billing_reason === 'subscription_cycle') {
           const { data: workspace } = await supabase
             .from('workspaces')
-            .select('id, subscription_anchor_day, owner_id')
+            .select('id, subscription_anchor_day, owner_id, name, subscription_tier')
             .eq('stripe_subscription_id', invoice.subscription)
             .single();
           
@@ -514,7 +550,20 @@ serve(async (req) => {
               })
               .eq('workspace_id', workspace.id);
             
-            console.log(`Reset 1000 free minutes for workspace ${workspace.id} (subscription renewal)`);
+            // Update subscription_due_date and clear grace period
+            const nextDue = new Date();
+            nextDue.setMonth(nextDue.getMonth() + 1);
+            await supabase
+              .from('workspaces')
+              .update({
+                subscription_due_date: nextDue.toISOString(),
+                grace_period_end: null,
+                subscription_status: 'active',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', workspace.id);
+            
+            console.log(`Reset 1000 free minutes for workspace ${workspace.id} (subscription renewal), next due: ${nextDue.toISOString()}`);
             
             // Send notification
             if (workspace.owner_id) {
@@ -525,6 +574,29 @@ serve(async (req) => {
                 title: 'Free Minutes Renewed',
                 message: 'Your 1000 free calling minutes have been renewed for this billing cycle!',
               });
+
+              // Send renewal email
+              const { data: renewalProfile } = await supabase
+                .from('profiles')
+                .select('email, full_name')
+                .eq('id', workspace.owner_id)
+                .single();
+
+              if (renewalProfile?.email) {
+                try {
+                  await supabase.functions.invoke('send-subscription-email', {
+                    body: {
+                      type: 'renewal',
+                      to_email: renewalProfile.email,
+                      to_name: renewalProfile.full_name || 'there',
+                      tier: workspace.subscription_tier,
+                      workspace_name: workspace.name,
+                    },
+                  });
+                } catch (emailError) {
+                  console.error('Failed to send renewal email:', emailError);
+                }
+              }
             }
           }
         }
@@ -543,10 +615,14 @@ serve(async (req) => {
           .single();
 
         if (workspace) {
+          const gracePeriodEnd = new Date();
+          gracePeriodEnd.setDate(gracePeriodEnd.getDate() + 7);
+
           await supabase
             .from('workspaces')
             .update({ 
               subscription_status: 'past_due',
+              grace_period_end: gracePeriodEnd.toISOString(),
               updated_at: new Date().toISOString(),
             })
             .eq('id', workspace.id);
@@ -556,12 +632,35 @@ serve(async (req) => {
               user_id: workspace.owner_id,
               workspace_id: workspace.id,
               type: 'payment_failed',
-              title: 'Payment Failed',
-              message: 'Your subscription payment failed. Please update your payment method to avoid service interruption.',
+              title: 'Payment Failed ⚠️',
+              message: `Your subscription payment failed. Please update your payment method within 7 days (by ${gracePeriodEnd.toLocaleDateString()}) or your account will be restricted.`,
             });
+
+            // Send payment failed email
+            const { data: failedProfile } = await supabase
+              .from('profiles')
+              .select('email, full_name')
+              .eq('id', workspace.owner_id)
+              .single();
+
+            if (failedProfile?.email) {
+              try {
+                await supabase.functions.invoke('send-subscription-email', {
+                  body: {
+                    type: 'payment_failed',
+                    to_email: failedProfile.email,
+                    to_name: failedProfile.full_name || 'there',
+                    workspace_name: workspace.name,
+                    grace_period_end: gracePeriodEnd.toISOString(),
+                  },
+                });
+              } catch (emailError) {
+                console.error('Failed to send payment failed email:', emailError);
+              }
+            }
           }
 
-          console.log(`Payment failed for workspace ${workspace.id}`);
+          console.log(`Payment failed for workspace ${workspace.id}, grace period until ${gracePeriodEnd.toISOString()}`);
         }
         break;
       }

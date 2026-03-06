@@ -55,7 +55,8 @@ serve(async (req) => {
     // Validate coupon if provided
     let validatedDiscount = 0;
     let couponId = null;
-    if (coupon_code && discount_percentage) {
+    let skipTwoMonthMinimum = false;
+    if (coupon_code) {
       const { data: couponData, error: couponError } = await supabase
         .from('coupons')
         .select('*')
@@ -69,10 +70,11 @@ serve(async (req) => {
           (!couponData.max_uses || couponData.current_uses < couponData.max_uses) &&
           (!couponData.valid_until || new Date(couponData.valid_until) > now);
         
-        if (isValid && couponData.discount_percentage === discount_percentage) {
+        if (isValid && (!discount_percentage || couponData.discount_percentage === discount_percentage)) {
           validatedDiscount = couponData.discount_percentage;
           couponId = couponData.id;
-          console.log(`Validated coupon ${coupon_code} with ${validatedDiscount}% discount`);
+          skipTwoMonthMinimum = couponData.skip_two_month_minimum || false;
+          console.log(`Validated coupon ${coupon_code} with ${validatedDiscount}% discount, skipTwoMonth=${skipTwoMonthMinimum}`);
         }
       }
     }
@@ -162,7 +164,7 @@ serve(async (req) => {
     // Determine if we should charge 2 months upfront (first-time monthly subscribers only)
     // Server-side check: only charge 2 months if workspace has never had a subscription before
     const hasHadSubscriptionBefore = !!workspace.first_subscription_at;
-    const shouldChargeTwoMonths = !hasHadSubscriptionBefore && billing_period === 'monthly';
+    const shouldChargeTwoMonths = !hasHadSubscriptionBefore && billing_period === 'monthly' && !skipTwoMonthMinimum;
     console.log(`First subscription check: first_subscription_at=${workspace.first_subscription_at}, hasHadBefore=${hasHadSubscriptionBefore}, shouldCharge2mo=${shouldChargeTwoMonths}`);
     
     // Build subscription_data with optional extra month charge
@@ -220,6 +222,7 @@ serve(async (req) => {
         discount_percentage: validatedDiscount.toString(),
         coupon_id: couponId || '',
         is_first_subscription: shouldChargeTwoMonths ? 'true' : 'false',
+        skip_two_month_minimum: skipTwoMonthMinimum ? 'true' : 'false',
       },
     });
 
