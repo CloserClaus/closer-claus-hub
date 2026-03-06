@@ -645,7 +645,7 @@ function estimatePipelineCost(pipeline: any[]): { totalCredits: number; totalEst
     } else if (stage.type === "ai_filter") {
       const passRate = stage.expected_pass_rate || 0.20;
       const aiCostUsd = currentCount * 0.001;
-      totalCredits += Math.max(1, Math.ceil(aiCostUsd * 1.2 * 3 * 5));
+      totalCredits += Math.max(1, Math.ceil(aiCostUsd * 4 * 5));
       currentCount = Math.floor(currentCount * passRate);
     }
 

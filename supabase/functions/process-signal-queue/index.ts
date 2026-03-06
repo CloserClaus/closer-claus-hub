@@ -1389,8 +1389,9 @@ async function legacyPhaseFinalizing(run: any, serviceClient: any) {
 
   let actualCredits = 0;
   if (leadsCount > 0) {
-    const scrapeCostUsd = (leadsCount / 1000) * 0.25;
-    actualCredits = Math.max(5, Math.ceil(scrapeCostUsd * 1.2 * 3 * 5));
+    // ~$1/1000 actual Apify cost, 4x markup, 5 credits = $1
+    const scrapeCostUsd = (leadsCount / 1000) * 1.0;
+    actualCredits = Math.max(5, Math.ceil(scrapeCostUsd * 4 * 5));
   }
 
   await legacyFinalizeRun(run, serviceClient, leadsCount, actualCredits);
