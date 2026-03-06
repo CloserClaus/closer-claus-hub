@@ -1,20 +1,16 @@
 
 
-## Add "Skip 2-Month Minimum" Toggle to Coupon Creation Form
+## Fix: Empty String SelectItem Value in BulkAssignDialog
 
-A simple UI addition to the existing coupon creation dialog and table display.
+**Problem**: `src/components/crm/BulkAssignDialog.tsx` line 264 has `<SelectItem value="">All tags (distribute equally)</SelectItem>`. Radix UI's Select component does not allow empty string values on SelectItem — it's reserved for clearing the selection.
 
-### Changes
+**Fix**: Change the empty string value to `"all"` and update the logic that checks for this value.
 
-**`src/components/admin/CouponsTable.tsx`**:
+### Changes in `src/components/crm/BulkAssignDialog.tsx`
 
-1. **Form schema** — Update `couponSchema` to include `skip_two_month_minimum` as an optional boolean (default `false`). Allow `discount_percentage` minimum to be `0` instead of `1` (since a skip-only coupon needs no discount).
+1. Change `<SelectItem value="">` to `<SelectItem value="all">` (line 264)
+2. Update the state initialization for the tag filter from `""` to `"all"` 
+3. Update any conditional logic that checks `=== ""` to check `=== "all"` instead
 
-2. **Create form** — Add a `Switch` field labeled "Skip 2-Month Minimum" with description: "Allow first-time subscribers to purchase just 1 month instead of the required 2-month minimum."
-
-3. **Insert mutation** — Pass `skip_two_month_minimum` in the `.insert()` call.
-
-4. **Table display** — Add a visual indicator in the Discount column or as a separate badge when `skip_two_month_minimum` is true (e.g., a small "1-Mo" badge next to the discount percentage).
-
-No database or backend changes needed — the `skip_two_month_minimum` column already exists on the `coupons` table from the previous migration.
+Single file, ~3 lines changed.
 
