@@ -69,7 +69,7 @@ export function BulkAssignDialog({
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedSDR, setSelectedSDR] = useState<string>('');
   const [quantity, setQuantity] = useState<string>('');
-  const [selectedTag, setSelectedTag] = useState<string>('');
+  const [selectedTag, setSelectedTag] = useState<string>('all');
 
   // Check if any leads have tags
   const taggedLeads = useMemo(() => {
@@ -85,7 +85,7 @@ export function BulkAssignDialog({
 
   // Get leads matching the selected tag (or all if no tag selected)
   const eligibleLeads = useMemo(() => {
-    if (!selectedTag) {
+    if (selectedTag === 'all') {
       return unassignedLeads;
     }
     return unassignedLeads.filter(l => l.readiness_segment === selectedTag);
@@ -126,10 +126,10 @@ export function BulkAssignDialog({
     try {
       let leadsToAssign: Lead[] = [];
 
-      if (selectedTag) {
+      if (selectedTag !== 'all') {
         // Assign from specific tag
         leadsToAssign = eligibleLeads.slice(0, qty);
-      } else if (hasTaggedLeads && !selectedTag) {
+      } else if (hasTaggedLeads && selectedTag === 'all') {
         // Distribute equally across tags
         const perTag = Math.ceil(qty / Object.keys(tagDistribution).filter(k => tagDistribution[k].length > 0).length);
         let remaining = qty;
@@ -200,7 +200,7 @@ export function BulkAssignDialog({
   const resetForm = () => {
     setSelectedSDR('');
     setQuantity('');
-    setSelectedTag('');
+    setSelectedTag('all');
   };
 
   return (
@@ -261,7 +261,7 @@ export function BulkAssignDialog({
                 <SelectValue placeholder={hasTaggedLeads ? "All tags (distribute equally)" : "No tagged leads"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All tags (distribute equally)</SelectItem>
+                <SelectItem value="all">All tags (distribute equally)</SelectItem>
                 {TAG_OPTIONS.map((tag) => {
                   const count = tagDistribution[tag.value]?.length || 0;
                   return (
@@ -279,7 +279,7 @@ export function BulkAssignDialog({
             )}
           </div>
 
-          {hasTaggedLeads && !selectedTag && (
+          {hasTaggedLeads && selectedTag === 'all' && (
             <Alert>
               <Info className="h-4 w-4" />
               <AlertDescription>
