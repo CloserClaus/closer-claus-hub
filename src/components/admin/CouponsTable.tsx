@@ -194,7 +194,7 @@ export function CouponsTable() {
                       <FormControl>
                         <Input
                           type="number"
-                          min={1}
+                          min={0}
                           max={100}
                           {...field}
                           onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
