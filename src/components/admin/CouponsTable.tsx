@@ -19,9 +19,10 @@ import { format } from 'date-fns';
 
 const couponSchema = z.object({
   code: z.string().min(3, 'Code must be at least 3 characters').max(20, 'Code must be at most 20 characters'),
-  discount_percentage: z.number().min(1, 'Minimum 1%').max(100, 'Maximum 100%'),
+  discount_percentage: z.number().min(0, 'Minimum 0%').max(100, 'Maximum 100%'),
   max_uses: z.number().optional(),
   valid_until: z.string().optional(),
+  skip_two_month_minimum: z.boolean().default(false),
 });
 
 type CouponFormData = z.infer<typeof couponSchema>;
@@ -47,6 +48,7 @@ export function CouponsTable() {
     defaultValues: {
       code: '',
       discount_percentage: 10,
+      skip_two_month_minimum: false,
     },
   });
 
@@ -70,6 +72,7 @@ export function CouponsTable() {
         discount_percentage: data.discount_percentage,
         max_uses: data.max_uses || null,
         valid_until: data.valid_until || null,
+        skip_two_month_minimum: data.skip_two_month_minimum,
         created_by: user!.id,
       });
 
@@ -246,6 +249,27 @@ export function CouponsTable() {
                   )}
                 />
 
+                <FormField
+                  control={form.control}
+                  name="skip_two_month_minimum"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-4">
+                      <div className="space-y-0.5">
+                        <FormLabel className="text-base">Skip 2-Month Minimum</FormLabel>
+                        <FormDescription>
+                          Allow first-time subscribers to purchase just 1 month instead of the required 2-month minimum.
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                     Cancel
@@ -306,9 +330,16 @@ export function CouponsTable() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className="bg-primary/20 text-primary">
-                        {coupon.discount_percentage}% OFF
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant="secondary" className="bg-primary/20 text-primary">
+                          {coupon.discount_percentage}% OFF
+                        </Badge>
+                        {coupon.skip_two_month_minimum && (
+                          <Badge variant="outline" className="text-xs border-accent text-accent-foreground">
+                            1-Mo
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {coupon.current_uses}
