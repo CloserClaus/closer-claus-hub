@@ -167,42 +167,56 @@ export function SignalScraperTab() {
         />
       )}
 
-      {/* Signal History */}
+      {/* Signal History — always visible */}
       <Card>
-        <CardHeader className="pb-3 cursor-pointer" onClick={() => setShowHistory(!showHistory)}>
+        <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
               <History className="h-5 w-5" />
               My Signals
+              {signalHistory.length > 0 && (
+                <Badge variant="secondary" className="text-xs">{signalHistory.length}</Badge>
+              )}
             </CardTitle>
-            {showHistory ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </div>
         </CardHeader>
-        {showHistory && (
-          <CardContent>
-            {historyLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : signalHistory.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                No signals yet. Describe the leads you want above to get started.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {signalHistory.map((run) => (
-                  <SignalHistoryItem
-                    key={run.id}
-                    run={run}
-                    onView={() => setViewingRunId(run.id)}
-                    onRerun={() => handleRerun(run)}
-                    onDelete={() => deleteSignal(run.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        )}
+        <CardContent>
+          {historyLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : signalHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No signals yet. Describe the leads you want above to get started.
+            </p>
+          ) : (
+            <div className="relative w-full overflow-auto">
+              <table className="w-full caption-bottom text-sm">
+                <thead className="[&_tr]:border-b">
+                  <tr className="border-b transition-colors">
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Signal</th>
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">Status</th>
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden sm:table-cell">Leads</th>
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden lg:table-cell">Credits</th>
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">Run</th>
+                    <th className="h-10 px-3 text-right align-middle font-medium text-muted-foreground">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="[&_tr:last-child]:border-0">
+                  {signalHistory.map((run) => (
+                    <SignalHistoryRow
+                      key={run.id}
+                      run={run}
+                      onView={() => setViewingRunId(run.id)}
+                      onRerun={() => handleRerun(run)}
+                      onDelete={() => deleteSignal(run.id)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
       </Card>
     </div>
   );
