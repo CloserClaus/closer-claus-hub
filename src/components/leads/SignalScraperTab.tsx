@@ -549,6 +549,8 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [addToListOpen, setAddToListOpen] = useState(false);
+  const [savedApolloIds, setSavedApolloIds] = useState<string[]>([]);
 
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['signal-leads', runId],
