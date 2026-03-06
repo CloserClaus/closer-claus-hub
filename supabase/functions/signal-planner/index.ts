@@ -638,9 +638,9 @@ function estimatePipelineCost(pipeline: any[]): { totalCredits: number; totalEst
         currentCount = stage.expected_output_count || currentCount;
       }
 
-      // Cost: scrape cost based on count
-      const scrapeCostUsd = (currentCount / 1000) * 0.25;
-      const chargedPriceUsd = scrapeCostUsd * 1.2 * 3;
+      // Cost: scrape cost based on count (~$1/1000 actual Apify cost, 4x markup)
+      const scrapeCostUsd = (currentCount / 1000) * 1.0;
+      const chargedPriceUsd = scrapeCostUsd * 4;
       totalCredits += Math.max(2, Math.ceil(chargedPriceUsd * 5));
     } else if (stage.type === "ai_filter") {
       const passRate = stage.expected_pass_rate || 0.20;
