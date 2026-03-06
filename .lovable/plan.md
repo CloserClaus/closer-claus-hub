@@ -1,184 +1,107 @@
 
 
-## Signal Scraper: Multi-Stage Pipeline Redesign
+## Subscription Billing Overhaul
 
-### The Core Problem
+This plan covers 6 interconnected changes: a "skip 2-month minimum" coupon type, proper Stripe recurring billing, failed payment grace period with account restriction, subscription confirmation/renewal emails, and admin-assigned subscription handling.
 
-The current system is a **flat scrape-and-filter** model: it runs all actors in parallel, collects results, then does dedup + AI classification in a single pass. This means:
+### Current State
 
-1. AI classification only sees company names + job posting text (no website content to verify)
-2. No sequential enrichment — can't use Stage 1 output as input for Stage 2 actors
-3. Results are company-level shells with no person-level data (no founder/CEO names)
-4. Every query gets the same flow — the AI planner has no ability to design multi-step pipelines
-5. The desired output (Name, Title, Company, Headcount, Location, LinkedIn profile URL, LinkedIn company URL, Website, Email, Phone) requires at least 3-4 sequential scraping steps that the current architecture can't express
+- First-time monthly subscribers are charged 2 months upfront via a one-time add-on invoice item on top of the Stripe recurring subscription
+- Stripe handles recurring billing natively (the subscription itself is monthly recurring)
+- `invoice.payment_failed` webhook sets status to `past_due` and notifies, but never restricts the account
+- No subscription confirmation or renewal emails are sent (only in-app notifications)
+- Admin can assign subscriptions directly via `AgenciesTable` but doesn't set `first_subscription_at` or anchor dates
 
-### Target Architecture
-
-Replace the flat plan format with a **dynamic pipeline of stages**. The AI planner designs a sequence of stages, and the processor executes them one at a time, feeding each stage's output as the next stage's input.
-
-```text
-Example: "Marketing agencies (1-10) employees hiring sales reps"
-
-Stage 1: SCRAPE    — LinkedIn Jobs + Indeed (discover companies hiring for sales)
-                     → ~2000 raw company names + websites + LinkedIn company URLs
-Stage 2: AI_FILTER — "Is this COMPANY a marketing/advertising agency?" (name + domain only)
-                     → ~400 candidates (removes Meta, Amazon, hospitals, etc.)
-Stage 3: SCRAPE    — LinkedIn Company profiles (get headcount, industry, HQ)
-                     → Enriches surviving leads with real employee counts
-Stage 4: AI_FILTER — "Does this company have 1-10 employees?"
-                     → ~60 qualified small agencies
-Stage 5: SCRAPE    — LinkedIn People Search (title: CEO/Founder/Owner at company)
-                     → Finds decision makers: name, title, LinkedIn profile URL
-Stage 6: SCRAPE    — Contact Enrichment (scrape company websites for email/phone)
-                     → Stores email/phone hidden until user enriches
-```
-
-Different queries produce different pipelines:
-- "Chiropractors in Dallas" → Google Maps → Contact Enrichment (2 stages)
-- "SaaS startups with 50+ employees" → Google Search → Website Crawler → AI Verify → LinkedIn Companies → AI Headcount → Find People → Contacts (7 stages)
-
-### Implementation Plan
-
-This is a large change touching the planner, processor, database, UI, and hook. I'll implement it in **3 phases** within this task.
+### Changes
 
 ---
 
-#### Phase 1: Database + New Plan Format
+#### 1. Database Migration
 
-**Database migration** — Add to `signal_runs`:
-- `current_pipeline_stage` (integer, default 0) — tracks which stage the pipeline is executing
-- `pipeline_stage_count` (integer, default 1) — total stages for progress display
+Add to `workspaces`:
+- `subscription_due_date` (timestamptz, nullable) — tracks when the next payment is due
+- `grace_period_end` (timestamptz, nullable) — 7 days after a failed payment; account gets restricted after this
 
-Add to `signal_leads`:
-- `pipeline_stage` (text, nullable) — which stage produced/last updated this lead
-- `website_content` (text, nullable) — scraped website text for deep AI analysis
-- `linkedin_profile_url` (text, nullable) — decision maker's personal LinkedIn
-- `company_linkedin_url` (text, nullable) — company's LinkedIn page
-
-**New actors** added to catalog in both edge functions:
-- `website_crawler` — `apify/website-content-crawler` — scrapes company about pages for AI verification
-- `linkedin_people` — `curious_coder/linkedin-people-scraper` — finds employees by title at a company
+These fields let the SubscriptionGuard and the cron job know when to lock an account.
 
 ---
 
-#### Phase 2: Planner Rewrite (`signal-planner/index.ts`)
+#### 2. Coupon Type: Skip 2-Month Minimum
 
-Replace the current AI prompt that outputs a flat `[{source, search_query, ...}]` array with a new prompt that outputs a **pipeline**:
+Add a `skip_two_month_minimum` boolean column to the `coupons` table (default false). When this flag is true on a validated coupon, the `create-subscription` edge function will NOT add the extra month invoice item, even for first-time subscribers.
 
-```json
-{
-  "signal_name": "Marketing agencies hiring sales reps",
-  "pipeline": [
-    {
-      "stage": 1, "name": "Discover hiring companies",
-      "type": "scrape", "actors": ["linkedin_jobs", "indeed_jobs"],
-      "params_per_actor": { "linkedin_jobs": {...}, "indeed_jobs": {...} },
-      "dedup_after": true
-    },
-    {
-      "stage": 2, "name": "Filter to marketing agencies",
-      "type": "ai_filter",
-      "prompt": "Is this company a marketing/advertising/digital agency based on its name and domain?",
-      "expected_pass_rate": 0.20
-    },
-    {
-      "stage": 3, "name": "Get company details from LinkedIn",
-      "type": "scrape", "actors": ["linkedin_companies"],
-      "input_from": "company_linkedin_url",
-      "updates_fields": ["employee_count", "industry", "website"]
-    },
-    {
-      "stage": 4, "name": "Filter to 1-10 employees",
-      "type": "ai_filter",
-      "prompt": "Does this company have 1-10 employees based on employee_count?",
-      "expected_pass_rate": 0.50
-    },
-    {
-      "stage": 5, "name": "Find decision makers",
-      "type": "scrape", "actors": ["linkedin_people"],
-      "input_from": "company_linkedin_url",
-      "search_titles": ["CEO", "Founder", "Owner", "Managing Director"],
-      "updates_fields": ["contact_name", "title", "linkedin_profile_url"]
-    },
-    {
-      "stage": 6, "name": "Get contact info",
-      "type": "scrape", "actors": ["contact_enrichment"],
-      "input_from": "website",
-      "updates_fields": ["email", "phone"]
-    }
-  ]
-}
-```
+This is separate from the discount percentage — a coupon can have `discount_percentage: 0` and `skip_two_month_minimum: true` to simply waive the 2-month requirement without any price discount.
 
-The AI prompt will include:
-- Full actor catalog with input/output schemas
-- 4-5 example pipelines for different query types (hiring intent, local business, web discovery, enrichment-only)
-- Rules: always end with person-finding + contact enrichment unless query is purely company-level
-- The desired output schema users expect
-- Instructions on when to use `ai_filter` vs `scrape` stages
-- How `input_from` works (takes a field from surviving leads and passes as actor input)
+**create-subscription changes:**
+- Read `skip_two_month_minimum` from the validated coupon
+- Pass it into the `shouldChargeTwoMonths` logic: `const shouldChargeTwoMonths = !hasHadSubscriptionBefore && billing_period === 'monthly' && !skipTwoMonthMinimum`
+- Pass the flag in checkout metadata so the webhook can set the correct `subscription_due_date`
 
-**Backward compatibility**: The processor detects the format — if `signal_plan.pipeline` exists, use the new pipeline executor; otherwise fall back to the legacy flat flow so in-progress runs don't break.
-
-**Cost estimation**: Sum across all scrape stages. Each stage estimates its input size from the previous stage's expected pass rate, then calculates credits. Show a funnel in the plan display.
+**Subscription.tsx changes:**
+- When a coupon with `skip_two_month_minimum` is applied, show pricing as `$X/mo` instead of `$X*2 for 2 months`
 
 ---
 
-#### Phase 3: Processor Rewrite (`process-signal-queue/index.ts`)
+#### 3. Subscription Due Date Tracking
 
-Replace the fixed 4-phase model (starting → scraping → collecting → finalizing) with a **stage-aware pipeline executor**.
+**stripe-webhook `checkout.session.completed`:**
+- For first-time 2-month subscribers: set `subscription_due_date` = now + 2 months
+- For 1-month (coupon skip or returning): set `subscription_due_date` = now + 1 month
+- For yearly: set `subscription_due_date` = now + 1 year
 
-The `processing_phase` field encodes both stage and sub-phase: `stage_1_starting`, `stage_1_scraping`, `stage_1_collecting`, `stage_2_ai_filter`, `stage_3_starting`, etc.
+**stripe-webhook `invoice.payment_succeeded` (renewal):**
+- Update `subscription_due_date` = now + 1 month (or 1 year for yearly)
+- Clear `grace_period_end` if it was set
 
-**Pipeline executor logic:**
-
-```text
-1. Read current_pipeline_stage from run
-2. Get stage definition from signal_plan.pipeline[current_pipeline_stage]
-3. If stage.type == "scrape":
-   a. stage_N_starting: Build actor inputs FROM surviving leads' fields
-      - For stage 1: use original query params
-      - For stage 3+: read leads from DB, extract input_from field values,
-        pass as actor input (e.g., company_linkedin_url → profileUrls)
-   b. stage_N_scraping: Poll Apify runs
-   c. stage_N_collecting: Collect results, UPDATE existing leads
-      (not insert new ones — enrich the survivors)
-      Exception: person-finding stages INSERT person-level sub-leads
-   d. Advance to next stage
-4. If stage.type == "ai_filter":
-   a. Load surviving leads from DB
-   b. Run AI classification using stage.prompt
-   c. Delete failures
-   d. Advance to next stage
-5. After last stage: run workspace dedup, calculate cost, finalize
-```
-
-**Key design decisions:**
-- Scrape stages after stage 1 take input FROM existing leads (e.g., company_linkedin_url values become `profileUrls` for the linkedin_companies actor)
-- AI filter stages operate on the current lead set, deleting non-matches
-- Person-finding stages (stage 5) create person-level records linked to the company lead — or update the existing lead with contact_name/title/linkedin_profile_url
-- Each stage can span multiple cron cycles (scraping takes time)
-- The cron worker picks up where it left off using `current_pipeline_stage` + `processing_phase`
-
-**Batch sizes for enrichment stages:**
-- Website crawler: batch 50 URLs per actor run
-- LinkedIn companies: batch 100 URLs per run
-- LinkedIn people: batch 50 company URLs per run
-- Contact enrichment: batch 50 websites per run
+This is tracked locally for display/guard purposes. Stripe handles the actual recurring charge.
 
 ---
 
-#### UI Updates (`SignalScraperTab.tsx` + `useSignalScraper.ts`)
+#### 4. Failed Payment → 7-Day Grace Period → Account Restriction
 
-**Plan display**: Show the pipeline as a visual funnel with stage names and estimated counts at each stage.
+**stripe-webhook `invoice.payment_failed`:**
+- Set `subscription_status = 'past_due'`
+- Set `grace_period_end = now + 7 days`
+- Send in-app notification (already exists)
+- Send email via Resend: "Your payment failed. Update your payment method within 7 days or your account will be restricted."
 
-**Progress display**: When a pipeline run is active, show:
-- "Stage 3/6: Get company details from LinkedIn... 45/80 done"
-- A funnel: "2000 → 400 → 80 → 60 → 25 leads"
+**New edge function: `check-subscription-grace`** (cron, daily):
+- Query workspaces where `grace_period_end <= now()` AND `subscription_status = 'past_due'`
+- For each: set `subscription_status = 'cancelled'`, `is_locked = true`
+- Send notification + email: "Your account has been restricted due to non-payment."
 
-**Hook updates**: Add `current_pipeline_stage`, `pipeline_stage_count`, `linkedin_profile_url`, `company_linkedin_url` to the interfaces.
+**SubscriptionGuard update:**
+- Also check for `past_due` status — show a warning banner (not blocking) with "Payment failed — update your card by [date]"
+- When `subscription_status = 'cancelled'` due to grace expiry, the existing blocking dialog kicks in
 
-**Results table**: Already has the right columns — just needs `linkedin_profile_url` and `company_linkedin_url` added as link icons.
+---
+
+#### 5. Subscription Confirmation & Renewal Emails
+
+**New edge function: `send-subscription-email`:**
+- Uses Resend to send HTML emails for:
+  - `purchase`: "Welcome! Your [Tier] plan is now active."
+  - `renewal`: "Your [Tier] plan has been renewed for another month."
+  - `payment_failed`: "Payment failed — update your card within 7 days."
+  - `account_restricted`: "Your account has been restricted due to non-payment."
+
+**Trigger points in stripe-webhook:**
+- `checkout.session.completed` (subscription) → send `purchase` email
+- `invoice.payment_succeeded` with `billing_reason: subscription_cycle` → send `renewal` email
+- `invoice.payment_failed` → send `payment_failed` email
+
+---
+
+#### 6. Admin-Assigned Subscriptions
+
+Update `AgenciesTable.handleAssignSubscription` to also set:
+- `first_subscription_at` (if not already set)
+- `subscription_due_date = now + 1 month`
+- `subscription_anchor_day = current day of month`
+
+This means admin-assigned subscriptions are treated as 1-month grants. When `subscription_due_date` passes without a Stripe renewal (since there's no Stripe subscription), the grace period logic kicks in and the user is prompted to purchase their own subscription.
+
+Also update the `SubscriptionGuard` and `useWorkspace` to fetch `subscription_due_date` and `grace_period_end` for the warning banner.
 
 ---
 
@@ -186,24 +109,25 @@ The `processing_phase` field encodes both stage and sub-phase: `stage_1_starting
 
 | File | Change |
 |------|--------|
-| `supabase/migrations/...` | Add columns to `signal_runs` and `signal_leads` |
-| `supabase/functions/signal-planner/index.ts` | New pipeline AI prompt; new actors in catalog; pipeline cost estimation; backward-compatible plan format |
-| `supabase/functions/process-signal-queue/index.ts` | Pipeline executor with stage-aware processing; new actors; enrichment stage logic; legacy fallback |
-| `src/hooks/useSignalScraper.ts` | New fields on `SignalRun` and `SignalLead` interfaces |
-| `src/components/leads/SignalScraperTab.tsx` | Pipeline progress UI; funnel visualization in plan display; LinkedIn profile link in results table |
+| `supabase/migrations/...` | Add `subscription_due_date`, `grace_period_end` to workspaces; add `skip_two_month_minimum` to coupons |
+| `supabase/functions/create-subscription/index.ts` | Read `skip_two_month_minimum` from coupon, skip extra month charge when true |
+| `supabase/functions/stripe-webhook/index.ts` | Set due dates on checkout + renewal; set grace period on failure; send emails |
+| `supabase/functions/send-subscription-email/index.ts` | New — sends purchase/renewal/failed/restricted emails via Resend |
+| `supabase/functions/check-subscription-grace/index.ts` | New — daily cron to restrict accounts past grace period |
+| `supabase/config.toml` | Add new function configs |
+| `src/pages/Subscription.tsx` | Show 1-month pricing when skip coupon applied |
+| `src/components/admin/AgenciesTable.tsx` | Set due date + anchor on admin assignment |
+| `src/components/layout/SubscriptionGuard.tsx` | Add past_due warning banner |
+| `src/hooks/useWorkspace.tsx` | Fetch `subscription_due_date`, `grace_period_end` |
 
 ### Implementation Order
 
 1. Database migration (new columns)
-2. Add new actors to catalog in both edge functions
-3. Rewrite planner prompt to generate pipeline format + cost estimation
-4. Rewrite processor with pipeline executor (keeping legacy fallback)
-5. Update hook interfaces and UI for pipeline progress
-
-### Risk Mitigation
-
-- **Backward compatibility**: Legacy flat plans still work — the processor checks for `pipeline` key
-- **Partial failures**: If any stage's actors fail, the pipeline can retry from that stage
-- **Cost control**: Enrichment stages only run on the filtered set (post-AI), keeping Apify costs proportional to actual quality leads
-- **Cron timeout**: Each stage's sub-phases are designed to complete within the edge function timeout (~60s), with state persisted between cron cycles
+2. `send-subscription-email` edge function
+3. `check-subscription-grace` edge function + cron setup
+4. Update `create-subscription` for skip coupon logic
+5. Update `stripe-webhook` for due dates, grace periods, and emails
+6. Update `Subscription.tsx` pricing display
+7. Update `AgenciesTable` admin assignment
+8. Update `SubscriptionGuard` + `useWorkspace` for grace period UI
 
