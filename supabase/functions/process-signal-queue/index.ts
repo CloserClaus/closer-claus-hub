@@ -1078,8 +1078,9 @@ async function pipelineFinalize(run: any, serviceClient: any) {
 
   let actualCredits = 0;
   if (leadsCount > 0) {
-    const scrapeCostUsd = (leadsCount / 1000) * 0.25;
-    const chargedPriceUsd = scrapeCostUsd * 1.2 * 3;
+    // ~$1/1000 actual Apify cost, 4x markup, 5 credits = $1
+    const scrapeCostUsd = (leadsCount / 1000) * 1.0;
+    const chargedPriceUsd = scrapeCostUsd * 4;
     actualCredits = Math.max(5, Math.ceil(chargedPriceUsd * 5));
   }
 
