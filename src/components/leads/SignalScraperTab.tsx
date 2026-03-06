@@ -662,6 +662,56 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
     },
   });
 
+  // Save signal leads to apollo_leads (for list functionality)
+  const saveToApolloLeads = async (targetLeads: SignalLead[]): Promise<string[]> => {
+    const userId = (await supabase.auth.getUser()).data.user?.id || '';
+    const rows = targetLeads.map((lead) => ({
+      workspace_id: workspaceId,
+      apollo_id: `signal_${lead.id}`,
+      first_name: (lead.contact_name || '').trim().split(/\s+/)[0] || lead.company_name || '',
+      last_name: (lead.contact_name || '').trim().split(/\s+/).slice(1).join(' ') || '',
+      company_name: lead.company_name || '',
+      company_domain: lead.domain || '',
+      title: lead.title || '',
+      email: lead.enriched ? lead.email : null,
+      phone: lead.enriched ? lead.phone : null,
+      linkedin_url: lead.linkedin_profile_url || lead.linkedin || '',
+      city: lead.city || '', state: lead.state || '', country: lead.country || '',
+      industry: lead.industry || '', employee_count: lead.employee_count || '',
+      enrichment_status: lead.enriched ? 'enriched' : 'pending',
+    }));
+    const { data, error } = await supabase.from('apollo_leads').upsert(rows, { onConflict: 'workspace_id,apollo_id', ignoreDuplicates: true }).select('id');
+    if (error) throw error;
+    return (data || []).map(d => d.id);
+  };
+
+  const saveLeadMutation = useMutation({
+    mutationFn: async (lead: SignalLead) => {
+      const ids = await saveToApolloLeads([lead]);
+      return ids;
+    },
+    onSuccess: () => {
+      toast({ title: 'Lead saved to marketplace' });
+      queryClient.invalidateQueries({ queryKey: ['apollo-leads'] });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Failed to save lead', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const handleAddToList = async () => {
+    const targetLeads = selectedIds.size > 0
+      ? leads.filter(l => selectedIds.has(l.id))
+      : leads;
+    try {
+      const ids = await saveToApolloLeads(targetLeads);
+      setSavedApolloIds(ids);
+      setAddToListOpen(true);
+    } catch (err: any) {
+      toast({ title: 'Failed to save leads', description: err.message, variant: 'destructive' });
+    }
+  };
+
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   };
