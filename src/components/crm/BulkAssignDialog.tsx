@@ -78,28 +78,26 @@ export function BulkAssignDialog({
 
   const hasTaggedLeads = taggedLeads.length > 0;
 
-  // Get unassigned leads for assignment
-  const unassignedLeads = useMemo(() => {
-    return leads.filter(l => !l.assigned_to);
-  }, [leads]);
+  // Use all selected leads (allow reassignment of already-assigned leads)
+  const availableLeads = leads;
 
   // Get leads matching the selected tag (or all if no tag selected)
   const eligibleLeads = useMemo(() => {
     if (selectedTag === 'all') {
-      return unassignedLeads;
+      return availableLeads;
     }
-    return unassignedLeads.filter(l => l.readiness_segment === selectedTag);
-  }, [unassignedLeads, selectedTag]);
+    return availableLeads.filter(l => l.readiness_segment === selectedTag);
+  }, [availableLeads, selectedTag]);
 
   // Get tag distribution for equal distribution
   const tagDistribution = useMemo(() => {
     const distribution: Record<string, Lead[]> = {};
     TAG_OPTIONS.forEach(tag => {
-      distribution[tag.value] = unassignedLeads.filter(l => l.readiness_segment === tag.value);
+      distribution[tag.value] = availableLeads.filter(l => l.readiness_segment === tag.value);
     });
-    distribution['untagged'] = unassignedLeads.filter(l => !l.readiness_segment || !TAG_OPTIONS.some(t => t.value === l.readiness_segment));
+    distribution['untagged'] = availableLeads.filter(l => !l.readiness_segment || !TAG_OPTIONS.some(t => t.value === l.readiness_segment));
     return distribution;
-  }, [unassignedLeads]);
+  }, [availableLeads]);
 
   const handleAssign = async () => {
     if (!selectedSDR) {
@@ -143,7 +141,7 @@ export function BulkAssignDialog({
         }
       } else {
         // No tags, just take first N
-        leadsToAssign = unassignedLeads.slice(0, qty);
+        leadsToAssign = availableLeads.slice(0, qty);
       }
 
       if (leadsToAssign.length === 0) {
@@ -292,7 +290,7 @@ export function BulkAssignDialog({
             <p className="text-sm font-medium mb-1">Available Leads</p>
             <p className="text-2xl font-bold text-primary">{eligibleLeads.length}</p>
             <p className="text-xs text-muted-foreground">
-              {unassignedLeads.length} total unassigned
+              {availableLeads.length} total selected
             </p>
           </div>
         </div>
