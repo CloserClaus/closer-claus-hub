@@ -101,6 +101,7 @@ export default function Subscription() {
   const [appliedCoupon, setAppliedCoupon] = useState<{
     code: string;
     discount: number;
+    skipTwoMonthMinimum?: boolean;
   } | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -210,11 +211,16 @@ export default function Subscription() {
       setAppliedCoupon({
         code: data.code,
         discount: data.discount_percentage,
+        skipTwoMonthMinimum: data.skip_two_month_minimum || false,
       });
+      
+      const messages = [];
+      if (data.discount_percentage > 0) messages.push(`${data.discount_percentage}% discount`);
+      if (data.skip_two_month_minimum) messages.push('2-month minimum waived');
       
       toast({
         title: 'Coupon applied!',
-        description: `${data.discount_percentage}% discount will be applied.`,
+        description: messages.length > 0 ? messages.join(' • ') : 'Coupon applied successfully.',
       });
     } catch (error) {
       console.error('Error validating coupon:', error);
@@ -422,33 +428,40 @@ export default function Subscription() {
 
                   {/* Pricing */}
                   <div className="text-center py-2">
-                    {hasDiscount && (
-                      <p className="text-sm text-muted-foreground line-through">
-                        ${billingPeriod === 'monthly' && isFirstSubscription ? price * 2 : price}
-                      </p>
-                    )}
-                    <p className="text-3xl font-bold text-foreground">
-                      ${billingPeriod === 'monthly' && isFirstSubscription ? discountedPrice * 2 : discountedPrice}
-                      {billingPeriod === 'monthly' && isFirstSubscription ? (
-                        <span className="text-sm font-normal text-muted-foreground">
-                          {' '}for 2 months
-                        </span>
-                      ) : (
-                        <span className="text-sm font-normal text-muted-foreground">
-                          /{billingPeriod === 'monthly' ? 'mo' : 'yr'}
-                        </span>
-                      )}
-                    </p>
-                    {billingPeriod === 'monthly' && isFirstSubscription && (
-                      <p className="text-xs text-primary mt-1">
-                        2-month minimum • Then ${discountedPrice}/mo
-                      </p>
-                    )}
-                    {billingPeriod === 'yearly' && (
-                      <p className="text-xs text-success mt-1">
-                        2 months free
-                      </p>
-                    )}
+                    {(() => {
+                      const showTwoMonths = isFirstSubscription && billingPeriod === 'monthly' && !appliedCoupon?.skipTwoMonthMinimum;
+                      return (
+                        <>
+                          {hasDiscount && (
+                            <p className="text-sm text-muted-foreground line-through">
+                              ${showTwoMonths ? price * 2 : price}
+                            </p>
+                          )}
+                          <p className="text-3xl font-bold text-foreground">
+                            ${showTwoMonths ? discountedPrice * 2 : discountedPrice}
+                            {showTwoMonths ? (
+                              <span className="text-sm font-normal text-muted-foreground">
+                                {' '}for 2 months
+                              </span>
+                            ) : (
+                              <span className="text-sm font-normal text-muted-foreground">
+                                /{billingPeriod === 'monthly' ? 'mo' : 'yr'}
+                              </span>
+                            )}
+                          </p>
+                          {showTwoMonths && (
+                            <p className="text-xs text-primary mt-1">
+                              2-month minimum • Then ${discountedPrice}/mo
+                            </p>
+                          )}
+                          {billingPeriod === 'yearly' && (
+                            <p className="text-xs text-success mt-1">
+                              2 months free
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {/* Features */}
