@@ -946,14 +946,21 @@ async function handleGeneratePlan(
     const maxCap = advanced_settings.max_results_per_source;
     const capFields = ["count", "limit", "maxItems", "maxCrawledPlacesPerSearch", "maxResults"];
     for (const stage of parsedPlan.pipeline) {
-      if (stage.stage === 1 && stage.type === "scrape" && stage.params_per_actor) {
-        for (const actorKey of Object.keys(stage.params_per_actor)) {
-          const actorParams = stage.params_per_actor[actorKey];
-          for (const field of capFields) {
-            if (actorParams[field] !== undefined && actorParams[field] > maxCap) {
-              actorParams[field] = maxCap;
+      if (stage.stage === 1 && stage.type === "scrape") {
+        // Cap actor params
+        if (stage.params_per_actor) {
+          for (const actorKey of Object.keys(stage.params_per_actor)) {
+            const actorParams = stage.params_per_actor[actorKey];
+            for (const field of capFields) {
+              if (actorParams[field] !== undefined && actorParams[field] > maxCap) {
+                actorParams[field] = maxCap;
+              }
             }
           }
+        }
+        // Also cap expected_output_count so the estimate reflects the cap
+        if (stage.expected_output_count && stage.expected_output_count > maxCap) {
+          stage.expected_output_count = maxCap;
         }
       }
     }
