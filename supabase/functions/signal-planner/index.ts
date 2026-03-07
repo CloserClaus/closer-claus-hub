@@ -973,14 +973,20 @@ async function handleGeneratePlan(
     if (actor) actorRegistry[key] = actor;
   }
 
-  // Add backup actors: top 2 alternatives per used category (not already in registry)
-  for (const category of usedCategories) {
+  // Add backup actors: top 2 alternatives per used category+subCategory (not already in registry)
+  // Backups must match subCategory to prevent cross-type fallback (e.g., Google Maps backing up LinkedIn Jobs)
+  const usedSubCategories = new Set<string>();
+  for (const key of usedActorKeys) {
+    const actor = discoveredActorMap.get(key);
+    if (actor && (actor as any).subCategory) usedSubCategories.add((actor as any).subCategory);
+  }
+  for (const subCat of usedSubCategories) {
     const backups = [...discoveredActorMap.values()]
-      .filter(a => a.category === category && !actorRegistry[a.key])
+      .filter(a => (a as any).subCategory === subCat && !actorRegistry[a.key])
       .sort((a, b) => (b.monthlyUsers || 0) - (a.monthlyUsers || 0))
       .slice(0, 2);
     for (const backup of backups) {
-      actorRegistry[backup.key] = { ...backup, _isBackup: true } as any;
+      actorRegistry[backup.key] = { ...backup, _isBackup: true, _backupForSubCategory: subCat } as any;
     }
   }
 
