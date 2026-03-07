@@ -74,10 +74,15 @@ function getNestedValue(obj: any, path: string): any {
   return path.split('.').reduce((acc, part) => acc && acc[part], obj);
 }
 
-function normaliseGenericResults(actor: ActorEntry, items: any[]): any[] {
+function normaliseGenericResults(actor: ActorEntry | null, items: any[]): any[] {
+  // Use actor's outputFields if available and non-empty, otherwise fall back to universal paths
+  const fieldPaths = (actor?.outputFields && Object.keys(actor.outputFields).length > 0)
+    ? actor.outputFields
+    : UNIVERSAL_OUTPUT_PATHS;
+
   return items.map((item) => {
     const normalised: Record<string, any> = {};
-    for (const [outputKey, sourcePaths] of Object.entries(actor.outputFields)) {
+    for (const [outputKey, sourcePaths] of Object.entries(fieldPaths)) {
       let value: any = null;
       for (const path of sourcePaths) {
         const v = getNestedValue(item, path);
