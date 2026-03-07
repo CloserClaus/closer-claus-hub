@@ -687,7 +687,9 @@ const ROW_CAP_KEYS = [
 function inferRowCapFromParams(actorParams: Record<string, any>): number | null {
   for (const key of ROW_CAP_KEYS) {
     const val = actorParams[key];
-    if (typeof val === "number" && val > 0) return val;
+    if (val === undefined || val === null) continue;
+    const num = typeof val === "number" ? val : parseInt(String(val), 10);
+    if (!isNaN(num) && num > 0) return num;
   }
   return null;
 }
