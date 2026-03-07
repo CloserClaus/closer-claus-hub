@@ -7,12 +7,16 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
+import { Slider } from '@/components/ui/slider';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Zap, Loader2, Play, Clock, Trash2, RotateCcw, Plus, History,
   Globe, Phone, MapPin, Building2, Search, Mail, Sparkles,
   Briefcase, Rocket, FileText, AlertTriangle, ArrowRight, Filter, Users, User,
-  Bookmark, List, MoreHorizontal,
+  Bookmark, List, MoreHorizontal, Settings, Download,
 } from 'lucide-react';
+import { exportLeadsToCSV } from '@/lib/csvExport';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -28,10 +32,24 @@ import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 
 const ICON_MAP: Record<string, any> = { Briefcase, Rocket, MapPin, Zap, Sparkles };
 
+export interface AdvancedSettings {
+  max_results_per_source: number;
+  date_range: 'past_24h' | 'past_week' | 'past_2_weeks' | 'past_month';
+  ai_strictness: 'low' | 'medium' | 'high';
+}
+
+const DEFAULT_ADVANCED: AdvancedSettings = {
+  max_results_per_source: 2500,
+  date_range: 'past_week',
+  ai_strictness: 'medium',
+};
+
 export function SignalScraperTab() {
   const [query, setQuery] = useState('');
   const [scheduleType, setScheduleType] = useState<'once' | 'daily' | 'weekly'>('once');
   const [viewingRunId, setViewingRunId] = useState<string | null>(null);
+  const [advancedSettings, setAdvancedSettings] = useState<AdvancedSettings>(DEFAULT_ADVANCED);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -64,8 +82,10 @@ export function SignalScraperTab() {
     const finalQuery = q || query.trim();
     if (!finalQuery) return;
     if (q) setQuery(q);
-    generatePlan({ query: finalQuery, plan_override: planOverride });
+    generatePlan({ query: finalQuery, plan_override: planOverride, advanced_settings: advancedSettings });
   };
+
+  const estimatedScrapeCost = ((advancedSettings.max_results_per_source / 1000) * 1.0 * 4 * 5).toFixed(0);
 
   const handleExecute = () => {
     if (!currentPlan) return;
@@ -137,6 +157,84 @@ export function SignalScraperTab() {
             onChange={(e) => setQuery(e.target.value)}
             className="min-h-[100px] bg-muted border-border"
           />
+
+          {/* Advanced Settings */}
+          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">
+                <Settings className="h-4 w-4" />
+                Advanced Settings
+                <Badge variant="secondary" className="text-xs">{advancedOpen ? '▲' : '▼'}</Badge>
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-3 space-y-5 rounded-lg border border-border bg-muted/30 p-4">
+              {/* Max Results Per Source */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Max results per source</Label>
+                  <span className="text-sm font-semibold text-foreground">{advancedSettings.max_results_per_source.toLocaleString()}</span>
+                </div>
+                <Slider
+                  value={[advancedSettings.max_results_per_source]}
+                  onValueChange={([v]) => setAdvancedSettings(s => ({ ...s, max_results_per_source: v }))}
+                  min={100}
+                  max={5000}
+                  step={100}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>100 (cheaper)</span>
+                  <span>~{estimatedScrapeCost} credits est. scrape cost</span>
+                  <span>5,000 (broader)</span>
+                </div>
+              </div>
+
+              {/* Date Range */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Date range</Label>
+                <Select
+                  value={advancedSettings.date_range}
+                  onValueChange={(v) => setAdvancedSettings(s => ({ ...s, date_range: v as any }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="past_24h">Past 24 hours</SelectItem>
+                    <SelectItem value="past_week">Past week</SelectItem>
+                    <SelectItem value="past_2_weeks">Past 2 weeks</SelectItem>
+                    <SelectItem value="past_month">Past month</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Controls how recent the scraped listings should be.</p>
+              </div>
+
+              {/* AI Filtering Strictness */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">AI filtering strictness</Label>
+                <RadioGroup
+                  value={advancedSettings.ai_strictness}
+                  onValueChange={(v) => setAdvancedSettings(s => ({ ...s, ai_strictness: v as any }))}
+                  className="flex gap-4"
+                >
+                  {([
+                    { value: 'low', label: 'Low', desc: 'More leads, less filtering' },
+                    { value: 'medium', label: 'Medium', desc: 'Balanced' },
+                    { value: 'high', label: 'High', desc: 'Fewer, higher-quality leads' },
+                  ] as const).map(opt => (
+                    <div key={opt.value} className="flex items-center gap-1.5">
+                      <RadioGroupItem value={opt.value} id={`strict-${opt.value}`} />
+                      <Label htmlFor={`strict-${opt.value}`} className="text-sm cursor-pointer">
+                        {opt.label}
+                        <span className="text-xs text-muted-foreground ml-1">({opt.desc})</span>
+                      </Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
           <div className="flex items-center justify-between">
             <div className="text-sm text-muted-foreground">
               Credits available: <span className="font-semibold text-foreground">{credits}</span>
@@ -739,6 +837,10 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <CardTitle className="text-lg">Signal Results — {leads.length} leads</CardTitle>
           <div className="flex gap-2 flex-wrap">
+            <Button size="sm" variant="outline" onClick={() => exportLeadsToCSV(leads, `signal-leads-${runId.slice(0, 8)}`)}>
+              <Download className="h-3.5 w-3.5 mr-1" />
+              Export CSV
+            </Button>
             <Button size="sm" variant="outline" onClick={handleAddToList}>
               <List className="h-3.5 w-3.5 mr-1" />
               {selectedIds.size > 0 ? `Add to List (${selectedIds.size})` : 'Add All to List'}

@@ -747,15 +747,40 @@ serve(async (req) => {
 // ════════════════════════════════════════════════════════════════
 
 async function handleGeneratePlan(
-  params: { query: string; workspace_id: string; plan_override?: any },
+  params: { query: string; workspace_id: string; plan_override?: any; advanced_settings?: any },
   userId: string,
   serviceClient: any
 ) {
-  const { query, workspace_id } = params;
+  const { query, workspace_id, advanced_settings } = params;
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-  const systemPrompt = buildPipelinePlannerPrompt();
+  let systemPrompt = buildPipelinePlannerPrompt();
+
+  // Inject advanced settings into prompt
+  if (advanced_settings) {
+    const maxResults = advanced_settings.max_results_per_source || 2500;
+    const dateRange = advanced_settings.date_range || "past_week";
+    const strictness = advanced_settings.ai_strictness || "medium";
+
+    const dateMap: Record<string, string> = {
+      past_24h: "past 24 hours only",
+      past_week: "past week",
+      past_2_weeks: "past 2 weeks",
+      past_month: "past month",
+    };
+
+    const strictnessMap: Record<string, string> = {
+      low: "Be lenient with filtering — accept borderline matches. Use expected_pass_rate of 0.30-0.50 for AI filter stages.",
+      medium: "Use balanced filtering. Use expected_pass_rate of 0.15-0.30 for AI filter stages.",
+      high: "Be very strict with filtering — only accept strong matches. Use expected_pass_rate of 0.05-0.15 for AI filter stages. Write very specific rejection criteria.",
+    };
+
+    systemPrompt += `\n\n## USER PREFERENCES (OVERRIDE DEFAULTS)\n`;
+    systemPrompt += `- Maximum results per source in stage 1: ${maxResults} (cap all count/limit/maxItems/maxCrawledPlacesPerSearch params to this value)\n`;
+    systemPrompt += `- Date range: ${dateMap[dateRange] || "past week"}\n`;
+    systemPrompt += `- Filtering strictness: ${strictnessMap[strictness] || strictnessMap.medium}\n`;
+  }
 
   const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -832,6 +857,55 @@ async function handleGeneratePlan(
         }
         return key;
       });
+    }
+  }
+
+  // Apply advanced settings caps to stage 1 actor params
+  if (advanced_settings?.max_results_per_source) {
+    const maxCap = advanced_settings.max_results_per_source;
+    const capFields = ["count", "limit", "maxItems", "maxCrawledPlacesPerSearch", "maxResults"];
+    for (const stage of parsedPlan.pipeline) {
+      if (stage.stage === 1 && stage.type === "scrape" && stage.params_per_actor) {
+        for (const actorKey of Object.keys(stage.params_per_actor)) {
+          const actorParams = stage.params_per_actor[actorKey];
+          for (const field of capFields) {
+            if (actorParams[field] !== undefined && actorParams[field] > maxCap) {
+              actorParams[field] = maxCap;
+            }
+          }
+        }
+        // Also update expected_output_count
+        if (stage.expected_output_count && stage.expected_output_count > maxCap * 2) {
+          stage.expected_output_count = maxCap * ((stage.actors || []).length || 1);
+        }
+      }
+    }
+  }
+
+  // Apply date range to actor params
+  if (advanced_settings?.date_range) {
+    const dateMap: Record<string, { linkedin: string; indeed: string }> = {
+      past_24h: { linkedin: "r86400", indeed: "1" },
+      past_week: { linkedin: "r604800", indeed: "7" },
+      past_2_weeks: { linkedin: "r1209600", indeed: "14" },
+      past_month: { linkedin: "r2592000", indeed: "14" },
+    };
+    const dateCfg = dateMap[advanced_settings.date_range];
+    if (dateCfg) {
+      for (const stage of parsedPlan.pipeline) {
+        if (stage.stage === 1 && stage.type === "scrape" && stage.params_per_actor) {
+          // Update LinkedIn job URLs with correct time filter
+          if (stage.params_per_actor.linkedin_jobs?.urls) {
+            stage.params_per_actor.linkedin_jobs.urls = stage.params_per_actor.linkedin_jobs.urls.map(
+              (url: string) => url.replace(/f_TPR=r\d+/, `f_TPR=${dateCfg.linkedin}`)
+            );
+          }
+          // Update Indeed datePosted
+          if (stage.params_per_actor.indeed_jobs) {
+            stage.params_per_actor.indeed_jobs.datePosted = dateCfg.indeed;
+          }
+        }
+      }
     }
   }
 

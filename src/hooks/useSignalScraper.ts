@@ -144,12 +144,13 @@ export function useSignalScraper() {
   });
 
   const generatePlanMutation = useMutation({
-    mutationFn: async (params: { query: string; plan_override?: any } | string) => {
+    mutationFn: async (params: { query: string; plan_override?: any; advanced_settings?: any } | string) => {
       if (!currentWorkspace?.id) throw new Error('No workspace selected');
       const query = typeof params === 'string' ? params : params.query;
       const plan_override = typeof params === 'string' ? undefined : params.plan_override;
+      const advanced_settings = typeof params === 'string' ? undefined : params.advanced_settings;
       const { data, error } = await supabase.functions.invoke('signal-planner', {
-        body: { action: 'generate_plan', query, workspace_id: currentWorkspace.id, plan_override },
+        body: { action: 'generate_plan', query, workspace_id: currentWorkspace.id, plan_override, advanced_settings },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);

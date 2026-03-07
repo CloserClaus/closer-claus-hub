@@ -11,7 +11,9 @@ import {
   Table as TableIcon,
   UserPlus,
   Zap,
+  Download,
 } from 'lucide-react';
+import { exportLeadsToCSV } from '@/lib/csvExport';
 import { Tables } from '@/integrations/supabase/types';
 import { ResultsTable } from './ResultsTable';
 import { ResultsPagination } from './ResultsPagination';
@@ -225,8 +227,17 @@ export function ApolloSearchResults({
               </ToggleGroup>
             </div>
 
-            {/* Quick Stats */}
+            {/* Quick Stats + Export */}
             <div className="flex items-center gap-3 text-sm">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => exportLeadsToCSV(results, 'search-results')}
+                className="h-7 text-xs"
+              >
+                <Download className="h-3.5 w-3.5 mr-1" />
+                CSV
+              </Button>
               {enrichedLeads.length > 0 && (
                 <span className="flex items-center gap-1.5 text-emerald-500">
                   <Sparkles className="h-3.5 w-3.5" />

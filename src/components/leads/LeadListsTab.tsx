@@ -37,7 +37,9 @@ import {
   Building2,
   MapPin,
   Sparkles,
+  Download,
 } from 'lucide-react';
+import { exportLeadsToCSV } from '@/lib/csvExport';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Tables } from '@/integrations/supabase/types';
@@ -209,6 +211,19 @@ export function LeadListsTab() {
               <p className="text-sm text-muted-foreground mt-1">{selectedList.description}</p>
             )}
           </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const exportData = (listLeads || []).map(item => (item.apollo_lead as ApolloLead)).filter(Boolean);
+              exportLeadsToCSV(exportData, `list-${selectedList.name.replace(/\s+/g, '-').toLowerCase()}`);
+            }}
+            disabled={!listLeads || listLeads.length === 0}
+            className="h-8"
+          >
+            <Download className="h-3.5 w-3.5 mr-1" />
+            CSV
+          </Button>
           <Badge variant="secondary" className="flex items-center gap-1">
             <Users className="h-3 w-3" />
             {listLeads?.length || 0} leads

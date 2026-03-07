@@ -17,7 +17,9 @@ import {
   Sparkles,
   Search,
   Filter,
+  Download,
 } from 'lucide-react';
+import { exportLeadsToCSV } from '@/lib/csvExport';
 import { Tables } from '@/integrations/supabase/types';
 
 type ApolloLead = Tables<'apollo_leads'>;
@@ -92,6 +94,16 @@ export function SavedLeadsTab() {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => filteredLeads && exportLeadsToCSV(filteredLeads, 'saved-leads')}
+              disabled={!filteredLeads || filteredLeads.length === 0}
+              className="h-9"
+            >
+              <Download className="h-4 w-4 mr-1.5" />
+              CSV
+            </Button>
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
