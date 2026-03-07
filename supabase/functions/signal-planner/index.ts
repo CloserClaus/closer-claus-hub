@@ -215,26 +215,39 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
           console.warn(`No inputSchema found for ${actorId} — actor params will be passed through directly at runtime`);
         }
 
-        // Pre-flight access check: verify actor is runnable on this Apify account
+        // Pre-flight access check: dry-run test to verify actor is runnable
         let isAccessible = true;
         try {
-          const accessResp = await fetch(
-            `https://api.apify.com/v2/acts/${actorIdEncoded}?token=${APIFY_API_TOKEN}`,
-            { method: "GET" }
+          // Attempt to start a minimal run — if we get 403 "not rented", actor is inaccessible
+          const dryRunResp = await fetch(
+            `https://api.apify.com/v2/acts/${actorIdEncoded}/runs?token=${APIFY_API_TOKEN}`,
+            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ maxItems: 0 }) }
           );
-          if (accessResp.ok) {
-            const accessData = await accessResp.json();
-            const actorInfo = accessData.data;
-            // Check for deprecated or explicitly inaccessible actors
-            if (actorInfo?.isDeprecated) {
-              console.warn(`Actor ${actorId} is deprecated — skipping`);
-              isAccessible = false;
+          if (dryRunResp.ok) {
+            // Run started — abort it immediately
+            const dryRunData = await dryRunResp.json();
+            const dryRunId = dryRunData.data?.id;
+            if (dryRunId) {
+              try {
+                await fetch(`https://api.apify.com/v2/actor-runs/${dryRunId}/abort?token=${APIFY_API_TOKEN}`, { method: "POST" });
+              } catch { /* ignore abort error */ }
             }
-            // Check if the actor requires rental and we don't have it
-            // Apify returns externallyUsable: false or isExternallyUsable: false for unrented paid actors
-            if (actorInfo?.externallyUsable === false || actorInfo?.isExternallyUsable === false) {
-              console.warn(`Actor ${actorId} is not rented/accessible — skipping`);
+          } else {
+            const errText = await dryRunResp.text();
+            const errLower = errText.toLowerCase();
+            if (dryRunResp.status === 403 || errLower.includes("actor-is-not-rented") || errLower.includes("not rented")) {
+              console.warn(`Actor ${actorId} failed dry-run (403 not rented) — skipping`);
               isAccessible = false;
+            } else {
+              // Also check for deprecated via GET
+              const accessResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}?token=${APIFY_API_TOKEN}`, { method: "GET" });
+              if (accessResp.ok) {
+                const actorInfo = (await accessResp.json()).data;
+                if (actorInfo?.isDeprecated) {
+                  console.warn(`Actor ${actorId} is deprecated — skipping`);
+                  isAccessible = false;
+                }
+              }
             }
           }
         } catch (e) {
@@ -243,7 +256,7 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
 
         if (!isAccessible) continue;
 
-        const category = categorizeActor(item.title || "", item.description || "");
+        const { category, subCategory } = categorizeActor(item.title || "", item.description || "");
         const outputFields = inferOutputFields(category);
 
         const actor: ActorEntry = {
@@ -251,13 +264,14 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
           actorId,
           label: item.title || item.name || actorId,
           category,
+          subCategory,
           description: (item.description || "").slice(0, 500),
           inputSchema,
           outputFields,
           monthlyUsers: item.stats?.totalUsers || 0,
           totalRuns: item.stats?.totalRuns || 0,
           rating: item.stats?.publicStarVotes?.average || 0,
-        };
+        } as any;
 
         discovered.push(actor);
 
@@ -334,17 +348,30 @@ function extractComprehensiveSearchTerms(query: string): string[] {
   return [...terms].slice(0, 10); // Cap at 10 searches
 }
 
-function categorizeActor(title: string, desc: string): string {
+function categorizeActor(title: string, desc: string): { category: string; subCategory: string } {
   const text = `${title} ${desc}`.toLowerCase();
-  if (text.includes("indeed") || (text.includes("job") && (text.includes("scraper") || text.includes("search")))) return "hiring_intent";
-  if (text.includes("linkedin job")) return "hiring_intent";
-  if (text.includes("google maps") || text.includes("yelp") || text.includes("yellow pages") || text.includes("local business")) return "local_business";
-  if (text.includes("linkedin company") || text.includes("linkedin profile") || text.includes("company data") || text.includes("company scraper")) return "company_data";
-  if (text.includes("linkedin people") || text.includes("people search") || text.includes("people finder") || text.includes("person")) return "people_data";
-  if (text.includes("email") || text.includes("contact") || text.includes("enrich") || text.includes("phone")) return "enrichment";
-  if (text.includes("website") || text.includes("crawl") || text.includes("content")) return "website_data";
-  if (text.includes("google search") || text.includes("search engine") || text.includes("serp")) return "web_search";
-  return "other";
+  // Hiring intent — sub-typed by platform
+  if (text.includes("linkedin job")) return { category: "hiring_intent", subCategory: "hiring_intent:linkedin" };
+  if (text.includes("indeed")) return { category: "hiring_intent", subCategory: "hiring_intent:indeed" };
+  if (text.includes("glassdoor")) return { category: "hiring_intent", subCategory: "hiring_intent:glassdoor" };
+  if (text.includes("job") && (text.includes("scraper") || text.includes("search"))) return { category: "hiring_intent", subCategory: "hiring_intent:generic_jobs" };
+  // Local business — sub-typed by platform
+  if (text.includes("google maps")) return { category: "local_business", subCategory: "local_business:google_maps" };
+  if (text.includes("yelp")) return { category: "local_business", subCategory: "local_business:yelp" };
+  if (text.includes("yellow pages")) return { category: "local_business", subCategory: "local_business:yellow_pages" };
+  if (text.includes("local business")) return { category: "local_business", subCategory: "local_business:generic" };
+  // Company data
+  if (text.includes("linkedin company")) return { category: "company_data", subCategory: "company_data:linkedin" };
+  if (text.includes("linkedin profile") || text.includes("company data") || text.includes("company scraper")) return { category: "company_data", subCategory: "company_data:generic" };
+  // People data
+  if (text.includes("linkedin people") || text.includes("people search") || text.includes("people finder") || text.includes("person")) return { category: "people_data", subCategory: "people_data:linkedin" };
+  // Enrichment
+  if (text.includes("email") || text.includes("contact") || text.includes("enrich") || text.includes("phone")) return { category: "enrichment", subCategory: "enrichment:generic" };
+  // Website/crawl
+  if (text.includes("website") || text.includes("crawl") || text.includes("content")) return { category: "website_data", subCategory: "website_data:generic" };
+  // Web search
+  if (text.includes("google search") || text.includes("search engine") || text.includes("serp")) return { category: "web_search", subCategory: "web_search:google" };
+  return { category: "other", subCategory: "other" };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -946,14 +973,20 @@ async function handleGeneratePlan(
     if (actor) actorRegistry[key] = actor;
   }
 
-  // Add backup actors: top 2 alternatives per used category (not already in registry)
-  for (const category of usedCategories) {
+  // Add backup actors: top 2 alternatives per used category+subCategory (not already in registry)
+  // Backups must match subCategory to prevent cross-type fallback (e.g., Google Maps backing up LinkedIn Jobs)
+  const usedSubCategories = new Set<string>();
+  for (const key of usedActorKeys) {
+    const actor = discoveredActorMap.get(key);
+    if (actor && (actor as any).subCategory) usedSubCategories.add((actor as any).subCategory);
+  }
+  for (const subCat of usedSubCategories) {
     const backups = [...discoveredActorMap.values()]
-      .filter(a => a.category === category && !actorRegistry[a.key])
+      .filter(a => (a as any).subCategory === subCat && !actorRegistry[a.key])
       .sort((a, b) => (b.monthlyUsers || 0) - (a.monthlyUsers || 0))
       .slice(0, 2);
     for (const backup of backups) {
-      actorRegistry[backup.key] = { ...backup, _isBackup: true } as any;
+      actorRegistry[backup.key] = { ...backup, _isBackup: true, _backupForSubCategory: subCat } as any;
     }
   }
 

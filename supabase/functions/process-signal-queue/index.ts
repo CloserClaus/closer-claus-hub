@@ -166,9 +166,18 @@ function isNotRentedError(errMsg: string): boolean {
     (lower.includes("403") && (lower.includes("rent") || lower.includes("paid")));
 }
 
-function findBackupActors(category: string): ActorEntry[] {
+function findBackupActors(primaryActor: ActorEntry): ActorEntry[] {
+  const subCategory = (primaryActor as any).subCategory;
   return [...planActorRegistry.values()]
-    .filter(a => a.category === category && (a as any)._isBackup === true)
+    .filter(a => {
+      if (!(a as any)._isBackup) return false;
+      // Strict: match subCategory if available (prevents cross-type fallback like Google Maps → LinkedIn Jobs)
+      if (subCategory && (a as any).subCategory) {
+        return (a as any).subCategory === subCategory;
+      }
+      // Fallback: match broad category only if subCategory is unavailable
+      return a.category === primaryActor.category;
+    })
     .sort((a, b) => (b.monthlyUsers || 0) - (a.monthlyUsers || 0));
 }
 
@@ -198,12 +207,36 @@ async function startApifyRunWithFallback(
     const errMsg = err instanceof Error ? err.message : String(err);
     if (!isNotRentedError(errMsg)) throw err;
 
-    console.warn(`Actor ${actor.key} is not rented (403), trying backups for category "${actor.category}"`);
-    const backups = findBackupActors(actor.category);
+    console.warn(`Actor ${actor.key} is not rented (403), trying backups for subCategory "${(actor as any).subCategory || actor.category}"`);
+    const backups = findBackupActors(actor);
+
+    if (backups.length === 0) {
+      throw new Error(`Actor ${actor.key} not rented and no same-type backup actors available (subCategory: ${(actor as any).subCategory || actor.category}). Original error: ${errMsg}`);
+    }
 
     for (const backup of backups) {
       try {
         console.log(`Trying backup actor: ${backup.key} (${backup.label})`);
+        // Runtime schema fetch if backup has no inputSchema
+        if (!backup.inputSchema || Object.keys(backup.inputSchema).length === 0) {
+          try {
+            const actorIdEncoded = backup.actorId.replace("/", "~");
+            const schemaResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${token}`, { method: "GET" });
+            if (schemaResp.ok) {
+              const schemaData = await schemaResp.json();
+              const props = schemaData.properties || schemaData.data?.properties || {};
+              if (Object.keys(props).length > 0) {
+                const fetchedSchema: Record<string, InputField> = {};
+                for (const [key, val] of Object.entries(props as Record<string, any>)) {
+                  const type = val.type === "array" ? "string[]" : (val.type === "integer" ? "number" : (val.type || "string"));
+                  fetchedSchema[key] = { type: type as any, required: false, default: val.default, description: (val.description || key).slice(0, 200) };
+                }
+                backup.inputSchema = fetchedSchema;
+                console.log(`Runtime schema fetch for ${backup.key}: ${Object.keys(fetchedSchema).length} fields discovered`);
+              }
+            }
+          } catch (e) { console.warn(`Runtime schema fetch failed for ${backup.key}:`, e); }
+        }
         const backupInput = buildGenericInput(backup, input);
         if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
         const result = await startApifyRun(backup, backupInput, token);
@@ -216,8 +249,8 @@ async function startApifyRunWithFallback(
       }
     }
 
-    // All backups exhausted
-    throw new Error(`Actor ${actor.key} not rented and all ${backups.length} backup actors failed. Original error: ${errMsg}`);
+    // All backups exhausted — throw, do NOT fall through
+    throw new Error(`Actor ${actor.key} not rented and all ${backups.length} same-type backup actors failed. Original error: ${errMsg}`);
   }
 }
 
@@ -811,6 +844,27 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
   for (const actorKey of actors) {
     const actor = getActor(actorKey);
     if (!actor) continue;
+
+    // Runtime schema fetch: if actor has no inputSchema, fetch it from Apify before building params
+    if (!actor.inputSchema || Object.keys(actor.inputSchema).length === 0) {
+      try {
+        const actorIdEncoded = actor.actorId.replace("/", "~");
+        const schemaResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${APIFY_API_TOKEN}`, { method: "GET" });
+        if (schemaResp.ok) {
+          const schemaData = await schemaResp.json();
+          const props = schemaData.properties || schemaData.data?.properties || {};
+          if (Object.keys(props).length > 0) {
+            const fetchedSchema: Record<string, InputField> = {};
+            for (const [key, val] of Object.entries(props as Record<string, any>)) {
+              const type = val.type === "array" ? "string[]" : (val.type === "integer" ? "number" : (val.type || "string"));
+              fetchedSchema[key] = { type: type as any, required: false, default: val.default, description: (val.description || key).slice(0, 200) };
+            }
+            actor.inputSchema = fetchedSchema;
+            console.log(`Runtime schema fetch for ${actorKey}: ${Object.keys(fetchedSchema).length} fields discovered`);
+          }
+        }
+      } catch (e) { console.warn(`Runtime schema fetch failed for ${actorKey}:`, e); }
+    }
 
     if (stageNum === 1) {
       // Discovery stage: use search_query and params_per_actor
