@@ -7,12 +7,16 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
+import { Slider } from '@/components/ui/slider';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Zap, Loader2, Play, Clock, Trash2, RotateCcw, Plus, History,
   Globe, Phone, MapPin, Building2, Search, Mail, Sparkles,
   Briefcase, Rocket, FileText, AlertTriangle, ArrowRight, Filter, Users, User,
-  Bookmark, List, MoreHorizontal,
+  Bookmark, List, MoreHorizontal, Settings, Download,
 } from 'lucide-react';
+import { exportLeadsToCSV } from '@/lib/csvExport';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
