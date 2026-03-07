@@ -264,13 +264,14 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
           actorId,
           label: item.title || item.name || actorId,
           category,
+          subCategory,
           description: (item.description || "").slice(0, 500),
           inputSchema,
           outputFields,
           monthlyUsers: item.stats?.totalUsers || 0,
           totalRuns: item.stats?.totalRuns || 0,
           rating: item.stats?.publicStarVotes?.average || 0,
-        };
+        } as any;
 
         discovered.push(actor);
 
