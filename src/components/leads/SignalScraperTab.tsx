@@ -894,7 +894,11 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
                       <div className="text-sm text-muted-foreground">{formatLocation(lead) || '—'}</div>
                     </td>
                     <td className="p-3 align-middle hidden lg:table-cell">
-                      <div className="text-sm text-muted-foreground">{lead.industry || '—'}</div>
+                      {lead.industry ? (
+                        <Badge variant="secondary" className="text-xs font-normal max-w-[140px] truncate" title={lead.industry}>
+                          {formatIndustry(lead.industry)}
+                        </Badge>
+                      ) : <span className="text-sm text-muted-foreground">—</span>}
                     </td>
                     <td className="p-3 align-middle">
                       <div className="flex gap-1">
