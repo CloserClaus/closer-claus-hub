@@ -17,7 +17,9 @@ import {
   Sparkles,
   Search,
   Filter,
+  Download,
 } from 'lucide-react';
+import { exportLeadsToCSV } from '@/lib/csvExport';
 import { Tables } from '@/integrations/supabase/types';
 
 type ApolloLead = Tables<'apollo_leads'>;
