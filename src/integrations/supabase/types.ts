@@ -3104,6 +3104,51 @@ export type Database = {
           },
         ]
       }
+      signal_actor_cache: {
+        Row: {
+          actor_id: string
+          actor_key: string | null
+          cached_at: string | null
+          category: string | null
+          description: string | null
+          id: string
+          input_schema: Json | null
+          label: string | null
+          monthly_users: number | null
+          output_fields: Json | null
+          rating: number | null
+          total_runs: number | null
+        }
+        Insert: {
+          actor_id: string
+          actor_key?: string | null
+          cached_at?: string | null
+          category?: string | null
+          description?: string | null
+          id?: string
+          input_schema?: Json | null
+          label?: string | null
+          monthly_users?: number | null
+          output_fields?: Json | null
+          rating?: number | null
+          total_runs?: number | null
+        }
+        Update: {
+          actor_id?: string
+          actor_key?: string | null
+          cached_at?: string | null
+          category?: string | null
+          description?: string | null
+          id?: string
+          input_schema?: Json | null
+          label?: string | null
+          monthly_users?: number | null
+          output_fields?: Json | null
+          rating?: number | null
+          total_runs?: number | null
+        }
+        Relationships: []
+      }
       signal_dataset_cache: {
         Row: {
           created_at: string
@@ -3290,6 +3335,7 @@ export type Database = {
           last_run_at: string | null
           leads_discovered: number | null
           next_run_at: string | null
+          pipeline_adjustments: Json | null
           pipeline_stage_count: number
           processing_phase: string | null
           retry_count: number | null
@@ -3319,6 +3365,7 @@ export type Database = {
           last_run_at?: string | null
           leads_discovered?: number | null
           next_run_at?: string | null
+          pipeline_adjustments?: Json | null
           pipeline_stage_count?: number
           processing_phase?: string | null
           retry_count?: number | null
@@ -3348,6 +3395,7 @@ export type Database = {
           last_run_at?: string | null
           leads_discovered?: number | null
           next_run_at?: string | null
+          pipeline_adjustments?: Json | null
           pipeline_stage_count?: number
           processing_phase?: string | null
           retry_count?: number | null
