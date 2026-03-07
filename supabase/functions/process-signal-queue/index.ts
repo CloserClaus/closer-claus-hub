@@ -773,31 +773,80 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
 
       for (const keyword of keywords) {
         const input = { ...actorParams };
+        const schemaKeys = Object.keys(actor.inputSchema);
+        const hasSchema = schemaKeys.length > 0;
 
-        if (actorKey === "linkedin_jobs") {
-          const location = input.location || input.searchLocation || "United States";
-          const encodedKeyword = encodeURIComponent(keyword);
-          const encodedLocation = encodeURIComponent(location);
-          input.urls = [`https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=r604800`];
-          delete input.searchKeywords;
-          delete input.searchLocation;
-          // Force disable splitByLocation
-          input.splitByLocation = false;
-          delete input.splitCountry;
-        } else if (actorKey === "indeed_jobs") {
-          input.title = keyword;
+        // Category-based input construction — works with any dynamic actor
+        if (actor.category === "hiring_intent") {
+          // Job board actors: detect input format from schema or common patterns
+          const hasUrls = hasSchema ? !!actor.inputSchema["urls"] || !!actor.inputSchema["startUrls"] : false;
+          const hasTitleField = hasSchema ? !!actor.inputSchema["title"] || !!actor.inputSchema["position"] : false;
+          const hasSearchQuery = hasSchema ? !!actor.inputSchema["searchQuery"] || !!actor.inputSchema["search"] || !!actor.inputSchema["queries"] || !!actor.inputSchema["keyword"] || !!actor.inputSchema["keywords"] : false;
+
+          if (actor.actorId.includes("linkedin") || actor.label.toLowerCase().includes("linkedin")) {
+            // LinkedIn Jobs: build search URL
+            const location = input.location || input.searchLocation || "United States";
+            const encodedKeyword = encodeURIComponent(keyword);
+            const encodedLocation = encodeURIComponent(location);
+            const searchUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=r604800`;
+            if (hasUrls || !hasSchema) {
+              input.urls = input.urls || [searchUrl];
+              input.startUrls = input.startUrls || [{ url: searchUrl }];
+            }
+            input.splitByLocation = false;
+            delete input.splitCountry;
+          } else if (actor.actorId.includes("indeed") || actor.label.toLowerCase().includes("indeed")) {
+            // Indeed: use title/position/query field
+            if (hasTitleField) {
+              if (actor.inputSchema["title"]) input.title = keyword;
+              else if (actor.inputSchema["position"]) input.position = keyword;
+            } else {
+              // Fallback: try common field names
+              input.title = input.title || keyword;
+              input.position = input.position || keyword;
+            }
+          } else if (hasSearchQuery) {
+            // Generic job board with search field
+            const qField = schemaKeys.find(f => ["searchQuery", "search", "keyword", "keywords", "query"].includes(f));
+            if (qField) input[qField] = keyword;
+            const arrField = schemaKeys.find(f => ["queries", "searchTerms", "searchStringsArray"].includes(f));
+            if (arrField) input[arrField] = [keyword];
+          } else {
+            // No schema — provide all common field names so one sticks
+            input.title = input.title || keyword;
+            input.search = input.search || keyword;
+            input.searchQuery = input.searchQuery || keyword;
+            input.keyword = input.keyword || keyword;
+            input.queries = input.queries || [keyword];
+          }
         } else {
-          const keywordFields = ["title", "search", "searchQuery"];
-          const kf = keywordFields.find(f => actor.inputSchema[f]);
-          if (kf) input[kf] = keyword;
-          const arrayFields = ["searchStringsArray", "queries", "searchTerms"];
-          for (const af of arrayFields) {
-            if (actor.inputSchema[af]) input[af] = [keyword];
+          // Non-hiring actors in stage 1 (e.g., Google Maps, business directories)
+          if (hasSchema) {
+            const keywordFields = ["title", "search", "searchQuery", "query", "keyword", "keywords", "searchTerm"];
+            const kf = keywordFields.find(f => actor.inputSchema[f]);
+            if (kf) input[kf] = keyword;
+            const arrayFields = ["searchStringsArray", "queries", "searchTerms"];
+            for (const af of arrayFields) {
+              if (actor.inputSchema[af]) input[af] = [keyword];
+            }
+          } else {
+            // No schema — supply common field names
+            input.search = input.search || keyword;
+            input.searchQuery = input.searchQuery || keyword;
+            input.queries = input.queries || [keyword];
           }
         }
 
-        const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
-        if (maxField && !input[maxField]) input[maxField] = actor.inputSchema[maxField]?.default || 500;
+        // Set max results limit
+        if (hasSchema) {
+          const maxField = schemaKeys.find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
+          if (maxField && !input[maxField]) input[maxField] = actor.inputSchema[maxField]?.default || 500;
+        } else {
+          // Common limit field names for schemaless actors
+          if (!input.maxResults && !input.limit && !input.count && !input.maxItems) {
+            input.maxResults = 500;
+          }
+        }
 
         const actorInput = buildGenericInput(actor, input);
         if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
