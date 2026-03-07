@@ -215,6 +215,34 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
           console.warn(`No inputSchema found for ${actorId} — actor params will be passed through directly at runtime`);
         }
 
+        // Pre-flight access check: verify actor is runnable on this Apify account
+        let isAccessible = true;
+        try {
+          const accessResp = await fetch(
+            `https://api.apify.com/v2/acts/${actorIdEncoded}?token=${APIFY_API_TOKEN}`,
+            { method: "GET" }
+          );
+          if (accessResp.ok) {
+            const accessData = await accessResp.json();
+            const actorInfo = accessData.data;
+            // Check for deprecated or explicitly inaccessible actors
+            if (actorInfo?.isDeprecated) {
+              console.warn(`Actor ${actorId} is deprecated — skipping`);
+              isAccessible = false;
+            }
+            // Check if the actor requires rental and we don't have it
+            // Apify returns externallyUsable: false or isExternallyUsable: false for unrented paid actors
+            if (actorInfo?.externallyUsable === false || actorInfo?.isExternallyUsable === false) {
+              console.warn(`Actor ${actorId} is not rented/accessible — skipping`);
+              isAccessible = false;
+            }
+          }
+        } catch (e) {
+          console.warn(`Pre-flight access check failed for ${actorId}, assuming accessible:`, e);
+        }
+
+        if (!isAccessible) continue;
+
         const category = categorizeActor(item.title || "", item.description || "");
         const outputFields = inferOutputFields(category);
 
