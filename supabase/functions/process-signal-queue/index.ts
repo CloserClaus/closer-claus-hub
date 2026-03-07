@@ -810,25 +810,55 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
       console.log(`Stage ${stageNum}: Inserted ${leadsToInsert.length} leads from dataset ${collectedIndex + 1}`);
     } else if (actor.category === "people_data") {
       // People-finding stage: UPDATE existing leads with person data
+      // Pre-fetch all leads for this run to enable robust matching
+      const { data: allRunLeads } = await serviceClient
+        .from("signal_leads").select("id, company_name, domain, company_linkedin_url").eq("run_id", run.id).limit(10000);
+      const runLeads = allRunLeads || [];
+
       for (const item of normalised) {
-        const companyName = item.company_name || "";
-        if (!companyName) continue;
+        const personCompany = (item.company_name || "").trim().toLowerCase();
+        if (!personCompany) continue;
 
-        // Find matching lead by company name
-        const { data: matchingLeads } = await serviceClient
-          .from("signal_leads")
-          .select("id")
-          .eq("run_id", run.id)
-          .ilike("company_name", `%${companyName.slice(0, 30)}%`)
-          .limit(1);
+        // Try matching strategies in order: domain, normalized company name, linkedin URL
+        let matchedLeadId: string | null = null;
 
-        if (matchingLeads && matchingLeads.length > 0) {
+        // Strategy 1: Match by domain extracted from person's company LinkedIn or raw data
+        const personLinkedIn = item._raw?.currentCompanyLinkedinUrl || item._raw?.companyLinkedinUrl || "";
+        const personDomain = extractDomain(item._raw?.companyUrl || item._raw?.website || "");
+        if (personDomain) {
+          const domainMatch = runLeads.find((l: any) => l.domain && l.domain === personDomain);
+          if (domainMatch) matchedLeadId = domainMatch.id;
+        }
+
+        // Strategy 2: Exact case-insensitive company name match
+        if (!matchedLeadId) {
+          const nameMatch = runLeads.find((l: any) => (l.company_name || "").trim().toLowerCase() === personCompany);
+          if (nameMatch) matchedLeadId = nameMatch.id;
+        }
+
+        // Strategy 3: Fuzzy — company name contains or is contained
+        if (!matchedLeadId) {
+          const fuzzyMatch = runLeads.find((l: any) => {
+            const leadName = (l.company_name || "").trim().toLowerCase();
+            return leadName && (leadName.includes(personCompany) || personCompany.includes(leadName));
+          });
+          if (fuzzyMatch) matchedLeadId = fuzzyMatch.id;
+        }
+
+        // Strategy 4: Match by LinkedIn company URL
+        if (!matchedLeadId && personLinkedIn) {
+          const normalizedPersonLI = personLinkedIn.toLowerCase().replace(/\/$/, "");
+          const liMatch = runLeads.find((l: any) => l.company_linkedin_url && l.company_linkedin_url.toLowerCase().replace(/\/$/, "") === normalizedPersonLI);
+          if (liMatch) matchedLeadId = liMatch.id;
+        }
+
+        if (matchedLeadId) {
           await serviceClient.from("signal_leads").update({
             contact_name: item.contact_name || null,
             title: item.title || null,
             linkedin_profile_url: item.linkedin_profile || null,
             pipeline_stage: `stage_${stageNum}`,
-          }).eq("id", matchingLeads[0].id);
+          }).eq("id", matchedLeadId);
         }
       }
       console.log(`Stage ${stageNum}: Updated leads with person data from dataset ${collectedIndex + 1}`);
