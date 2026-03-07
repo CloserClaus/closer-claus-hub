@@ -1109,9 +1109,10 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
       const userMessage = `All leads were filtered out by stage ${stageNum}. No results remain to process. Try adjusting your filtering criteria or broadening your search.`;
       console.log(`Stage ${stageNum}: All leads eliminated — aborting pipeline`);
       
-      await serviceClient.from("signal_runs").update({
+      const { error: elimError } = await serviceClient.from("signal_runs").update({
         status: "failed",
         error_message: userMessage,
+        processing_phase: "aborted",
         pipeline_adjustments: [...(run.pipeline_adjustments || []), {
           stage: stageNum,
           quality: "USELESS",
@@ -1119,6 +1120,10 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
           timestamp: new Date().toISOString(),
         }],
       }).eq("id", run.id);
+      if (elimError) {
+        console.error(`Stage ${stageNum}: Failed to update abort status:`, elimError);
+        await serviceClient.from("signal_runs").update({ status: "failed", processing_phase: "aborted" }).eq("id", run.id);
+      }
 
       if (run.user_id) {
         await serviceClient.from("notifications").insert({
