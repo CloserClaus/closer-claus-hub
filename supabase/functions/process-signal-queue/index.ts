@@ -1066,9 +1066,10 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         const userMessage = `No results found from ${(stageDef.actors || []).join(" + ")} in stage ${stageNum}. This can happen when job boards or search sources return empty results for your query. Try broadening your search terms, expanding the date range, or adjusting your criteria.`;
         console.log(`Stage ${stageNum}: ZERO RESULTS — aborting pipeline`);
         
-        await serviceClient.from("signal_runs").update({
+        const { error: abortError } = await serviceClient.from("signal_runs").update({
           status: "failed",
           error_message: userMessage,
+          processing_phase: "aborted",
           pipeline_adjustments: [...(run.pipeline_adjustments || []), {
             stage: stageNum,
             quality: "USELESS",
@@ -1076,6 +1077,17 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
             timestamp: new Date().toISOString(),
           }],
         }).eq("id", run.id);
+
+        if (abortError) {
+          console.error(`Stage ${stageNum}: Failed to update status to failed:`, abortError);
+          // Retry once
+          const { error: retryError } = await serviceClient.from("signal_runs").update({
+            status: "failed",
+            error_message: userMessage,
+            processing_phase: "aborted",
+          }).eq("id", run.id);
+          if (retryError) console.error(`Stage ${stageNum}: Retry also failed:`, retryError);
+        }
 
         if (run.user_id) {
           await serviceClient.from("notifications").insert({
