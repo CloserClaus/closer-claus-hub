@@ -924,17 +924,12 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
                         <div className="space-y-0.5">
                           {lead.email && <div className="text-xs flex items-center gap-1"><Mail className="h-3 w-3" />{lead.email}</div>}
                           {lead.phone && <div className="text-xs flex items-center gap-1"><Phone className="h-3 w-3" />{lead.phone}</div>}
-                          {!lead.email && !lead.phone && <span className="text-xs text-muted-foreground">No data</span>}
+                          {!lead.email && !lead.phone && <span className="text-xs text-muted-foreground">No data found</span>}
                         </div>
-                      ) : (lead.email || lead.phone) ? (
-                        <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => enrichLeadMutation.mutate(lead)} disabled={enrichLeadMutation.isPending}>
-                          {enrichLeadMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3 mr-1" />}
-                          Reveal
-                        </Button>
                       ) : (
                         <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => enrichLeadMutation.mutate(lead)} disabled={enrichLeadMutation.isPending}>
                           {enrichLeadMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3 mr-1" />}
-                          Enrich
+                          Reveal
                         </Button>
                       )}
                     </td>
