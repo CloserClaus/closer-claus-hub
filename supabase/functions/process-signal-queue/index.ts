@@ -166,9 +166,18 @@ function isNotRentedError(errMsg: string): boolean {
     (lower.includes("403") && (lower.includes("rent") || lower.includes("paid")));
 }
 
-function findBackupActors(category: string): ActorEntry[] {
+function findBackupActors(primaryActor: ActorEntry): ActorEntry[] {
+  const subCategory = (primaryActor as any).subCategory;
   return [...planActorRegistry.values()]
-    .filter(a => a.category === category && (a as any)._isBackup === true)
+    .filter(a => {
+      if (!(a as any)._isBackup) return false;
+      // Strict: match subCategory if available (prevents cross-type fallback like Google Maps → LinkedIn Jobs)
+      if (subCategory && (a as any).subCategory) {
+        return (a as any).subCategory === subCategory;
+      }
+      // Fallback: match broad category only if subCategory is unavailable
+      return a.category === primaryActor.category;
+    })
     .sort((a, b) => (b.monthlyUsers || 0) - (a.monthlyUsers || 0));
 }
 
