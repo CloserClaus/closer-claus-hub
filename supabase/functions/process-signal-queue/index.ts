@@ -944,8 +944,8 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
 
         try {
-          const { runId, datasetId } = await startApifyRun(actor, actorInput, APIFY_API_TOKEN);
-          refs.push({ actorKey, keyword: `linkedin_discovery_batch_${i}`, runId, datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
+          const { runId, datasetId, usedActor } = await startApifyRunWithFallback(actor, actorInput, APIFY_API_TOKEN);
+          refs.push({ actorKey: usedActor.key, keyword: `linkedin_discovery_batch_${i}`, runId, datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
           console.log(`Stage ${stageNum}: Started LinkedIn URL discovery batch ${i / BATCH_SIZE + 1} (${batch.length} companies)`);
         } catch (err) {
           console.error(`Stage ${stageNum}: LinkedIn URL discovery batch failed:`, err);
