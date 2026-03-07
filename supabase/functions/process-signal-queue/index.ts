@@ -845,6 +845,27 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
     const actor = getActor(actorKey);
     if (!actor) continue;
 
+    // Runtime schema fetch: if actor has no inputSchema, fetch it from Apify before building params
+    if (!actor.inputSchema || Object.keys(actor.inputSchema).length === 0) {
+      try {
+        const actorIdEncoded = actor.actorId.replace("/", "~");
+        const schemaResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${APIFY_API_TOKEN}`, { method: "GET" });
+        if (schemaResp.ok) {
+          const schemaData = await schemaResp.json();
+          const props = schemaData.properties || schemaData.data?.properties || {};
+          if (Object.keys(props).length > 0) {
+            const fetchedSchema: Record<string, InputField> = {};
+            for (const [key, val] of Object.entries(props as Record<string, any>)) {
+              const type = val.type === "array" ? "string[]" : (val.type === "integer" ? "number" : (val.type || "string"));
+              fetchedSchema[key] = { type: type as any, required: false, default: val.default, description: (val.description || key).slice(0, 200) };
+            }
+            actor.inputSchema = fetchedSchema;
+            console.log(`Runtime schema fetch for ${actorKey}: ${Object.keys(fetchedSchema).length} fields discovered`);
+          }
+        }
+      } catch (e) { console.warn(`Runtime schema fetch failed for ${actorKey}:`, e); }
+    }
+
     if (stageNum === 1) {
       // Discovery stage: use search_query and params_per_actor
       const actorParams = stageDef.params_per_actor?.[actorKey] || {};
