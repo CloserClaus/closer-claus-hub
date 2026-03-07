@@ -334,17 +334,30 @@ function extractComprehensiveSearchTerms(query: string): string[] {
   return [...terms].slice(0, 10); // Cap at 10 searches
 }
 
-function categorizeActor(title: string, desc: string): string {
+function categorizeActor(title: string, desc: string): { category: string; subCategory: string } {
   const text = `${title} ${desc}`.toLowerCase();
-  if (text.includes("indeed") || (text.includes("job") && (text.includes("scraper") || text.includes("search")))) return "hiring_intent";
-  if (text.includes("linkedin job")) return "hiring_intent";
-  if (text.includes("google maps") || text.includes("yelp") || text.includes("yellow pages") || text.includes("local business")) return "local_business";
-  if (text.includes("linkedin company") || text.includes("linkedin profile") || text.includes("company data") || text.includes("company scraper")) return "company_data";
-  if (text.includes("linkedin people") || text.includes("people search") || text.includes("people finder") || text.includes("person")) return "people_data";
-  if (text.includes("email") || text.includes("contact") || text.includes("enrich") || text.includes("phone")) return "enrichment";
-  if (text.includes("website") || text.includes("crawl") || text.includes("content")) return "website_data";
-  if (text.includes("google search") || text.includes("search engine") || text.includes("serp")) return "web_search";
-  return "other";
+  // Hiring intent — sub-typed by platform
+  if (text.includes("linkedin job")) return { category: "hiring_intent", subCategory: "hiring_intent:linkedin" };
+  if (text.includes("indeed")) return { category: "hiring_intent", subCategory: "hiring_intent:indeed" };
+  if (text.includes("glassdoor")) return { category: "hiring_intent", subCategory: "hiring_intent:glassdoor" };
+  if (text.includes("job") && (text.includes("scraper") || text.includes("search"))) return { category: "hiring_intent", subCategory: "hiring_intent:generic_jobs" };
+  // Local business — sub-typed by platform
+  if (text.includes("google maps")) return { category: "local_business", subCategory: "local_business:google_maps" };
+  if (text.includes("yelp")) return { category: "local_business", subCategory: "local_business:yelp" };
+  if (text.includes("yellow pages")) return { category: "local_business", subCategory: "local_business:yellow_pages" };
+  if (text.includes("local business")) return { category: "local_business", subCategory: "local_business:generic" };
+  // Company data
+  if (text.includes("linkedin company")) return { category: "company_data", subCategory: "company_data:linkedin" };
+  if (text.includes("linkedin profile") || text.includes("company data") || text.includes("company scraper")) return { category: "company_data", subCategory: "company_data:generic" };
+  // People data
+  if (text.includes("linkedin people") || text.includes("people search") || text.includes("people finder") || text.includes("person")) return { category: "people_data", subCategory: "people_data:linkedin" };
+  // Enrichment
+  if (text.includes("email") || text.includes("contact") || text.includes("enrich") || text.includes("phone")) return { category: "enrichment", subCategory: "enrichment:generic" };
+  // Website/crawl
+  if (text.includes("website") || text.includes("crawl") || text.includes("content")) return { category: "website_data", subCategory: "website_data:generic" };
+  // Web search
+  if (text.includes("google search") || text.includes("search engine") || text.includes("serp")) return { category: "web_search", subCategory: "web_search:google" };
+  return { category: "other", subCategory: "other" };
 }
 
 // ════════════════════════════════════════════════════════════════
