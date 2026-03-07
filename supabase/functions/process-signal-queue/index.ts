@@ -261,7 +261,7 @@ async function pollApifyRun(runId: string, token: string): Promise<string> {
   return data.data.status;
 }
 
-async function collectApifyResults(datasetId: string, token: string): Promise<any[]> {
+async function collectApifyResults(datasetId: string, token: string, maxItems?: number): Promise<any[]> {
   const PAGE_SIZE = 500;
   let allItems: any[] = [];
   let offset = 0;
@@ -274,9 +274,13 @@ async function collectApifyResults(datasetId: string, token: string): Promise<an
     const items = await resp.json();
     allItems.push(...items);
     if (items.length < PAGE_SIZE) break;
+    if (maxItems && allItems.length >= maxItems) {
+      allItems = allItems.slice(0, maxItems);
+      break;
+    }
     offset += PAGE_SIZE;
   }
-  return allItems;
+  return maxItems ? allItems.slice(0, maxItems) : allItems;
 }
 
 async function abortApifyRun(runId: string, token: string): Promise<void> {

@@ -508,6 +508,36 @@ Before designing each stage, check what data PREVIOUS stages actually produce:
 10. For hiring intent, try to use multiple job board actors in stage 1 for broader coverage
 11. Include dedup_after: true for stage 1
 
+## STAGE 1 QUERY PRECISION (CRITICAL — SYSTEM-WIDE)
+
+When the user's goal targets a specific industry, vertical, company type, or niche, you MUST include those qualifiers directly in ALL Stage 1 search parameters. This applies to EVERY actor type — job boards, Google Maps, business directories, company databases, etc.
+
+Rules:
+1. ALWAYS combine the signal keyword (e.g., role title, service type) with the industry/vertical qualifier in Stage 1 search terms:
+   - Job boards: "marketing agency sales representative" NOT just "sales representative"
+   - Google Maps: "marketing agencies" NOT just "agencies"
+   - Business directories: "SaaS companies" NOT just "companies"
+   - LinkedIn: include industry terms in the search query alongside role/company keywords
+2. If the actor's input schema has dedicated industry/category filter fields (e.g., "industry", "category", "companyIndustry", "sector"), SET THEM in params_per_actor in addition to embedding industry terms in the search query.
+3. The search_query field must reflect the FULL intent — all dimensions the user specified (industry + signal + geography if applicable).
+4. NEVER rely solely on downstream ai_filter stages to narrow by industry or vertical. The first stage MUST be as precise as possible at the source level.
+5. Stage 1 should capture ALL relevant signals while excluding obviously irrelevant ones at the source level.
+
+Anti-pattern (NEVER do this):
+- User asks: "Find marketing agencies hiring SDRs"
+- BAD Stage 1 search_query: "SDR OR Sales Representative" (too broad — returns all industries)
+- GOOD Stage 1 search_query: "marketing agency SDR OR advertising agency Sales Representative"
+
+## ACTOR INPUT OPTIMIZATION
+
+Before setting params_per_actor, inspect each actor's input schema for filtering capabilities:
+- Industry/category fields (e.g., "industry", "category", "companyIndustry") — always set when the user specifies an industry
+- Location fields — always set when the user specifies geography
+- Date range fields — always set when temporal freshness matters
+- Company size fields — set when user specifies small/medium/large companies
+
+If an actor LACKS an industry filter in its schema, embed industry keywords directly in the search query string instead. The goal is maximum precision at the source regardless of actor capabilities.
+
 ## DECISION MAKER SELECTION
 
 When finding people, select titles based on target company size:
