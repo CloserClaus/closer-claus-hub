@@ -961,20 +961,40 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         break;
       }
 
-      const BATCH_SIZE = actorKey === "linkedin_people" ? 50 : actorKey === "linkedin_companies" ? 100 : 50;
+      const BATCH_SIZE = actor.category === "people_data" ? 50 : actor.category === "company_data" ? 100 : 50;
       for (let i = 0; i < inputValues.length; i += BATCH_SIZE) {
         const batch = inputValues.slice(i, i + BATCH_SIZE);
         const actorParams = stageDef.params_per_actor?.[actorKey] || {};
         const input: Record<string, any> = { ...actorParams };
 
-        if (actor.inputSchema["startUrls"]) {
-          input.startUrls = batch.map(url => ({ url }));
-        } else if (actor.inputSchema["profileUrls"]) {
-          input.profileUrls = batch;
-        } else if (actor.inputSchema["urls"]) {
-          input.urls = batch;
-        } else if (actor.inputSchema["queries"]) {
-          input.queries = batch;
+        const hasSchema = Object.keys(actor.inputSchema).length > 0;
+
+        // Determine how to pass the batch to this actor
+        if (hasSchema) {
+          if (actor.inputSchema["startUrls"]) {
+            input.startUrls = batch.map(url => ({ url }));
+          } else if (actor.inputSchema["profileUrls"]) {
+            input.profileUrls = batch;
+          } else if (actor.inputSchema["urls"]) {
+            input.urls = batch;
+          } else if (actor.inputSchema["queries"]) {
+            input.queries = batch;
+          } else {
+            // Schema exists but none of the common fields match — try all
+            input.startUrls = batch.map(url => ({ url }));
+            input.urls = batch;
+          }
+        } else {
+          // No schema — provide all common input formats so one sticks
+          const looksLikeUrls = batch[0]?.startsWith("http");
+          if (looksLikeUrls) {
+            input.startUrls = batch.map(url => ({ url }));
+            input.urls = batch;
+            input.profileUrls = batch;
+          } else {
+            input.queries = batch;
+            input.searchStringsArray = batch;
+          }
         }
 
         const actorInput = buildGenericInput(actor, input);
