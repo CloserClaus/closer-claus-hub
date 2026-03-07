@@ -1111,17 +1111,39 @@ async function pipelineFinalize(run: any, serviceClient: any) {
     }
   }
 
-  // Calculate cost
+  // Calculate cost based on actual pipeline work: scrape rows + AI filtered rows
   const { count: finalCount } = await serviceClient
     .from("signal_leads").select("*", { count: "exact", head: true }).eq("run_id", run.id);
   const leadsCount = finalCount ?? uniqueLeads.length;
 
   let actualCredits = 0;
   if (leadsCount > 0) {
-    // ~$1/1000 actual Apify cost, 4x markup, 5 credits = $1
-    const scrapeCostUsd = (leadsCount / 1000) * 1.0;
-    const chargedPriceUsd = scrapeCostUsd * 4;
-    actualCredits = Math.max(5, Math.ceil(chargedPriceUsd * 5));
+    // Derive actual volumes from pipeline stage definitions
+    const pipeline = run.signal_plan?.pipeline || [];
+    let totalScrapedRows = 0;
+    let totalAiFilteredRows = 0;
+    let runningCount = 0;
+
+    for (const stage of pipeline) {
+      if (stage.type === "scrape") {
+        const stageCount = stage.expected_output_count || runningCount || 0;
+        totalScrapedRows += stageCount;
+        runningCount = stageCount;
+      } else if (stage.type === "ai_filter") {
+        totalAiFilteredRows += runningCount;
+        const passRate = stage.expected_pass_rate || 0.20;
+        runningCount = Math.floor(runningCount * passRate);
+      }
+    }
+
+    // Fallback: if pipeline metadata missing, use final lead count
+    if (totalScrapedRows === 0) totalScrapedRows = leadsCount;
+
+    // Formula: (scrape_cost + ai_cost) * 1.5 (50% operational overhead) * 5 credits/$1
+    const scrapeCostUsd = (totalScrapedRows / 1000) * 1.0;
+    const aiCostUsd = totalAiFilteredRows * 0.001;
+    const totalUsd = (scrapeCostUsd + aiCostUsd) * 1.5;
+    actualCredits = Math.max(5, Math.ceil(totalUsd * 5));
   }
 
   // Charge credits
@@ -1429,9 +1451,10 @@ async function legacyPhaseFinalizing(run: any, serviceClient: any) {
 
   let actualCredits = 0;
   if (leadsCount > 0) {
-    // ~$1/1000 actual Apify cost, 4x markup, 5 credits = $1
+    // Legacy runs: use final lead count as scrape estimate, no AI stages
     const scrapeCostUsd = (leadsCount / 1000) * 1.0;
-    actualCredits = Math.max(5, Math.ceil(scrapeCostUsd * 4 * 5));
+    const totalUsd = scrapeCostUsd * 1.5;
+    actualCredits = Math.max(5, Math.ceil(totalUsd * 5));
   }
 
   await legacyFinalizeRun(run, serviceClient, leadsCount, actualCredits);
