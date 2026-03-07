@@ -974,24 +974,36 @@ async function handleGeneratePlan(
   // Apply advanced settings caps
   if (advanced_settings?.max_results_per_source) {
     const maxCap = advanced_settings.max_results_per_source;
-    const capFields = ["count", "limit", "maxItems", "maxCrawledPlacesPerSearch", "maxResults"];
     for (const stage of parsedPlan.pipeline) {
       if (stage.stage === 1 && stage.type === "scrape") {
-        // Cap actor params
+        // Cap actor params using the full list of known row-limit keys
+        let totalInferred = 0;
+        const actorCount = Object.keys(stage.params_per_actor || {}).length || 1;
         if (stage.params_per_actor) {
           for (const actorKey of Object.keys(stage.params_per_actor)) {
             const actorParams = stage.params_per_actor[actorKey];
-            for (const field of capFields) {
+            let actorCapped = false;
+            for (const field of ROW_CAP_KEYS) {
               if (actorParams[field] !== undefined && actorParams[field] > maxCap) {
                 actorParams[field] = maxCap;
               }
+              if (typeof actorParams[field] === "number" && actorParams[field] > 0) {
+                actorCapped = true;
+              }
             }
+            // If no cap field exists, inject maxItems as a safety net
+            if (!actorCapped) {
+              actorParams.maxItems = maxCap;
+            }
+            // Infer this actor's expected output
+            const inferred = inferRowCapFromParams(actorParams);
+            totalInferred += inferred || maxCap;
           }
+        } else {
+          totalInferred = maxCap;
         }
-        // Also cap expected_output_count so the estimate reflects the cap
-        if (stage.expected_output_count && stage.expected_output_count > maxCap) {
-          stage.expected_output_count = maxCap;
-        }
+        // ALWAYS set expected_output_count for stage 1 so the estimator uses it
+        stage.expected_output_count = Math.min(totalInferred, maxCap * actorCount);
       }
     }
   }
