@@ -583,6 +583,9 @@ async function handlePhaseError(run: any, err: unknown, serviceClient: any) {
 // ═══════════════════════════════════════════════════════════
 
 async function processPipelinePhase(run: any, serviceClient: any) {
+  // Load actor registry from this run's plan (no hardcoded catalog)
+  loadActorRegistry(run.signal_plan);
+
   const phase = run.processing_phase || "stage_1_starting";
   console.log(`Pipeline signal ${run.id} phase=${phase}`);
 
