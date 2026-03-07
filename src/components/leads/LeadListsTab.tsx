@@ -37,7 +37,9 @@ import {
   Building2,
   MapPin,
   Sparkles,
+  Download,
 } from 'lucide-react';
+import { exportLeadsToCSV } from '@/lib/csvExport';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Tables } from '@/integrations/supabase/types';
