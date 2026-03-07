@@ -833,6 +833,19 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
     return parts.length > 0 ? parts.join(', ') : lead.location || '';
   };
 
+  const formatIndustry = (industry: string) => {
+    if (!industry) return '';
+    // Clean up common patterns
+    let clean = industry
+      .replace(/ and /gi, ' & ')
+      .replace(/,\s*/g, ', ');
+    // Take first category if comma-separated
+    const parts = clean.split(',').map(s => s.trim());
+    if (parts.length > 1) clean = parts[0];
+    // Truncate long strings
+    return clean.length > 30 ? clean.slice(0, 28) + '…' : clean;
+  };
+
   return (
     <Card>
       <CardHeader className="pb-3">
