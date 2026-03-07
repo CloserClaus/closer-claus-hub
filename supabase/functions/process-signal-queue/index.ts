@@ -1050,9 +1050,9 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
 
         try {
-          const { runId, datasetId } = await startApifyRun(actor, actorInput, APIFY_API_TOKEN);
-          refs.push({ actorKey, keyword: `batch_${i}`, runId, datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
-          console.log(`Stage ${stageNum}: Started ${actorKey} batch ${i / BATCH_SIZE + 1} (${batch.length} items) → run ${runId}`);
+          const { runId, datasetId, usedActor } = await startApifyRunWithFallback(actor, actorInput, APIFY_API_TOKEN);
+          refs.push({ actorKey: usedActor.key, keyword: `batch_${i}`, runId, datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
+          console.log(`Stage ${stageNum}: Started ${usedActor.key} batch ${i / BATCH_SIZE + 1} (${batch.length} items) → run ${runId}`);
         } catch (err) {
           console.error(`Stage ${stageNum}: Failed to start ${actorKey} batch:`, err);
           refs.push({ actorKey, keyword: `batch_${i}`, runId: "", datasetId: "", status: "FAILED", pipelineStage: stageNum });
