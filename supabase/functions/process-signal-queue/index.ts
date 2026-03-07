@@ -120,6 +120,13 @@ function extractDomain(url: string): string {
 }
 
 function buildGenericInput(actor: ActorEntry, params: Record<string, any>): Record<string, any> {
+  // If inputSchema is empty/missing, pass through ALL provided params directly
+  // This is critical for dynamically discovered actors whose schema couldn't be fetched
+  if (!actor.inputSchema || Object.keys(actor.inputSchema).length === 0) {
+    console.log(`buildGenericInput: No inputSchema for ${actor.key}, passing through all ${Object.keys(params).length} params`);
+    return { ...params };
+  }
+
   const result: Record<string, any> = {};
   for (const [field, schema] of Object.entries(actor.inputSchema)) {
     let value = params[field];
@@ -127,6 +134,15 @@ function buildGenericInput(actor: ActorEntry, params: Record<string, any>): Reco
     if (value === undefined) continue;
     result[field] = value;
   }
+
+  // Also pass through any params that aren't in the schema but were explicitly provided
+  // (the planner knows what params the actor needs even if schema fetch failed partially)
+  for (const [key, value] of Object.entries(params)) {
+    if (result[key] === undefined && value !== undefined) {
+      result[key] = value;
+    }
+  }
+
   return result;
 }
 
@@ -757,31 +773,80 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
 
       for (const keyword of keywords) {
         const input = { ...actorParams };
+        const schemaKeys = Object.keys(actor.inputSchema);
+        const hasSchema = schemaKeys.length > 0;
 
-        if (actorKey === "linkedin_jobs") {
-          const location = input.location || input.searchLocation || "United States";
-          const encodedKeyword = encodeURIComponent(keyword);
-          const encodedLocation = encodeURIComponent(location);
-          input.urls = [`https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=r604800`];
-          delete input.searchKeywords;
-          delete input.searchLocation;
-          // Force disable splitByLocation
-          input.splitByLocation = false;
-          delete input.splitCountry;
-        } else if (actorKey === "indeed_jobs") {
-          input.title = keyword;
+        // Category-based input construction — works with any dynamic actor
+        if (actor.category === "hiring_intent") {
+          // Job board actors: detect input format from schema or common patterns
+          const hasUrls = hasSchema ? !!actor.inputSchema["urls"] || !!actor.inputSchema["startUrls"] : false;
+          const hasTitleField = hasSchema ? !!actor.inputSchema["title"] || !!actor.inputSchema["position"] : false;
+          const hasSearchQuery = hasSchema ? !!actor.inputSchema["searchQuery"] || !!actor.inputSchema["search"] || !!actor.inputSchema["queries"] || !!actor.inputSchema["keyword"] || !!actor.inputSchema["keywords"] : false;
+
+          if (actor.actorId.includes("linkedin") || actor.label.toLowerCase().includes("linkedin")) {
+            // LinkedIn Jobs: build search URL
+            const location = input.location || input.searchLocation || "United States";
+            const encodedKeyword = encodeURIComponent(keyword);
+            const encodedLocation = encodeURIComponent(location);
+            const searchUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=r604800`;
+            if (hasUrls || !hasSchema) {
+              input.urls = input.urls || [searchUrl];
+              input.startUrls = input.startUrls || [{ url: searchUrl }];
+            }
+            input.splitByLocation = false;
+            delete input.splitCountry;
+          } else if (actor.actorId.includes("indeed") || actor.label.toLowerCase().includes("indeed")) {
+            // Indeed: use title/position/query field
+            if (hasTitleField) {
+              if (actor.inputSchema["title"]) input.title = keyword;
+              else if (actor.inputSchema["position"]) input.position = keyword;
+            } else {
+              // Fallback: try common field names
+              input.title = input.title || keyword;
+              input.position = input.position || keyword;
+            }
+          } else if (hasSearchQuery) {
+            // Generic job board with search field
+            const qField = schemaKeys.find(f => ["searchQuery", "search", "keyword", "keywords", "query"].includes(f));
+            if (qField) input[qField] = keyword;
+            const arrField = schemaKeys.find(f => ["queries", "searchTerms", "searchStringsArray"].includes(f));
+            if (arrField) input[arrField] = [keyword];
+          } else {
+            // No schema — provide all common field names so one sticks
+            input.title = input.title || keyword;
+            input.search = input.search || keyword;
+            input.searchQuery = input.searchQuery || keyword;
+            input.keyword = input.keyword || keyword;
+            input.queries = input.queries || [keyword];
+          }
         } else {
-          const keywordFields = ["title", "search", "searchQuery"];
-          const kf = keywordFields.find(f => actor.inputSchema[f]);
-          if (kf) input[kf] = keyword;
-          const arrayFields = ["searchStringsArray", "queries", "searchTerms"];
-          for (const af of arrayFields) {
-            if (actor.inputSchema[af]) input[af] = [keyword];
+          // Non-hiring actors in stage 1 (e.g., Google Maps, business directories)
+          if (hasSchema) {
+            const keywordFields = ["title", "search", "searchQuery", "query", "keyword", "keywords", "searchTerm"];
+            const kf = keywordFields.find(f => actor.inputSchema[f]);
+            if (kf) input[kf] = keyword;
+            const arrayFields = ["searchStringsArray", "queries", "searchTerms"];
+            for (const af of arrayFields) {
+              if (actor.inputSchema[af]) input[af] = [keyword];
+            }
+          } else {
+            // No schema — supply common field names
+            input.search = input.search || keyword;
+            input.searchQuery = input.searchQuery || keyword;
+            input.queries = input.queries || [keyword];
           }
         }
 
-        const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
-        if (maxField && !input[maxField]) input[maxField] = actor.inputSchema[maxField]?.default || 500;
+        // Set max results limit
+        if (hasSchema) {
+          const maxField = schemaKeys.find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
+          if (maxField && !input[maxField]) input[maxField] = actor.inputSchema[maxField]?.default || 500;
+        } else {
+          // Common limit field names for schemaless actors
+          if (!input.maxResults && !input.limit && !input.count && !input.maxItems) {
+            input.maxResults = 500;
+          }
+        }
 
         const actorInput = buildGenericInput(actor, input);
         if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
@@ -852,7 +917,7 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
       }
 
       let inputValues: string[] = [];
-      if (actorKey === "linkedin_people" && stageDef.search_titles) {
+      if ((actor.category === "people_data" || actor.actorId.includes("linkedin") && actor.label.toLowerCase().includes("people")) && stageDef.search_titles) {
         const titles = stageDef.search_titles.join(" OR ");
         for (const lead of existingLeads) {
           // Use company_linkedin_url if available, otherwise use company_name
@@ -896,20 +961,40 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         break;
       }
 
-      const BATCH_SIZE = actorKey === "linkedin_people" ? 50 : actorKey === "linkedin_companies" ? 100 : 50;
+      const BATCH_SIZE = actor.category === "people_data" ? 50 : actor.category === "company_data" ? 100 : 50;
       for (let i = 0; i < inputValues.length; i += BATCH_SIZE) {
         const batch = inputValues.slice(i, i + BATCH_SIZE);
         const actorParams = stageDef.params_per_actor?.[actorKey] || {};
         const input: Record<string, any> = { ...actorParams };
 
-        if (actor.inputSchema["startUrls"]) {
-          input.startUrls = batch.map(url => ({ url }));
-        } else if (actor.inputSchema["profileUrls"]) {
-          input.profileUrls = batch;
-        } else if (actor.inputSchema["urls"]) {
-          input.urls = batch;
-        } else if (actor.inputSchema["queries"]) {
-          input.queries = batch;
+        const hasSchema = Object.keys(actor.inputSchema).length > 0;
+
+        // Determine how to pass the batch to this actor
+        if (hasSchema) {
+          if (actor.inputSchema["startUrls"]) {
+            input.startUrls = batch.map(url => ({ url }));
+          } else if (actor.inputSchema["profileUrls"]) {
+            input.profileUrls = batch;
+          } else if (actor.inputSchema["urls"]) {
+            input.urls = batch;
+          } else if (actor.inputSchema["queries"]) {
+            input.queries = batch;
+          } else {
+            // Schema exists but none of the common fields match — try all
+            input.startUrls = batch.map(url => ({ url }));
+            input.urls = batch;
+          }
+        } else {
+          // No schema — provide all common input formats so one sticks
+          const looksLikeUrls = batch[0]?.startsWith("http");
+          if (looksLikeUrls) {
+            input.startUrls = batch.map(url => ({ url }));
+            input.urls = batch;
+            input.profileUrls = batch;
+          } else {
+            input.queries = batch;
+            input.searchStringsArray = batch;
+          }
         }
 
         const actorInput = buildGenericInput(actor, input);
@@ -1001,9 +1086,10 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         const userMessage = `No results found from ${(stageDef.actors || []).join(" + ")} in stage ${stageNum}. This can happen when job boards or search sources return empty results for your query. Try broadening your search terms, expanding the date range, or adjusting your criteria.`;
         console.log(`Stage ${stageNum}: ZERO RESULTS — aborting pipeline`);
         
-        await serviceClient.from("signal_runs").update({
+        const { error: abortError } = await serviceClient.from("signal_runs").update({
           status: "failed",
           error_message: userMessage,
+          processing_phase: "aborted",
           pipeline_adjustments: [...(run.pipeline_adjustments || []), {
             stage: stageNum,
             quality: "USELESS",
@@ -1011,6 +1097,17 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
             timestamp: new Date().toISOString(),
           }],
         }).eq("id", run.id);
+
+        if (abortError) {
+          console.error(`Stage ${stageNum}: Failed to update status to failed:`, abortError);
+          // Retry once
+          const { error: retryError } = await serviceClient.from("signal_runs").update({
+            status: "failed",
+            error_message: userMessage,
+            processing_phase: "aborted",
+          }).eq("id", run.id);
+          if (retryError) console.error(`Stage ${stageNum}: Retry also failed:`, retryError);
+        }
 
         if (run.user_id) {
           await serviceClient.from("notifications").insert({
@@ -1032,9 +1129,10 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
       const userMessage = `All leads were filtered out by stage ${stageNum}. No results remain to process. Try adjusting your filtering criteria or broadening your search.`;
       console.log(`Stage ${stageNum}: All leads eliminated — aborting pipeline`);
       
-      await serviceClient.from("signal_runs").update({
+      const { error: elimError } = await serviceClient.from("signal_runs").update({
         status: "failed",
         error_message: userMessage,
+        processing_phase: "aborted",
         pipeline_adjustments: [...(run.pipeline_adjustments || []), {
           stage: stageNum,
           quality: "USELESS",
@@ -1042,6 +1140,10 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
           timestamp: new Date().toISOString(),
         }],
       }).eq("id", run.id);
+      if (elimError) {
+        console.error(`Stage ${stageNum}: Failed to update abort status:`, elimError);
+        await serviceClient.from("signal_runs").update({ status: "failed", processing_phase: "aborted" }).eq("id", run.id);
+      }
 
       if (run.user_id) {
         await serviceClient.from("notifications").insert({

@@ -159,10 +159,12 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
         // Quality gate: skip very low-quality actors
         if ((item.stats?.totalUsers || 0) < 20 && (item.stats?.totalRuns || 0) < 500) continue;
 
-        // Fetch input schema
+        // Fetch input schema — try multiple endpoints
         let inputSchema: Record<string, InputField> = {};
+        const actorIdEncoded = actorId.replace("/", "~");
+        
+        // Attempt 1: defaultRunInput from actor details
         try {
-          const actorIdEncoded = actorId.replace("/", "~");
           const schemaResp = await fetch(
             `https://api.apify.com/v2/acts/${actorIdEncoded}?token=${APIFY_API_TOKEN}`,
             { method: "GET" }
@@ -170,7 +172,7 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
           if (schemaResp.ok) {
             const actorData = await schemaResp.json();
             const rawSchema = actorData.data?.defaultRunInput?.body || {};
-            if (rawSchema.properties) {
+            if (rawSchema.properties && Object.keys(rawSchema.properties).length > 0) {
               for (const [key, val] of Object.entries(rawSchema.properties as Record<string, any>)) {
                 const type = val.type === "array" ? "string[]" : (val.type === "integer" ? "number" : (val.type || "string"));
                 inputSchema[key] = {
@@ -182,7 +184,36 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
               }
             }
           }
-        } catch { /* proceed without schema */ }
+        } catch (e) { console.warn(`Schema attempt 1 failed for ${actorId}:`, e); }
+
+        // Attempt 2: dedicated input-schema endpoint (fallback)
+        if (Object.keys(inputSchema).length === 0) {
+          try {
+            const schemaResp2 = await fetch(
+              `https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${APIFY_API_TOKEN}`,
+              { method: "GET" }
+            );
+            if (schemaResp2.ok) {
+              const schemaData = await schemaResp2.json();
+              const props = schemaData.properties || schemaData.data?.properties || {};
+              if (Object.keys(props).length > 0) {
+                for (const [key, val] of Object.entries(props as Record<string, any>)) {
+                  const type = val.type === "array" ? "string[]" : (val.type === "integer" ? "number" : (val.type || "string"));
+                  inputSchema[key] = {
+                    type: type as any,
+                    required: (schemaData.required || []).includes(key),
+                    default: val.default,
+                    description: (val.description || val.title || key).slice(0, 200),
+                  };
+                }
+              }
+            }
+          } catch (e) { console.warn(`Schema attempt 2 (input-schema) failed for ${actorId}:`, e); }
+        }
+
+        if (Object.keys(inputSchema).length === 0) {
+          console.warn(`No inputSchema found for ${actorId} — actor params will be passed through directly at runtime`);
+        }
 
         const category = categorizeActor(item.title || "", item.description || "");
         const outputFields = inferOutputFields(category);
