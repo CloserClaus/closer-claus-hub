@@ -1275,7 +1275,15 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
   // Collect next dataset
   const ref = stageRefs[collectedIndex];
   try {
-    const items = await collectApifyResults(ref.datasetId, APIFY_API_TOKEN);
+    // Infer the max items cap from the stage's actor params to avoid over-fetching
+    const stageActorParams = currentStageDef?.params_per_actor?.[ref.actorKey] || {};
+    const KNOWN_LIMIT_FIELDS = ["maxItems", "limit", "count", "maxResults", "max_results", "rows", "numResults", "maxCrawledPlacesPerSearch"];
+    const stageMaxItems = KNOWN_LIMIT_FIELDS.reduce((cap: number | undefined, f) => {
+      if (cap !== undefined) return cap;
+      const v = stageActorParams[f];
+      return (typeof v === "number" && v > 0) ? v : undefined;
+    }, undefined);
+    const items = await collectApifyResults(ref.datasetId, APIFY_API_TOKEN, stageMaxItems);
     const actor = getActor(ref.actorKey);
     if (!actor || items.length === 0) {
       await serviceClient.from("signal_runs").update({ collected_dataset_index: collectedIndex + 1 }).eq("id", run.id);
