@@ -917,7 +917,7 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
       }
 
       let inputValues: string[] = [];
-      if (actorKey === "linkedin_people" && stageDef.search_titles) {
+      if ((actor.category === "people_data" || actor.actorId.includes("linkedin") && actor.label.toLowerCase().includes("people")) && stageDef.search_titles) {
         const titles = stageDef.search_titles.join(" OR ");
         for (const lead of existingLeads) {
           // Use company_linkedin_url if available, otherwise use company_name
