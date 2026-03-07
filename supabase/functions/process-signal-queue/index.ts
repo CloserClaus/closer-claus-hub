@@ -261,7 +261,7 @@ async function pollApifyRun(runId: string, token: string): Promise<string> {
   return data.data.status;
 }
 
-async function collectApifyResults(datasetId: string, token: string): Promise<any[]> {
+async function collectApifyResults(datasetId: string, token: string, maxItems?: number): Promise<any[]> {
   const PAGE_SIZE = 500;
   let allItems: any[] = [];
   let offset = 0;
@@ -274,9 +274,13 @@ async function collectApifyResults(datasetId: string, token: string): Promise<an
     const items = await resp.json();
     allItems.push(...items);
     if (items.length < PAGE_SIZE) break;
+    if (maxItems && allItems.length >= maxItems) {
+      allItems = allItems.slice(0, maxItems);
+      break;
+    }
     offset += PAGE_SIZE;
   }
-  return allItems;
+  return maxItems ? allItems.slice(0, maxItems) : allItems;
 }
 
 async function abortApifyRun(runId: string, token: string): Promise<void> {
@@ -414,8 +418,15 @@ Rating guide:
       };
     }
 
-    // USELESS
-    return { quality: "USELESS", reason, suggestedAction: "abort" };
+    // USELESS — provide actionable guidance based on dataset size
+    const datasetSize = totalCount || sampleLeads.length;
+    let actionableReason = reason;
+    if (datasetSize <= 200) {
+      actionableReason = `${reason}. The current dataset is too small (${datasetSize} records) and no relevant signals were found. Consider broadening your search criteria or increasing the max results per source.`;
+    } else {
+      actionableReason = `${reason}. Stage 1 returned ${datasetSize} results but very few matched your criteria. The search terms may need to be more specific to your target industry.`;
+    }
+    return { quality: "USELESS", reason: actionableReason, suggestedAction: "abort" };
   } catch (err) {
     console.warn("Quality check error:", err);
     return { quality: "MEDIUM", reason: "Quality check failed, proceeding", suggestedAction: "continue" };
@@ -938,13 +949,15 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
           }
         }
 
-        // Set max results limit
-        if (hasSchema) {
-          const maxField = schemaKeys.find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
-          if (maxField && !input[maxField]) input[maxField] = actor.inputSchema[maxField]?.default || 500;
-        } else {
-          // Common limit field names for schemaless actors
-          if (!input.maxResults && !input.limit && !input.count && !input.maxItems) {
+        // Set max results limit — but NEVER override planner-set caps
+        const KNOWN_LIMIT_FIELDS = ["maxItems", "limit", "count", "maxResults", "max_results", "rows", "numResults", "maxCrawledPlacesPerSearch", "maxCrawledPagesPerSearch"];
+        const hasExistingLimit = KNOWN_LIMIT_FIELDS.some(f => input[f] !== undefined);
+
+        if (!hasExistingLimit) {
+          if (hasSchema) {
+            const maxField = schemaKeys.find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
+            if (maxField) input[maxField] = actor.inputSchema[maxField]?.default || 500;
+          } else {
             input.maxResults = 500;
           }
         }
@@ -1269,7 +1282,15 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
   // Collect next dataset
   const ref = stageRefs[collectedIndex];
   try {
-    const items = await collectApifyResults(ref.datasetId, APIFY_API_TOKEN);
+    // Infer the max items cap from the stage's actor params to avoid over-fetching
+    const stageActorParams = currentStageDef?.params_per_actor?.[ref.actorKey] || {};
+    const KNOWN_LIMIT_FIELDS = ["maxItems", "limit", "count", "maxResults", "max_results", "rows", "numResults", "maxCrawledPlacesPerSearch"];
+    const stageMaxItems = KNOWN_LIMIT_FIELDS.reduce((cap: number | undefined, f) => {
+      if (cap !== undefined) return cap;
+      const v = stageActorParams[f];
+      return (typeof v === "number" && v > 0) ? v : undefined;
+    }, undefined);
+    const items = await collectApifyResults(ref.datasetId, APIFY_API_TOKEN, stageMaxItems);
     const actor = getActor(ref.actorKey);
     if (!actor || items.length === 0) {
       await serviceClient.from("signal_runs").update({ collected_dataset_index: collectedIndex + 1 }).eq("id", run.id);
