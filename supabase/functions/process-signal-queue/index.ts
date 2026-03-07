@@ -938,13 +938,15 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
           }
         }
 
-        // Set max results limit
-        if (hasSchema) {
-          const maxField = schemaKeys.find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
-          if (maxField && !input[maxField]) input[maxField] = actor.inputSchema[maxField]?.default || 500;
-        } else {
-          // Common limit field names for schemaless actors
-          if (!input.maxResults && !input.limit && !input.count && !input.maxItems) {
+        // Set max results limit — but NEVER override planner-set caps
+        const KNOWN_LIMIT_FIELDS = ["maxItems", "limit", "count", "maxResults", "max_results", "rows", "numResults", "maxCrawledPlacesPerSearch", "maxCrawledPagesPerSearch"];
+        const hasExistingLimit = KNOWN_LIMIT_FIELDS.some(f => input[f] !== undefined);
+
+        if (!hasExistingLimit) {
+          if (hasSchema) {
+            const maxField = schemaKeys.find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
+            if (maxField) input[maxField] = actor.inputSchema[maxField]?.default || 500;
+          } else {
             input.maxResults = 500;
           }
         }
