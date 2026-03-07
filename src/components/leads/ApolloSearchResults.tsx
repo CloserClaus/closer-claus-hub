@@ -11,7 +11,9 @@ import {
   Table as TableIcon,
   UserPlus,
   Zap,
+  Download,
 } from 'lucide-react';
+import { exportLeadsToCSV } from '@/lib/csvExport';
 import { Tables } from '@/integrations/supabase/types';
 import { ResultsTable } from './ResultsTable';
 import { ResultsPagination } from './ResultsPagination';
