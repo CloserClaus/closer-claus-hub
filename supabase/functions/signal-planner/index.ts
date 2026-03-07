@@ -675,6 +675,24 @@ function validatePipelinePlan(plan: any, query: string): string[] {
 }
 
 // ════════════════════════════════════════════════════════════════
+// ██  HELPER — Infer row cap from actor params
+// ════════════════════════════════════════════════════════════════
+
+const ROW_CAP_KEYS = [
+  "count", "limit", "maxItems", "maxResults", "max_results",
+  "rows", "row_count", "results", "numResults",
+  "maxCrawledPlacesPerSearch", "maxCrawledPagesPerSearch",
+];
+
+function inferRowCapFromParams(actorParams: Record<string, any>): number | null {
+  for (const key of ROW_CAP_KEYS) {
+    const val = actorParams[key];
+    if (typeof val === "number" && val > 0) return val;
+  }
+  return null;
+}
+
+// ════════════════════════════════════════════════════════════════
 // ██  COST ESTIMATION FOR PIPELINE
 // ════════════════════════════════════════════════════════════════
 
@@ -686,7 +704,19 @@ function estimatePipelineCost(pipeline: any[]): { totalCredits: number; totalEst
   for (const stage of pipeline) {
     if (stage.type === "scrape") {
       if (stage.stage === 1) {
-        currentCount = stage.expected_output_count || 1000;
+        // Prefer expected_output_count; if missing, derive from actor params
+        if (stage.expected_output_count) {
+          currentCount = stage.expected_output_count;
+        } else {
+          // Sum inferred caps across all stage-1 actors
+          let inferredTotal = 0;
+          const paramsMap = stage.params_per_actor || {};
+          for (const actorKey of Object.keys(paramsMap)) {
+            const cap = inferRowCapFromParams(paramsMap[actorKey]);
+            if (cap) inferredTotal += cap;
+          }
+          currentCount = inferredTotal > 0 ? inferredTotal : 1000;
+        }
       } else {
         currentCount = stage.expected_output_count || currentCount;
       }
