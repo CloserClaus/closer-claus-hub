@@ -931,17 +931,20 @@ async function pipelineAiFilter(run: any, stageDef: any, stageNum: number, pipel
         method: "POST",
         headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash-lite",
+          model: "google/gemini-2.5-flash",
           messages: [
             {
               role: "system",
               content: `You are a strict lead classifier. For each company in the list, determine if it matches this criteria: "${stageDef.prompt}"
 
 IMPORTANT RULES:
-- Focus on the data fields provided. Do NOT infer information not present.
-- The "description" or "title" field may be a JOB POSTING, not a company description. Do not use job posting content to classify the company.
+- Analyze ALL fields: company_name, domain, industry, employee_count, and description.
+- The "domain" field is the company's website domain. Use it as a strong signal (e.g., "seoagency.com" → likely SEO/marketing agency, "acmesteel.com" → likely manufacturing, not marketing).
+- The "description" field may be a JOB POSTING or website content, not a company description. Extract what you can about the COMPANY from it but don't assume the job role IS the company's business.
+- If employee_count is provided, use it strictly. "1-10" or numbers ≤10 pass a small-company filter. "5001-10000" or large numbers fail.
 - Large enterprises (Meta, Amazon, Google, Oracle, etc.) are NOT small businesses — reject them unless criteria specifically targets large companies.
-- When in doubt, reject rather than accept.
+- Staffing agencies, recruitment firms, and job boards are NOT the same as the industry they recruit for.
+- When in doubt, REJECT rather than accept. Be strict.
 
 Return a JSON array of booleans, one per company. Only return the JSON array, nothing else.`
             },
@@ -952,9 +955,16 @@ Return a JSON array of booleans, one per company. Only return the JSON array, no
                 for (const field of inputFields) {
                   obj[field] = b[field] || b.extra_data?.[field] || "";
                 }
-                // Always include key identifiers
+                // Always include key identifiers and context
                 if (!obj.company_name) obj.company_name = b.company_name || "";
-                if (!obj.website) obj.website = b.website || "";
+                if (!obj.domain) obj.domain = b.domain || extractDomain(b.website || "");
+                if (!obj.industry) obj.industry = b.industry || "";
+                if (!obj.employee_count) obj.employee_count = b.employee_count || "";
+                // Always pass description/website_content for richer context
+                if (!obj.description) {
+                  const desc = b.website_content || b.extra_data?.description || b.extra_data?.descriptionHtml || "";
+                  obj.description = typeof desc === "string" ? desc.slice(0, 500) : "";
+                }
                 return obj;
               }))
             },

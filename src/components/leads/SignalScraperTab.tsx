@@ -747,13 +747,15 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
       await supabase.from('signal_leads').update({ enriched: true }).eq('id', lead.id);
       return { source: 'apollo', ...data };
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({ queryKey: ['signal-leads', runId] });
+      await queryClient.invalidateQueries({ queryKey: ['lead-credits'] });
       toast({
-        title: 'Lead enriched',
-        description: data.source === 'apify' ? 'Contact info revealed.' : 'Apollo enrichment queued.',
+        title: data.source === 'apify' ? 'Contact info revealed' : 'Enrichment started',
+        description: data.source === 'apify'
+          ? 'Contact details are now visible.'
+          : 'Apollo enrichment queued — data will appear shortly.',
       });
-      queryClient.invalidateQueries({ queryKey: ['signal-leads', runId] });
-      queryClient.invalidateQueries({ queryKey: ['lead-credits'] });
     },
     onError: (err: any) => {
       toast({ title: 'Enrichment failed', description: err.message, variant: 'destructive' });
