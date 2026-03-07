@@ -303,6 +303,220 @@ function isCapacityError(errMsg: string): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════
+// ██  INTER-STAGE QUALITY VALIDATION
+// ═══════════════════════════════════════════════════════════
+
+interface QualityCheckResult {
+  quality: "HIGH" | "MEDIUM" | "LOW" | "USELESS";
+  reason: string;
+  suggestedAction?: "continue" | "reconfigure" | "abort";
+  reconfiguredPipeline?: any[];
+}
+
+async function pipelineQualityCheck(
+  run: any,
+  stageNum: number,
+  stageDef: any,
+  pipeline: any[],
+  serviceClient: any
+): Promise<QualityCheckResult> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) return { quality: "HIGH", reason: "No API key, skipping quality check", suggestedAction: "continue" };
+
+  // Sample 15 leads from this stage
+  const { data: sampleLeads } = await serviceClient
+    .from("signal_leads")
+    .select("*")
+    .eq("run_id", run.id)
+    .limit(15);
+
+  if (!sampleLeads || sampleLeads.length === 0) {
+    return { quality: "USELESS", reason: "Stage produced 0 results", suggestedAction: "abort" };
+  }
+
+  // Get total count
+  const { count: totalCount } = await serviceClient
+    .from("signal_leads")
+    .select("*", { count: "exact", head: true })
+    .eq("run_id", run.id);
+
+  // Build context about what the next stages need
+  const remainingStages = pipeline.slice(stageNum);
+  const nextStageNeeds = remainingStages
+    .filter((s: any) => s.type === "scrape" && s.input_from)
+    .map((s: any) => s.input_from);
+
+  const sampleData = sampleLeads.map((l: any) => ({
+    company_name: l.company_name,
+    website: l.website,
+    domain: l.domain,
+    industry: l.industry,
+    employee_count: l.employee_count,
+    company_linkedin_url: l.company_linkedin_url,
+    title: l.title,
+    description: (l.extra_data?.description || l.extra_data?.descriptionHtml || "").slice(0, 200),
+  }));
+
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "system",
+            content: `You are a data quality auditor for a lead generation pipeline. Evaluate whether scraped data is relevant and useful.
+
+The user's original query was: "${run.signal_query}"
+This is stage ${stageNum} ("${stageDef.name}") of the pipeline.
+Total leads collected so far: ${totalCount || sampleLeads.length}
+Next stages need these data fields: ${nextStageNeeds.join(", ") || "none specific"}
+
+Evaluate the sample data and respond with EXACTLY one JSON object:
+{
+  "quality": "HIGH" | "MEDIUM" | "LOW" | "USELESS",
+  "reason": "<one-sentence explanation>",
+  "field_coverage": {
+    "company_name": <0-100 percent of samples that have this field>,
+    "website": <0-100>,
+    "company_linkedin_url": <0-100>,
+    "industry": <0-100>,
+    "employee_count": <0-100>
+  },
+  "relevance_score": <0-100 how many samples seem relevant to the user's query>
+}
+
+Rating guide:
+- HIGH: >70% relevance AND required downstream fields are mostly populated
+- MEDIUM: 40-70% relevance OR some downstream fields missing but recoverable  
+- LOW: 20-40% relevance — data has value but downstream flow needs adjustment
+- USELESS: <20% relevance OR critical fields completely empty making downstream processing impossible`
+          },
+          { role: "user", content: JSON.stringify(sampleData) },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn(`Quality check API error: ${response.status}`);
+      return { quality: "MEDIUM", reason: "Quality check API unavailable, proceeding cautiously", suggestedAction: "continue" };
+    }
+
+    const result = await response.json();
+    const content = result.choices?.[0]?.message?.content || "{}";
+    const parsed = JSON.parse(content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
+
+    const quality = parsed.quality || "MEDIUM";
+    const reason = parsed.reason || "Unknown";
+
+    if (quality === "HIGH" || quality === "MEDIUM") {
+      return { quality, reason, suggestedAction: "continue" };
+    }
+
+    if (quality === "LOW") {
+      // Try to reconfigure downstream pipeline
+      const reconfigured = await reconfigurePipeline(run, stageNum, pipeline, parsed, serviceClient);
+      return {
+        quality,
+        reason,
+        suggestedAction: reconfigured ? "reconfigure" : "continue",
+        reconfiguredPipeline: reconfigured || undefined,
+      };
+    }
+
+    // USELESS
+    return { quality: "USELESS", reason, suggestedAction: "abort" };
+  } catch (err) {
+    console.warn("Quality check error:", err);
+    return { quality: "MEDIUM", reason: "Quality check failed, proceeding", suggestedAction: "continue" };
+  }
+}
+
+async function reconfigurePipeline(
+  run: any,
+  currentStage: number,
+  pipeline: any[],
+  qualityData: any,
+  serviceClient: any
+): Promise<any[] | null> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) return null;
+
+  // Only allow 1 reconfiguration per run
+  const existingAdjustments = run.pipeline_adjustments || [];
+  if (existingAdjustments.length >= 1) {
+    console.log("Max reconfiguration limit reached, skipping");
+    return null;
+  }
+
+  const completedStages = pipeline.slice(0, currentStage);
+  const remainingStages = pipeline.slice(currentStage);
+
+  // Get current lead field coverage
+  const { data: sampleLeads } = await serviceClient
+    .from("signal_leads").select("*").eq("run_id", run.id).limit(20);
+
+  const fieldCoverage: Record<string, number> = {};
+  const fields = ["company_name", "website", "domain", "company_linkedin_url", "industry", "employee_count", "contact_name"];
+  for (const field of fields) {
+    const count = (sampleLeads || []).filter((l: any) => l[field] && l[field] !== "").length;
+    fieldCoverage[field] = Math.round((count / (sampleLeads?.length || 1)) * 100);
+  }
+
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "system",
+            content: `You are a pipeline repair agent. The lead generation pipeline has collected data but the quality is LOW for the remaining stages. You need to redesign the remaining stages to work with the data that's actually available.
+
+User's goal: "${run.signal_query}"
+Completed stages: ${JSON.stringify(completedStages.map((s: any) => s.name))}
+Current field coverage in leads: ${JSON.stringify(fieldCoverage)}
+Quality assessment: ${JSON.stringify(qualityData)}
+
+Available actors: linkedin_companies (needs company_linkedin_url), linkedin_people (needs company_name OR company_linkedin_url), contact_enrichment (needs website), google_search (can find LinkedIn URLs), website_crawler (needs website).
+
+RULES:
+- You can ONLY use fields that have >30% coverage as inputs
+- If company_linkedin_url coverage is <30%, you MUST add a google_search LinkedIn URL discovery stage before any stage that needs it
+- If website coverage is <30%, you cannot use contact_enrichment or website_crawler
+- Keep the same end goal: find qualified leads matching the user's query
+
+Return a JSON array of replacement stages (with correct stage numbers continuing from ${currentStage + 1}). Or return {"abort": true, "reason": "explanation"} if the goal is infeasible.`
+          },
+          { role: "user", content: `Redesign remaining pipeline. Original remaining stages: ${JSON.stringify(remainingStages)}` },
+        ],
+      }),
+    });
+
+    if (!response.ok) return null;
+
+    const result = await response.json();
+    const content = result.choices?.[0]?.message?.content || "";
+    const parsed = JSON.parse(content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
+
+    if (parsed.abort) {
+      console.log(`Pipeline reconfiguration: abort recommended — ${parsed.reason}`);
+      return null;
+    }
+
+    const newStages = Array.isArray(parsed) ? parsed : parsed.pipeline || [];
+    if (newStages.length === 0) return null;
+
+    return newStages;
+  } catch (err) {
+    console.warn("Pipeline reconfiguration failed:", err);
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // ██  MAIN HANDLER
 // ═══════════════════════════════════════════════════════════
 
@@ -358,7 +572,6 @@ serve(async (req) => {
 
     for (const run of allRuns) {
       try {
-        // Detect format: pipeline vs legacy
         const plan = run.signal_plan;
         const isPipeline = plan && typeof plan === "object" && !Array.isArray(plan) && plan.pipeline;
 
@@ -396,7 +609,6 @@ serve(async (req) => {
         if (run.status === "running") {
           const phase = run.processing_phase || "pending";
 
-          // Check for stale runs
           if (phase === "pending" || phase === "done") {
             const newRetryCount = (run.retry_count || 0) + 1;
             if (newRetryCount >= MAX_RETRIES) {
@@ -474,17 +686,15 @@ async function handlePhaseError(run: any, err: unknown, serviceClient: any) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// ██  PIPELINE EXECUTOR (NEW)
+// ██  PIPELINE EXECUTOR
 // ═══════════════════════════════════════════════════════════
 
 async function processPipelinePhase(run: any, serviceClient: any) {
   const phase = run.processing_phase || "stage_1_starting";
   console.log(`Pipeline signal ${run.id} phase=${phase}`);
 
-  // Parse phase: "stage_N_subphase"
   const match = phase.match(/^stage_(\d+)_(.+)$/);
   if (!match) {
-    // Unknown phase — restart from current stage
     const stageIdx = run.current_pipeline_stage || 0;
     await serviceClient.from("signal_runs").update({
       processing_phase: `stage_${stageIdx + 1}_starting`,
@@ -500,7 +710,6 @@ async function processPipelinePhase(run: any, serviceClient: any) {
   const stageDef = pipeline[stageIdx];
 
   if (!stageDef) {
-    // Past last stage — finalize
     await pipelineFinalize(run, serviceClient);
     return;
   }
@@ -516,6 +725,9 @@ async function processPipelinePhase(run: any, serviceClient: any) {
       case "collecting":
         await pipelineScrapeCollecting(run, stageDef, stageNum, pipeline, serviceClient);
         break;
+      case "validating":
+        await pipelineStageValidating(run, stageDef, stageNum, pipeline, serviceClient);
+        break;
       default:
         await serviceClient.from("signal_runs").update({
           processing_phase: `stage_${stageNum}_starting`,
@@ -523,8 +735,88 @@ async function processPipelinePhase(run: any, serviceClient: any) {
         }).eq("id", run.id);
     }
   } else if (stageDef.type === "ai_filter") {
-    await pipelineAiFilter(run, stageDef, stageNum, pipeline, serviceClient);
+    switch (subPhase) {
+      case "ai_filter":
+        await pipelineAiFilter(run, stageDef, stageNum, pipeline, serviceClient);
+        break;
+      case "validating":
+        await pipelineStageValidating(run, stageDef, stageNum, pipeline, serviceClient);
+        break;
+      default:
+        await pipelineAiFilter(run, stageDef, stageNum, pipeline, serviceClient);
+    }
   }
+}
+
+// ── Pipeline: Stage Validation (NEW — runs after collecting/filtering) ──
+
+async function pipelineStageValidating(run: any, stageDef: any, stageNum: number, pipeline: any[], serviceClient: any) {
+  console.log(`Stage ${stageNum}: Running quality validation`);
+
+  const qualityResult = await pipelineQualityCheck(run, stageNum, stageDef, pipeline, serviceClient);
+  console.log(`Stage ${stageNum} quality: ${qualityResult.quality} — ${qualityResult.reason}`);
+
+  // Record the quality check
+  const adjustments = run.pipeline_adjustments || [];
+  adjustments.push({
+    stage: stageNum,
+    quality: qualityResult.quality,
+    reason: qualityResult.reason,
+    timestamp: new Date().toISOString(),
+  });
+
+  if (qualityResult.suggestedAction === "abort") {
+    // Stage 1 abort = whole run fails
+    const userMessage = `Signal stopped after stage ${stageNum}: ${qualityResult.reason}`;
+    await serviceClient.from("signal_runs").update({
+      status: "failed",
+      error_message: userMessage,
+      pipeline_adjustments: adjustments,
+    }).eq("id", run.id);
+
+    if (run.user_id) {
+      await serviceClient.from("notifications").insert({
+        user_id: run.user_id, workspace_id: run.workspace_id,
+        type: "signal_failed", title: "Signal Stopped — Data Quality Issue",
+        message: userMessage,
+      });
+    }
+    return;
+  }
+
+  if (qualityResult.suggestedAction === "reconfigure" && qualityResult.reconfiguredPipeline) {
+    // Replace remaining pipeline stages
+    const completedStages = pipeline.slice(0, stageNum);
+    const newPipeline = [...completedStages, ...qualityResult.reconfiguredPipeline];
+    const updatedPlan = { ...run.signal_plan, pipeline: newPipeline };
+
+    adjustments.push({
+      stage: stageNum,
+      action: "reconfigure",
+      old_remaining_stages: pipeline.slice(stageNum).length,
+      new_remaining_stages: qualityResult.reconfiguredPipeline.length,
+      timestamp: new Date().toISOString(),
+    });
+
+    await serviceClient.from("signal_runs").update({
+      signal_plan: updatedPlan,
+      pipeline_stage_count: newPipeline.length,
+      pipeline_adjustments: adjustments,
+      updated_at: new Date().toISOString(),
+    }).eq("id", run.id);
+
+    console.log(`Stage ${stageNum}: Pipeline reconfigured. ${qualityResult.reconfiguredPipeline.length} new stages.`);
+  } else {
+    await serviceClient.from("signal_runs").update({
+      pipeline_adjustments: adjustments,
+    }).eq("id", run.id);
+  }
+
+  // Advance to next stage
+  const updatedPipeline = (qualityResult.reconfiguredPipeline) 
+    ? [...pipeline.slice(0, stageNum), ...qualityResult.reconfiguredPipeline]
+    : pipeline;
+  await advancePipelineStage(run, stageNum, updatedPipeline, serviceClient);
 }
 
 // ── Pipeline: Scrape Starting ──
@@ -570,7 +862,6 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
       for (const keyword of keywords) {
         const input = { ...actorParams };
 
-        // LinkedIn Jobs special handling
         if (actorKey === "linkedin_jobs") {
           const location = input.location || input.searchLocation || "United States";
           const encodedKeyword = encodeURIComponent(keyword);
@@ -578,11 +869,12 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
           input.urls = [`https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=r604800`];
           delete input.searchKeywords;
           delete input.searchLocation;
-          if (!input.splitByLocation) delete input.splitCountry;
+          // Force disable splitByLocation
+          input.splitByLocation = false;
+          delete input.splitCountry;
         } else if (actorKey === "indeed_jobs") {
           input.title = keyword;
         } else {
-          // Set keyword into appropriate fields
           const keywordFields = ["title", "search", "searchQuery"];
           const kf = keywordFields.find(f => actor.inputSchema[f]);
           if (kf) input[kf] = keyword;
@@ -592,7 +884,6 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
           }
         }
 
-        // Set max limits
         const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
         if (maxField && !input[maxField]) input[maxField] = actor.inputSchema[maxField]?.default || 500;
 
@@ -613,6 +904,44 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
           }
         }
       }
+    } else if (stageDef.input_transform === "linkedin_url_discovery") {
+      // Special: LinkedIn URL discovery via Google Search
+      const { data: existingLeads } = await serviceClient
+        .from("signal_leads").select("id, company_name, company_linkedin_url").eq("run_id", run.id).limit(10000);
+
+      if (!existingLeads || existingLeads.length === 0) {
+        console.log(`Stage ${stageNum}: No leads for LinkedIn URL discovery`);
+        break;
+      }
+
+      // Only process leads that DON'T already have LinkedIn URLs
+      const leadsNeedingLinkedIn = existingLeads.filter((l: any) => !l.company_linkedin_url && l.company_name);
+
+      if (leadsNeedingLinkedIn.length === 0) {
+        console.log(`Stage ${stageNum}: All leads already have LinkedIn URLs, skipping discovery`);
+        break;
+      }
+
+      // Batch company names into Google Search queries
+      const BATCH_SIZE = 20;
+      for (let i = 0; i < leadsNeedingLinkedIn.length; i += BATCH_SIZE) {
+        const batch = leadsNeedingLinkedIn.slice(i, i + BATCH_SIZE);
+        const queries = batch.map((l: any) => `"${l.company_name}" site:linkedin.com/company`);
+        const actorParams = stageDef.params_per_actor?.[actorKey] || {};
+        const input: Record<string, any> = { ...actorParams, queries };
+
+        const actorInput = buildGenericInput(actor, input);
+        if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
+
+        try {
+          const { runId, datasetId } = await startApifyRun(actor, actorInput, APIFY_API_TOKEN);
+          refs.push({ actorKey, keyword: `linkedin_discovery_batch_${i}`, runId, datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
+          console.log(`Stage ${stageNum}: Started LinkedIn URL discovery batch ${i / BATCH_SIZE + 1} (${batch.length} companies)`);
+        } catch (err) {
+          console.error(`Stage ${stageNum}: LinkedIn URL discovery batch failed:`, err);
+          refs.push({ actorKey, keyword: `linkedin_discovery_batch_${i}`, runId: "", datasetId: "", status: "FAILED", pipelineStage: stageNum });
+        }
+      }
     } else {
       // Enrichment stages: build input from existing leads
       const inputField = stageDef.input_from;
@@ -626,19 +955,23 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         break;
       }
 
-      // Build input URLs from leads
       let inputValues: string[] = [];
       if (actorKey === "linkedin_people" && stageDef.search_titles) {
-        // Build LinkedIn people search URLs from company LinkedIn URLs
         const titles = stageDef.search_titles.join(" OR ");
         for (const lead of existingLeads) {
+          // Use company_linkedin_url if available, otherwise use company_name
           const companyLinkedinUrl = lead.company_linkedin_url || lead.linkedin;
-          if (!companyLinkedinUrl) continue;
-          // Extract company name for search
           const companyName = lead.company_name || "";
-          if (companyName) {
-            const encodedCompany = encodeURIComponent(companyName);
+          
+          if (companyLinkedinUrl && companyLinkedinUrl.includes("linkedin.com")) {
+            // Extract company identifier from LinkedIn URL for more targeted search
             const encodedTitles = encodeURIComponent(titles);
+            const encodedCompany = encodeURIComponent(companyName);
+            inputValues.push(`https://www.linkedin.com/search/results/people/?keywords=${encodedTitles}%20${encodedCompany}`);
+          } else if (companyName) {
+            // Fallback: search by company name
+            const encodedTitles = encodeURIComponent(titles);
+            const encodedCompany = encodeURIComponent(companyName);
             inputValues.push(`https://www.linkedin.com/search/results/people/?keywords=${encodedTitles}%20${encodedCompany}`);
           }
         }
@@ -651,32 +984,36 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
           .map((l: any) => l.website)
           .filter((v: string) => v && v.length > 0)
           .map((v: string) => v.startsWith("http") ? v : `https://${v}`);
+      } else if (inputField === "company_name") {
+        // For google_search or other actors that take company names
+        inputValues = existingLeads
+          .map((l: any) => l.company_name)
+          .filter((v: string) => v && v.trim().length > 0);
       } else {
         inputValues = existingLeads.map((l: any) => l[inputField]).filter(Boolean);
       }
 
-      // Dedup input values
       inputValues = [...new Set(inputValues)];
 
       if (inputValues.length === 0) {
-        console.log(`Stage ${stageNum}: No valid ${inputField} values found in leads`);
+        console.log(`Stage ${stageNum}: No valid ${inputField} values found in leads, skipping`);
         break;
       }
 
-      // Batch the inputs
       const BATCH_SIZE = actorKey === "linkedin_people" ? 50 : actorKey === "linkedin_companies" ? 100 : 50;
       for (let i = 0; i < inputValues.length; i += BATCH_SIZE) {
         const batch = inputValues.slice(i, i + BATCH_SIZE);
         const actorParams = stageDef.params_per_actor?.[actorKey] || {};
         const input: Record<string, any> = { ...actorParams };
 
-        // Set the input URLs into the right field
         if (actor.inputSchema["startUrls"]) {
           input.startUrls = batch.map(url => ({ url }));
         } else if (actor.inputSchema["profileUrls"]) {
           input.profileUrls = batch;
         } else if (actor.inputSchema["urls"]) {
           input.urls = batch;
+        } else if (actor.inputSchema["queries"]) {
+          input.queries = batch;
         }
 
         const actorInput = buildGenericInput(actor, input);
@@ -685,7 +1022,7 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         try {
           const { runId, datasetId } = await startApifyRun(actor, actorInput, APIFY_API_TOKEN);
           refs.push({ actorKey, keyword: `batch_${i}`, runId, datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
-          console.log(`Stage ${stageNum}: Started ${actorKey} batch ${i / BATCH_SIZE + 1} (${batch.length} URLs) → run ${runId}`);
+          console.log(`Stage ${stageNum}: Started ${actorKey} batch ${i / BATCH_SIZE + 1} (${batch.length} items) → run ${runId}`);
         } catch (err) {
           console.error(`Stage ${stageNum}: Failed to start ${actorKey} batch:`, err);
           refs.push({ actorKey, keyword: `batch_${i}`, runId: "", datasetId: "", status: "FAILED", pipelineStage: stageNum });
@@ -694,9 +1031,16 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
     }
   }
 
+  // Check if ALL refs failed or empty (zero-result detection)
+  const hasSuccessfulStart = refs.some(r => r.status === "RUNNING");
+  if (!hasSuccessfulStart && refs.length > 0) {
+    console.log(`Stage ${stageNum}: All actor runs failed to start`);
+    // Skip to validation which will handle the zero-result case
+  }
+
   await serviceClient.from("signal_runs").update({
-    apify_run_ids: refs,
-    processing_phase: `stage_${stageNum}_scraping`,
+    apify_run_ids: [...(run.apify_run_ids || []).filter((r: any) => (r.pipelineStage || 1) !== stageNum), ...refs],
+    processing_phase: refs.length > 0 && hasSuccessfulStart ? `stage_${stageNum}_scraping` : `stage_${stageNum}_validating`,
     current_pipeline_stage: stageNum - 1,
     updated_at: new Date().toISOString(),
   }).eq("id", run.id);
@@ -746,28 +1090,16 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
   const collectedIndex = run.collected_dataset_index || 0;
 
   if (collectedIndex >= stageRefs.length) {
-    // All datasets collected for this stage — dedup if needed, then advance
+    // All datasets collected for this stage — dedup if needed, then validate
     if (stageDef.dedup_after) {
       await dedupLeads(run, serviceClient);
     }
 
-    // Advance to next stage
-    const nextStageNum = stageNum + 1;
-    const nextStageDef = pipeline[nextStageNum - 1];
-    if (!nextStageDef) {
-      // Pipeline complete — finalize
-      await pipelineFinalize(run, serviceClient);
-    } else {
-      const nextPhase = nextStageDef.type === "ai_filter"
-        ? `stage_${nextStageNum}_ai_filter`
-        : `stage_${nextStageNum}_starting`;
-      await serviceClient.from("signal_runs").update({
-        processing_phase: nextPhase,
-        current_pipeline_stage: nextStageNum - 1,
-        collected_dataset_index: 0,
-        updated_at: new Date().toISOString(),
-      }).eq("id", run.id);
-    }
+    // Go to validation before advancing to next stage
+    await serviceClient.from("signal_runs").update({
+      processing_phase: `stage_${stageNum}_validating`,
+      updated_at: new Date().toISOString(),
+    }).eq("id", run.id);
     return;
   }
 
@@ -808,9 +1140,39 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         await serviceClient.from("signal_leads").insert(leadsToInsert.slice(i, i + 200));
       }
       console.log(`Stage ${stageNum}: Inserted ${leadsToInsert.length} leads from dataset ${collectedIndex + 1}`);
+    } else if (stageDef.input_transform === "linkedin_url_discovery") {
+      // LinkedIn URL discovery: extract LinkedIn company URLs from Google Search results
+      const { data: allRunLeads } = await serviceClient
+        .from("signal_leads").select("id, company_name, company_linkedin_url").eq("run_id", run.id).limit(10000);
+      const runLeads = allRunLeads || [];
+
+      for (const item of normalised) {
+        const url = item.website || item._raw?.url || item._raw?.link || "";
+        if (!url.includes("linkedin.com/company")) continue;
+
+        // Extract company name from the Google search result title or description
+        const resultTitle = (item.company_name || item._raw?.title || "").toLowerCase();
+        
+        // Try to match with existing leads
+        for (const lead of runLeads) {
+          if (lead.company_linkedin_url) continue; // Already has one
+          const leadName = (lead.company_name || "").toLowerCase();
+          if (!leadName) continue;
+
+          // Fuzzy match: result title contains company name or vice versa
+          if (resultTitle.includes(leadName) || leadName.includes(resultTitle.split(" - ")[0].split(" |")[0].trim())) {
+            await serviceClient.from("signal_leads").update({
+              company_linkedin_url: url,
+              pipeline_stage: `stage_${stageNum}`,
+            }).eq("id", lead.id);
+            lead.company_linkedin_url = url; // Prevent double-assignment
+            break;
+          }
+        }
+      }
+      console.log(`Stage ${stageNum}: LinkedIn URL discovery completed from dataset ${collectedIndex + 1}`);
     } else if (actor.category === "people_data") {
       // People-finding stage: UPDATE existing leads with person data
-      // Pre-fetch all leads for this run to enable robust matching
       const { data: allRunLeads } = await serviceClient
         .from("signal_leads").select("id, company_name, domain, company_linkedin_url").eq("run_id", run.id).limit(10000);
       const runLeads = allRunLeads || [];
@@ -819,10 +1181,8 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         const personCompany = (item.company_name || "").trim().toLowerCase();
         if (!personCompany) continue;
 
-        // Try matching strategies in order: domain, normalized company name, linkedin URL
         let matchedLeadId: string | null = null;
 
-        // Strategy 1: Match by domain extracted from person's company LinkedIn or raw data
         const personLinkedIn = item._raw?.currentCompanyLinkedinUrl || item._raw?.companyLinkedinUrl || "";
         const personDomain = extractDomain(item._raw?.companyUrl || item._raw?.website || "");
         if (personDomain) {
@@ -830,13 +1190,11 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
           if (domainMatch) matchedLeadId = domainMatch.id;
         }
 
-        // Strategy 2: Exact case-insensitive company name match
         if (!matchedLeadId) {
           const nameMatch = runLeads.find((l: any) => (l.company_name || "").trim().toLowerCase() === personCompany);
           if (nameMatch) matchedLeadId = nameMatch.id;
         }
 
-        // Strategy 3: Fuzzy — company name contains or is contained
         if (!matchedLeadId) {
           const fuzzyMatch = runLeads.find((l: any) => {
             const leadName = (l.company_name || "").trim().toLowerCase();
@@ -845,7 +1203,6 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
           if (fuzzyMatch) matchedLeadId = fuzzyMatch.id;
         }
 
-        // Strategy 4: Match by LinkedIn company URL
         if (!matchedLeadId && personLinkedIn) {
           const normalizedPersonLI = personLinkedIn.toLowerCase().replace(/\/$/, "");
           const liMatch = runLeads.find((l: any) => l.company_linkedin_url && l.company_linkedin_url.toLowerCase().replace(/\/$/, "") === normalizedPersonLI);
@@ -881,10 +1238,10 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         if (updatesFields.includes("country") && item.country) updateData.country = item.country;
         if (updatesFields.includes("contact_name") && item.contact_name) updateData.contact_name = item.contact_name;
         if (updatesFields.includes("linkedin_profile_url") && item.linkedin_profile) updateData.linkedin_profile_url = item.linkedin_profile;
+        if (updatesFields.includes("company_linkedin_url") && item.linkedin) updateData.company_linkedin_url = item.linkedin;
         if (item.description) updateData.website_content = String(item.description).slice(0, 5000);
         if (item.linkedin) updateData.company_linkedin_url = item.linkedin;
 
-        // Match by domain
         await serviceClient.from("signal_leads").update(updateData)
           .eq("run_id", run.id).eq("domain", domain);
       }
@@ -906,7 +1263,11 @@ async function pipelineAiFilter(run: any, stageDef: any, stageNum: number, pipel
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
     console.warn("LOVABLE_API_KEY not set, skipping AI filter");
-    advancePipelineStage(run, stageNum, pipeline, serviceClient);
+    // Go to validation instead of directly advancing
+    await serviceClient.from("signal_runs").update({
+      processing_phase: `stage_${stageNum}_validating`,
+      updated_at: new Date().toISOString(),
+    }).eq("id", run.id);
     return;
   }
 
@@ -914,7 +1275,10 @@ async function pipelineAiFilter(run: any, stageDef: any, stageNum: number, pipel
     .from("signal_leads").select("*").eq("run_id", run.id).limit(10000);
 
   if (!leads || leads.length === 0) {
-    await advancePipelineStage(run, stageNum, pipeline, serviceClient);
+    await serviceClient.from("signal_runs").update({
+      processing_phase: `stage_${stageNum}_validating`,
+      updated_at: new Date().toISOString(),
+    }).eq("id", run.id);
     return;
   }
 
@@ -939,9 +1303,9 @@ async function pipelineAiFilter(run: any, stageDef: any, stageNum: number, pipel
 
 IMPORTANT RULES:
 - Analyze ALL fields: company_name, domain, industry, employee_count, and description.
-- The "domain" field is the company's website domain. Use it as a strong signal (e.g., "seoagency.com" → likely SEO/marketing agency, "acmesteel.com" → likely manufacturing, not marketing).
-- The "description" field may be a JOB POSTING or website content, not a company description. Extract what you can about the COMPANY from it but don't assume the job role IS the company's business.
-- If employee_count is provided, use it strictly. "1-10" or numbers ≤10 pass a small-company filter. "5001-10000" or large numbers fail.
+- The "domain" field is the company's website domain. Use it as a strong signal.
+- The "description" field may be a JOB POSTING or website content, not a company description. Extract what you can about the COMPANY from it.
+- If employee_count is provided, use it strictly.
 - Large enterprises (Meta, Amazon, Google, Oracle, etc.) are NOT small businesses — reject them unless criteria specifically targets large companies.
 - Staffing agencies, recruitment firms, and job boards are NOT the same as the industry they recruit for.
 - When in doubt, REJECT rather than accept. Be strict.
@@ -955,12 +1319,10 @@ Return a JSON array of booleans, one per company. Only return the JSON array, no
                 for (const field of inputFields) {
                   obj[field] = b[field] || b.extra_data?.[field] || "";
                 }
-                // Always include key identifiers and context
                 if (!obj.company_name) obj.company_name = b.company_name || "";
                 if (!obj.domain) obj.domain = b.domain || extractDomain(b.website || "");
                 if (!obj.industry) obj.industry = b.industry || "";
                 if (!obj.employee_count) obj.employee_count = b.employee_count || "";
-                // Always pass description/website_content for richer context
                 if (!obj.description) {
                   const desc = b.website_content || b.extra_data?.description || b.extra_data?.descriptionHtml || "";
                   obj.description = typeof desc === "string" ? desc.slice(0, 500) : "";
@@ -983,11 +1345,9 @@ Return a JSON array of booleans, one per company. Only return the JSON array, no
       }
     } catch (err) {
       console.error(`AI filter batch error:`, err);
-      // Keep all on error
     }
   }
 
-  // Delete failed leads
   if (failedIds.length > 0) {
     for (let i = 0; i < failedIds.length; i += 200) {
       await serviceClient.from("signal_leads").delete().in("id", failedIds.slice(i, i + 200));
@@ -996,7 +1356,11 @@ Return a JSON array of booleans, one per company. Only return the JSON array, no
 
   console.log(`Stage ${stageNum} AI filter: ${leads.length - failedIds.length} passed, ${failedIds.length} rejected`);
 
-  await advancePipelineStage(run, stageNum, pipeline, serviceClient);
+  // Go to validation
+  await serviceClient.from("signal_runs").update({
+    processing_phase: `stage_${stageNum}_validating`,
+    updated_at: new Date().toISOString(),
+  }).eq("id", run.id);
 }
 
 // ── Advance to next pipeline stage ──
@@ -1056,6 +1420,33 @@ async function dedupLeads(run: any, serviceClient: any) {
 async function pipelineFinalize(run: any, serviceClient: any) {
   console.log(`Pipeline ${run.id}: FINALIZING`);
 
+  // Clean up orphaned leads that never advanced past stage_1 (if pipeline has multiple stages)
+  const pipeline = run.signal_plan?.pipeline || [];
+  if (pipeline.length > 2) {
+    // Count leads stuck at stage_1 vs leads that advanced
+    const { count: stage1Count } = await serviceClient
+      .from("signal_leads").select("*", { count: "exact", head: true })
+      .eq("run_id", run.id).eq("pipeline_stage", "stage_1");
+    
+    const { count: advancedCount } = await serviceClient
+      .from("signal_leads").select("*", { count: "exact", head: true })
+      .eq("run_id", run.id).neq("pipeline_stage", "stage_1");
+
+    // If there are leads that advanced AND many stuck at stage_1, clean up orphans
+    if ((advancedCount || 0) > 0 && (stage1Count || 0) > (advancedCount || 0) * 2) {
+      console.log(`Cleaning up ${stage1Count} orphaned stage_1 leads (${advancedCount} leads advanced)`);
+      // Delete in batches
+      const { data: orphans } = await serviceClient
+        .from("signal_leads").select("id").eq("run_id", run.id).eq("pipeline_stage", "stage_1").limit(10000);
+      if (orphans && orphans.length > 0) {
+        const orphanIds = orphans.map((o: any) => o.id);
+        for (let i = 0; i < orphanIds.length; i += 200) {
+          await serviceClient.from("signal_leads").delete().in("id", orphanIds.slice(i, i + 200));
+        }
+      }
+    }
+  }
+
   // Workspace dedup
   const { data: finalLeads } = await serviceClient
     .from("signal_leads").select("*").eq("run_id", run.id).limit(10000);
@@ -1111,15 +1502,13 @@ async function pipelineFinalize(run: any, serviceClient: any) {
     }
   }
 
-  // Calculate cost based on actual pipeline work: scrape rows + AI filtered rows
+  // Calculate cost based on actual pipeline work
   const { count: finalCount } = await serviceClient
     .from("signal_leads").select("*", { count: "exact", head: true }).eq("run_id", run.id);
   const leadsCount = finalCount ?? uniqueLeads.length;
 
   let actualCredits = 0;
   if (leadsCount > 0) {
-    // Derive actual volumes from pipeline stage definitions
-    const pipeline = run.signal_plan?.pipeline || [];
     let totalScrapedRows = 0;
     let totalAiFilteredRows = 0;
     let runningCount = 0;
@@ -1136,17 +1525,14 @@ async function pipelineFinalize(run: any, serviceClient: any) {
       }
     }
 
-    // Fallback: if pipeline metadata missing, use final lead count
     if (totalScrapedRows === 0) totalScrapedRows = leadsCount;
 
-    // Formula: (scrape_cost + ai_cost) * 1.5 (50% operational overhead) * 5 credits/$1
     const scrapeCostUsd = (totalScrapedRows / 1000) * 1.0;
     const aiCostUsd = totalAiFilteredRows * 0.001;
     const totalUsd = (scrapeCostUsd + aiCostUsd) * 1.5;
     actualCredits = Math.max(5, Math.ceil(totalUsd * 5));
   }
 
-  // Charge credits
   if (actualCredits > 0) {
     const { data: creditsData } = await serviceClient
       .from("lead_credits").select("credits_balance").eq("workspace_id", run.workspace_id).maybeSingle();
@@ -1165,11 +1551,12 @@ async function pipelineFinalize(run: any, serviceClient: any) {
   }).eq("id", run.id);
 
   if (run.user_id) {
-    const pipeline = run.signal_plan?.pipeline || [];
+    const adjustments = run.pipeline_adjustments || [];
+    const adjustmentNote = adjustments.length > 0 ? ` Pipeline was adapted ${adjustments.length} time(s) during execution.` : "";
     await serviceClient.from("notifications").insert({
       user_id: run.user_id, workspace_id: run.workspace_id,
       type: "signal_complete", title: "Signal Complete!",
-      message: `Your signal "${run.signal_name || run.signal_query}" completed ${pipeline.length} stages and found ${leadsCount} leads. ${actualCredits} credits charged.`,
+      message: `Your signal "${run.signal_name || run.signal_query}" completed ${pipeline.length} stages and found ${leadsCount} leads. ${actualCredits} credits charged.${adjustmentNote}`,
     });
   }
 
@@ -1203,8 +1590,6 @@ async function processLegacyPhase(run: any, serviceClient: any) {
   }
 }
 
-// ── Legacy Phase 1: Starting ──
-
 async function legacyPhaseStarting(run: any, serviceClient: any) {
   const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN")!;
   const storedPlan = run.signal_plan;
@@ -1234,7 +1619,9 @@ async function legacyPhaseStarting(run: any, serviceClient: any) {
         iterPlan.search_params["urls"] = [`https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(keyword)}&location=${encodeURIComponent(location)}&f_TPR=r604800`];
         delete iterPlan.search_params["searchKeywords"];
         delete iterPlan.search_params["searchLocation"];
-        if (!iterPlan.search_params["splitByLocation"]) delete iterPlan.search_params["splitCountry"];
+        // Force disable splitByLocation
+        iterPlan.search_params["splitByLocation"] = false;
+        delete iterPlan.search_params["splitCountry"];
       } else {
         const kf = ["title", "search", "searchQuery"].find(f => actor.inputSchema[f]);
         if (kf) iterPlan.search_params[kf] = keyword;
@@ -1263,8 +1650,6 @@ async function legacyPhaseStarting(run: any, serviceClient: any) {
   }).eq("id", run.id);
 }
 
-// ── Legacy Phase 2: Scraping ──
-
 async function legacyPhaseScraping(run: any, serviceClient: any) {
   const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN")!;
   const refs: ApifyRunRef[] = run.apify_run_ids || [];
@@ -1289,8 +1674,6 @@ async function legacyPhaseScraping(run: any, serviceClient: any) {
     updated_at: new Date().toISOString(),
   }).eq("id", run.id);
 }
-
-// ── Legacy Phase 3: Collecting ──
 
 async function legacyPhaseCollecting(run: any, serviceClient: any) {
   const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN")!;
@@ -1332,8 +1715,6 @@ async function legacyPhaseCollecting(run: any, serviceClient: any) {
   await serviceClient.from("signal_runs").update({ collected_dataset_index: collectedIndex + 1, updated_at: new Date().toISOString() }).eq("id", run.id);
 }
 
-// ── Legacy Phase 4: Finalizing ──
-
 async function legacyPhaseFinalizing(run: any, serviceClient: any) {
   const storedPlan = run.signal_plan;
   const plans: any[] = Array.isArray(storedPlan) ? storedPlan : [storedPlan];
@@ -1347,7 +1728,6 @@ async function legacyPhaseFinalizing(run: any, serviceClient: any) {
     return;
   }
 
-  // Dedup
   const JOB_BOARD_DOMAINS = new Set(["indeed.com", "linkedin.com", "yelp.com", "yellowpages.com", "google.com"]);
   const seen = new Set<string>();
   const removeIds: string[] = [];
@@ -1364,7 +1744,6 @@ async function legacyPhaseFinalizing(run: any, serviceClient: any) {
     }
   }
 
-  // AI classification
   const aiClassification = plans[0]?.ai_classification;
   let aiFilteredCount = 0;
   if (aiClassification) {
@@ -1409,7 +1788,6 @@ async function legacyPhaseFinalizing(run: any, serviceClient: any) {
     }
   }
 
-  // Workspace dedup
   const { data: finalLeads } = await serviceClient
     .from("signal_leads").select("*").eq("run_id", run.id).limit(10000);
 
@@ -1451,7 +1829,6 @@ async function legacyPhaseFinalizing(run: any, serviceClient: any) {
 
   let actualCredits = 0;
   if (leadsCount > 0) {
-    // Legacy runs: use final lead count as scrape estimate, no AI stages
     const scrapeCostUsd = (leadsCount / 1000) * 1.0;
     const totalUsd = scrapeCostUsd * 1.5;
     actualCredits = Math.max(5, Math.ceil(totalUsd * 5));
