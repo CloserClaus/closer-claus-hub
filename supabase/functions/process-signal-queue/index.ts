@@ -1095,6 +1095,68 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
       await dedupLeads(run, serviceClient);
     }
 
+    // HARD ABORT: If this is a discovery stage (stage 1 or no input_from) and we have 0 leads, fail immediately
+    if (!stageDef.input_from) {
+      const { count: leadCount } = await serviceClient
+        .from("signal_leads").select("*", { count: "exact", head: true })
+        .eq("run_id", run.id);
+
+      if (!leadCount || leadCount === 0) {
+        const userMessage = `No results found from ${(stageDef.actors || []).join(" + ")} in stage ${stageNum}. This can happen when job boards or search sources return empty results for your query. Try broadening your search terms, expanding the date range, or adjusting your criteria.`;
+        console.log(`Stage ${stageNum}: ZERO RESULTS — aborting pipeline`);
+        
+        await serviceClient.from("signal_runs").update({
+          status: "failed",
+          error_message: userMessage,
+          pipeline_adjustments: [...(run.pipeline_adjustments || []), {
+            stage: stageNum,
+            quality: "USELESS",
+            reason: "Stage produced 0 results — hard abort",
+            timestamp: new Date().toISOString(),
+          }],
+        }).eq("id", run.id);
+
+        if (run.user_id) {
+          await serviceClient.from("notifications").insert({
+            user_id: run.user_id, workspace_id: run.workspace_id,
+            type: "signal_failed", title: "Signal Failed — No Results Found",
+            message: userMessage,
+          });
+        }
+        return;
+      }
+    }
+
+    // Also check for enrichment/later stages with 0 remaining leads
+    const { count: currentLeadCount } = await serviceClient
+      .from("signal_leads").select("*", { count: "exact", head: true })
+      .eq("run_id", run.id);
+
+    if (!currentLeadCount || currentLeadCount === 0) {
+      const userMessage = `All leads were filtered out by stage ${stageNum}. No results remain to process. Try adjusting your filtering criteria or broadening your search.`;
+      console.log(`Stage ${stageNum}: All leads eliminated — aborting pipeline`);
+      
+      await serviceClient.from("signal_runs").update({
+        status: "failed",
+        error_message: userMessage,
+        pipeline_adjustments: [...(run.pipeline_adjustments || []), {
+          stage: stageNum,
+          quality: "USELESS",
+          reason: "All leads eliminated by this stage",
+          timestamp: new Date().toISOString(),
+        }],
+      }).eq("id", run.id);
+
+      if (run.user_id) {
+        await serviceClient.from("notifications").insert({
+          user_id: run.user_id, workspace_id: run.workspace_id,
+          type: "signal_failed", title: "Signal Failed — No Leads Remaining",
+          message: userMessage,
+        });
+      }
+      return;
+    }
+
     // Go to validation before advancing to next stage
     await serviceClient.from("signal_runs").update({
       processing_phase: `stage_${stageNum}_validating`,

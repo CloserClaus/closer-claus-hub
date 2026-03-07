@@ -720,16 +720,44 @@ function validateDataFlow(pipeline: any[]): { valid: boolean; issues: string[]; 
   let fixedPipeline = [...pipeline];
 
   // Track which fields are populated after each stage
+  // PESSIMISTIC approach: a field is only "reliably populated" if ALL actors in the stage output it
+  // This prevents issues where e.g. linkedin_jobs claims to output LinkedIn URLs but returns 0 results,
+  // while indeed_jobs (which actually produces data) does NOT output LinkedIn URLs
   const populatedFields = new Set<string>();
 
   // Stage 1 discovery populates base fields
   const stage1 = pipeline[0];
   if (stage1?.type === "scrape" && stage1.actors) {
+    // Collect output fields per actor
+    const fieldsByActor: Map<string, Set<string>> = new Map();
     for (const actorKey of stage1.actors) {
       const actor = getActor(actorKey);
       if (!actor) continue;
+      const actorFields = new Set<string>();
       for (const [field, paths] of Object.entries(actor.outputFields)) {
-        if (paths.length > 0) populatedFields.add(field);
+        if (paths.length > 0) actorFields.add(field);
+      }
+      fieldsByActor.set(actorKey, actorFields);
+    }
+
+    if (fieldsByActor.size > 0) {
+      if (fieldsByActor.size === 1) {
+        // Single actor — all its fields are populated
+        const [, fields] = [...fieldsByActor.entries()][0];
+        fields.forEach(f => populatedFields.add(f));
+      } else {
+        // Multiple actors — only fields that ALL actors output are reliably populated
+        // Fields that only SOME actors output are NOT considered reliably available
+        const allActorFields = [...fieldsByActor.values()];
+        const firstActorFields = allActorFields[0];
+        for (const field of firstActorFields) {
+          const allHaveIt = allActorFields.every(af => af.has(field));
+          if (allHaveIt) {
+            populatedFields.add(field);
+          }
+        }
+        // Also add fields from actors that always produce results (non-linkedin sources are more reliable)
+        // But for safety, DON'T assume linkedin fields are available from linkedin_jobs since it often fails
       }
     }
   }
