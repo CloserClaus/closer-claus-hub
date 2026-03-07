@@ -867,12 +867,22 @@ async function handleGeneratePlan(
 
   const aiResult = await response.json();
   let planText = aiResult.choices?.[0]?.message?.content || "";
+  
+  // Strip markdown code fences and any leading/trailing text outside JSON
   planText = planText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+  
+  // Try to extract JSON object/array if there's surrounding text
+  const jsonMatch = planText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+  if (jsonMatch) {
+    planText = jsonMatch[1];
+  }
 
   let parsedPlan: any;
   try {
     parsedPlan = JSON.parse(planText);
-  } catch {
+  } catch (parseErr) {
+    console.error("Failed to parse AI plan response. Raw text (first 1000 chars):", planText.slice(0, 1000));
+    console.error("Parse error:", parseErr);
     throw new Error("AI returned invalid plan. Please try rephrasing your query.");
   }
 
