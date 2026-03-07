@@ -256,7 +256,7 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
 
         if (!isAccessible) continue;
 
-        const category = categorizeActor(item.title || "", item.description || "");
+        const { category, subCategory } = categorizeActor(item.title || "", item.description || "");
         const outputFields = inferOutputFields(category);
 
         const actor: ActorEntry = {
