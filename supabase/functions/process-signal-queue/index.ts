@@ -7,7 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// ── Actor Catalog (must stay in sync with signal-planner) ──
+// ── Universal Output Field Paths — works with ANY Apify actor ──
 
 interface InputField {
   type: "string" | "number" | "boolean" | "string[]" | "enum";
@@ -25,159 +25,47 @@ interface ActorEntry {
   description: string;
   inputSchema: Record<string, InputField>;
   outputFields: Record<string, string[]>;
+  monthlyUsers?: number;
+  totalRuns?: number;
+  rating?: number;
 }
 
-const ACTOR_CATALOG: ActorEntry[] = [
-  {
-    key: "linkedin_jobs", actorId: "curious_coder/linkedin-jobs-scraper", label: "LinkedIn Jobs", category: "hiring_intent", description: "LinkedIn job postings",
-    inputSchema: {
-      urls: { type: "string[]", required: true, description: "LinkedIn job search URLs" },
-      count: { type: "number", default: 2500, description: "Max job listings" },
-      scrapeCompany: { type: "boolean", default: true, description: "Include company details" },
-      splitByLocation: { type: "boolean", default: false, description: "Split by location" },
-      splitCountry: { type: "string", description: "Country for splitting" },
-    },
-    outputFields: {
-      company_name: ["companyName", "company"], title: ["title", "jobTitle", "position"],
-      website: ["companyWebsite"], linkedin: ["companyLinkedinUrl", "companyUrl"],
-      location: ["location", "jobLocation", "place"], city: ["city", "jobLocation"], state: ["state"], country: ["country"],
-      phone: [], email: ["email", "contactEmail"], description: ["descriptionHtml", "description"],
-      industry: ["companyIndustry", "industries"], employee_count: ["companyEmployeesCount", "companySize"],
-    },
-  },
-  {
-    key: "indeed_jobs", actorId: "valig/indeed-jobs-scraper", label: "Indeed Jobs", category: "hiring_intent", description: "Indeed job postings",
-    inputSchema: {
-      title: { type: "string", required: true, description: "Job title" },
-      location: { type: "string", default: "United States", description: "Location" },
-      country: { type: "string", default: "us", description: "Country code" },
-      limit: { type: "number", default: 1000, description: "Max results" },
-      datePosted: { type: "string", default: "7", description: "Days since posted" },
-    },
-    outputFields: {
-      company_name: ["company", "companyName", "employer.name"], title: ["positionName", "title", "jobTitle"],
-      website: ["employer.corporateWebsite", "companyUrl"], linkedin: [], location: ["location", "jobLocation", "location.city"],
-      city: ["city", "location.city"], state: ["state", "location.state"], country: ["country", "location.countryName"],
-      phone: [], email: [], description: ["description", "jobDescription", "description.text"],
-      industry: ["employer.industry"], employee_count: ["employer.employeesCount"],
-    },
-  },
-  {
-    key: "google_maps", actorId: "nwua9Gu5YrADL7ZDj", label: "Google Maps", category: "local_business", description: "Google Maps places",
-    inputSchema: {
-      searchStringsArray: { type: "string[]", required: true, description: "Search queries" },
-      maxCrawledPlacesPerSearch: { type: "number", default: 2000, description: "Max places" },
-      language: { type: "string", default: "en", description: "Language" },
-      locationQuery: { type: "string", description: "Location filter" },
-    },
-    outputFields: {
-      company_name: ["title", "name"], website: ["website", "url"], linkedin: [],
-      location: ["address", "fullAddress", "location"], city: ["city"], state: ["state"],
-      country: ["countryCode", "country"], phone: ["phone", "telephone"], email: ["email", "emails"],
-      description: ["description", "categoryName"], industry: ["categoryName", "category"], employee_count: [],
-    },
-  },
-  {
-    key: "yelp", actorId: "sovereigntaylor/yelp-scraper", label: "Yelp", category: "local_business", description: "Yelp listings",
-    inputSchema: {
-      searchTerms: { type: "string[]", required: true, description: "Search queries" },
-      locations: { type: "string[]", default: ["United States"], description: "Locations" },
-      maxItems: { type: "number", default: 1000, description: "Max items" },
-    },
-    outputFields: {
-      company_name: ["name", "title", "businessName"], website: ["website", "url"], linkedin: [],
-      location: ["address", "neighborhood", "fullAddress"], city: ["city"], state: ["state"],
-      country: ["country"], phone: ["phone", "displayPhone"], email: ["email"],
-      description: ["categories"], industry: ["categories"],
-    },
-  },
-  {
-    key: "yellow_pages", actorId: "trudax/yellow-pages-us-scraper", label: "Yellow Pages", category: "local_business", description: "Yellow Pages",
-    inputSchema: {
-      search: { type: "string", required: true, description: "Category" },
-      location: { type: "string", required: true, description: "Location" },
-      maxItems: { type: "number", default: 1000, description: "Max results" },
-    },
-    outputFields: {
-      company_name: ["name", "businessName", "title"], website: ["website", "url"], linkedin: [],
-      location: ["address", "fullAddress", "street"], city: ["city"], state: ["state"], country: [],
-      phone: ["phone", "phoneNumber"], email: ["email"], description: ["categories", "description"],
-      industry: ["categories"],
-    },
-  },
-  {
-    key: "linkedin_companies", actorId: "2SyF0bVxmgGr8IVCZ", label: "LinkedIn Companies", category: "company_data", description: "LinkedIn company profiles",
-    inputSchema: {
-      profileUrls: { type: "string[]", required: true, description: "LinkedIn company URLs" },
-      maxResults: { type: "number", default: 500, description: "Max results" },
-    },
-    outputFields: {
-      company_name: ["name", "title"], website: ["website", "url"], linkedin: ["linkedinUrl", "url"],
-      location: ["headquarters", "location"], city: ["city", "headquartersCity"], state: ["state"],
-      country: ["country", "headquartersCountry"], phone: ["phone"], email: ["email"],
-      description: ["description", "tagline"], industry: ["industry", "industries"],
-      employee_count: ["employeeCount", "staffCount", "employeesOnLinkedIn"],
-    },
-  },
-  {
-    key: "website_crawler", actorId: "apify/website-content-crawler", label: "Website Content Crawler", category: "website_data", description: "Crawls websites for text",
-    inputSchema: {
-      startUrls: { type: "string[]", required: true, description: "URLs to crawl" },
-      maxCrawlPages: { type: "number", default: 3, description: "Max pages per site" },
-      crawlerType: { type: "string", default: "cheerio", description: "Crawler engine" },
-    },
-    outputFields: {
-      website: ["url", "loadedUrl"], description: ["text", "markdown", "body"],
-    },
-  },
-  {
-    key: "linkedin_people", actorId: "curious_coder/linkedin-people-scraper", label: "LinkedIn People Search", category: "people_data", description: "LinkedIn people search",
-    inputSchema: {
-      urls: { type: "string[]", required: true, description: "LinkedIn people search URLs" },
-      count: { type: "number", default: 50, description: "Max results" },
-    },
-    outputFields: {
-      contact_name: ["fullName", "name", "firstName"],
-      title: ["headline", "title", "currentPositions.title"],
-      linkedin_profile: ["profileUrl", "url", "linkedinUrl"],
-      company_name: ["currentCompany", "companyName"],
-      location: ["location", "geoLocation"], city: ["city"], country: ["country"],
-    },
-  },
-  {
-    key: "contact_enrichment", actorId: "9Sk4JJhEma9vBKqrg", label: "Contact Enrichment", category: "enrichment", description: "Extract contacts from websites",
-    inputSchema: {
-      startUrls: { type: "string[]", required: true, description: "Website URLs" },
-      maxRequestsPerStartUrl: { type: "number", default: 5, description: "Pages per site" },
-      maxDepth: { type: "number", default: 2, description: "Link depth" },
-      sameDomain: { type: "boolean", default: true, description: "Stay within domain" },
-      mergeContacts: { type: "boolean", default: true, description: "Merge contacts" },
-    },
-    outputFields: {
-      company_name: ["companyName", "name", "title"], website: ["domain", "url", "website"],
-      linkedin: ["linkedIn", "linkedin", "linkedInUrl"], location: ["address", "location"],
-      city: ["city"], state: ["state"], country: ["country"],
-      phone: ["phones", "phone", "phoneNumbers"], email: ["emails", "email", "emailAddresses"],
-      description: ["description"], industry: [],
-    },
-  },
-  {
-    key: "google_search", actorId: "nFJndFXA5zjCTuudP", label: "Google Search", category: "web_search", description: "Google Search results",
-    inputSchema: {
-      queries: { type: "string[]", required: true, description: "Search queries" },
-      maxPagesPerQuery: { type: "number", default: 10, description: "Pages per query" },
-      resultsPerPage: { type: "number", default: 10, description: "Results per page" },
-    },
-    outputFields: {
-      company_name: ["title"], website: ["url", "link"], linkedin: [],
-      location: [], city: [], state: [], country: [], phone: [], email: [],
-      description: ["description", "snippet"],
-    },
-  },
-];
+const UNIVERSAL_OUTPUT_PATHS: Record<string, string[]> = {
+  company_name: ["company", "companyName", "company_name", "name", "title", "employer.name", "businessName", "organization", "companyInfo.name"],
+  website: ["website", "url", "companyUrl", "companyWebsite", "domain", "employer.corporateWebsite", "link", "homepageUrl", "href"],
+  linkedin: ["linkedinUrl", "companyLinkedinUrl", "linkedin", "linkedIn", "linkedin_url", "companyUrl", "linkedInUrl"],
+  location: ["location", "address", "fullAddress", "jobLocation", "place", "neighborhood"],
+  city: ["city", "location.city", "headquartersCity", "jobLocation"],
+  state: ["state", "location.state"],
+  country: ["country", "countryCode", "location.countryName", "headquartersCountry"],
+  phone: ["phone", "telephone", "phoneNumber", "phones", "displayPhone", "phoneNumbers"],
+  email: ["email", "emails", "emailAddresses", "contactEmail"],
+  description: ["description", "descriptionHtml", "jobDescription", "snippet", "text", "description.text", "markdown", "body", "categoryName", "tagline"],
+  industry: ["industry", "industries", "companyIndustry", "category", "categoryName", "categories", "employer.industry"],
+  employee_count: ["employeeCount", "companyEmployeesCount", "companySize", "staffCount", "employeesOnLinkedIn", "employer.employeesCount", "numberOfEmployees"],
+  title: ["title", "jobTitle", "position", "positionName", "headline"],
+  contact_name: ["fullName", "name", "firstName", "personName"],
+  linkedin_profile: ["profileUrl", "linkedinUrl", "url", "linkedInProfile"],
+  salary: ["salary", "salaryInfo", "baseSalary"],
+};
 
-const CATALOG_BY_KEY = new Map(ACTOR_CATALOG.map((a) => [a.key, a]));
-function getActor(key: string): ActorEntry | undefined { return CATALOG_BY_KEY.get(key); }
+// ── Dynamic Actor Registry — loaded from each run's plan ──
+
+let planActorRegistry: Map<string, ActorEntry> = new Map();
+
+function loadActorRegistry(plan: any) {
+  planActorRegistry = new Map();
+  const registry = plan?.actor_registry || {};
+  for (const [key, config] of Object.entries(registry)) {
+    const actor = config as ActorEntry;
+    if (!actor.key) actor.key = key;
+    planActorRegistry.set(key, actor);
+  }
+}
+
+function getActor(key: string): ActorEntry | undefined {
+  return planActorRegistry.get(key);
+}
 
 // ── Utility functions ──
 
@@ -186,10 +74,15 @@ function getNestedValue(obj: any, path: string): any {
   return path.split('.').reduce((acc, part) => acc && acc[part], obj);
 }
 
-function normaliseGenericResults(actor: ActorEntry, items: any[]): any[] {
+function normaliseGenericResults(actor: ActorEntry | null, items: any[]): any[] {
+  // Use actor's outputFields if available and non-empty, otherwise fall back to universal paths
+  const fieldPaths = (actor?.outputFields && Object.keys(actor.outputFields).length > 0)
+    ? actor.outputFields
+    : UNIVERSAL_OUTPUT_PATHS;
+
   return items.map((item) => {
     const normalised: Record<string, any> = {};
-    for (const [outputKey, sourcePaths] of Object.entries(actor.outputFields)) {
+    for (const [outputKey, sourcePaths] of Object.entries(fieldPaths)) {
       let value: any = null;
       for (const path of sourcePaths) {
         const v = getNestedValue(item, path);
@@ -690,6 +583,9 @@ async function handlePhaseError(run: any, err: unknown, serviceClient: any) {
 // ═══════════════════════════════════════════════════════════
 
 async function processPipelinePhase(run: any, serviceClient: any) {
+  // Load actor registry from this run's plan (no hardcoded catalog)
+  loadActorRegistry(run.signal_plan);
+
   const phase = run.processing_phase || "stage_1_starting";
   console.log(`Pipeline signal ${run.id} phase=${phase}`);
 
