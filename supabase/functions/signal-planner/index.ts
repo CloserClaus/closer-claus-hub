@@ -215,6 +215,34 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
           console.warn(`No inputSchema found for ${actorId} — actor params will be passed through directly at runtime`);
         }
 
+        // Pre-flight access check: verify actor is runnable on this Apify account
+        let isAccessible = true;
+        try {
+          const accessResp = await fetch(
+            `https://api.apify.com/v2/acts/${actorIdEncoded}?token=${APIFY_API_TOKEN}`,
+            { method: "GET" }
+          );
+          if (accessResp.ok) {
+            const accessData = await accessResp.json();
+            const actorInfo = accessData.data;
+            // Check for deprecated or explicitly inaccessible actors
+            if (actorInfo?.isDeprecated) {
+              console.warn(`Actor ${actorId} is deprecated — skipping`);
+              isAccessible = false;
+            }
+            // Check if the actor requires rental and we don't have it
+            // Apify returns externallyUsable: false or isExternallyUsable: false for unrented paid actors
+            if (actorInfo?.externallyUsable === false || actorInfo?.isExternallyUsable === false) {
+              console.warn(`Actor ${actorId} is not rented/accessible — skipping`);
+              isAccessible = false;
+            }
+          }
+        } catch (e) {
+          console.warn(`Pre-flight access check failed for ${actorId}, assuming accessible:`, e);
+        }
+
+        if (!isAccessible) continue;
+
         const category = categorizeActor(item.title || "", item.description || "");
         const outputFields = inferOutputFields(category);
 
@@ -902,15 +930,33 @@ async function handleGeneratePlan(
   }
 
   // Build actor_registry — embed full actor details in the plan for the processor
+  // Include primary actors AND up to 2 backup actors per category for runtime fallback
   const usedActorKeys = new Set<string>();
+  const usedCategories = new Set<string>();
   for (const stage of parsedPlan.pipeline) {
-    if (stage.actors) stage.actors.forEach((a: string) => usedActorKeys.add(a));
+    if (stage.actors) stage.actors.forEach((a: string) => {
+      usedActorKeys.add(a);
+      const actor = discoveredActorMap.get(a);
+      if (actor) usedCategories.add(actor.category);
+    });
   }
   const actorRegistry: Record<string, ActorEntry> = {};
   for (const key of usedActorKeys) {
     const actor = discoveredActorMap.get(key);
     if (actor) actorRegistry[key] = actor;
   }
+
+  // Add backup actors: top 2 alternatives per used category (not already in registry)
+  for (const category of usedCategories) {
+    const backups = [...discoveredActorMap.values()]
+      .filter(a => a.category === category && !actorRegistry[a.key])
+      .sort((a, b) => (b.monthlyUsers || 0) - (a.monthlyUsers || 0))
+      .slice(0, 2);
+    for (const backup of backups) {
+      actorRegistry[backup.key] = { ...backup, _isBackup: true } as any;
+    }
+  }
+
   parsedPlan.actor_registry = actorRegistry;
 
   // Validate and warn
