@@ -94,7 +94,7 @@ export function SignalScraperTab() {
 
   const handleRerun = (run: SignalRun) => {
     setQuery(run.signal_query);
-    generatePlan({ query: run.signal_query });
+    generatePlan({ query: run.signal_query, advanced_settings: advancedSettings });
   };
 
   const handleTemplate = (tpl: any) => {

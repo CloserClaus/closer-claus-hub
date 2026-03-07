@@ -687,7 +687,9 @@ const ROW_CAP_KEYS = [
 function inferRowCapFromParams(actorParams: Record<string, any>): number | null {
   for (const key of ROW_CAP_KEYS) {
     const val = actorParams[key];
-    if (typeof val === "number" && val > 0) return val;
+    if (val === undefined || val === null) continue;
+    const num = typeof val === "number" ? val : parseInt(String(val), 10);
+    if (!isNaN(num) && num > 0) return num;
   }
   return null;
 }
@@ -971,40 +973,45 @@ async function handleGeneratePlan(
     }
   }
 
-  // Apply advanced settings caps
-  if (advanced_settings?.max_results_per_source) {
-    const maxCap = advanced_settings.max_results_per_source;
-    for (const stage of parsedPlan.pipeline) {
-      if (stage.stage === 1 && stage.type === "scrape") {
-        // Cap actor params using the full list of known row-limit keys
-        let totalInferred = 0;
-        const actorCount = Object.keys(stage.params_per_actor || {}).length || 1;
-        if (stage.params_per_actor) {
-          for (const actorKey of Object.keys(stage.params_per_actor)) {
-            const actorParams = stage.params_per_actor[actorKey];
-            let actorCapped = false;
-            for (const field of ROW_CAP_KEYS) {
-              if (actorParams[field] !== undefined && actorParams[field] > maxCap) {
-                actorParams[field] = maxCap;
-              }
-              if (typeof actorParams[field] === "number" && actorParams[field] > 0) {
+  // Apply advanced settings caps AND always populate Stage 1 expected_output_count
+  const maxCap = advanced_settings?.max_results_per_source || null;
+  console.log(`[signal-planner] advanced_settings received: ${!!advanced_settings}, maxCap: ${maxCap}`);
+
+  for (const stage of parsedPlan.pipeline) {
+    if (stage.stage === 1 && stage.type === "scrape") {
+      let totalInferred = 0;
+      const actorCount = Object.keys(stage.params_per_actor || {}).length || 1;
+      if (stage.params_per_actor) {
+        for (const actorKey of Object.keys(stage.params_per_actor)) {
+          const actorParams = stage.params_per_actor[actorKey];
+          let actorCapped = false;
+          for (const field of ROW_CAP_KEYS) {
+            if (actorParams[field] !== undefined) {
+              const numVal = typeof actorParams[field] === "number" ? actorParams[field] : parseInt(String(actorParams[field]), 10);
+              if (!isNaN(numVal) && numVal > 0) {
+                // Cap if maxCap is set
+                if (maxCap && numVal > maxCap) {
+                  actorParams[field] = maxCap;
+                }
                 actorCapped = true;
               }
             }
-            // If no cap field exists, inject maxItems as a safety net
-            if (!actorCapped) {
-              actorParams.maxItems = maxCap;
-            }
-            // Infer this actor's expected output
-            const inferred = inferRowCapFromParams(actorParams);
-            totalInferred += inferred || maxCap;
           }
-        } else {
-          totalInferred = maxCap;
+          // If no cap field exists, inject maxItems as a safety net
+          if (!actorCapped) {
+            actorParams.maxItems = maxCap || 2500;
+          }
+          // Infer this actor's expected output
+          const inferred = inferRowCapFromParams(actorParams);
+          totalInferred += inferred || (maxCap || 2500);
         }
-        // ALWAYS set expected_output_count for stage 1 so the estimator uses it
-        stage.expected_output_count = Math.min(totalInferred, maxCap * actorCount);
+      } else {
+        totalInferred = maxCap || 2500;
       }
+      // ALWAYS set expected_output_count for stage 1 so the estimator uses it
+      const computedCount = maxCap ? Math.min(totalInferred, maxCap * actorCount) : totalInferred;
+      stage.expected_output_count = computedCount;
+      console.log(`[signal-planner] Stage 1 expected_output_count set to ${computedCount} (actors: ${actorCount}, totalInferred: ${totalInferred})`);
     }
   }
 
