@@ -215,26 +215,39 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
           console.warn(`No inputSchema found for ${actorId} — actor params will be passed through directly at runtime`);
         }
 
-        // Pre-flight access check: verify actor is runnable on this Apify account
+        // Pre-flight access check: dry-run test to verify actor is runnable
         let isAccessible = true;
         try {
-          const accessResp = await fetch(
-            `https://api.apify.com/v2/acts/${actorIdEncoded}?token=${APIFY_API_TOKEN}`,
-            { method: "GET" }
+          // Attempt to start a minimal run — if we get 403 "not rented", actor is inaccessible
+          const dryRunResp = await fetch(
+            `https://api.apify.com/v2/acts/${actorIdEncoded}/runs?token=${APIFY_API_TOKEN}`,
+            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ maxItems: 0 }) }
           );
-          if (accessResp.ok) {
-            const accessData = await accessResp.json();
-            const actorInfo = accessData.data;
-            // Check for deprecated or explicitly inaccessible actors
-            if (actorInfo?.isDeprecated) {
-              console.warn(`Actor ${actorId} is deprecated — skipping`);
-              isAccessible = false;
+          if (dryRunResp.ok) {
+            // Run started — abort it immediately
+            const dryRunData = await dryRunResp.json();
+            const dryRunId = dryRunData.data?.id;
+            if (dryRunId) {
+              try {
+                await fetch(`https://api.apify.com/v2/actor-runs/${dryRunId}/abort?token=${APIFY_API_TOKEN}`, { method: "POST" });
+              } catch { /* ignore abort error */ }
             }
-            // Check if the actor requires rental and we don't have it
-            // Apify returns externallyUsable: false or isExternallyUsable: false for unrented paid actors
-            if (actorInfo?.externallyUsable === false || actorInfo?.isExternallyUsable === false) {
-              console.warn(`Actor ${actorId} is not rented/accessible — skipping`);
+          } else {
+            const errText = await dryRunResp.text();
+            const errLower = errText.toLowerCase();
+            if (dryRunResp.status === 403 || errLower.includes("actor-is-not-rented") || errLower.includes("not rented")) {
+              console.warn(`Actor ${actorId} failed dry-run (403 not rented) — skipping`);
               isAccessible = false;
+            } else {
+              // Also check for deprecated via GET
+              const accessResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}?token=${APIFY_API_TOKEN}`, { method: "GET" });
+              if (accessResp.ok) {
+                const actorInfo = (await accessResp.json()).data;
+                if (actorInfo?.isDeprecated) {
+                  console.warn(`Actor ${actorId} is deprecated — skipping`);
+                  isAccessible = false;
+                }
+              }
             }
           }
         } catch (e) {
