@@ -32,10 +32,24 @@ import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 
 const ICON_MAP: Record<string, any> = { Briefcase, Rocket, MapPin, Zap, Sparkles };
 
+export interface AdvancedSettings {
+  max_results_per_source: number;
+  date_range: 'past_24h' | 'past_week' | 'past_2_weeks' | 'past_month';
+  ai_strictness: 'low' | 'medium' | 'high';
+}
+
+const DEFAULT_ADVANCED: AdvancedSettings = {
+  max_results_per_source: 2500,
+  date_range: 'past_week',
+  ai_strictness: 'medium',
+};
+
 export function SignalScraperTab() {
   const [query, setQuery] = useState('');
   const [scheduleType, setScheduleType] = useState<'once' | 'daily' | 'weekly'>('once');
   const [viewingRunId, setViewingRunId] = useState<string | null>(null);
+  const [advancedSettings, setAdvancedSettings] = useState<AdvancedSettings>(DEFAULT_ADVANCED);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
