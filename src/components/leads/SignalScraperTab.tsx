@@ -747,13 +747,15 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
       await supabase.from('signal_leads').update({ enriched: true }).eq('id', lead.id);
       return { source: 'apollo', ...data };
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({ queryKey: ['signal-leads', runId] });
+      await queryClient.invalidateQueries({ queryKey: ['lead-credits'] });
       toast({
-        title: 'Lead enriched',
-        description: data.source === 'apify' ? 'Contact info revealed.' : 'Apollo enrichment queued.',
+        title: data.source === 'apify' ? 'Contact info revealed' : 'Enrichment started',
+        description: data.source === 'apify'
+          ? 'Contact details are now visible.'
+          : 'Apollo enrichment queued — data will appear shortly.',
       });
-      queryClient.invalidateQueries({ queryKey: ['signal-leads', runId] });
-      queryClient.invalidateQueries({ queryKey: ['lead-credits'] });
     },
     onError: (err: any) => {
       toast({ title: 'Enrichment failed', description: err.message, variant: 'destructive' });
@@ -831,6 +833,19 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
     return parts.length > 0 ? parts.join(', ') : lead.location || '';
   };
 
+  const formatIndustry = (industry: string) => {
+    if (!industry) return '';
+    // Clean up common patterns
+    let clean = industry
+      .replace(/ and /gi, ' & ')
+      .replace(/,\s*/g, ', ');
+    // Take first category if comma-separated
+    const parts = clean.split(',').map(s => s.trim());
+    if (parts.length > 1) clean = parts[0];
+    // Truncate long strings
+    return clean.length > 30 ? clean.slice(0, 28) + '…' : clean;
+  };
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -894,7 +909,11 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
                       <div className="text-sm text-muted-foreground">{formatLocation(lead) || '—'}</div>
                     </td>
                     <td className="p-3 align-middle hidden lg:table-cell">
-                      <div className="text-sm text-muted-foreground">{lead.industry || '—'}</div>
+                      {lead.industry ? (
+                        <Badge variant="secondary" className="text-xs font-normal max-w-[140px] truncate" title={lead.industry}>
+                          {formatIndustry(lead.industry)}
+                        </Badge>
+                      ) : <span className="text-sm text-muted-foreground">—</span>}
                     </td>
                     <td className="p-3 align-middle">
                       <div className="flex gap-1">
@@ -920,17 +939,12 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
                         <div className="space-y-0.5">
                           {lead.email && <div className="text-xs flex items-center gap-1"><Mail className="h-3 w-3" />{lead.email}</div>}
                           {lead.phone && <div className="text-xs flex items-center gap-1"><Phone className="h-3 w-3" />{lead.phone}</div>}
-                          {!lead.email && !lead.phone && <span className="text-xs text-muted-foreground">No data</span>}
+                          {!lead.email && !lead.phone && <span className="text-xs text-muted-foreground">No data found</span>}
                         </div>
-                      ) : (lead.email || lead.phone) ? (
-                        <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => enrichLeadMutation.mutate(lead)} disabled={enrichLeadMutation.isPending}>
-                          {enrichLeadMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3 mr-1" />}
-                          Reveal
-                        </Button>
                       ) : (
                         <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => enrichLeadMutation.mutate(lead)} disabled={enrichLeadMutation.isPending}>
                           {enrichLeadMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3 mr-1" />}
-                          Enrich
+                          Reveal
                         </Button>
                       )}
                     </td>
