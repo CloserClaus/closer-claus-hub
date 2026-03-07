@@ -747,15 +747,40 @@ serve(async (req) => {
 // ════════════════════════════════════════════════════════════════
 
 async function handleGeneratePlan(
-  params: { query: string; workspace_id: string; plan_override?: any },
+  params: { query: string; workspace_id: string; plan_override?: any; advanced_settings?: any },
   userId: string,
   serviceClient: any
 ) {
-  const { query, workspace_id } = params;
+  const { query, workspace_id, advanced_settings } = params;
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-  const systemPrompt = buildPipelinePlannerPrompt();
+  let systemPrompt = buildPipelinePlannerPrompt();
+
+  // Inject advanced settings into prompt
+  if (advanced_settings) {
+    const maxResults = advanced_settings.max_results_per_source || 2500;
+    const dateRange = advanced_settings.date_range || "past_week";
+    const strictness = advanced_settings.ai_strictness || "medium";
+
+    const dateMap: Record<string, string> = {
+      past_24h: "past 24 hours only",
+      past_week: "past week",
+      past_2_weeks: "past 2 weeks",
+      past_month: "past month",
+    };
+
+    const strictnessMap: Record<string, string> = {
+      low: "Be lenient with filtering — accept borderline matches. Use expected_pass_rate of 0.30-0.50 for AI filter stages.",
+      medium: "Use balanced filtering. Use expected_pass_rate of 0.15-0.30 for AI filter stages.",
+      high: "Be very strict with filtering — only accept strong matches. Use expected_pass_rate of 0.05-0.15 for AI filter stages. Write very specific rejection criteria.",
+    };
+
+    systemPrompt += `\n\n## USER PREFERENCES (OVERRIDE DEFAULTS)\n`;
+    systemPrompt += `- Maximum results per source in stage 1: ${maxResults} (cap all count/limit/maxItems/maxCrawledPlacesPerSearch params to this value)\n`;
+    systemPrompt += `- Date range: ${dateMap[dateRange] || "past week"}\n`;
+    systemPrompt += `- Filtering strictness: ${strictnessMap[strictness] || strictnessMap.medium}\n`;
+  }
 
   const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
