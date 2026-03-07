@@ -418,8 +418,15 @@ Rating guide:
       };
     }
 
-    // USELESS
-    return { quality: "USELESS", reason, suggestedAction: "abort" };
+    // USELESS — provide actionable guidance based on dataset size
+    const datasetSize = totalCount || sampleLeads.length;
+    let actionableReason = reason;
+    if (datasetSize <= 200) {
+      actionableReason = `${reason}. The current dataset is too small (${datasetSize} records) and no relevant signals were found. Consider broadening your search criteria or increasing the max results per source.`;
+    } else {
+      actionableReason = `${reason}. Stage 1 returned ${datasetSize} results but very few matched your criteria. The search terms may need to be more specific to your target industry.`;
+    }
+    return { quality: "USELESS", reason: actionableReason, suggestedAction: "abort" };
   } catch (err) {
     console.warn("Quality check error:", err);
     return { quality: "MEDIUM", reason: "Quality check failed, proceeding", suggestedAction: "continue" };
