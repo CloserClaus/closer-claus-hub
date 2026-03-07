@@ -899,9 +899,11 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
 
         try {
-          const { runId, datasetId } = await startApifyRun(actor, actorInput, APIFY_API_TOKEN);
-          refs.push({ actorKey, keyword, runId, datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
-          console.log(`Stage ${stageNum}: Started ${actorKey}:"${keyword}" → run ${runId}`);
+          const { runId, datasetId, usedActor } = await startApifyRunWithFallback(actor, actorInput, APIFY_API_TOKEN);
+          const usedKey = usedActor.key;
+          if (usedKey !== actorKey) console.log(`Stage ${stageNum}: Swapped ${actorKey} → ${usedKey} (fallback)`);
+          refs.push({ actorKey: usedKey, keyword, runId, datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
+          console.log(`Stage ${stageNum}: Started ${usedKey}:"${keyword}" → run ${runId}`);
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
           if (isCapacityError(errMsg)) {
