@@ -930,15 +930,33 @@ async function handleGeneratePlan(
   }
 
   // Build actor_registry — embed full actor details in the plan for the processor
+  // Include primary actors AND up to 2 backup actors per category for runtime fallback
   const usedActorKeys = new Set<string>();
+  const usedCategories = new Set<string>();
   for (const stage of parsedPlan.pipeline) {
-    if (stage.actors) stage.actors.forEach((a: string) => usedActorKeys.add(a));
+    if (stage.actors) stage.actors.forEach((a: string) => {
+      usedActorKeys.add(a);
+      const actor = discoveredActorMap.get(a);
+      if (actor) usedCategories.add(actor.category);
+    });
   }
   const actorRegistry: Record<string, ActorEntry> = {};
   for (const key of usedActorKeys) {
     const actor = discoveredActorMap.get(key);
     if (actor) actorRegistry[key] = actor;
   }
+
+  // Add backup actors: top 2 alternatives per used category (not already in registry)
+  for (const category of usedCategories) {
+    const backups = [...discoveredActorMap.values()]
+      .filter(a => a.category === category && !actorRegistry[a.key])
+      .sort((a, b) => (b.monthlyUsers || 0) - (a.monthlyUsers || 0))
+      .slice(0, 2);
+    for (const backup of backups) {
+      actorRegistry[backup.key] = { ...backup, _isBackup: true } as any;
+    }
+  }
+
   parsedPlan.actor_registry = actorRegistry;
 
   // Validate and warn

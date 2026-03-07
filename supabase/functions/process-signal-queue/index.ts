@@ -160,6 +160,18 @@ interface ApifyRunRef {
   pipelineStage?: number;
 }
 
+function isNotRentedError(errMsg: string): boolean {
+  const lower = errMsg.toLowerCase();
+  return lower.includes("actor-is-not-rented") || lower.includes("not rented") ||
+    (lower.includes("403") && (lower.includes("rent") || lower.includes("paid")));
+}
+
+function findBackupActors(category: string): ActorEntry[] {
+  return [...planActorRegistry.values()]
+    .filter(a => a.category === category && (a as any)._isBackup === true)
+    .sort((a, b) => (b.monthlyUsers || 0) - (a.monthlyUsers || 0));
+}
+
 async function startApifyRun(actor: ActorEntry, input: Record<string, any>, token: string): Promise<{ runId: string; datasetId: string }> {
   const actorIdEncoded = actor.actorId.replace("/", "~");
   const resp = await fetch(
@@ -172,6 +184,41 @@ async function startApifyRun(actor: ActorEntry, input: Record<string, any>, toke
   }
   const data = await resp.json();
   return { runId: data.data.id, datasetId: data.data.defaultDatasetId };
+}
+
+async function startApifyRunWithFallback(
+  actor: ActorEntry,
+  input: Record<string, any>,
+  token: string
+): Promise<{ runId: string; datasetId: string; usedActor: ActorEntry }> {
+  try {
+    const result = await startApifyRun(actor, input, token);
+    return { ...result, usedActor: actor };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (!isNotRentedError(errMsg)) throw err;
+
+    console.warn(`Actor ${actor.key} is not rented (403), trying backups for category "${actor.category}"`);
+    const backups = findBackupActors(actor.category);
+
+    for (const backup of backups) {
+      try {
+        console.log(`Trying backup actor: ${backup.key} (${backup.label})`);
+        const backupInput = buildGenericInput(backup, input);
+        if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
+        const result = await startApifyRun(backup, backupInput, token);
+        console.log(`Backup actor ${backup.key} started successfully → run ${result.runId}`);
+        return { ...result, usedActor: backup };
+      } catch (backupErr) {
+        const backupErrMsg = backupErr instanceof Error ? backupErr.message : String(backupErr);
+        console.warn(`Backup actor ${backup.key} also failed: ${backupErrMsg}`);
+        continue;
+      }
+    }
+
+    // All backups exhausted
+    throw new Error(`Actor ${actor.key} not rented and all ${backups.length} backup actors failed. Original error: ${errMsg}`);
+  }
 }
 
 async function pollApifyRun(runId: string, token: string): Promise<string> {
