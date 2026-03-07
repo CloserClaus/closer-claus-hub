@@ -120,6 +120,13 @@ function extractDomain(url: string): string {
 }
 
 function buildGenericInput(actor: ActorEntry, params: Record<string, any>): Record<string, any> {
+  // If inputSchema is empty/missing, pass through ALL provided params directly
+  // This is critical for dynamically discovered actors whose schema couldn't be fetched
+  if (!actor.inputSchema || Object.keys(actor.inputSchema).length === 0) {
+    console.log(`buildGenericInput: No inputSchema for ${actor.key}, passing through all ${Object.keys(params).length} params`);
+    return { ...params };
+  }
+
   const result: Record<string, any> = {};
   for (const [field, schema] of Object.entries(actor.inputSchema)) {
     let value = params[field];
@@ -127,6 +134,15 @@ function buildGenericInput(actor: ActorEntry, params: Record<string, any>): Reco
     if (value === undefined) continue;
     result[field] = value;
   }
+
+  // Also pass through any params that aren't in the schema but were explicitly provided
+  // (the planner knows what params the actor needs even if schema fetch failed partially)
+  for (const [key, value] of Object.entries(params)) {
+    if (result[key] === undefined && value !== undefined) {
+      result[key] = value;
+    }
+  }
+
   return result;
 }
 
