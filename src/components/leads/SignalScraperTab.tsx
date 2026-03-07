@@ -837,6 +837,10 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <CardTitle className="text-lg">Signal Results — {leads.length} leads</CardTitle>
           <div className="flex gap-2 flex-wrap">
+            <Button size="sm" variant="outline" onClick={() => exportLeadsToCSV(leads, `signal-leads-${runId.slice(0, 8)}`)}>
+              <Download className="h-3.5 w-3.5 mr-1" />
+              Export CSV
+            </Button>
             <Button size="sm" variant="outline" onClick={handleAddToList}>
               <List className="h-3.5 w-3.5 mr-1" />
               {selectedIds.size > 0 ? `Add to List (${selectedIds.size})` : 'Add All to List'}

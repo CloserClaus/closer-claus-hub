@@ -860,6 +860,55 @@ async function handleGeneratePlan(
     }
   }
 
+  // Apply advanced settings caps to stage 1 actor params
+  if (advanced_settings?.max_results_per_source) {
+    const maxCap = advanced_settings.max_results_per_source;
+    const capFields = ["count", "limit", "maxItems", "maxCrawledPlacesPerSearch", "maxResults"];
+    for (const stage of parsedPlan.pipeline) {
+      if (stage.stage === 1 && stage.type === "scrape" && stage.params_per_actor) {
+        for (const actorKey of Object.keys(stage.params_per_actor)) {
+          const actorParams = stage.params_per_actor[actorKey];
+          for (const field of capFields) {
+            if (actorParams[field] !== undefined && actorParams[field] > maxCap) {
+              actorParams[field] = maxCap;
+            }
+          }
+        }
+        // Also update expected_output_count
+        if (stage.expected_output_count && stage.expected_output_count > maxCap * 2) {
+          stage.expected_output_count = maxCap * ((stage.actors || []).length || 1);
+        }
+      }
+    }
+  }
+
+  // Apply date range to actor params
+  if (advanced_settings?.date_range) {
+    const dateMap: Record<string, { linkedin: string; indeed: string }> = {
+      past_24h: { linkedin: "r86400", indeed: "1" },
+      past_week: { linkedin: "r604800", indeed: "7" },
+      past_2_weeks: { linkedin: "r1209600", indeed: "14" },
+      past_month: { linkedin: "r2592000", indeed: "14" },
+    };
+    const dateCfg = dateMap[advanced_settings.date_range];
+    if (dateCfg) {
+      for (const stage of parsedPlan.pipeline) {
+        if (stage.stage === 1 && stage.type === "scrape" && stage.params_per_actor) {
+          // Update LinkedIn job URLs with correct time filter
+          if (stage.params_per_actor.linkedin_jobs?.urls) {
+            stage.params_per_actor.linkedin_jobs.urls = stage.params_per_actor.linkedin_jobs.urls.map(
+              (url: string) => url.replace(/f_TPR=r\d+/, `f_TPR=${dateCfg.linkedin}`)
+            );
+          }
+          // Update Indeed datePosted
+          if (stage.params_per_actor.indeed_jobs) {
+            stage.params_per_actor.indeed_jobs.datePosted = dateCfg.indeed;
+          }
+        }
+      }
+    }
+  }
+
   // Validate and warn
   const warnings = validatePipelinePlan(parsedPlan, query);
 
