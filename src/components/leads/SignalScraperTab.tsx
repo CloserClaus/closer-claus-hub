@@ -7,14 +7,14 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
-import { Slider } from '@/components/ui/slider';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Zap, Loader2, Play, Clock, Trash2, RotateCcw, Plus, History,
   Globe, Phone, MapPin, Building2, Search, Mail, Sparkles,
   Briefcase, Rocket, FileText, AlertTriangle, ArrowRight, Filter, Users, User,
-  Bookmark, List, MoreHorizontal, Settings, Download,
+  Bookmark, List, MoreHorizontal, Settings, Download, RefreshCw,
 } from 'lucide-react';
 import { exportLeadsToCSV } from '@/lib/csvExport';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -30,22 +30,49 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import { CRMPagination } from '@/components/crm/Pagination';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 
 const PAGE_SIZE = 25;
 
 const ICON_MAP: Record<string, any> = { Briefcase, Rocket, MapPin, Zap, Sparkles };
 
 export interface AdvancedSettings {
-  max_results_per_source: number;
+  target_leads: number;
+  location: string;
+  company_size: 'any' | '1-10' | '11-50' | '51-200' | '200+';
+  decision_maker_titles: string;
   date_range: 'past_24h' | 'past_week' | 'past_2_weeks' | 'past_month';
+  quality: 'standard' | 'high';
+  // Legacy fields — computed internally for backend compatibility
+  max_results_per_source: number;
   ai_strictness: 'low' | 'medium' | 'high';
 }
 
 const DEFAULT_ADVANCED: AdvancedSettings = {
-  max_results_per_source: 2500,
+  target_leads: 100,
+  location: '',
+  company_size: 'any',
+  decision_maker_titles: '',
   date_range: 'past_week',
+  quality: 'standard',
+  max_results_per_source: 500,
   ai_strictness: 'medium',
 };
+
+// Translate user-intent settings into system settings
+function computeSystemSettings(settings: AdvancedSettings): AdvancedSettings {
+  // Target leads → max_results_per_source (assume ~20% pass rate)
+  const maxResults = settings.target_leads * 5;
+  // Quality → AI strictness
+  const strictness = settings.quality === 'high' ? 'high' : 'medium';
+  return {
+    ...settings,
+    max_results_per_source: maxResults,
+    ai_strictness: strictness,
+  };
+}
 
 export function SignalScraperTab() {
   const [query, setQuery] = useState('');
