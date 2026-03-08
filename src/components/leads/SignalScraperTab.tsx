@@ -53,6 +53,7 @@ export function SignalScraperTab() {
   const [viewingRunId, setViewingRunId] = useState<string | null>(null);
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedSettings>(DEFAULT_ADVANCED);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
