@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Copy, Loader2, ChevronDown, Play, Calendar, Mail as MailIcon } from 'lucide-react';
+import { Plus, Edit, Trash2, Copy, Loader2, ChevronDown, Calendar } from 'lucide-react';
+import { DeleteConfirmDialog } from '@/components/crm/DeleteConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
