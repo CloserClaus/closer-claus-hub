@@ -971,7 +971,15 @@ async function pipelineStageValidating(run: any, stageDef: any, stageNum: number
     // Replace remaining pipeline stages
     const completedStages = pipeline.slice(0, stageNum);
     const newPipeline = [...completedStages, ...qualityResult.reconfiguredPipeline];
-    const updatedPlan = { ...run.signal_plan, pipeline: newPipeline };
+    // Persist any newly resolved actors into the plan's actor_registry
+    const existingRegistry = run.signal_plan?.actor_registry || {};
+    const mergedRegistry = { ...existingRegistry };
+    for (const [key, actor] of planActorRegistry.entries()) {
+      if (!mergedRegistry[key]) {
+        mergedRegistry[key] = actor;
+      }
+    }
+    const updatedPlan = { ...run.signal_plan, pipeline: newPipeline, actor_registry: mergedRegistry };
 
     adjustments.push({
       stage: stageNum,
