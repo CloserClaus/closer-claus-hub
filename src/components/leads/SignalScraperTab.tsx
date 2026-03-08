@@ -124,9 +124,10 @@ export function SignalScraperTab() {
     executeSignal({ run_id: currentPlan.run_id, schedule_type: scheduleType });
   };
 
-  const handleRerun = (run: SignalRun) => {
+  const handleRerun = (run: SignalRun, refinementContext?: any) => {
     setQuery(run.signal_query);
-    generatePlan({ query: run.signal_query, advanced_settings: advancedSettings });
+    const systemSettings = computeSystemSettings(advancedSettings);
+    generatePlan({ query: run.signal_query, advanced_settings: systemSettings, plan_override: refinementContext ? { refinement_context: refinementContext } : undefined });
   };
 
   const handleTemplate = (tpl: any) => {
