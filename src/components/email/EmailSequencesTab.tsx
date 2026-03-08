@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Copy, Loader2, ChevronDown, Calendar } from 'lucide-react';
+import { Plus, Edit, Trash2, Copy, Loader2, ChevronDown, Calendar, AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DeleteConfirmDialog } from '@/components/crm/DeleteConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -298,6 +299,15 @@ export function EmailSequencesTab() {
           <DialogHeader>
             <DialogTitle>{editingSequence ? 'Edit Sequence' : 'Create Sequence'}</DialogTitle>
           </DialogHeader>
+
+          {editingSequence && (
+            <Alert variant="destructive" className="mt-2">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Warning: Modifying a sequence that is currently active will affect all leads currently enrolled. They will receive the new steps.
+              </AlertDescription>
+            </Alert>
+          )}
 
           <div className="space-y-4">
             <div className="space-y-2">

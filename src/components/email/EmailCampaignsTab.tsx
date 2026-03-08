@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Copy, Loader2, ChevronDown, Play, Pause, Eye, Calendar, Mail as MailIcon, Users, ArrowRight } from 'lucide-react';
+import { Plus, Edit, Trash2, Copy, Loader2, ChevronDown, Play, Pause, Eye, Calendar, Mail as MailIcon, Users, ArrowRight, AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DeleteConfirmDialog } from '@/components/crm/DeleteConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -282,7 +283,7 @@ export function EmailCampaignsTab() {
     if (newStatus === 'paused') {
       await supabase.from('active_follow_ups').update({ status: 'paused' } as any).eq('sequence_id', seqId).eq('status', 'active');
     } else {
-      await supabase.from('active_follow_ups').update({ status: 'active' } as any).eq('sequence_id', seqId).eq('status', 'paused');
+      await supabase.from('active_follow_ups').update({ status: 'active', next_send_at: new Date().toISOString() } as any).eq('sequence_id', seqId).eq('status', 'paused');
     }
     toast({ title: `Campaign ${newStatus}` });
     fetchSequences();
@@ -488,6 +489,15 @@ export function EmailCampaignsTab() {
           <DialogHeader>
             <DialogTitle>{editingSequence ? 'Edit Sequence' : 'Create Sequence'}</DialogTitle>
           </DialogHeader>
+
+          {editingSequence && (
+            <Alert variant="destructive" className="mt-2">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Warning: Modifying a sequence that is currently active will affect all leads currently enrolled. They will receive the new steps.
+              </AlertDescription>
+            </Alert>
+          )}
 
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DeleteConfirmDialog } from '@/components/crm/DeleteConfirmDialog';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -28,6 +29,8 @@ export function EmailAccountsTab() {
   const [connectingGmail, setConnectingGmail] = useState(false);
   const [workspaceMembers, setWorkspaceMembers] = useState<{ id: string; full_name: string; email: string }[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [deleteProviderId, setDeleteProviderId] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   useEffect(() => {
     const gmailConnected = searchParams.get('gmail_connected');
@@ -107,9 +110,54 @@ export function EmailAccountsTab() {
     } finally { setSaving(false); }
   };
 
-  const handleDisconnectProvider = async (providerId: string) => {
-    const { error } = await supabase.from('email_providers').delete().eq('id', providerId);
-    if (!error) { toast({ title: 'Provider disconnected' }); refresh(); }
+  const handleDisconnectProvider = (providerId: string) => {
+    setDeleteProviderId(providerId);
+  };
+
+  const confirmDisconnect = async () => {
+    if (!deleteProviderId) return;
+    setDisconnecting(true);
+    try {
+      // Get all inboxes for this provider
+      const { data: inboxes } = await supabase
+        .from('email_inboxes')
+        .select('id')
+        .eq('provider_id', deleteProviderId);
+
+      if (inboxes && inboxes.length > 0) {
+        const inboxIds = inboxes.map((i: any) => i.id);
+
+        // Complete any active follow-ups using these inboxes
+        await supabase
+          .from('active_follow_ups')
+          .update({ status: 'completed', completed_at: new Date().toISOString() } as any)
+          .in('sender_inbox_id', inboxIds)
+          .in('status', ['active', 'paused']);
+
+        // Reset affected leads' sending state
+        const { data: affectedFollowUps } = await supabase
+          .from('active_follow_ups')
+          .select('lead_id')
+          .in('sender_inbox_id', inboxIds);
+
+        if (affectedFollowUps && affectedFollowUps.length > 0) {
+          const leadIds = [...new Set(affectedFollowUps.map((f: any) => f.lead_id))];
+          for (const leadId of leadIds) {
+            await supabase.from('leads').update({ email_sending_state: 'idle' } as any).eq('id', leadId);
+          }
+        }
+      }
+
+      // Delete the provider (cascades to inboxes)
+      const { error } = await supabase.from('email_providers').delete().eq('id', deleteProviderId);
+      if (!error) { toast({ title: 'Provider disconnected' }); refresh(); }
+      else { toast({ variant: 'destructive', title: 'Failed to disconnect', description: error.message }); }
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Error', description: err.message });
+    } finally {
+      setDisconnecting(false);
+      setDeleteProviderId(null);
+    }
   };
 
   const handleAssignInbox = async (inboxId: string, userId: string | null) => {
@@ -344,6 +392,15 @@ export function EmailAccountsTab() {
           </CardContent>
         </Card>
       )}
+
+      <DeleteConfirmDialog
+        open={!!deleteProviderId}
+        onOpenChange={(open) => { if (!open) setDeleteProviderId(null); }}
+        title="Disconnect Email Provider"
+        description="This will disconnect the provider and stop all active email sequences using its inboxes. Affected leads will be reset to idle. This action cannot be undone."
+        onConfirm={confirmDisconnect}
+        isProcessing={disconnecting}
+      />
     </div>
   );
 }
