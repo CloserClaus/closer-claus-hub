@@ -185,7 +185,7 @@ export function EmailTemplatesTab() {
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDuplicate(t)}>
                       <Copy className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(t.id)}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeleteConfirmId(t.id)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>

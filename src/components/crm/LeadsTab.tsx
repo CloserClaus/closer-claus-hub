@@ -155,9 +155,14 @@ export function LeadsTab({
                         <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEditLead(lead); }}>
                           <Edit className="h-4 w-4 mr-2" /> Edit
                         </DropdownMenuItem>
-                        {lead.email && (
+                        {lead.email && !(lead as any).opted_out && (
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEmailLead(lead); }}>
                             <Send className="h-4 w-4 mr-2" /> Send Email
+                          </DropdownMenuItem>
+                        )}
+                        {lead.email && (lead as any).opted_out && (
+                          <DropdownMenuItem disabled className="text-muted-foreground">
+                            <Send className="h-4 w-4 mr-2" /> Opted Out
                           </DropdownMenuItem>
                         )}
                         {isAgencyOwner && (

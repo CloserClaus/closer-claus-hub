@@ -99,6 +99,18 @@ export function EmailComposerModal({ open, onClose, lead, onEmailSent }: EmailCo
 
   const handleSend = async () => {
     if (!lead.email || !currentWorkspace || !user) return;
+
+    // Check opt-out status before sending
+    const { data: freshLead } = await supabase
+      .from('leads')
+      .select('opted_out')
+      .eq('id', lead.id)
+      .single();
+    if ((freshLead as any)?.opted_out) {
+      toast({ variant: 'destructive', title: 'Lead opted out', description: 'This lead has unsubscribed and cannot receive emails.' });
+      return;
+    }
+
     if (!canSendEmail) {
       toast({ variant: 'destructive', title: 'No inbox assigned', description: 'You need an assigned inbox to send emails.' });
       return;

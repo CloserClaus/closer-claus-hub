@@ -160,12 +160,16 @@ serve(async (req) => {
               replyBody = msgData.snippet;
             }
 
-            // Store reply in conversation messages
-            const { data: convo } = await supabase
+            // Store reply in conversation messages — prefer sequence-specific conversation
+            let convoQuery = supabase
               .from('email_conversations')
-              .select('id')
-              .eq('lead_id', fup.lead_id)
-              .eq('workspace_id', fup.workspace_id)
+              .select('id');
+            if (fup.sequence_id) {
+              convoQuery = convoQuery.eq('sequence_id', fup.sequence_id).eq('lead_id', fup.lead_id);
+            } else {
+              convoQuery = convoQuery.eq('lead_id', fup.lead_id).eq('workspace_id', fup.workspace_id);
+            }
+            const { data: convo } = await convoQuery
               .order('created_at', { ascending: false })
               .limit(1)
               .maybeSingle();
