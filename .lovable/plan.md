@@ -1,16 +1,36 @@
 
 
-## Fix: Empty String SelectItem Value in BulkAssignDialog
+# Test Signal Scraper: Minimal Credit Run
 
-**Problem**: `src/components/crm/BulkAssignDialog.tsx` line 264 has `<SelectItem value="">All tags (distribute equally)</SelectItem>`. Radix UI's Select component does not allow empty string values on SelectItem — it's reserved for clearing the selection.
+## Approach
 
-**Fix**: Change the empty string value to `"all"` and update the logic that checks for this value.
+I'll invoke the `signal-planner` edge function with a very small, precise query and minimal settings to observe the full pipeline flow without burning significant credits.
 
-### Changes in `src/components/crm/BulkAssignDialog.tsx`
+### Test Parameters
+- **Query**: `"Find plumbing companies in Austin Texas"` (local_business signal — simplest pipeline, fewest stages)
+- **max_results_per_source**: `100` (minimum practical value)
+- **ai_strictness**: `high` (filters aggressively, fewer leads to process)
+- **date_range**: `past_week`
 
-1. Change `<SelectItem value="">` to `<SelectItem value="all">` (line 264)
-2. Update the state initialization for the tag filter from `""` to `"all"` 
-3. Update any conditional logic that checks `=== ""` to check `=== "all"` instead
+### Why This Query
+- Local business signals typically produce a 2-stage pipeline (scrape Google Maps → enrich), which is the cheapest path
+- Plumbing is a narrow niche so results will be small
+- Avoids hiring_intent pipelines which require expensive people-enrichment stages
 
-Single file, ~3 lines changed.
+### Steps
+1. **Generate plan** — call `signal-planner` with `action: generate_plan` to see what pipeline the AI designs
+2. **Review the plan** — inspect the stages, actors selected, and estimated costs before executing
+3. **Execute** — if the plan looks reasonable and cheap, trigger `action: execute_signal`
+4. **Monitor** — poll `signal_runs` and `signal_leads` tables to track progress and inspect results
+5. **Report** — check field coverage (all 6 mandatory fields), actor success, matching accuracy
+
+### Credit Impact
+- Apify cost for 100 Google Maps results: ~$0.50-1.00
+- AI filtering (Gemini): negligible
+- Total estimated: under $2 in Apify credits
+
+### Files Involved (read-only inspection)
+- `supabase/functions/signal-planner/index.ts` — plan generation
+- `supabase/functions/process-signal-queue/index.ts` — execution
+- Database tables: `signal_runs`, `signal_leads`
 
