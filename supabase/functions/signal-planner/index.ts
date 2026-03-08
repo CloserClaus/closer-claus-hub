@@ -163,7 +163,7 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
         let inputSchema: Record<string, InputField> = {};
         const actorIdEncoded = actorId.replace("/", "~");
         
-        // Attempt 1: defaultRunInput from actor details
+        // Attempt 1: actor details — extract input schema from versions or defaultRunInput
         try {
           const schemaResp = await fetch(
             `https://api.apify.com/v2/acts/${actorIdEncoded}?token=${APIFY_API_TOKEN}`,
@@ -171,17 +171,27 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
           );
           if (schemaResp.ok) {
             const actorData = await schemaResp.json();
-            const rawSchema = actorData.data?.defaultRunInput?.body || {};
-            if (rawSchema.properties && Object.keys(rawSchema.properties).length > 0) {
+            // Try to find input schema in multiple locations (Apify API varies by actor)
+            const possibleSources = [
+              actorData.data?.versions?.[actorData.data?.versions?.length - 1]?.inputSchema,
+              actorData.data?.defaultRunInput?.body,
+              actorData.data?.inputSchema,
+            ];
+            for (const source of possibleSources) {
+              if (!source) continue;
+              // Source could be a JSON string or object
+              const rawSchema = typeof source === "string" ? (() => { try { return JSON.parse(source); } catch { return null; } })() : source;
+              if (!rawSchema?.properties || Object.keys(rawSchema.properties).length === 0) continue;
               for (const [key, val] of Object.entries(rawSchema.properties as Record<string, any>)) {
                 const type = val.type === "array" ? "string[]" : (val.type === "integer" ? "number" : (val.type || "string"));
                 inputSchema[key] = {
                   type: type as any,
                   required: (rawSchema.required || []).includes(key),
                   default: val.default,
-                  description: (val.description || key).slice(0, 200),
+                  description: (val.description || val.title || key).slice(0, 200),
                 };
               }
+              break; // Use first successful source
             }
           }
         } catch (e) { console.warn(`Schema attempt 1 failed for ${actorId}:`, e); }
@@ -1188,7 +1198,7 @@ async function handleGeneratePlan(
 
   // Inject advanced settings
   if (advanced_settings) {
-    const maxResults = advanced_settings.max_results_per_source || 2500;
+    const maxResults = advanced_settings.max_results_per_source || 500;
     const dateRange = advanced_settings.date_range || "past_week";
     const strictness = advanced_settings.ai_strictness || "medium";
 
@@ -1375,14 +1385,14 @@ When the user's query specifies particular job roles (e.g., "SDR", "Sales Repres
           }
           // If no cap field exists, inject maxItems as a safety net
           if (!actorCapped) {
-            actorParams.maxItems = maxCap || 2500;
+            actorParams.maxItems = maxCap || 500;
           }
           // Infer this actor's expected output
           const inferred = inferRowCapFromParams(actorParams);
-          totalInferred += inferred || (maxCap || 2500);
+          totalInferred += inferred || (maxCap || 500);
         }
       } else {
-        totalInferred = maxCap || 2500;
+        totalInferred = maxCap || 500;
       }
       // ALWAYS set expected_output_count for stage 1 so the estimator uses it
       const computedCount = maxCap ? Math.min(totalInferred, maxCap * actorCount) : totalInferred;
