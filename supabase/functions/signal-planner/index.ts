@@ -124,8 +124,8 @@ const VERIFIED_ACTORS: Record<string, VerifiedActor> = {
     subCategory: "hiring_intent:linkedin",
     label: "LinkedIn Jobs Scraper",
     inputSchema: {
-      urls: { type: "string[]", required: false, description: "LinkedIn job search URLs" },
-      startUrls: { type: "string[]", required: false, description: "Start URLs for crawling" },
+      urls: { type: "object[]", required: false, description: "LinkedIn job search URLs" },
+      startUrls: { type: "object[]", required: false, description: "Start URLs for crawling" },
       maxItems: { type: "number", required: false, default: 100, description: "Max results" },
     },
     outputFields: {
