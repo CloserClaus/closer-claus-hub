@@ -1385,7 +1385,7 @@ When the user's query specifies particular job roles (e.g., "SDR", "Sales Repres
           }
           // If no cap field exists, inject maxItems as a safety net
           if (!actorCapped) {
-            actorParams.maxItems = maxCap || 2500;
+            actorParams.maxItems = maxCap || 500;
           }
           // Infer this actor's expected output
           const inferred = inferRowCapFromParams(actorParams);
