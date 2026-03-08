@@ -1526,19 +1526,22 @@ function estimatePipelineCost(pipeline: any[]): {
   let totalEstimatedRows = 0;
   let currentRowCount = 0;
   let totalCredits = 0;
+  let discoveryRowCount = 0; // Track Stage 1 discovery volume separately
   const stageFunnel: any[] = [];
 
   for (const stage of pipeline) {
     if (stage.type === "scrape") {
-      const expectedCount = stage.expected_output_count || (stage.stage === 1 ? 500 : currentRowCount);
-      if (stage.stage === 1 || !stage.input_from) {
-        // Discovery stage: use expected output count directly
+      if (stage.stage === 1) {
+        // Stage 1 = discovery: this defines "Records to scan"
+        const expectedCount = stage.expected_output_count || 500;
         currentRowCount = expectedCount;
-        totalEstimatedRows = currentRowCount; // Only discovery stages count as "records to scan"
+        discoveryRowCount = expectedCount;
+        totalEstimatedRows = discoveryRowCount;
       } else {
-        // Enrichment stage: processes existing leads
-        // Cost is proportional to current row count
+        // Enrichment stages: process existing leads, never exceed current pipeline flow
+        const expectedCount = stage.expected_output_count || currentRowCount;
         currentRowCount = Math.min(currentRowCount, expectedCount);
+        // Do NOT update totalEstimatedRows — it stays as Stage 1 volume
       }
       // Apify cost: ~$0.001 per result (1 credit = $0.01)
       const stageCost = Math.ceil(currentRowCount * 0.1);
@@ -1575,12 +1578,16 @@ function estimatePipelineCost(pipeline: any[]): {
   return { totalCredits, totalEstimatedRows, totalEstimatedLeads, stageFunnel };
 }
 
-const ROW_CAP_KEYS = ["maxItems", "maxResults", "maxCrawledPlacesPerSearch"];
+const ROW_CAP_KEYS = [
+  "maxItems", "maxResults", "maxCrawledPlacesPerSearch",
+  "count", "limit", "max_items", "max_results", "rows", "numResults",
+  "maxPagesPerQuery", "resultsPerPage", "maxRequestsPerStartUrl",
+];
 function inferRowCapFromParams(params: any): number | null {
   for (const key of ROW_CAP_KEYS) {
     if (params[key] !== undefined) {
       const val = typeof params[key] === "number" ? params[key] : parseInt(String(params[key]), 10);
-      if (!isNaN(val)) return val;
+      if (!isNaN(val) && val > 0) return val;
     }
   }
   return null;
