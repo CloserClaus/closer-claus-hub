@@ -2719,7 +2719,7 @@ async function legacyPhaseStarting(run: any, serviceClient: any) {
       const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
       if (maxField && !iterPlan.search_params[maxField]) iterPlan.search_params[maxField] = actor.inputSchema[maxField]?.default || 500;
 
-      const actorInput = buildGenericInput(actor, iterPlan.search_params);
+      const actorInput = normalizeInputToSchema(actor, buildGenericInput(actor, iterPlan.search_params));
       if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
 
       try {
