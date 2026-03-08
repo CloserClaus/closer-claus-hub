@@ -275,13 +275,13 @@ export function LeadDetailSidebar({
 
                 {/* Email Action Buttons */}
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowEmailComposer(true)} disabled={!lead.email}>
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowEmailComposer(true)} disabled={!lead.email || (lead as any).opted_out}>
                     <Send className="h-4 w-4 mr-2" />
-                    Send Email
+                    {(lead as any).opted_out ? 'Opted Out' : 'Send Email'}
                   </Button>
-                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowFollowUpSequence(true)} disabled={!lead.email || lead.email_sending_state === 'active_sequence'}>
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowFollowUpSequence(true)} disabled={!lead.email || lead.email_sending_state === 'active_sequence' || (lead as any).opted_out}>
                     <Play className="h-4 w-4 mr-2" />
-                    {lead.email_sending_state === 'active_sequence' ? 'Sequence Active' : 'Follow-Up Sequence'}
+                    {(lead as any).opted_out ? 'Opted Out' : lead.email_sending_state === 'active_sequence' ? 'Sequence Active' : 'Follow-Up Sequence'}
                   </Button>
                 </div>
 

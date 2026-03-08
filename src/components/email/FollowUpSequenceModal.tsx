@@ -114,12 +114,16 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
 
     setStarting(true);
     try {
-      // Check lead sending state
+      // Check lead sending state and opt-out
       const { data: leadData } = await supabase
         .from('leads')
-        .select('email_sending_state')
+        .select('email_sending_state, opted_out')
         .eq('id', lead.id)
         .single();
+
+      if ((leadData as any)?.opted_out) {
+        throw new Error('This lead has opted out of emails.');
+      }
 
       if (leadData && (leadData as any).email_sending_state === 'active_sequence') {
         throw new Error('Lead already in active sequence.');
@@ -191,6 +195,17 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
           sequence_step: 0,
         },
       });
+
+      // Create email conversation so it appears in Conversations tab
+      await supabase.from('email_conversations').insert({
+        workspace_id: currentWorkspace.id,
+        lead_id: lead.id,
+        assigned_to: user.id,
+        inbox_id: assignedInbox.id,
+        sequence_id: sequenceId,
+        campaign_name: name,
+        status: 'active',
+      } as any);
 
       // Audit log
       await supabase.from('email_audit_log').insert({

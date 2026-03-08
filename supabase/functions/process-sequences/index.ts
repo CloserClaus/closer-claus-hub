@@ -377,12 +377,12 @@ serve(async (req) => {
             .eq('sequence_id', fup.sequence_id)
             .eq('lead_id', fup.lead_id);
 
-          // Store outbound message
+          // Store outbound message — match by sequence_id + lead_id for accuracy
           const { data: convo } = await supabase
             .from('email_conversations')
             .select('id')
+            .eq('sequence_id', fup.sequence_id)
             .eq('lead_id', fup.lead_id)
-            .eq('workspace_id', fup.workspace_id)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
