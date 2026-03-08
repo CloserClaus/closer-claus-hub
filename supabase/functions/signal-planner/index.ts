@@ -793,7 +793,8 @@ serve(async (req) => {
     });
   } catch (err) {
     console.error(err);
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), {
+    const msg = err instanceof Error ? err.message : (typeof err === 'object' && err !== null ? JSON.stringify(err) : String(err));
+    return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
