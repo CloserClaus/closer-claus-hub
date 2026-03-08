@@ -215,40 +215,27 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
           console.warn(`No inputSchema found for ${actorId} — actor params will be passed through directly at runtime`);
         }
 
-        // Pre-flight access check: dry-run test to verify actor is runnable
+        // Pre-flight access check: lightweight GET to verify actor is accessible (no dry-run)
         let isAccessible = true;
         try {
-          // Attempt to start a minimal run — if we get 403 "not rented", actor is inaccessible
-          const dryRunResp = await fetch(
-            `https://api.apify.com/v2/acts/${actorIdEncoded}/runs?token=${APIFY_API_TOKEN}`,
-            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ maxItems: 0 }) }
+          const accessResp = await fetch(
+            `https://api.apify.com/v2/acts/${actorIdEncoded}?token=${APIFY_API_TOKEN}`,
+            { method: "GET" }
           );
-          if (dryRunResp.ok) {
-            // Run started — abort it immediately
-            const dryRunData = await dryRunResp.json();
-            const dryRunId = dryRunData.data?.id;
-            if (dryRunId) {
-              try {
-                await fetch(`https://api.apify.com/v2/actor-runs/${dryRunId}/abort?token=${APIFY_API_TOKEN}`, { method: "POST" });
-              } catch { /* ignore abort error */ }
-            }
-          } else {
-            const errText = await dryRunResp.text();
-            const errLower = errText.toLowerCase();
-            if (dryRunResp.status === 403 || errLower.includes("actor-is-not-rented") || errLower.includes("not rented")) {
-              console.warn(`Actor ${actorId} failed dry-run (403 not rented) — skipping`);
+          if (accessResp.ok) {
+            const actorInfo = (await accessResp.json()).data;
+            if (actorInfo?.isDeprecated) {
+              console.warn(`Actor ${actorId} is deprecated — skipping`);
               isAccessible = false;
-            } else {
-              // Also check for deprecated via GET
-              const accessResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}?token=${APIFY_API_TOKEN}`, { method: "GET" });
-              if (accessResp.ok) {
-                const actorInfo = (await accessResp.json()).data;
-                if (actorInfo?.isDeprecated) {
-                  console.warn(`Actor ${actorId} is deprecated — skipping`);
-                  isAccessible = false;
-                }
-              }
             }
+            // Check if actor requires rental and isn't rented
+            if (actorInfo?.isPublic === false && !actorInfo?.isOwner) {
+              console.warn(`Actor ${actorId} is private/not rented — skipping`);
+              isAccessible = false;
+            }
+          } else if (accessResp.status === 403 || accessResp.status === 404) {
+            console.warn(`Actor ${actorId} inaccessible (${accessResp.status}) — skipping`);
+            isAccessible = false;
           }
         } catch (e) {
           console.warn(`Pre-flight access check failed for ${actorId}, assuming accessible:`, e);
@@ -336,11 +323,17 @@ function extractComprehensiveSearchTerms(query: string): string[] {
   if (lower.includes("crunchbase")) terms.add("crunchbase scraper");
   if (lower.includes("amazon")) terms.add("amazon scraper");
 
-  // ALWAYS include essential categories needed for most lead gen pipelines
-  terms.add("contact email extractor");
-  terms.add("linkedin people search");
-  terms.add("google search scraper");
-  terms.add("linkedin company scraper");
+  // Only add essential tools if query intent suggests they're needed
+  if (lower.includes("contact") || lower.includes("email") || lower.includes("enrich") || lower.includes("find")) {
+    terms.add("contact email extractor");
+  }
+  if (lower.includes("linkedin") || lower.includes("company") || lower.includes("people") || lower.includes("decision maker")) {
+    terms.add("linkedin people search");
+    terms.add("linkedin company scraper");
+  }
+  if (lower.includes("search") || lower.includes("find") || lower.includes("discover")) {
+    terms.add("google search scraper");
+  }
 
   // If very few terms, add generic
   if (terms.size < 4) terms.add("lead generation scraper");
@@ -699,6 +692,28 @@ function inferQueryIndustry(query: string): string[] {
   return matches;
 }
 
+function extractGeography(query: string): string[] {
+  const lowerQuery = query.toLowerCase();
+  const geoPatterns: string[] = [];
+  const states = ["california", "texas", "new york", "florida", "illinois", "pennsylvania", "ohio", "georgia", "michigan", "north carolina", "colorado", "arizona", "massachusetts", "washington", "virginia", "tennessee", "minnesota", "utah", "oregon", "connecticut"];
+  for (const s of states) { if (lowerQuery.includes(s)) geoPatterns.push(s); }
+  const countries = ["united states", "usa", "uk", "united kingdom", "canada", "australia", "germany", "france", "india", "brazil", "mexico", "spain", "italy", "netherlands", "sweden", "norway", "denmark", "japan", "singapore"];
+  for (const c of countries) { if (lowerQuery.includes(c)) geoPatterns.push(c); }
+  const cities = ["new york", "los angeles", "chicago", "houston", "phoenix", "san francisco", "seattle", "denver", "austin", "miami", "boston", "atlanta", "dallas", "london", "toronto", "sydney", "berlin", "paris", "mumbai", "dubai"];
+  for (const c of cities) { if (lowerQuery.includes(c) && !geoPatterns.includes(c)) geoPatterns.push(c); }
+  return geoPatterns;
+}
+
+function classifySignalType(query: string): string {
+  const lower = query.toLowerCase();
+  if (/hiring|recruit|job|vacancy|open position|looking for|sales rep|sdr|bdr|account exec/i.test(lower)) return "hiring_intent";
+  if (/local|near|maps|yelp|restaurant|clinic|store|shop/i.test(lower)) return "local_business";
+  if (/company|companies|agency|agencies|firm|firms|startup/i.test(lower)) return "company_research";
+  if (/people|person|founder|ceo|decision maker|owner|director|vp/i.test(lower)) return "people_search";
+  if (/email|contact|phone|reach out/i.test(lower)) return "contact_enrichment";
+  return "general";
+}
+
 function validatePipelinePlan(plan: any, query: string): string[] {
   const warnings: string[] = [];
   const pipeline = plan.pipeline || [];
@@ -765,7 +780,7 @@ function validatePipelinePlan(plan: any, query: string): string[] {
       if (!hasIndustryInParams && !hasIndustryInSearchQuery) {
         warnings.push(`🏭 Industry terms [${industryTerms.join(", ")}] from your query are missing from Stage 1 search params. Auto-fixing search queries.`);
 
-        // Auto-fix: prepend industry terms to search queries
+        // Auto-fix: prepend industry terms to each OR-separated term in search queries
         const industryPrefix = industryTerms[0]; // Use the most specific match
         for (const [actorKey, actorParams] of Object.entries(params)) {
           const p = actorParams as any;
@@ -773,7 +788,14 @@ function validatePipelinePlan(plan: any, query: string): string[] {
           let fixed = false;
           for (const sfk of searchFieldKeys) {
             if (p?.[sfk] && typeof p[sfk] === "string") {
-              p[sfk] = `${industryPrefix} ${p[sfk]}`;
+              // Apply industry prefix to EACH OR-separated term, not just the beginning
+              const orParts = p[sfk].split(/\s+OR\s+/i);
+              p[sfk] = orParts.map((part: string) => {
+                const trimmed = part.trim();
+                // Don't prefix if industry term is already present
+                if (trimmed.toLowerCase().includes(industryPrefix.toLowerCase())) return trimmed;
+                return `${industryPrefix} ${trimmed}`;
+              }).join(" OR ");
               fixed = true;
               break;
             }
@@ -1007,6 +1029,26 @@ async function handleGeneratePlan(
     systemPrompt += `- Filtering strictness: ${strictnessMap[strictness] || strictnessMap.medium}\n`;
   }
 
+  // Enrich user query with parsed context so the AI doesn't have to re-derive intent
+  const parsedIndustryTerms = inferQueryIndustry(query);
+  const geographyTerms = extractGeography(query);
+  const signalType = classifySignalType(query);
+
+  let enrichedUserMessage = query;
+  const contextParts: string[] = [];
+  if (parsedIndustryTerms.length > 0) {
+    contextParts.push(`Industry/vertical: ${parsedIndustryTerms.join(", ")}`);
+  }
+  if (geographyTerms.length > 0) {
+    contextParts.push(`Geography: ${geographyTerms.join(", ")}`);
+  }
+  if (signalType) {
+    contextParts.push(`Signal type: ${signalType}`);
+  }
+  if (contextParts.length > 0) {
+    enrichedUserMessage = `${query}\n\n[PARSED CONTEXT — use this to ensure Stage 1 precision]\n${contextParts.join("\n")}`;
+  }
+
   const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
@@ -1014,7 +1056,7 @@ async function handleGeneratePlan(
       model: "google/gemini-3-flash-preview",
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: query },
+        { role: "user", content: enrichedUserMessage },
       ],
     }),
   });

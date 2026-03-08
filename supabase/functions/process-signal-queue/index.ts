@@ -316,22 +316,27 @@ async function pipelineQualityCheck(
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return { quality: "HIGH", reason: "No API key, skipping quality check", suggestedAction: "continue" };
 
-  // Sample 15 leads from this stage
+  // Get total count first to determine sample size
+  const { count: totalCountPre } = await serviceClient
+    .from("signal_leads")
+    .select("*", { count: "exact", head: true })
+    .eq("run_id", run.id);
+
+  // Scale sample size with dataset: min(50, max(15, ceil(total * 0.05)))
+  const dynamicSampleSize = Math.min(50, Math.max(15, Math.ceil((totalCountPre || 0) * 0.05)));
+
   const { data: sampleLeads } = await serviceClient
     .from("signal_leads")
     .select("*")
     .eq("run_id", run.id)
-    .limit(15);
+    .limit(dynamicSampleSize);
 
   if (!sampleLeads || sampleLeads.length === 0) {
     return { quality: "USELESS", reason: "Stage produced 0 results", suggestedAction: "abort" };
   }
 
-  // Get total count
-  const { count: totalCount } = await serviceClient
-    .from("signal_leads")
-    .select("*", { count: "exact", head: true })
-    .eq("run_id", run.id);
+  // Reuse the total count from above
+  const totalCount = totalCountPre;
 
   // Build context about what the next stages need
   const remainingStages = pipeline.slice(stageNum);
@@ -1353,7 +1358,7 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
   const ref = stageRefs[collectedIndex];
   try {
     // Infer the max items cap from the stage's actor params to avoid over-fetching
-    const stageActorParams = currentStageDef?.params_per_actor?.[ref.actorKey] || {};
+    const stageActorParams = stageDef?.params_per_actor?.[ref.actorKey] || {};
     const KNOWN_LIMIT_FIELDS = ["maxItems", "limit", "count", "maxResults", "max_results", "rows", "numResults", "maxCrawledPlacesPerSearch"];
     const stageMaxItems = KNOWN_LIMIT_FIELDS.reduce((cap: number | undefined, f) => {
       if (cap !== undefined) return cap;
