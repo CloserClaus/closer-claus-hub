@@ -714,7 +714,7 @@ function classifySignalType(query: string): string {
   return "general";
 }
 
-
+function validatePipelinePlan(plan: any, query: string): string[] {
   const warnings: string[] = [];
   const pipeline = plan.pipeline || [];
 
