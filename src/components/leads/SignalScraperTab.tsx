@@ -90,6 +90,7 @@ export function SignalScraperTab() {
     executeSignal, isExecuting,
     deleteSignal,
     dryRun, isDryRunning,
+    planningProgress, cancelPlanning,
   } = useSignalScraper();
 
   const { credits } = useLeadCredits();
