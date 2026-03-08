@@ -6,6 +6,22 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+async function generateUnsubscribeToken(leadId: string): Promise<string> {
+  const secret = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw', encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(leadId));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function appendUnsubscribeFooter(body: string, leadId: string, token: string, supabaseUrl: string): string {
+  const unsubUrl = `${supabaseUrl}/functions/v1/unsubscribe?lead_id=${leadId}&token=${token}`;
+  return body + `\n\n---\nIf you no longer wish to receive these emails, click here to unsubscribe: ${unsubUrl}`;
+}
+
 interface SendResult {
   success: boolean;
   external_id?: string;
@@ -193,18 +209,29 @@ serve(async (req) => {
     if (lead_id) {
       const { data: lead } = await supabase
         .from('leads')
-        .select('email_sending_state')
+        .select('email_sending_state, opted_out')
         .eq('id', lead_id)
         .single();
+
+      if (lead?.opted_out) {
+        throw new Error('This lead has opted out of emails.');
+      }
 
       if (lead && lead.email_sending_state === 'active_sequence' && !sequence_id) {
         throw new Error('Lead already in active sequence. Cannot send manual email while sequence is active.');
       }
     }
 
+    // Append unsubscribe footer if lead_id is provided
+    let finalBody = body;
+    if (lead_id) {
+      const unsubToken = await generateUnsubscribeToken(lead_id);
+      finalBody = appendUnsubscribeFooter(body, lead_id, unsubToken, supabaseUrl);
+    }
+
     // Route to provider handler
     const handler = PROVIDER_HANDLERS[provider.provider_type] || PROVIDER_HANDLERS.other;
-    const payload = { to_email, subject, body, lead_id };
+    const payload = { to_email, subject, body: finalBody, lead_id };
     const result = await handler(inbox, provider, payload);
 
     if (!result.success) {
@@ -249,13 +276,12 @@ serve(async (req) => {
       message_id: result.message_id || null,
     } as any);
 
-    // Increment daily send count
-    await supabase.rpc('increment_sends_today' as any, { inbox_id: inbox.id }).catch(() => {
-      // Fallback: direct update if RPC doesn't exist
-      supabase.from('email_inboxes')
+    // Increment daily send count atomically
+    await supabase.rpc('increment_inbox_sends_today' as any, { p_inbox_id: inbox.id }).catch(async () => {
+      // Fallback: direct update
+      await supabase.from('email_inboxes')
         .update({ sends_today: (inboxData.sends_today || 0) + 1 } as any)
-        .eq('id', inbox.id)
-        .then(() => {});
+        .eq('id', inbox.id);
     });
 
     // Audit log

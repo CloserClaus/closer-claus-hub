@@ -264,6 +264,15 @@ export function LeadDetailSidebar({
                   </div>
                 )}
 
+                {/* Opted Out Badge */}
+                {(lead as any).opted_out && (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="destructive" className="text-xs">
+                      🚫 Opted Out
+                    </Badge>
+                  </div>
+                )}
+
                 {/* Email Action Buttons */}
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowEmailComposer(true)} disabled={!lead.email}>

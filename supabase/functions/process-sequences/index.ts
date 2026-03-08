@@ -170,7 +170,7 @@ serve(async (req) => {
         // Get lead info
         const { data: lead } = await supabase
           .from('leads')
-          .select('first_name, last_name, email, company, title, phone')
+          .select('first_name, last_name, email, company, title, phone, opted_out')
           .eq('id', fup.lead_id)
           .single();
 
@@ -178,6 +178,19 @@ serve(async (req) => {
           await supabase.from('active_follow_ups').update({
             status: 'error', completed_at: now,
           }).eq('id', fup.id);
+          continue;
+        }
+
+        // Check opt-out
+        if (lead.opted_out) {
+          await supabase.from('active_follow_ups').update({
+            status: 'completed', completed_at: now,
+          }).eq('id', fup.id);
+          await supabase.from('leads').update({
+            email_sending_state: 'idle',
+          } as any).eq('id', fup.lead_id);
+          console.log(`Lead ${fup.lead_id} opted out, skipping sequence.`);
+          skipped++;
           continue;
         }
 
@@ -246,7 +259,19 @@ serve(async (req) => {
         };
 
         const subject = replaceVars(currentStep.subject);
-        const body = replaceVars(currentStep.body);
+        let body = replaceVars(currentStep.body);
+
+        // Append unsubscribe footer
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const encoder = new TextEncoder();
+        const hmacKey = await crypto.subtle.importKey(
+          'raw', encoder.encode(serviceKey),
+          { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+        );
+        const sig = await crypto.subtle.sign('HMAC', hmacKey, encoder.encode(fup.lead_id));
+        const unsubToken = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+        const unsubUrl = `${supabaseUrl}/functions/v1/unsubscribe?lead_id=${fup.lead_id}&token=${unsubToken}`;
+        body += `\n\n---\nIf you no longer wish to receive these emails, click here to unsubscribe: ${unsubUrl}`;
 
         // Random delay (stagger)
         const minDelay = settings?.random_delay_min_seconds ?? 45;
@@ -372,10 +397,12 @@ serve(async (req) => {
             } as any);
           }
 
-          // Increment sends_today
-          await supabase.from('email_inboxes')
-            .update({ sends_today: (inboxData.sends_today || 0) + 1 } as any)
-            .eq('id', inboxId);
+          // Increment sends_today atomically
+          await supabase.rpc('increment_inbox_sends_today' as any, { p_inbox_id: inboxId }).catch(async () => {
+            await supabase.from('email_inboxes')
+              .update({ sends_today: (inboxData.sends_today || 0) + 1 } as any)
+              .eq('id', inboxId);
+          });
 
           // Update lead
           await supabase.from('leads')
@@ -429,7 +456,10 @@ serve(async (req) => {
 
           processed++;
         } else {
-          // Send failed
+          // Send failed — check if transient and retryable
+          const isTransient = errorReason === 'rate_limit' || errorReason === 'api_failure';
+          const currentRetry = fup.retry_count || 0;
+
           await supabase.from('email_logs').insert({
             workspace_id: fup.workspace_id,
             lead_id: fup.lead_id,
@@ -443,14 +473,26 @@ serve(async (req) => {
             error_reason: errorReason,
           } as any);
 
-          await supabase.from('active_follow_ups').update({
-            status: 'error',
-            completed_at: new Date().toISOString(),
-          }).eq('id', fup.id);
+          if (isTransient && currentRetry < 3) {
+            // Reschedule for 15 minutes later
+            const retryAt = new Date(Date.now() + 15 * 60_000).toISOString();
+            await supabase.from('active_follow_ups').update({
+              next_send_at: retryAt,
+              retry_count: currentRetry + 1,
+              updated_at: new Date().toISOString(),
+            }).eq('id', fup.id);
+            console.log(`Transient error for fup ${fup.id}, retry ${currentRetry + 1}/3 scheduled at ${retryAt}`);
+          } else {
+            // Permanent failure
+            await supabase.from('active_follow_ups').update({
+              status: 'error',
+              completed_at: new Date().toISOString(),
+            }).eq('id', fup.id);
 
-          await supabase.from('leads').update({
-            email_sending_state: 'error',
-          } as any).eq('id', fup.lead_id);
+            await supabase.from('leads').update({
+              email_sending_state: 'error',
+            } as any).eq('id', fup.lead_id);
+          }
 
           errors++;
         }

@@ -102,6 +102,21 @@ serve(async (req) => {
           const searchData = await searchRes.json();
 
           if (searchData.messages && searchData.messages.length > 0) {
+            const msgId = searchData.messages[0].id;
+
+            // Dedup check: skip if we already processed this Gmail message
+            const { data: existingMsg } = await supabase
+              .from('email_conversation_messages')
+              .select('id')
+              .eq('gmail_message_id', msgId)
+              .limit(1)
+              .maybeSingle();
+
+            if (existingMsg) {
+              // Already processed this reply, skip
+              continue;
+            }
+
             // Reply detected!
             repliesFound++;
             console.log(`Reply detected from ${lead.email} for follow-up ${fup.id}`);
@@ -130,8 +145,7 @@ serve(async (req) => {
                 .eq('lead_id', fup.lead_id);
             }
 
-            // Get the reply message content
-            const msgId = searchData.messages[0].id;
+            // Get the reply message content (msgId already defined above)
             const msgRes = await fetch(
               `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgId}?format=full`,
               { headers: { 'Authorization': `Bearer ${accessToken}` } }
