@@ -187,17 +187,53 @@ Before designing stages, think about the most efficient approach:
 - What is the NARROWEST starting point? (e.g., for "agencies hiring sales reps" → start with job boards, NOT a broad list of all agencies)
 - What data do you need at the end? (company name, contact info, decision maker)
 - What's the MINIMUM number of stages?
-- How can you filter BEFORE expensive enrichment?
 - Include your reasoning in "logic_reasoning" in your output.
 
-### Step 2: FLOW — Design the stage sequence
-Based on your logic:
+### Step 2: FLOW — Design the stage sequence (DATA-AWARE)
+Based on your logic, follow this pattern:
 1. Discovery (scrape the narrowest source first)
-2. Filter (AI removes non-matches before enrichment)
-3. Enrich (add missing data: LinkedIn URLs, employee count)
-4. Filter again (apply size/criteria filters)
+2. Lightweight filter (ONLY on fields the discovery stage actually outputs)
+3. Enrich (scrape websites / LinkedIn company pages to get industry, headcount, etc.)
+4. Deep filter (NOW you can filter by industry, company type, headcount — because the data exists)
 5. People (find decision makers)
 6. Contact (get email/phone)
+
+## AI FILTER DATA-AVAILABILITY RULES (CRITICAL — READ CAREFULLY)
+
+An AI filter can ONLY filter on fields that prior SCRAPE stages have ACTUALLY PRODUCED. Each data source outputs specific fields:
+
+### What each source category outputs:
+- **hiring_intent (LinkedIn Jobs, Indeed, Glassdoor)** → company_name, title (job title), location, description. That's it.
+  - You CAN filter: job title relevance, location, basic keyword in company name/description
+  - You CANNOT filter: industry type, company size, headcount, whether it's an agency vs corporation
+- **local_business (Google Maps, Yelp)** → company_name, website, phone, location, industry, description
+  - You CAN filter: industry, location, business type (from description)
+  - You CANNOT filter: headcount, employee_count (not provided)
+- **web_search:google** → company_name, website, description (snippet)
+  - You CAN filter: basic relevance from description snippet
+  - You CANNOT filter: industry classification, headcount, company details
+- **company_data:linkedin** → company_name, industry, employee_count, website, linkedin, location, description
+  - You CAN filter: industry, employee_count, company size, company type
+- **enrichment:contact** → email, phone, linkedin, website
+  - Produces contact info only — no filterable company data
+
+### Data-Aware Flow Rules:
+- To filter by "is this a marketing agency?" → you MUST first scrape the company website OR company_data:linkedin, THEN filter
+- To filter by employee_count/headcount → you MUST first scrape company_data:linkedin, THEN filter
+- To filter by job title relevance → you CAN filter right after a hiring_intent stage
+- NEVER place an AI filter that references fields not yet scraped
+
+### CORRECT vs INCORRECT flow examples:
+
+WRONG: LinkedIn Jobs → AI Filter "is this a marketing agency with <50 employees?" → Enrich
+(LinkedIn Jobs doesn't output industry classification or employee_count — the filter has no data to work with)
+
+RIGHT: LinkedIn Jobs → AI Filter "is the job title a sales role?" → Scrape company websites → AI Filter "is this a marketing agency?" → Scrape company LinkedIn → AI Filter "does it have <50 employees?" → People → Contact
+
+WRONG: Indeed Jobs → AI Filter "reject if not in SaaS industry" → People
+(Indeed doesn't output industry — filter would reject everything)
+
+RIGHT: Indeed Jobs → AI Filter "is the job title relevant?" → company_data:linkedin → AI Filter "is this a SaaS company?" → People → Contact
 
 ### Step 3: STAGE CATEGORY SELECTION — Choose data source types
 For each scrape stage, select a STAGE CATEGORY. The system will automatically discover and validate the best available actor for each category.
@@ -245,10 +281,13 @@ For "ai_filter" stages:
   "stage": <number>,
   "name": "<human-readable stage name>",
   "type": "ai_filter",
-  "prompt": "<classification prompt>",
+  "prompt": "<classification prompt — ONLY reference fields listed in requires_fields>",
   "input_fields": ["company_name", "website", "industry"],
+  "requires_fields": ["company_name", "industry"],
   "expected_pass_rate": 0.20
 }
+
+CRITICAL: "requires_fields" declares which data fields the filter prompt depends on. Every field in requires_fields MUST have been produced by a prior scrape stage. If not, the validator will reject or auto-fix the pipeline.
 
 ## ROLE FILTER vs SEARCH QUERY (CRITICAL for hiring_intent pipelines)
 
@@ -304,14 +343,15 @@ If a stage category's outputs don't include a required field, you MUST add an en
 - Each actor run costs ~$0.001 per result scraped
 - AI filtering costs ~$0.001 per lead evaluated
 - ALWAYS start with the most CONSTRAINED source
-- ALWAYS filter aggressively BEFORE expensive enrichment
+- Filter on available data ASAP — but ONLY on fields that prior stages have actually produced. A filter on unscraped data wastes the entire pipeline.
 - Total pipeline cost should be MINIMIZED
 
 ## PIPELINE DESIGN RULES
 
 1. Start with the NARROWEST source
-2. AI filter stages come after discovery — narrow BEFORE enrichment
-3. Company enrichment comes AFTER filtering
+2. AI filter stages come after discovery — but ONLY filter on fields that the preceding scrape stages output (see DATA-AVAILABILITY RULES above)
+3. Company enrichment comes AFTER lightweight filtering (e.g., job title relevance)
+4. Deep filtering (industry type, headcount) comes AFTER enrichment stages that produce those fields
 4. Person-finding is near-last — only on qualified companies
 5. Contact enrichment is ALWAYS the last scrape stage
 6. input_from tells the processor which field from existing leads to use:
@@ -424,25 +464,77 @@ const FALLBACK_INPUT_FROM: Record<string, string[]> = {
 
 function validateDataFlow(pipeline: any[]): { valid: boolean; issues: string[]; fixedPipeline: any[] } {
   const issues: string[] = [];
-  const fixedPipeline = [...pipeline];
+  let fixedPipeline = [...pipeline];
 
-  // Build cumulative produced-fields map from all prior stages
-  for (let i = 1; i < fixedPipeline.length; i++) {
-    const stage = fixedPipeline[i];
-    if (stage.type !== "scrape") continue;
-    if (!stage.input_from) continue;
-
-    const inputField = stage.input_from;
-
-    // Collect all fields produced by prior stages
+  // ── Helper: collect all fields produced by stages [0..endIdx) ──
+  function getProducedFieldsUpTo(endIdx: number): Set<string> {
     const allProduced = new Set<string>();
-    for (let j = 0; j < i; j++) {
+    for (let j = 0; j < endIdx; j++) {
       const prevStage = fixedPipeline[j];
       if (prevStage.type === "ai_filter") continue; // filters don't produce new fields
       for (const f of inferProducedFields(prevStage)) {
         allProduced.add(f);
       }
     }
+    return allProduced;
+  }
+
+  // ── Pass 1: Validate AI filter stages — check requires_fields against produced data ──
+  for (let i = 0; i < fixedPipeline.length; i++) {
+    const stage = fixedPipeline[i];
+    if (stage.type !== "ai_filter") continue;
+
+    const requiresFields: string[] = stage.requires_fields || [];
+    if (requiresFields.length === 0) continue; // no declared dependencies — skip
+
+    const allProduced = getProducedFieldsUpTo(i);
+
+    for (const reqField of requiresFields) {
+      const reqAliases = FIELD_ALIASES[reqField] || [reqField];
+      const found = reqAliases.some(a => allProduced.has(a));
+
+      if (!found) {
+        // Determine which enrichment stage could produce this field
+        const enrichmentNeeded = getEnrichmentForField(reqField);
+        if (enrichmentNeeded) {
+          issues.push(`Stage ${stage.stage}: ai_filter requires "${reqField}" but no prior stage produces it — auto-injecting ${enrichmentNeeded.stage_category} stage before this filter`);
+          
+          // Inject an enrichment stage before this filter
+          const newStageNum = stage.stage;
+          const enrichmentStage = {
+            stage: newStageNum,
+            name: `Auto-enrich for ${reqField}`,
+            type: "scrape",
+            stage_category: enrichmentNeeded.stage_category,
+            params: {},
+            input_from: enrichmentNeeded.input_from,
+            dedup_after: false,
+            updates_fields: enrichmentNeeded.produces,
+            expected_output_count: 0,
+          };
+
+          // Insert before current position and renumber all subsequent stages
+          fixedPipeline.splice(i, 0, enrichmentStage);
+          // Renumber stages from insertion point onward
+          for (let k = i; k < fixedPipeline.length; k++) {
+            fixedPipeline[k] = { ...fixedPipeline[k], stage: k + 1 };
+          }
+          i++; // skip past the filter we just validated (it moved forward by 1)
+        } else {
+          issues.push(`Stage ${stage.stage}: ai_filter requires "${reqField}" but no prior stage produces it and no enrichment source known — filter may reject everything`);
+        }
+      }
+    }
+  }
+
+  // ── Pass 2: Validate scrape stages — check input_from ──
+  for (let i = 1; i < fixedPipeline.length; i++) {
+    const stage = fixedPipeline[i];
+    if (stage.type !== "scrape") continue;
+    if (!stage.input_from) continue;
+
+    const inputField = stage.input_from;
+    const allProduced = getProducedFieldsUpTo(i);
 
     // Check if input_from (or any of its aliases) is produced
     const inputAliases = FIELD_ALIASES[inputField] || [inputField];
@@ -487,6 +579,18 @@ function validateDataFlow(pipeline: any[]): { valid: boolean; issues: string[]; 
   }
 
   return { valid: issues.length === 0, issues, fixedPipeline };
+}
+
+// Maps a required field to the enrichment stage category that produces it
+function getEnrichmentForField(field: string): { stage_category: string; input_from: string; produces: string[] } | null {
+  const fieldEnrichmentMap: Record<string, { stage_category: string; input_from: string; produces: string[] }> = {
+    employee_count: { stage_category: "company_data:linkedin", input_from: "company_name", produces: ["industry", "employee_count", "website", "linkedin", "description"] },
+    industry: { stage_category: "company_data:linkedin", input_from: "company_name", produces: ["industry", "employee_count", "website", "linkedin", "description"] },
+    company_linkedin_url: { stage_category: "web_search:google", input_from: "company_name", produces: ["company_name", "website", "description"] },
+    website: { stage_category: "web_search:google", input_from: "company_name", produces: ["company_name", "website", "description"] },
+    description: { stage_category: "enrichment:contact", input_from: "website", produces: ["email", "phone", "linkedin", "website"] },
+  };
+  return fieldEnrichmentMap[field] || null;
 }
 
 // ════════════════════════════════════════════════════════════════
