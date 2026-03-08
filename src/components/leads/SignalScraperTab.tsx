@@ -113,10 +113,11 @@ export function SignalScraperTab() {
     const finalQuery = q || query.trim();
     if (!finalQuery) return;
     if (q) setQuery(q);
-    generatePlan({ query: finalQuery, plan_override: planOverride, advanced_settings: advancedSettings });
+    const systemSettings = computeSystemSettings(advancedSettings);
+    generatePlan({ query: finalQuery, plan_override: planOverride, advanced_settings: systemSettings });
   };
 
-  const estimatedScrapeCost = ((advancedSettings.max_results_per_source / 1000) * 1.0 * 4 * 5).toFixed(0);
+  const estimatedScrapeCost = ((advancedSettings.target_leads * 5 / 1000) * 1.0 * 4 * 5).toFixed(0);
 
   const handleExecute = () => {
     if (!currentPlan) return;
