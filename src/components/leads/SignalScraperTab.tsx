@@ -341,7 +341,7 @@ export function SignalScraperTab() {
 // ── Pipeline Plan Display ──
 
 function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExecute, onCancel, isExecuting, credits }: {
-  currentPlan: { run_id: string; plan: any; estimation: any; warnings?: string[] };
+  currentPlan: { run_id: string; plan: any; estimation: any; warnings?: string[]; data_flow_fixes?: string[] };
   scheduleType: string;
   setScheduleType: (v: 'once' | 'daily' | 'weekly') => void;
   onExecute: () => void;
