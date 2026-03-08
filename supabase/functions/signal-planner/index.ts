@@ -1006,6 +1006,248 @@ async function handleExecuteSignal(
   });
 }
 
+
+// ════════════════════════════════════════════════════════════════
+// ██  DRY RUN — Simulate actor inputs without executing
+// ════════════════════════════════════════════════════════════════
+
+function dryRunDetectPlatform(actor: ActorEntry): "linkedin" | "indeed" | "glassdoor" | "google_maps" | "yelp" | "google_search" | "generic" {
+  const id = actor.actorId.toLowerCase();
+  const label = actor.label.toLowerCase();
+  const sub = ((actor as any).subCategory || "").toLowerCase();
+  if (id.includes("linkedin") || label.includes("linkedin") || sub.includes("linkedin")) {
+    if (sub.includes("people") || label.includes("people")) return "generic";
+    if (sub.includes("company")) return "generic";
+    return "linkedin";
+  }
+  if (id.includes("indeed") || label.includes("indeed") || sub.includes("indeed")) return "indeed";
+  if (id.includes("glassdoor") || label.includes("glassdoor") || sub.includes("glassdoor")) return "glassdoor";
+  if (id.includes("google-places") || id.includes("crawler-google-places") || sub.includes("google_maps")) return "google_maps";
+  if (id.includes("yelp") || sub.includes("yelp")) return "yelp";
+  if (id.includes("google-search") || sub.includes("google_search") || sub.includes("web_search")) return "google_search";
+  return "generic";
+}
+
+function dryRunSplitCompoundKeywords(keyword: string): string[] {
+  if (!keyword) return [keyword || ""];
+  if (/\s+OR\s+/i.test(keyword)) return keyword.split(/\s+OR\s+/i).map(k => k.replace(/^['"]|['"]$/g, "").trim()).filter(k => k.length > 0);
+  if (keyword.includes(",") && !keyword.startsWith("http")) return keyword.split(",").map(k => k.replace(/^['"]|['"]$/g, "").trim()).filter(k => k.length > 0);
+  return [keyword.replace(/^['"]|['"]$/g, "").trim()];
+}
+
+interface DryRunSearchIntent {
+  roles: string[];
+  industry: string;
+  location: string;
+  dateRange?: string;
+}
+
+function dryRunParseSearchIntent(stageDef: any): DryRunSearchIntent {
+  const roleFilter: string[] | null = stageDef.role_filter || null;
+  const searchQuery: string = stageDef.search_query || "";
+  let location = "United States";
+  const paramsPerActor = stageDef.params_per_actor || {};
+  for (const [, actorParams] of Object.entries(paramsPerActor)) {
+    const ap = actorParams as Record<string, any>;
+    if (ap?.location) { location = ap.location; break; }
+    if (ap?.searchLocation) { location = ap.searchLocation; break; }
+  }
+  if (stageDef.params?.location) location = stageDef.params.location;
+  if (stageDef.params?.searchLocation) location = stageDef.params.searchLocation;
+  return { roles: roleFilter || [], industry: roleFilter ? searchQuery : "", location, dateRange: "r604800" };
+}
+
+function dryRunBuildPlatformSearchQuery(
+  platform: string,
+  intent: DryRunSearchIntent,
+  existingParams: Record<string, any>
+): { url?: string; params: Record<string, any> } {
+  const location = existingParams.location || existingParams.searchLocation || intent.location || "United States";
+  let combinedKeyword: string;
+  if (intent.roles.length > 0 && intent.industry) {
+    combinedKeyword = platform === "linkedin" ? intent.roles.join(" OR ") : `${intent.roles.join(" OR ")} ${intent.industry}`;
+  } else if (intent.roles.length > 0) {
+    combinedKeyword = intent.roles.join(" OR ");
+  } else if (intent.industry) {
+    combinedKeyword = intent.industry;
+  } else {
+    combinedKeyword = existingParams.search_query || existingParams.keyword || "";
+  }
+
+  switch (platform) {
+    case "linkedin": {
+      const url = `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(combinedKeyword)}&location=${encodeURIComponent(location)}&f_TPR=${intent.dateRange || "r604800"}`;
+      return { url, params: { ...existingParams, urls: [url], startUrls: [{ url }], splitByLocation: false } };
+    }
+    case "indeed": return { params: { ...existingParams, position: combinedKeyword, title: combinedKeyword, location } };
+    case "glassdoor": return { params: { ...existingParams, keyword: combinedKeyword, location } };
+    case "google_maps": {
+      const searchTerms = intent.industry
+        ? dryRunSplitCompoundKeywords(intent.industry).map(term => `${term} ${location}`)
+        : [combinedKeyword];
+      return { params: { ...existingParams, searchStringsArray: searchTerms } };
+    }
+    case "yelp": return { params: { ...existingParams, searchTerms: dryRunSplitCompoundKeywords(intent.industry || combinedKeyword), location } };
+    case "google_search": return { params: { ...existingParams, queries: combinedKeyword } };
+    default: return { params: { ...existingParams, search: combinedKeyword, query: combinedKeyword, keyword: combinedKeyword, location } };
+  }
+}
+
+async function handleDryRun(
+  body: { run_id: string; workspace_id: string },
+  serviceClient: any
+) {
+  const { run_id, workspace_id } = body;
+  if (!run_id || !workspace_id) {
+    return new Response(JSON.stringify({ error: "run_id and workspace_id are required" }), {
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { data: run, error: fetchErr } = await serviceClient
+    .from("signal_runs").select("*").eq("id", run_id).eq("workspace_id", workspace_id).single();
+  if (fetchErr || !run) {
+    return new Response(JSON.stringify({ error: "Signal run not found" }), {
+      status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const plan = run.signal_plan;
+  if (!plan || !plan.pipeline) {
+    return new Response(JSON.stringify({ error: "No pipeline plan found on this run" }), {
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // Load actor registry from plan
+  const actorRegistry = new Map<string, ActorEntry>();
+  const registry = plan.actor_registry || {};
+  for (const [key, config] of Object.entries(registry)) {
+    const actor = config as ActorEntry;
+    if (!actor.key) actor.key = key;
+    actorRegistry.set(key, actor);
+  }
+
+  const stages: any[] = [];
+  const KNOWN_LIMIT_FIELDS = ["maxItems", "limit", "count", "maxResults", "max_results", "rows", "numResults", "maxCrawledPlacesPerSearch"];
+
+  for (const stageDef of plan.pipeline) {
+    if (stageDef.type !== "scrape") {
+      stages.push({
+        stage: stageDef.stage,
+        name: stageDef.name,
+        type: stageDef.type,
+        note: "AI filter stage — no actor input to simulate",
+        prompt: stageDef.prompt || null,
+        input_fields: stageDef.input_fields || null,
+      });
+      continue;
+    }
+
+    const actors = stageDef.actors || [];
+    const stageResult: any = {
+      stage: stageDef.stage,
+      name: stageDef.name,
+      type: "scrape",
+      stage_category: stageDef.stage_category || null,
+      actor_inputs: [],
+    };
+
+    for (const actorKey of actors) {
+      const actor = actorRegistry.get(actorKey);
+      if (!actor) {
+        stageResult.actor_inputs.push({ actor_key: actorKey, error: "Actor not found in registry" });
+        continue;
+      }
+
+      const actorInfo: any = {
+        actor_key: actorKey,
+        actor_id: actor.actorId,
+        label: actor.label,
+        monthly_users: actor.monthlyUsers || 0,
+        total_runs: actor.totalRuns || 0,
+        rating: actor.rating || 0,
+        input_schema_fields: Object.keys(actor.inputSchema || {}),
+      };
+
+      if (stageDef.stage === 1 || !stageDef.input_from) {
+        // Stage 1: build full platform query
+        const actorParams = stageDef.params_per_actor?.[actorKey] || stageDef.params || {};
+        const intent = dryRunParseSearchIntent(stageDef);
+        const platform = dryRunDetectPlatform(actor);
+        intent.location = actorParams.location || actorParams.searchLocation || intent.location;
+
+        const platformQuery = dryRunBuildPlatformSearchQuery(platform, intent, actorParams);
+        const input = { ...platformQuery.params };
+
+        // Apply limit fields
+        const hasExistingLimit = KNOWN_LIMIT_FIELDS.some(f => input[f] !== undefined);
+        if (!hasExistingLimit) {
+          const schemaKeys = Object.keys(actor.inputSchema || {});
+          const maxField = schemaKeys.find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
+          if (maxField) input[maxField] = actor.inputSchema[maxField]?.default || 500;
+          else input.maxResults = 500;
+        }
+
+        const finalInput = buildGenericInput(actor, input);
+        if (!finalInput.proxyConfiguration) finalInput.proxyConfiguration = { useApifyProxy: true };
+
+        actorInfo.detected_platform = platform;
+        actorInfo.search_intent = intent;
+        actorInfo.platform_url = platformQuery.url || null;
+        actorInfo.final_input = finalInput;
+      } else if (stageDef.input_transform === "linkedin_url_discovery") {
+        actorInfo.note = "LinkedIn URL discovery — input is dynamically built from existing leads' company_name";
+        actorInfo.sample_query_pattern = '"[company_name]" site:linkedin.com/company';
+        actorInfo.batch_size = 20;
+        actorInfo.base_params = stageDef.params_per_actor?.[actorKey] || {};
+      } else {
+        // Enrichment / later stages
+        const inputField = stageDef.input_from;
+        actorInfo.input_from = inputField;
+        actorInfo.note = `Enrichment stage — input values come from leads' "${inputField}" field`;
+        actorInfo.search_titles = stageDef.search_titles || null;
+
+        // Show sample input structure
+        const actorParams = stageDef.params_per_actor?.[actorKey] || {};
+        const sampleInput = buildGenericInput(actor, actorParams);
+        if (!sampleInput.proxyConfiguration) sampleInput.proxyConfiguration = { useApifyProxy: true };
+        actorInfo.base_params = sampleInput;
+
+        const batchSize = actor.category === "people_data" ? 50 : actor.category === "company_data" ? 100 : 50;
+        actorInfo.batch_size = batchSize;
+      }
+
+      stageResult.actor_inputs.push(actorInfo);
+    }
+
+    stages.push(stageResult);
+  }
+
+  const result = {
+    dry_run: true,
+    run_id,
+    signal_name: plan.signal_name || run.signal_name,
+    signal_query: run.signal_query,
+    pipeline_stages: stages,
+    actor_registry_summary: Object.fromEntries(
+      [...actorRegistry.entries()].map(([k, v]) => [k, {
+        actorId: v.actorId,
+        label: v.label,
+        category: v.category,
+        monthlyUsers: v.monthlyUsers,
+        totalRuns: v.totalRuns,
+        rating: v.rating,
+        is_backup: !!(v as any)._isBackup,
+      }])
+    ),
+  };
+
+  return new Response(JSON.stringify(result), {
+    status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 // ════════════════════════════════════════════════════════════════
 // ██  GENERATE PLAN
 // ════════════════════════════════════════════════════════════════
