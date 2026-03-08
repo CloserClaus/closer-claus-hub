@@ -39,40 +39,35 @@ const PAGE_SIZE = 25;
 const ICON_MAP: Record<string, any> = { Briefcase, Rocket, MapPin, Zap, Sparkles };
 
 export interface AdvancedSettings {
-  target_leads: number;
+  scrape_volume: number;
   location: string;
   company_size: 'any' | '1-10' | '11-50' | '51-200' | '200+';
   decision_maker_titles: string;
   date_range: 'past_24h' | 'past_week' | 'past_2_weeks' | 'past_month';
   quality: 'standard' | 'high';
-  // Legacy fields — computed internally for backend compatibility
+  // Computed internally for backend compatibility
   max_results_per_source: number;
   ai_strictness: 'low' | 'medium' | 'high';
 }
 
 const DEFAULT_ADVANCED: AdvancedSettings = {
-  target_leads: 100,
+  scrape_volume: 1000,
   location: '',
   company_size: 'any',
   decision_maker_titles: '',
   date_range: 'past_week',
   quality: 'standard',
-  max_results_per_source: 500,
+  max_results_per_source: 1000,
   ai_strictness: 'medium',
 };
 
-// Translate user-intent settings into system settings
-function computeSystemSettings(settings: AdvancedSettings): AdvancedSettings {
-  // Target leads → max_results_per_source (assume ~20% pass rate)
-  const maxResults = settings.target_leads * 5;
-  // Quality → AI strictness
-  const strictness = settings.quality === 'high' ? 'high' : 'medium';
-  return {
-    ...settings,
-    max_results_per_source: maxResults,
-    ai_strictness: strictness,
-  };
-}
+const SCRAPE_VOLUME_OPTIONS = [
+  { value: 250, label: '250 records' },
+  { value: 500, label: '500 records' },
+  { value: 1000, label: '1,000 records' },
+  { value: 2500, label: '2,500 records' },
+  { value: 5000, label: '5,000 records' },
+];
 
 export function SignalScraperTab() {
   const [query, setQuery] = useState('');
@@ -113,11 +108,13 @@ export function SignalScraperTab() {
     const finalQuery = q || query.trim();
     if (!finalQuery) return;
     if (q) setQuery(q);
-    const systemSettings = computeSystemSettings(advancedSettings);
+    const systemSettings: AdvancedSettings = {
+      ...advancedSettings,
+      max_results_per_source: advancedSettings.scrape_volume,
+      ai_strictness: advancedSettings.quality === 'high' ? 'high' : 'medium',
+    };
     generatePlan({ query: finalQuery, plan_override: planOverride, advanced_settings: systemSettings });
   };
-
-  const estimatedScrapeCost = ((advancedSettings.target_leads * 5 / 1000) * 1.0 * 4 * 5).toFixed(0);
 
   const handleExecute = () => {
     if (!currentPlan) return;
@@ -126,7 +123,11 @@ export function SignalScraperTab() {
 
   const handleRerun = (run: SignalRun, refinementContext?: any) => {
     setQuery(run.signal_query);
-    const systemSettings = computeSystemSettings(advancedSettings);
+    const systemSettings: AdvancedSettings = {
+      ...advancedSettings,
+      max_results_per_source: advancedSettings.scrape_volume,
+      ai_strictness: advancedSettings.quality === 'high' ? 'high' : 'medium',
+    };
     generatePlan({ query: run.signal_query, advanced_settings: systemSettings, plan_override: refinementContext ? { refinement_context: refinementContext } : undefined });
   };
 
@@ -201,25 +202,24 @@ export function SignalScraperTab() {
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-3 space-y-5 rounded-lg border border-border bg-muted/30 p-4">
-              {/* Target Leads */}
+              {/* Scrape Volume */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">Target leads</Label>
+                  <Label className="text-sm font-medium">Scrape volume</Label>
                   <Select
-                    value={String(advancedSettings.target_leads)}
-                    onValueChange={(v) => setAdvancedSettings(s => ({ ...s, target_leads: parseInt(v) }))}
+                    value={String(advancedSettings.scrape_volume)}
+                    onValueChange={(v) => setAdvancedSettings(s => ({ ...s, scrape_volume: parseInt(v) }))}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="50">50 leads</SelectItem>
-                      <SelectItem value="100">100 leads</SelectItem>
-                      <SelectItem value="250">250 leads</SelectItem>
-                      <SelectItem value="500">500 leads</SelectItem>
+                      {SCRAPE_VOLUME_OPTIONS.map(opt => (
+                        <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">How many qualified leads you want. ~{estimatedScrapeCost} credits est.</p>
+                  <p className="text-xs text-muted-foreground">How many records to scrape in Stage 1. AI estimates final lead count after generation.</p>
                 </div>
 
                 {/* Location */}
@@ -510,7 +510,22 @@ function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExe
           </div>
         </div>
 
-        {/* Pipeline Stages Visualization */}
+        {/* Yield Confidence */}
+        {estimation.yield_label && (
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+            <Badge variant="outline" className={
+              estimation.yield_label === 'Niche' ? 'border-destructive/50 text-destructive' :
+              estimation.yield_label === 'Broad' ? 'border-green-500/50 text-green-500' :
+              'border-yellow-500/50 text-yellow-500'
+            }>
+              {estimation.yield_label}
+            </Badge>
+            <span className="text-sm text-muted-foreground">
+              ~{Math.round((estimation.yield_rate || 0) * 100)}% yield rate
+              {estimation.yield_guidance && ` — ${estimation.yield_guidance}`}
+            </span>
+          </div>
+        )}
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-muted-foreground">Pipeline Stages</h4>
           <div className="space-y-1.5">

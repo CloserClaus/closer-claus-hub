@@ -56,6 +56,9 @@ export interface SignalEstimation {
   cost_per_lead: string;
   source_label: string;
   stage_funnel?: StageFunnelItem[];
+  yield_rate?: number;
+  yield_label?: string;
+  yield_guidance?: string;
 }
 
 export interface SignalRun {

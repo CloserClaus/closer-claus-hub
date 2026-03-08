@@ -455,9 +455,20 @@ Return ONLY a valid JSON object:
 {
   "signal_name": "<short descriptive name>",
   "logic_reasoning": "<1-2 sentences>",
+  "estimated_yield_rate": <float 0.01-0.60>,
   "pipeline": [ <array of stage objects> ],
   "infeasible_reason": null | "<explanation>"
 }
+
+## YIELD RATE ESTIMATION (CRITICAL)
+
+You MUST estimate \`estimated_yield_rate\` — the percentage of Stage 1 records that will survive ALL filter stages to become final leads.
+Base this on query specificity:
+- Niche queries (e.g., "biotech companies in Vermont hiring SDRs"): 0.02-0.05
+- Moderate queries (e.g., "marketing agencies hiring sales reps in the US"): 0.10-0.25
+- Broad queries (e.g., "tech companies in California hiring sales reps"): 0.30-0.50
+
+This should be the COMPOUND pass rate across all ai_filter stages. It helps users understand how many leads to expect from their scrape volume.
 
 No markdown, no explanation, just the JSON.`;
 }
@@ -1018,13 +1029,13 @@ async function handleGeneratePlan(
 
   // Inject advanced settings as explicit user constraints
   if (advanced_settings) {
-    const maxResults = advanced_settings.max_results_per_source || 500;
+    const scrapeVolume = advanced_settings.scrape_volume || advanced_settings.max_results_per_source || 1000;
+    const maxResults = advanced_settings.max_results_per_source || scrapeVolume;
     const dateRange = advanced_settings.date_range || "past_week";
     const strictness = advanced_settings.ai_strictness || "medium";
     const location = advanced_settings.location || "";
     const companySize = advanced_settings.company_size || "any";
     const decisionMakerTitles = advanced_settings.decision_maker_titles || "";
-    const targetLeads = advanced_settings.target_leads || 100;
 
     const dateMap: Record<string, string> = {
       past_24h: "past 24 hours only", past_week: "past week",
@@ -1044,7 +1055,7 @@ async function handleGeneratePlan(
     };
 
     systemPrompt += `\n\n## USER PREFERENCES (OVERRIDE DEFAULTS — these are EXPLICIT user constraints)\n`;
-    systemPrompt += `- Target leads: ${targetLeads} (set max results per source in stage 1 to: ${maxResults})\n`;
+    systemPrompt += `- Scrape volume: ${scrapeVolume} records. Set Stage 1 maxItems/maxCrawledPlacesPerSearch to ${maxResults}. This directly controls how many records to scrape.\n`;
     systemPrompt += `- Date range: ${dateMap[dateRange] || "past week"}\n`;
     systemPrompt += `- Filtering strictness: ${strictnessMap[strictness] || strictnessMap.medium}\n`;
     
@@ -1274,7 +1285,8 @@ async function handleGeneratePlan(
   const warnings = [...resolveWarnings, ...validatePipelinePlan(parsedPlan, query)];
 
   // Step 8: Cost estimation
-  const { totalCredits, totalEstimatedRows, totalEstimatedLeads, stageFunnel } = estimatePipelineCost(parsedPlan.pipeline);
+  const aiYieldRate = parsedPlan.estimated_yield_rate || null;
+  const { totalCredits, totalEstimatedRows, totalEstimatedLeads, stageFunnel, yieldRate, yieldLabel, yieldGuidance } = estimatePipelineCost(parsedPlan.pipeline, aiYieldRate);
   const costPerLead = totalEstimatedLeads > 0 ? (totalCredits / totalEstimatedLeads).toFixed(1) : "N/A";
 
   const signalName = parsedPlan.signal_name || "Signal";
@@ -1318,6 +1330,9 @@ async function handleGeneratePlan(
         cost_per_lead: costPerLead,
         source_label: sourceLabels.join(" + "),
         stage_funnel: stageFunnel,
+        yield_rate: yieldRate,
+        yield_label: yieldLabel,
+        yield_guidance: yieldGuidance,
       },
       warnings,
       data_flow_fixes: dataFlowResult.issues.length > 0 ? dataFlowResult.issues : undefined,
@@ -1679,33 +1694,33 @@ function validatePipelinePlan(plan: any, query: string): string[] {
 
 // ── Cost Estimation ──
 
-function estimatePipelineCost(pipeline: any[]): {
+function estimatePipelineCost(pipeline: any[], aiYieldRate?: number | null): {
   totalCredits: number;
   totalEstimatedRows: number;
   totalEstimatedLeads: number;
   stageFunnel: any;
+  yieldRate: number;
+  yieldLabel: string;
+  yieldGuidance: string | null;
 } {
   let totalEstimatedRows = 0;
   let currentRowCount = 0;
   let totalCredits = 0;
-  let discoveryRowCount = 0; // Track Stage 1 discovery volume separately
+  let discoveryRowCount = 0;
   const stageFunnel: any[] = [];
+  let compoundPassRate = 1.0;
 
   for (const stage of pipeline) {
     if (stage.type === "scrape") {
       if (stage.stage === 1) {
-        // Stage 1 = discovery: this defines "Records to scan"
         const expectedCount = stage.expected_output_count || 500;
         currentRowCount = expectedCount;
         discoveryRowCount = expectedCount;
         totalEstimatedRows = discoveryRowCount;
       } else {
-        // Enrichment stages: process existing leads, never exceed current pipeline flow
         const expectedCount = stage.expected_output_count || currentRowCount;
         currentRowCount = Math.min(currentRowCount, expectedCount);
-        // Do NOT update totalEstimatedRows — it stays as Stage 1 volume
       }
-      // Apify cost: ~$0.001 per result (1 credit = $0.01)
       const stageCost = Math.ceil(currentRowCount * 0.1);
       totalCredits += stageCost;
       stageFunnel.push({
@@ -1717,9 +1732,10 @@ function estimatePipelineCost(pipeline: any[]): {
       });
     } else if (stage.type === "ai_filter") {
       const passRate = stage.expected_pass_rate || 0.3;
+      compoundPassRate *= passRate;
       const inputRows = currentRowCount;
       currentRowCount = Math.ceil(inputRows * passRate);
-      const filterCost = Math.ceil(inputRows * 0.05); // ~$0.0005 per evaluation
+      const filterCost = Math.ceil(inputRows * 0.05);
       totalCredits += filterCost;
       stageFunnel.push({
         stage: stage.stage,
@@ -1733,11 +1749,32 @@ function estimatePipelineCost(pipeline: any[]): {
     }
   }
 
-  const totalEstimatedLeads = currentRowCount;
-  // Minimum 1 credit
+  // Use AI yield rate if provided, otherwise fall back to compound pass rate
+  const yieldRate = aiYieldRate && aiYieldRate > 0 && aiYieldRate <= 1
+    ? aiYieldRate
+    : compoundPassRate;
+
+  const totalEstimatedLeads = aiYieldRate && aiYieldRate > 0 && aiYieldRate <= 1
+    ? Math.ceil(discoveryRowCount * aiYieldRate)
+    : currentRowCount;
+
+  // Yield label and guidance
+  let yieldLabel: string;
+  let yieldGuidance: string | null;
+  if (yieldRate < 0.05) {
+    yieldLabel = "Niche";
+    yieldGuidance = "Niche search — increase scrape volume for more results";
+  } else if (yieldRate < 0.20) {
+    yieldLabel = "Moderate";
+    yieldGuidance = null;
+  } else {
+    yieldLabel = "Broad";
+    yieldGuidance = "Broad search — you can reduce volume to save credits";
+  }
+
   totalCredits = Math.max(1, totalCredits);
 
-  return { totalCredits, totalEstimatedRows, totalEstimatedLeads, stageFunnel };
+  return { totalCredits, totalEstimatedRows, totalEstimatedLeads, stageFunnel, yieldRate, yieldLabel, yieldGuidance };
 }
 
 const ROW_CAP_KEYS = [
