@@ -467,6 +467,7 @@ For "scrape" stages:
   "dedup_after": true|false,
   "updates_fields": ["field1", "field2"],
   "search_query": "keyword OR keyword2",
+  "role_filter": ["SDR", "Sales Representative"],  // ONLY for hiring_intent — exact job titles to search
   "expected_output_count": <number>,
   "input_transform": "linkedin_url_discovery" // special: for Google Search to find LinkedIn URLs
 }
@@ -480,6 +481,41 @@ For "ai_filter" stages:
   "input_fields": ["company_name", "website", "industry"],
   "expected_pass_rate": 0.20
 }
+
+## ROLE FILTER vs SEARCH QUERY (CRITICAL for hiring_intent pipelines)
+
+When the user searches for specific job roles at companies in a particular industry:
+- \`search_query\` = the INDUSTRY CONTEXT (e.g., "marketing agency", "SaaS companies", "advertising firm")
+- \`role_filter\` = the EXACT JOB TITLES the user wants (e.g., ["SDR", "Sales Representative", "Account Executive"])
+
+The processor uses \`role_filter\` as the job title/position field in actors, and \`search_query\` for the company/industry context.
+
+Example:
+- User: "Find marketing agencies hiring SDRs"
+- search_query: "marketing agency OR advertising agency"
+- role_filter: ["SDR", "Sales Development Representative", "Sales Representative"]
+- The actor will search for SDR positions specifically, not all marketing roles
+
+NEVER combine industry terms with role titles into a single string like "marketing agency SDR". This causes actors to return "Marketing Specialist" instead of "SDR" because they interpret "marketing" as a role keyword.
+
+If the user does NOT specify particular roles, omit role_filter (null).
+
+## MANDATORY OUTPUT FIELDS (CRITICAL — EVERY pipeline MUST produce these)
+
+Every pipeline MUST produce ALL of these fields by the final stage:
+1. contact_name — The person's full name (must match the intended role, not a random employee)
+2. industry — Company industry/vertical
+3. website — Company website URL
+4. company_linkedin_url — LinkedIn company page URL
+5. linkedin_profile_url — Person's LinkedIn profile URL
+6. employee_count — Company size / employee range
+
+If a stage's actors don't output a required field, you MUST add an enrichment stage that populates it:
+- Missing contact_name + linkedin_profile_url → add a people_data actor stage (uses company_name as input)
+- Missing industry + employee_count + company_linkedin_url → add a company_data actor stage
+- Missing website → add a web_search actor stage with company name queries
+
+The pipeline is INCOMPLETE without ALL 6 fields. NEVER skip person enrichment.
 
 ## DATA FLOW RULES (CRITICAL)
 
@@ -535,10 +571,12 @@ Rules:
 4. NEVER rely solely on downstream ai_filter stages to narrow by industry or vertical. The first stage MUST be as precise as possible at the source level.
 5. Stage 1 should capture ALL relevant signals while excluding obviously irrelevant ones at the source level.
 
+HOWEVER: For hiring_intent pipelines with role_filter, the search_query focuses on INDUSTRY context while role_filter handles the job title precision. Both are used together in Stage 1.
+
 Anti-pattern (NEVER do this):
 - User asks: "Find marketing agencies hiring SDRs"
-- BAD Stage 1 search_query: "SDR OR Sales Representative" (too broad — returns all industries)
-- GOOD Stage 1 search_query: "marketing agency SDR OR advertising agency Sales Representative"
+- BAD: search_query: "marketing agency SDR" (conflates industry and role — actor returns all "marketing" roles)
+- GOOD: search_query: "marketing agency OR advertising agency", role_filter: ["SDR", "Sales Representative"]
 
 ## ACTOR INPUT OPTIMIZATION
 
