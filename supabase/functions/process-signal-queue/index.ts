@@ -15,6 +15,7 @@ interface InputField {
   default?: any;
   values?: string[];
   description: string;
+  _schemaSource?: "runtime" | "catalog_fallback"; // tracks trust level
 }
 
 interface ActorEntry {
@@ -54,16 +55,16 @@ const VERIFIED_ACTOR_CATALOG: Record<string, { actorId: string; category: string
   "local_business:google_maps": { actorId: "compass/crawler-google-places", category: "local_business", subCategory: "local_business:google_maps", label: "Google Maps Places Scraper", inputSchema: { searchStringsArray: { type: "string[]", required: true, description: "Search queries" }, maxCrawledPlacesPerSearch: { type: "number", required: false, default: 100, description: "Max results per search" } }, outputFields: { company_name: ["title"], website: ["website"], phone: ["phone"], email: ["email", "emails"], location: ["address", "fullAddress"], industry: ["category", "categories", "categoryName"] } },
   "local_business:yelp": { actorId: "yin/yelp-scraper", category: "local_business", subCategory: "local_business:yelp", label: "Yelp Business Scraper", inputSchema: { searchTerms: { type: "string[]", required: true, description: "Search terms" }, location: { type: "string", required: false, description: "Location" }, maxItems: { type: "number", required: false, default: 100, description: "Max results" } }, outputFields: { company_name: ["name", "businessName"], website: ["website"], phone: ["phone", "displayPhone"], location: ["address"], industry: ["categories"] } },
   "hiring_intent:indeed": { actorId: "misceres/indeed-scraper", category: "hiring_intent", subCategory: "hiring_intent:indeed", label: "Indeed Job Scraper", inputSchema: { position: { type: "string", required: false, description: "Job title" }, location: { type: "string", required: false, description: "Location" }, country: { type: "string", required: false, default: "US", description: "Country code" }, maxItems: { type: "number", required: false, default: 100, description: "Max results" } }, outputFields: { company_name: ["company", "companyName"], title: ["positionName", "title"], location: ["jobLocation", "location"], website: ["companyUrl", "url"], description: ["description"] } },
-  "hiring_intent:linkedin": { actorId: "hMvNSpz3JnHgl5jkh", category: "hiring_intent", subCategory: "hiring_intent:linkedin", label: "LinkedIn Jobs Scraper", inputSchema: { urls: { type: "string[]", required: false, description: "LinkedIn job search URLs" }, startUrls: { type: "string[]", required: false, description: "Start URLs" }, maxItems: { type: "number", required: false, default: 100, description: "Max results" } }, outputFields: { company_name: ["companyName", "company"], title: ["title", "jobTitle"], location: ["location", "jobLocation"], linkedin: ["companyLinkedinUrl"], website: ["companyUrl"], industry: ["companyIndustry"], employee_count: ["companyEmployeesCount"] } },
+  "hiring_intent:linkedin": { actorId: "hMvNSpz3JnHgl5jkh", category: "hiring_intent", subCategory: "hiring_intent:linkedin", label: "LinkedIn Jobs Scraper", inputSchema: { urls: { type: "object[]", required: false, description: "LinkedIn job search URLs" }, startUrls: { type: "object[]", required: false, description: "Start URLs" }, maxItems: { type: "number", required: false, default: 100, description: "Max results" } }, outputFields: { company_name: ["companyName", "company"], title: ["title", "jobTitle"], location: ["location", "jobLocation"], linkedin: ["companyLinkedinUrl"], website: ["companyUrl"], industry: ["companyIndustry"], employee_count: ["companyEmployeesCount"] } },
   "hiring_intent:glassdoor": { actorId: "bebity/glassdoor-scraper", category: "hiring_intent", subCategory: "hiring_intent:glassdoor", label: "Glassdoor Job Scraper", inputSchema: { keyword: { type: "string", required: false, description: "Job keyword" }, location: { type: "string", required: false, description: "Location" }, maxItems: { type: "number", required: false, default: 100, description: "Max results" } }, outputFields: { company_name: ["employer.name", "companyName"], title: ["jobTitle", "title"], location: ["location"], industry: ["employer.industry"], website: ["employer.corporateWebsite"], employee_count: ["employer.employeesCount"] } },
-  "people_data:linkedin": { actorId: "2SyF0bVxmgQr8SsLY", category: "people_data", subCategory: "people_data:linkedin", label: "LinkedIn People Search", inputSchema: { searchUrl: { type: "string", required: false, description: "LinkedIn people search URL" }, urls: { type: "string[]", required: false, description: "Search URLs" }, startUrls: { type: "string[]", required: false, description: "Start URLs" }, maxItems: { type: "number", required: false, default: 50, description: "Max results" } }, outputFields: { contact_name: ["fullName", "name", "firstName"], title: ["headline", "title"], linkedin_profile: ["profileUrl", "url", "linkedinUrl"], company_name: ["companyName", "currentCompany"], location: ["location", "geoLocation"] } },
-  "company_data:linkedin": { actorId: "voyager/linkedin-company-scraper", category: "company_data", subCategory: "company_data:linkedin", label: "LinkedIn Company Scraper", inputSchema: { urls: { type: "string[]", required: false, description: "LinkedIn company page URLs" }, startUrls: { type: "string[]", required: false, description: "Start URLs" }, maxItems: { type: "number", required: false, default: 50, description: "Max results" } }, outputFields: { company_name: ["name", "companyName"], industry: ["industry", "industries"], employee_count: ["employeeCount", "staffCount", "employeesOnLinkedIn"], website: ["website", "websiteUrl"], linkedin: ["url", "linkedinUrl"], location: ["headquarters", "location"] } },
+  "people_data:linkedin": { actorId: "2SyF0bVxmgQr8SsLY", category: "people_data", subCategory: "people_data:linkedin", label: "LinkedIn People Search", inputSchema: { searchUrl: { type: "string", required: false, description: "LinkedIn people search URL" }, urls: { type: "object[]", required: false, description: "Search URLs" }, startUrls: { type: "object[]", required: false, description: "Start URLs" }, maxItems: { type: "number", required: false, default: 50, description: "Max results" } }, outputFields: { contact_name: ["fullName", "name", "firstName"], title: ["headline", "title"], linkedin_profile: ["profileUrl", "url", "linkedinUrl"], company_name: ["companyName", "currentCompany"], location: ["location", "geoLocation"] } },
+  "company_data:linkedin": { actorId: "voyager/linkedin-company-scraper", category: "company_data", subCategory: "company_data:linkedin", label: "LinkedIn Company Scraper", inputSchema: { urls: { type: "object[]", required: false, description: "LinkedIn company page URLs" }, startUrls: { type: "object[]", required: false, description: "Start URLs" }, maxItems: { type: "number", required: false, default: 50, description: "Max results" } }, outputFields: { company_name: ["name", "companyName"], industry: ["industry", "industries"], employee_count: ["employeeCount", "staffCount", "employeesOnLinkedIn"], website: ["website", "websiteUrl"], linkedin: ["url", "linkedinUrl"], location: ["headquarters", "location"] } },
   "web_search:google": { actorId: "apify/google-search-scraper", category: "web_search", subCategory: "web_search:google", label: "Google Search Scraper", inputSchema: { queries: { type: "string", required: true, description: "Search query string" }, maxPagesPerQuery: { type: "number", required: false, default: 1, description: "Pages per query" }, resultsPerPage: { type: "number", required: false, default: 10, description: "Results per page" } }, outputFields: { company_name: ["title"], website: ["url", "link"], description: ["description", "snippet"] } },
-  "enrichment:contact": { actorId: "alexey/contact-info-scraper", category: "enrichment", subCategory: "enrichment:contact", label: "Website Contact Info Scraper", inputSchema: { startUrls: { type: "string[]", required: true, description: "Website URLs to scrape contacts from" }, maxRequestsPerStartUrl: { type: "number", required: false, default: 5, description: "Max pages per site" } }, outputFields: { email: ["emails", "email"], phone: ["phones", "phone", "phoneNumbers"], linkedin: ["linkedIn", "linkedin"], website: ["url"] } },
+  "enrichment:contact": { actorId: "alexey/contact-info-scraper", category: "enrichment", subCategory: "enrichment:contact", label: "Website Contact Info Scraper", inputSchema: { startUrls: { type: "object[]", required: true, description: "Website URLs to scrape contacts from" }, maxRequestsPerStartUrl: { type: "number", required: false, default: 5, description: "Max pages per site" } }, outputFields: { email: ["emails", "email"], phone: ["phones", "phone", "phoneNumbers"], linkedin: ["linkedIn", "linkedin"], website: ["url"] } },
 };
 
 // ── Runtime Schema Authority — always fetch live schema, cache in-memory ──
-const _runtimeSchemaCache = new Map<string, Record<string, InputField>>();
+const _runtimeSchemaCache = new Map<string, { fields: Record<string, InputField>; source: "runtime" | "catalog_fallback" }>();
 
 async function fetchAndMergeRuntimeSchema(actor: ActorEntry, token: string): Promise<void> {
   const cacheKey = actor.actorId;
@@ -71,57 +72,90 @@ async function fetchAndMergeRuntimeSchema(actor: ActorEntry, token: string): Pro
   // Return cached result if available
   if (_runtimeSchemaCache.has(cacheKey)) {
     const cached = _runtimeSchemaCache.get(cacheKey)!;
-    // Merge: runtime types override hardcoded, but keep hardcoded fields as fallback
     const merged: Record<string, InputField> = { ...(actor.inputSchema || {}) };
-    for (const [key, val] of Object.entries(cached)) {
-      merged[key] = { ...(merged[key] || {}), ...val, type: val.type }; // runtime type always wins
+    for (const [key, val] of Object.entries(cached.fields)) {
+      merged[key] = { ...(merged[key] || {}), ...val, type: val.type, _schemaSource: cached.source };
+    }
+    // Mark all fields with source
+    for (const key of Object.keys(merged)) {
+      if (!merged[key]._schemaSource) merged[key]._schemaSource = cached.source;
     }
     actor.inputSchema = merged;
+    (actor as any)._schemaSource = cached.source;
     return;
   }
 
-  try {
-    const actorIdEncoded = actor.actorId.replace("/", "~");
-    const schemaResp = await fetch(
-      `https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${token}`,
-      { method: "GET" }
-    );
-    if (!schemaResp.ok) {
-      console.warn(`Runtime schema fetch returned ${schemaResp.status} for ${actor.actorId}, using catalog fallback`);
+  // Multi-strategy schema resolution
+  const actorIdEncoded = actor.actorId.replace("/", "~");
+  const endpoints = [
+    `https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${token}`,
+    `https://api.apify.com/v2/acts/${actorIdEncoded}?token=${token}`, // actor metadata (schema embedded)
+    `https://api.apify.com/v2/store/${actorIdEncoded}?token=${token}`, // store listing
+  ];
+
+  for (let i = 0; i < endpoints.length; i++) {
+    try {
+      const resp = await fetch(endpoints[i], { method: "GET" });
+      if (!resp.ok) {
+        console.warn(`Schema endpoint ${i} returned ${resp.status} for ${actor.actorId}`);
+        continue;
+      }
+      const data = await resp.json();
+      // Extract properties from different response shapes
+      let props: Record<string, any> = {};
+      if (data.properties && Object.keys(data.properties).length > 0) {
+        props = data.properties;
+      } else if (data.data?.defaultRunInput?.schema?.properties) {
+        props = data.data.defaultRunInput.schema.properties;
+      } else if (data.data?.input?.properties) {
+        props = data.data.input.properties;
+      } else if (data.data?.properties) {
+        props = data.data.properties;
+      }
+
+      if (Object.keys(props).length === 0) continue;
+
+      const fetchedSchema: Record<string, InputField> = {};
+      for (const [key, val] of Object.entries(props as Record<string, any>)) {
+        const type = val.type === "array"
+          ? (val.items?.type === "object" || val.items?.properties ? "object[]" : "string[]")
+          : (val.type === "integer" ? "number" : (val.type || "string"));
+        fetchedSchema[key] = {
+          type: type as any,
+          required: false,
+          default: val.default,
+          description: (val.description || key).slice(0, 200),
+          _schemaSource: "runtime",
+        };
+      }
+
+      _runtimeSchemaCache.set(cacheKey, { fields: fetchedSchema, source: "runtime" });
+      console.log(`Runtime schema fetched for ${actor.actorId} via endpoint ${i}: ${Object.keys(fetchedSchema).length} fields`);
+
+      const merged: Record<string, InputField> = { ...(actor.inputSchema || {}) };
+      for (const [key, val] of Object.entries(fetchedSchema)) {
+        merged[key] = { ...(merged[key] || {}), ...val, type: val.type, _schemaSource: "runtime" };
+      }
+      for (const key of Object.keys(merged)) {
+        if (!merged[key]._schemaSource) merged[key]._schemaSource = "runtime";
+      }
+      actor.inputSchema = merged;
+      (actor as any)._schemaSource = "runtime";
       return;
+    } catch (e) {
+      console.warn(`Schema endpoint ${i} failed for ${actor.actorId}:`, e);
     }
-    const schemaData = await schemaResp.json();
-    const props = schemaData.properties || schemaData.data?.properties || {};
-    if (Object.keys(props).length === 0) {
-      console.warn(`Runtime schema for ${actor.actorId} has no properties, using catalog fallback`);
-      return;
-    }
+  }
 
-    const fetchedSchema: Record<string, InputField> = {};
-    for (const [key, val] of Object.entries(props as Record<string, any>)) {
-      const type = val.type === "array"
-        ? (val.items?.type === "object" || val.items?.properties ? "object[]" : "string[]")
-        : (val.type === "integer" ? "number" : (val.type || "string"));
-      fetchedSchema[key] = {
-        type: type as any,
-        required: false,
-        default: val.default,
-        description: (val.description || key).slice(0, 200),
-      };
+  // All endpoints failed — mark as catalog fallback
+  console.warn(`All schema endpoints failed for ${actor.actorId}, using catalog fallback`);
+  _runtimeSchemaCache.set(cacheKey, { fields: actor.inputSchema || {}, source: "catalog_fallback" });
+  (actor as any)._schemaSource = "catalog_fallback";
+  // Mark all existing fields
+  if (actor.inputSchema) {
+    for (const key of Object.keys(actor.inputSchema)) {
+      actor.inputSchema[key]._schemaSource = "catalog_fallback";
     }
-
-    // Cache the fetched schema
-    _runtimeSchemaCache.set(cacheKey, fetchedSchema);
-    console.log(`Runtime schema fetched for ${actor.actorId}: ${Object.keys(fetchedSchema).length} fields`);
-
-    // Merge: runtime types override hardcoded, keep hardcoded fields as fallback
-    const merged: Record<string, InputField> = { ...(actor.inputSchema || {}) };
-    for (const [key, val] of Object.entries(fetchedSchema)) {
-      merged[key] = { ...(merged[key] || {}), ...val, type: val.type };
-    }
-    actor.inputSchema = merged;
-  } catch (e) {
-    console.warn(`Runtime schema fetch failed for ${actor.actorId}, using catalog fallback:`, e);
   }
 }
 
@@ -539,6 +573,7 @@ function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): 
     return input; // No schema — can't normalize, pass through
   }
 
+  const schemaSource = (actor as any)._schemaSource || "catalog_fallback";
   const result = { ...input };
   let coercions = 0;
 
@@ -546,16 +581,23 @@ function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): 
     if (result[field] === undefined) continue;
     const value = result[field];
     const declaredType = schema.type;
+    const fieldSource = schema._schemaSource || schemaSource;
+    const isUrlField = /url/i.test(field);
 
+    // ── URL-array coercions: only apply when schema source is runtime (trusted) ──
     // ── string[] but got object[] (e.g., [{url: "..."}] → ["..."]) ──
     if (declaredType === "string[]" && Array.isArray(value) && value.length > 0 && typeof value[0] === "object" && value[0] !== null) {
-      // Extract the first string property (usually "url")
+      if (isUrlField && fieldSource !== "runtime") {
+        // Catalog fallback — preserve original shape to avoid destructive coercion
+        console.log(`Schema normalization SKIPPED: "${field}" object[]→string[] coercion blocked (source: ${fieldSource}, not trusted) for actor ${actor.actorId}`);
+        continue;
+      }
       const firstObj = value[0];
       const stringProp = Object.keys(firstObj).find(k => typeof firstObj[k] === "string");
       if (stringProp) {
         result[field] = value.map((item: any) => typeof item === "object" && item !== null ? item[stringProp] : String(item));
         coercions++;
-        console.log(`Schema coercion: "${field}" object[] → string[] (extracted .${stringProp}) for actor ${actor.actorId}`);
+        console.log(`Schema coercion: "${field}" object[] → string[] (extracted .${stringProp}, source: ${fieldSource}) for actor ${actor.actorId}`);
       }
     }
     // ── string[] but got a single string → wrap in array ──
@@ -566,9 +608,16 @@ function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): 
     }
     // ── object[] but got string[] (e.g., ["..."] → [{url: "..."}]) ──
     else if (declaredType === "object[]" && Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
-      result[field] = value.map((item: string) => ({ url: item }));
-      coercions++;
-      console.log(`Schema coercion: "${field}" string[] → object[] (wrapped as {url}) for actor ${actor.actorId}`);
+      if (isUrlField && fieldSource !== "runtime") {
+        // Catalog fallback for object[] — still safe to wrap strings as {url}, this is additive not destructive
+        result[field] = value.map((item: string) => ({ url: item }));
+        coercions++;
+        console.log(`Schema coercion: "${field}" string[] → object[] (wrapped as {url}, source: ${fieldSource}) for actor ${actor.actorId}`);
+      } else {
+        result[field] = value.map((item: string) => ({ url: item }));
+        coercions++;
+        console.log(`Schema coercion: "${field}" string[] → object[] (wrapped as {url}, source: ${fieldSource}) for actor ${actor.actorId}`);
+      }
     }
     // ── number but got string ──
     else if (declaredType === "number" && typeof value === "string") {
@@ -594,18 +643,14 @@ function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): 
   }
 
   // Also normalize fields NOT in schema but present in input — check if they're common URL array fields
-  // This handles the case where buildGenericInput passes through extra fields
   for (const field of Object.keys(result)) {
-    if (actor.inputSchema[field]) continue; // Already handled above
-    // Skip non-array fields
+    if (actor.inputSchema[field]) continue;
     if (!Array.isArray(result[field]) || result[field].length === 0) continue;
-    // Don't touch fields that are already plain strings
     if (typeof result[field][0] !== "object") continue;
-    // For unknown array-of-object fields, leave as-is (we can't know the expected format)
   }
 
   if (coercions > 0) {
-    console.log(`normalizeInputToSchema: Applied ${coercions} coercion(s) for actor ${actor.actorId}`);
+    console.log(`normalizeInputToSchema: Applied ${coercions} coercion(s) for actor ${actor.actorId} (schema source: ${schemaSource})`);
   }
 
   return result;
@@ -660,6 +705,31 @@ async function startApifyRun(actor: ActorEntry, input: Record<string, any>, toke
   return { runId: data.data.id, datasetId: data.data.defaultDatasetId };
 }
 
+// ── Self-healing URL shape flip for startUrls invalid-input errors ──
+function flipStartUrlsShape(input: Record<string, any>): Record<string, any> | null {
+  const urlFields = ["startUrls", "urls"];
+  const flipped = { ...input };
+  let didFlip = false;
+
+  for (const field of urlFields) {
+    if (!Array.isArray(flipped[field]) || flipped[field].length === 0) continue;
+    const first = flipped[field][0];
+    if (typeof first === "string") {
+      // string[] → object[]
+      flipped[field] = flipped[field].map((item: string) => ({ url: item }));
+      didFlip = true;
+      console.log(`URL flip: "${field}" string[] → object[] ({url})`);
+    } else if (typeof first === "object" && first !== null && first.url) {
+      // object[] → string[]
+      flipped[field] = flipped[field].map((item: any) => item.url || String(item));
+      didFlip = true;
+      console.log(`URL flip: "${field}" object[] → string[]`);
+    }
+  }
+
+  return didFlip ? flipped : null;
+}
+
 async function startApifyRunWithFallback(
   actor: ActorEntry,
   input: Record<string, any>,
@@ -670,6 +740,22 @@ async function startApifyRunWithFallback(
     return { ...result, usedActor: actor };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
+
+    // ── Self-healing: detect invalid-input on URL fields and retry with flipped shape ──
+    if (errMsg.includes("invalid-input") || (errMsg.includes("400") && /startUrls|urls/i.test(errMsg))) {
+      console.warn(`Detected invalid-input for ${actor.key}, attempting URL shape flip retry`);
+      const flippedInput = flipStartUrlsShape(input);
+      if (flippedInput) {
+        try {
+          const result = await startApifyRun(actor, flippedInput, token);
+          console.log(`URL shape flip succeeded for ${actor.key} → run ${result.runId}`);
+          return { ...result, usedActor: actor };
+        } catch (flipErr) {
+          console.warn(`URL shape flip retry also failed for ${actor.key}:`, flipErr instanceof Error ? flipErr.message : String(flipErr));
+        }
+      }
+    }
+
     if (!isNotRentedError(errMsg)) throw err;
 
     console.warn(`Actor ${actor.key} is not rented (403), trying backups for subCategory "${(actor as any).subCategory || actor.category}"`);
@@ -680,23 +766,33 @@ async function startApifyRunWithFallback(
     }
 
     for (const backup of backups) {
+      let backupInput: Record<string, any> = {};
       try {
         console.log(`Trying backup actor: ${backup.key} (${backup.label})`);
-        // Always fetch runtime schema (merges with catalog, cached)
         await fetchAndMergeRuntimeSchema(backup, token);
-        const backupInput = normalizeInputToSchema(backup, buildGenericInput(backup, input));
+        backupInput = normalizeInputToSchema(backup, buildGenericInput(backup, input));
         if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
         const result = await startApifyRun(backup, backupInput, token);
         console.log(`Backup actor ${backup.key} started successfully → run ${result.runId}`);
         return { ...result, usedActor: backup };
       } catch (backupErr) {
         const backupErrMsg = backupErr instanceof Error ? backupErr.message : String(backupErr);
+        // Also try URL flip for backup actors
+        if (backupErrMsg.includes("invalid-input") || (backupErrMsg.includes("400") && /startUrls|urls/i.test(backupErrMsg))) {
+          const flippedBackup = flipStartUrlsShape(backupInput);
+          if (flippedBackup) {
+            try {
+              const result = await startApifyRun(backup, flippedBackup, token);
+              console.log(`Backup ${backup.key} URL flip succeeded → run ${result.runId}`);
+              return { ...result, usedActor: backup };
+            } catch { /* fall through */ }
+          }
+        }
         console.warn(`Backup actor ${backup.key} also failed: ${backupErrMsg}`);
         continue;
       }
     }
 
-    // All backups exhausted — throw, do NOT fall through
     throw new Error(`Actor ${actor.key} not rented and all ${backups.length} same-type backup actors failed. Original error: ${errMsg}`);
   }
 }

@@ -124,8 +124,8 @@ const VERIFIED_ACTORS: Record<string, VerifiedActor> = {
     subCategory: "hiring_intent:linkedin",
     label: "LinkedIn Jobs Scraper",
     inputSchema: {
-      urls: { type: "string[]", required: false, description: "LinkedIn job search URLs" },
-      startUrls: { type: "string[]", required: false, description: "Start URLs for crawling" },
+      urls: { type: "object[]", required: false, description: "LinkedIn job search URLs" },
+      startUrls: { type: "object[]", required: false, description: "Start URLs for crawling" },
       maxItems: { type: "number", required: false, default: 100, description: "Max results" },
     },
     outputFields: {
@@ -168,8 +168,8 @@ const VERIFIED_ACTORS: Record<string, VerifiedActor> = {
     label: "LinkedIn People Search",
     inputSchema: {
       searchUrl: { type: "string", required: false, description: "LinkedIn people search URL" },
-      urls: { type: "string[]", required: false, description: "Search URLs" },
-      startUrls: { type: "string[]", required: false, description: "Start URLs" },
+      urls: { type: "object[]", required: false, description: "Search URLs" },
+      startUrls: { type: "object[]", required: false, description: "Start URLs" },
       maxItems: { type: "number", required: false, default: 50, description: "Max results" },
     },
     outputFields: {
@@ -188,8 +188,8 @@ const VERIFIED_ACTORS: Record<string, VerifiedActor> = {
     subCategory: "company_data:linkedin",
     label: "LinkedIn Company Scraper",
     inputSchema: {
-      urls: { type: "string[]", required: false, description: "LinkedIn company page URLs" },
-      startUrls: { type: "string[]", required: false, description: "Start URLs" },
+      urls: { type: "object[]", required: false, description: "LinkedIn company page URLs" },
+      startUrls: { type: "object[]", required: false, description: "Start URLs" },
       maxItems: { type: "number", required: false, default: 50, description: "Max results" },
     },
     outputFields: {
@@ -229,7 +229,7 @@ const VERIFIED_ACTORS: Record<string, VerifiedActor> = {
     subCategory: "enrichment:contact",
     label: "Website Contact Info Scraper",
     inputSchema: {
-      startUrls: { type: "string[]", required: true, description: "Website URLs to scrape contacts from" },
+      startUrls: { type: "object[]", required: true, description: "Website URLs to scrape contacts from" },
       maxRequestsPerStartUrl: { type: "number", required: false, default: 5, description: "Max pages per site" },
     },
     outputFields: {
