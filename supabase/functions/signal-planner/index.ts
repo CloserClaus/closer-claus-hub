@@ -316,12 +316,31 @@ function extractComprehensiveSearchTerms(query: string): string[] {
   }
   if (lower.includes("email") || lower.includes("contact")) terms.add("email finder");
   if (lower.includes("phone")) terms.add("phone number finder");
-  if (lower.includes("review")) terms.add("review scraper");
+  if (lower.includes("review") || lower.includes("rating")) {
+    terms.add("review scraper"); terms.add("google maps scraper");
+  }
   if (lower.includes("glassdoor")) terms.add("glassdoor scraper");
   if (lower.includes("yellow pages")) terms.add("yellow pages scraper");
   if (lower.includes("facebook") || lower.includes("instagram") || lower.includes("social")) terms.add("social media scraper");
   if (lower.includes("crunchbase")) terms.add("crunchbase scraper");
   if (lower.includes("amazon")) terms.add("amazon scraper");
+
+  // Marketing agency template triggers
+  if (lower.includes("ecommerce") || lower.includes("e-commerce") || lower.includes("shopify") || lower.includes("woocommerce") || lower.includes("online shop")) {
+    terms.add("shopify scraper"); terms.add("ecommerce scraper"); terms.add("website crawler");
+  }
+  if (lower.includes("funded") || lower.includes("funding") || lower.includes("raised") || lower.includes("seed round") || lower.includes("series")) {
+    terms.add("crunchbase scraper"); terms.add("startup scraper"); terms.add("google search scraper");
+  }
+  if (lower.includes("social media") || lower.includes("no social") || lower.includes("social presence")) {
+    terms.add("social media scraper"); terms.add("instagram scraper"); terms.add("facebook scraper");
+  }
+  if (lower.includes("new business") || lower.includes("recently opened") || lower.includes("new local") || lower.includes("registered")) {
+    terms.add("google maps scraper"); terms.add("business directory"); terms.add("google search scraper");
+  }
+  if (lower.includes("traffic") || lower.includes("seo") || lower.includes("domain authority") || lower.includes("web presence")) {
+    terms.add("website crawler"); terms.add("seo scraper");
+  }
 
   // Only add essential tools if query intent suggests they're needed
   if (lower.includes("contact") || lower.includes("email") || lower.includes("enrich") || lower.includes("find")) {
