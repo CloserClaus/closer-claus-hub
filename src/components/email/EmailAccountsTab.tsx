@@ -392,6 +392,15 @@ export function EmailAccountsTab() {
           </CardContent>
         </Card>
       )}
+
+      <DeleteConfirmDialog
+        open={!!deleteProviderId}
+        onOpenChange={(open) => { if (!open) setDeleteProviderId(null); }}
+        title="Disconnect Email Provider"
+        description="This will disconnect the provider and stop all active email sequences using its inboxes. Affected leads will be reset to idle. This action cannot be undone."
+        onConfirm={confirmDisconnect}
+        isProcessing={disconnecting}
+      />
     </div>
   );
 }
