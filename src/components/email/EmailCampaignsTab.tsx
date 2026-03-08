@@ -283,7 +283,7 @@ export function EmailCampaignsTab() {
     if (newStatus === 'paused') {
       await supabase.from('active_follow_ups').update({ status: 'paused' } as any).eq('sequence_id', seqId).eq('status', 'active');
     } else {
-      await supabase.from('active_follow_ups').update({ status: 'active' } as any).eq('sequence_id', seqId).eq('status', 'paused');
+      await supabase.from('active_follow_ups').update({ status: 'active', next_send_at: new Date().toISOString() } as any).eq('sequence_id', seqId).eq('status', 'paused');
     }
     toast({ title: `Campaign ${newStatus}` });
     fetchSequences();
