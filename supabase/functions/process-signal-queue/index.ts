@@ -546,6 +546,7 @@ RULES:
 - If company_linkedin_url coverage is <30%, you MUST add a google_search LinkedIn URL discovery stage before any stage that needs it
 - If website coverage is <30%, you cannot use contact_enrichment or website_crawler
 - Keep the same end goal: find qualified leads matching the user's query
+- **CRITICAL: NEVER drop person-enrichment or "Identify Decision Makers" stages.** If the original pipeline included a stage to find people/decision makers (e.g., using linkedin_people or any people_data actor), you MUST keep it or replace it with an alternative that works with available data. Person enrichment stages can use company_name (>30% coverage is sufficient) — the processor will build LinkedIn search URLs from company names. If company_name coverage is >30%, keep the person-enrichment stage using input_from: "company_name".
 
 Return a JSON array of replacement stages (with correct stage numbers continuing from ${currentStage + 1}). Or return {"abort": true, "reason": "explanation"} if the goal is infeasible.`
           },
