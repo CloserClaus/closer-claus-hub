@@ -82,7 +82,20 @@ export function SendEmailButton({ leadId, leadEmail, leadName, variant = 'outlin
     if (!currentWorkspace || !selectedSequence || !user) return;
     setStartingSequence(true);
     try {
-      // Create active follow-up
+      // Check if lead already has an active sequence
+      const { data: leadData } = await supabase
+        .from('leads')
+        .select('email_sending_state')
+        .eq('id', leadId)
+        .single();
+
+      if (leadData?.email_sending_state === 'active_sequence') {
+        toast({ variant: 'destructive', title: 'Sequence already active', description: 'This lead already has an active email sequence.' });
+        setStartingSequence(false);
+        return;
+      }
+
+      // Create active follow-up with next_send_at so the cron picks it up
       const { error } = await supabase.from('active_follow_ups').insert({
         workspace_id: currentWorkspace.id,
         sequence_id: selectedSequence,
@@ -91,6 +104,7 @@ export function SendEmailButton({ leadId, leadEmail, leadName, variant = 'outlin
         status: 'active',
         current_step: 0,
         sender_inbox_id: assignedInbox?.id || null,
+        next_send_at: new Date().toISOString(),
       } as any);
       if (error) throw error;
 

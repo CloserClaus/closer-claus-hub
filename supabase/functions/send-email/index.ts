@@ -249,13 +249,12 @@ serve(async (req) => {
       message_id: result.message_id || null,
     } as any);
 
-    // Increment daily send count
-    await supabase.rpc('increment_sends_today' as any, { inbox_id: inbox.id }).catch(() => {
-      // Fallback: direct update if RPC doesn't exist
-      supabase.from('email_inboxes')
+    // Increment daily send count atomically
+    await supabase.rpc('increment_inbox_sends_today' as any, { p_inbox_id: inbox.id }).catch(async () => {
+      // Fallback: direct update
+      await supabase.from('email_inboxes')
         .update({ sends_today: (inboxData.sends_today || 0) + 1 } as any)
-        .eq('id', inbox.id)
-        .then(() => {});
+        .eq('id', inbox.id);
     });
 
     // Audit log

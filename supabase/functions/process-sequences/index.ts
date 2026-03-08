@@ -431,7 +431,10 @@ serve(async (req) => {
 
           processed++;
         } else {
-          // Send failed
+          // Send failed — check if transient and retryable
+          const isTransient = errorReason === 'rate_limit' || errorReason === 'api_failure';
+          const currentRetry = fup.retry_count || 0;
+
           await supabase.from('email_logs').insert({
             workspace_id: fup.workspace_id,
             lead_id: fup.lead_id,
@@ -445,14 +448,26 @@ serve(async (req) => {
             error_reason: errorReason,
           } as any);
 
-          await supabase.from('active_follow_ups').update({
-            status: 'error',
-            completed_at: new Date().toISOString(),
-          }).eq('id', fup.id);
+          if (isTransient && currentRetry < 3) {
+            // Reschedule for 15 minutes later
+            const retryAt = new Date(Date.now() + 15 * 60_000).toISOString();
+            await supabase.from('active_follow_ups').update({
+              next_send_at: retryAt,
+              retry_count: currentRetry + 1,
+              updated_at: new Date().toISOString(),
+            }).eq('id', fup.id);
+            console.log(`Transient error for fup ${fup.id}, retry ${currentRetry + 1}/3 scheduled at ${retryAt}`);
+          } else {
+            // Permanent failure
+            await supabase.from('active_follow_ups').update({
+              status: 'error',
+              completed_at: new Date().toISOString(),
+            }).eq('id', fup.id);
 
-          await supabase.from('leads').update({
-            email_sending_state: 'error',
-          } as any).eq('id', fup.lead_id);
+            await supabase.from('leads').update({
+              email_sending_state: 'error',
+            } as any).eq('id', fup.lead_id);
+          }
 
           errors++;
         }
