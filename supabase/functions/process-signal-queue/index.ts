@@ -335,11 +335,8 @@ async function pipelineQualityCheck(
     return { quality: "USELESS", reason: "Stage produced 0 results", suggestedAction: "abort" };
   }
 
-  // Get total count
-  const { count: totalCount } = await serviceClient
-    .from("signal_leads")
-    .select("*", { count: "exact", head: true })
-    .eq("run_id", run.id);
+  // Reuse the total count from above
+  const totalCount = totalCountPre;
 
   // Build context about what the next stages need
   const remainingStages = pipeline.slice(stageNum);
