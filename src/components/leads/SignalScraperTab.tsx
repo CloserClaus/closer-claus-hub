@@ -342,6 +342,11 @@ export function SignalScraperTab() {
         onCancel={() => setCurrentPlan(null)}
         isExecuting={isExecuting}
         credits={credits}
+        onDryRun={async () => {
+          const result = await dryRun(currentPlan.run_id);
+          return result;
+        }}
+        isDryRunning={isDryRunning}
       />}
 
       {/* Results for a specific run */}
