@@ -1678,123 +1678,138 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
       await dedupLeads(run, serviceClient);
     }
 
-    // HARD ABORT: If this is a discovery stage (stage 1 or no input_from) and we have 0 leads, try backup actors first
+    // ZERO-RESULT RECOVERY: If discovery stage has 0 leads, use diagnostic engine
     if (!stageDef.input_from) {
       const { count: leadCount } = await serviceClient
         .from("signal_leads").select("*", { count: "exact", head: true })
         .eq("run_id", run.id);
 
       if (!leadCount || leadCount === 0) {
-        const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN")!;
         const stageActorRuns = (run.apify_run_ids || []).filter((r: any) => (r.pipelineStage || 1) === stageNum);
-        const allSucceeded = stageActorRuns.length > 0 && stageActorRuns.every((r: any) => r.status === "SUCCEEDED");
-        const advSettings = run.advanced_settings || {};
-        const maxPerSource = advSettings.max_results_per_source || 100;
-
-        // ── ZERO-RESULT FALLBACK: Try backup actors before aborting ──
-        const usedActorKeys = new Set(stageActorRuns.map((r: any) => r.actorKey));
-        const primaryActors = (stageDef.actors || []).map((k: string) => getActor(k)).filter(Boolean);
-        const allBackups: ActorEntry[] = [];
-        for (const primary of primaryActors) {
-          if (!primary) continue;
-          const backups = findBackupActors(primary).filter(b => !usedActorKeys.has(b.key));
-          allBackups.push(...backups);
-        }
-        
-        // Only attempt backup if we haven't already tried (check pipeline_adjustments)
         const adjustments = run.pipeline_adjustments || [];
+        const alreadyTriedDiagnostic = adjustments.some((a: any) => a.type === "diagnostic_retry" && a.stage === stageNum);
         const alreadyTriedBackup = adjustments.some((a: any) => a.type === "zero_result_backup_attempt" && a.stage === stageNum);
 
-        if (allBackups.length > 0 && !alreadyTriedBackup) {
-          console.log(`Stage ${stageNum}: ZERO RESULTS from primary actors — trying ${allBackups.length} backup actors before aborting`);
+        // Step 1: Run diagnostic engine (only once per stage)
+        if (!alreadyTriedDiagnostic && !alreadyTriedBackup) {
+          console.log(`Stage ${stageNum}: ZERO RESULTS — running diagnostic engine`);
+          const diagnostic = await diagnoseZeroResults(run, stageDef, stageActorRuns, serviceClient);
+          console.log(`Stage ${stageNum}: Diagnosis: ${diagnostic.diagnosis} — ${diagnostic.suggestion}`);
           
-          const backupRefs: ApifyRunRef[] = [];
-          for (const backup of allBackups.slice(0, 2)) { // Try max 2 backups
-            // Runtime schema fetch for backup
-            if (!backup.inputSchema || Object.keys(backup.inputSchema).length === 0) {
-              try {
-                const actorIdEncoded = backup.actorId.replace("/", "~");
-                const schemaResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${APIFY_API_TOKEN}`, { method: "GET" });
-                if (schemaResp.ok) {
-                  const schemaData = await schemaResp.json();
-                  const props = schemaData.properties || schemaData.data?.properties || {};
-                  if (Object.keys(props).length > 0) {
-                    const fetchedSchema: Record<string, InputField> = {};
-                    for (const [key, val] of Object.entries(props as Record<string, any>)) {
-                      const type = val.type === "array" ? "string[]" : (val.type === "integer" ? "number" : (val.type || "string"));
-                      fetchedSchema[key] = { type: type as any, required: false, default: val.default, description: (val.description || key).slice(0, 200) };
-                    }
-                    backup.inputSchema = fetchedSchema;
-                    console.log(`Backup schema fetch for ${backup.key}: ${Object.keys(fetchedSchema).length} fields`);
-                  }
-                } else { await schemaResp.text(); }
-              } catch (e) { console.warn(`Backup schema fetch failed for ${backup.key}:`, e); }
-            }
-            
-            // Build input using primary actor's params (adapted to backup)
+          adjustments.push({
+            type: "diagnostic_retry",
+            stage: stageNum,
+            diagnosis: diagnostic.diagnosis,
+            suggestion: diagnostic.suggestion,
+            timestamp: new Date().toISOString(),
+          });
+
+          if (diagnostic.shouldRetry && diagnostic.correctedIntent) {
+            // Auto-retry with corrected search intent
+            console.log(`Stage ${stageNum}: Auto-retrying with corrected intent`);
             const primaryActorKey = (stageDef.actors || [])[0];
-            const primaryParams = stageDef.params_per_actor?.[primaryActorKey] || {};
-            const backupInput = buildGenericInput(backup, primaryParams);
-            if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
+            const actor = getActor(primaryActorKey);
             
-            try {
-              const result = await startApifyRun(backup, backupInput, APIFY_API_TOKEN);
-              backupRefs.push({ actorKey: backup.key, keyword: "backup_retry", runId: result.runId, datasetId: result.datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
-              console.log(`Stage ${stageNum}: Backup actor ${backup.key} started → run ${result.runId}`);
-            } catch (err) {
-              console.warn(`Stage ${stageNum}: Backup actor ${backup.key} failed to start:`, err);
+            if (actor) {
+              const platform = detectPlatform(actor);
+              const actorParams = stageDef.params_per_actor?.[primaryActorKey] || {};
+              const correctedQuery = buildPlatformSearchQuery(platform, diagnostic.correctedIntent, actorParams);
+              const correctedInput = buildGenericInput(actor, correctedQuery.params);
+              if (!correctedInput.proxyConfiguration) correctedInput.proxyConfiguration = { useApifyProxy: true };
+              
+              try {
+                const { runId, datasetId, usedActor } = await startApifyRunWithFallback(actor, correctedInput, APIFY_API_TOKEN);
+                const retryRef: ApifyRunRef = {
+                  actorKey: usedActor.key,
+                  keyword: `diagnostic_retry`,
+                  runId, datasetId,
+                  status: "RUNNING",
+                  startedAt: new Date().toISOString(),
+                  pipelineStage: stageNum,
+                };
+                
+                await serviceClient.from("signal_runs").update({
+                  apify_run_ids: [...(run.apify_run_ids || []), retryRef],
+                  processing_phase: `stage_${stageNum}_scraping`,
+                  collected_dataset_index: 0,
+                  pipeline_adjustments: adjustments,
+                  updated_at: new Date().toISOString(),
+                }).eq("id", run.id);
+                return; // Go back to polling
+              } catch (err) {
+                console.warn(`Stage ${stageNum}: Diagnostic retry failed to start:`, err);
+              }
             }
           }
+        }
 
-          if (backupRefs.length > 0) {
-            // Record that we tried backups, then go back to scraping phase
-            adjustments.push({
-              type: "zero_result_backup_attempt",
-              stage: stageNum,
-              backup_actors: backupRefs.map(r => r.actorKey),
-              timestamp: new Date().toISOString(),
-            });
-            await serviceClient.from("signal_runs").update({
-              apify_run_ids: [...(run.apify_run_ids || []), ...backupRefs],
-              processing_phase: `stage_${stageNum}_scraping`,
-              collected_dataset_index: 0,
-              pipeline_adjustments: adjustments,
-              updated_at: new Date().toISOString(),
-            }).eq("id", run.id);
-            return; // Go back to scraping/polling phase for the backup runs
+        // Step 2: Try backup actors (existing logic, simplified)
+        if (!alreadyTriedBackup) {
+          const usedActorKeys = new Set(stageActorRuns.map((r: any) => r.actorKey));
+          const primaryActors = (stageDef.actors || []).map((k: string) => getActor(k)).filter(Boolean);
+          const allBackups: ActorEntry[] = [];
+          for (const primary of primaryActors) {
+            if (!primary) continue;
+            allBackups.push(...findBackupActors(primary).filter(b => !usedActorKeys.has(b.key)));
+          }
+
+          if (allBackups.length > 0) {
+            console.log(`Stage ${stageNum}: Trying ${allBackups.length} backup actors`);
+            const backupRefs: ApifyRunRef[] = [];
+            
+            for (const backup of allBackups.slice(0, 2)) {
+              // Use normalization engine for backup actors too
+              const intent = parseSearchIntent(stageDef);
+              const platform = detectPlatform(backup);
+              const actorParams = stageDef.params_per_actor?.[(stageDef.actors || [])[0]] || {};
+              const platformQuery = buildPlatformSearchQuery(platform, intent, actorParams);
+              const backupInput = buildGenericInput(backup, platformQuery.params);
+              if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
+              
+              try {
+                const result = await startApifyRun(backup, backupInput, APIFY_API_TOKEN);
+                backupRefs.push({ actorKey: backup.key, keyword: "backup_retry", runId: result.runId, datasetId: result.datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
+              } catch (err) {
+                console.warn(`Stage ${stageNum}: Backup ${backup.key} failed:`, err);
+              }
+            }
+
+            if (backupRefs.length > 0) {
+              adjustments.push({ type: "zero_result_backup_attempt", stage: stageNum, backup_actors: backupRefs.map(r => r.actorKey), timestamp: new Date().toISOString() });
+              await serviceClient.from("signal_runs").update({
+                apify_run_ids: [...(run.apify_run_ids || []), ...backupRefs],
+                processing_phase: `stage_${stageNum}_scraping`,
+                collected_dataset_index: 0,
+                pipeline_adjustments: adjustments,
+                updated_at: new Date().toISOString(),
+              }).eq("id", run.id);
+              return;
+            }
           }
         }
 
-        // ── No backups available or backups already tried — abort ──
-        let userMessage: string;
-        let notifTitle: string;
-
-        if (allSucceeded && maxPerSource <= 500) {
-          userMessage = `No results found from ${(stageDef.actors || []).join(" + ")} in stage ${stageNum}. The search sources returned empty results, which often happens when the max results per source (${maxPerSource}) is too low for niche queries like "${run.signal_query}". Try increasing max results per source to 1000–5000, or broadening your search criteria.`;
-          notifTitle = "Signal Search — No Results (Try Increasing Limits)";
-        } else {
-          userMessage = `No results found from ${(stageDef.actors || []).join(" + ")} in stage ${stageNum}. This can happen when job boards or search sources return empty results for your query. Try broadening your search terms, expanding the date range, or adjusting your criteria.`;
-          notifTitle = "Signal Failed — No Results Found";
-        }
-
-        console.log(`Stage ${stageNum}: ZERO RESULTS — aborting pipeline (allSucceeded=${allSucceeded}, maxPerSource=${maxPerSource}, backupsAvailable=${allBackups.length})`);
+        // Step 3: All recovery attempts exhausted — fail with actionable message
+        const diagnosticAdj = adjustments.find((a: any) => a.type === "diagnostic_retry");
+        const diagSuggestion = diagnosticAdj?.suggestion || "";
+        const advSettings = run.advanced_settings || {};
+        const maxPerSource = advSettings.max_results_per_source || 100;
         
+        const userMessage = diagSuggestion 
+          ? `No results found. ${diagSuggestion} Try broadening your search terms or increasing max results per source (currently ${maxPerSource}).`
+          : `No results found for "${run.signal_query}". Try broader search terms, a different date range, or increasing max results per source to 1000+.`;
+
+        console.log(`Stage ${stageNum}: ZERO RESULTS — all recovery exhausted, aborting`);
         await serviceClient.from("signal_runs").update({
           status: "failed",
           error_message: userMessage,
           processing_phase: "aborted",
-          pipeline_adjustments: [...adjustments, {
-            stage: stageNum,
-            quality: "USELESS",
-            reason: `Stage produced 0 results — hard abort (cap: ${maxPerSource}, backups tried: ${alreadyTriedBackup})`,
-            timestamp: new Date().toISOString(),
-          }],
+          pipeline_adjustments: adjustments,
         }).eq("id", run.id);
 
         if (run.user_id) {
           await serviceClient.from("notifications").insert({
             user_id: run.user_id, workspace_id: run.workspace_id,
-            type: "signal_failed", title: notifTitle,
+            type: "signal_failed", title: "Signal — No Results Found",
             message: userMessage,
           });
         }
