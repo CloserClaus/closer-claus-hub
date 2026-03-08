@@ -202,25 +202,24 @@ export function SignalScraperTab() {
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-3 space-y-5 rounded-lg border border-border bg-muted/30 p-4">
-              {/* Target Leads */}
+              {/* Scrape Volume */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">Target leads</Label>
+                  <Label className="text-sm font-medium">Scrape volume</Label>
                   <Select
-                    value={String(advancedSettings.target_leads)}
-                    onValueChange={(v) => setAdvancedSettings(s => ({ ...s, target_leads: parseInt(v) }))}
+                    value={String(advancedSettings.scrape_volume)}
+                    onValueChange={(v) => setAdvancedSettings(s => ({ ...s, scrape_volume: parseInt(v) }))}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="50">50 leads</SelectItem>
-                      <SelectItem value="100">100 leads</SelectItem>
-                      <SelectItem value="250">250 leads</SelectItem>
-                      <SelectItem value="500">500 leads</SelectItem>
+                      {SCRAPE_VOLUME_OPTIONS.map(opt => (
+                        <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">How many qualified leads you want. ~{estimatedScrapeCost} credits est.</p>
+                  <p className="text-xs text-muted-foreground">How many records to scrape in Stage 1. AI estimates final lead count after generation.</p>
                 </div>
 
                 {/* Location */}
