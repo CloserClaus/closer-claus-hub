@@ -457,30 +457,119 @@ No markdown, no explanation, just the JSON.`;
 // ██  POST-GENERATION VALIDATION — Data Flow Check
 // ════════════════════════════════════════════════════════════════
 
+// Field alias map for normalizing field names across stages
+const FIELD_ALIASES: Record<string, string[]> = {
+  company_linkedin_url: ["linkedin", "company_linkedin_url", "linkedinUrl", "companyLinkedinUrl"],
+  linkedin_profile_url: ["linkedin_profile", "linkedin_profile_url", "profileUrl", "linkedInProfile"],
+  company_name: ["company_name", "company", "companyName", "name", "title"],
+  website: ["website", "url", "companyUrl", "domain"],
+  email: ["email", "emails", "contactEmail"],
+  phone: ["phone", "phones", "telephone"],
+  industry: ["industry", "industries", "category"],
+  employee_count: ["employee_count", "employeeCount", "companySize", "staffCount"],
+  contact_name: ["contact_name", "fullName", "personName"],
+  location: ["location", "address", "city"],
+};
+
+// Infer what fields a stage produces based on its category and updates_fields
+function inferProducedFields(stage: any): Set<string> {
+  const produced = new Set<string>();
+
+  // From explicit updates_fields
+  if (stage.updates_fields) {
+    for (const f of stage.updates_fields) produced.add(f);
+  }
+
+  // From verified actor output fields
+  if (stage.type === "scrape" && stage.stage_category) {
+    const verified = VERIFIED_ACTORS[stage.stage_category];
+    if (verified) {
+      for (const [field, paths] of Object.entries(verified.outputFields)) {
+        if (paths.length > 0) produced.add(field);
+      }
+    }
+  }
+
+  // Expand aliases: if a stage produces "linkedin", it also produces "company_linkedin_url"
+  for (const [canonical, aliases] of Object.entries(FIELD_ALIASES)) {
+    if (aliases.some(a => produced.has(a))) {
+      produced.add(canonical);
+      for (const a of aliases) produced.add(a);
+    }
+  }
+
+  return produced;
+}
+
+// Deterministic fallback: given a stage category, what field should it consume?
+const FALLBACK_INPUT_FROM: Record<string, string[]> = {
+  "people_data:linkedin": ["company_name", "company_linkedin_url"],
+  "company_data:linkedin": ["company_linkedin_url", "company_name"],
+  "enrichment:contact": ["website", "company_name"],
+  "web_search:google": ["company_name"],
+};
+
 function validateDataFlow(pipeline: any[]): { valid: boolean; issues: string[]; fixedPipeline: any[] } {
   const issues: string[] = [];
   const fixedPipeline = [...pipeline];
 
-  // Check that input_from fields are produced by previous stages
+  // Build cumulative produced-fields map from all prior stages
   for (let i = 1; i < fixedPipeline.length; i++) {
     const stage = fixedPipeline[i];
     if (stage.type !== "scrape") continue;
     if (!stage.input_from) continue;
+
     const inputField = stage.input_from;
-    let found = false;
+
+    // Collect all fields produced by prior stages
+    const allProduced = new Set<string>();
     for (let j = 0; j < i; j++) {
       const prevStage = fixedPipeline[j];
-      if (prevStage.type !== "scrape") continue;
-      const outputs = prevStage.expected_output_fields || [];
-      if (outputs.includes(inputField)) {
-        found = true;
-        break;
+      if (prevStage.type === "ai_filter") continue; // filters don't produce new fields
+      for (const f of inferProducedFields(prevStage)) {
+        allProduced.add(f);
       }
     }
+
+    // Check if input_from (or any of its aliases) is produced
+    const inputAliases = FIELD_ALIASES[inputField] || [inputField];
+    const found = inputAliases.some(a => allProduced.has(a));
+
     if (!found) {
-      issues.push(`Stage ${stage.stage} input_from field "${inputField}" not produced by any previous stage.`);
-      // Auto-fix: remove input_from to null
-      fixedPipeline[i].input_from = null;
+      // Try deterministic fallback repair instead of destructive nulling
+      const category = stage.stage_category || "";
+      const fallbackFields = FALLBACK_INPUT_FROM[category] || 
+        Object.entries(FALLBACK_INPUT_FROM).find(([k]) => category.startsWith(k.split(":")[0]))?.[1] || [];
+      
+      let repaired = false;
+      for (const fallback of fallbackFields) {
+        const fallbackAliases = FIELD_ALIASES[fallback] || [fallback];
+        if (fallbackAliases.some(a => allProduced.has(a))) {
+          issues.push(`Stage ${stage.stage}: input_from "${inputField}" not produced — auto-repaired to "${fallback}"`);
+          fixedPipeline[i] = { ...fixedPipeline[i], input_from: fallback };
+          repaired = true;
+          break;
+        }
+      }
+
+      if (!repaired) {
+        // Last resort: check if ANY common field is available
+        const commonFields = ["company_name", "website", "company_linkedin_url"];
+        for (const cf of commonFields) {
+          const cfAliases = FIELD_ALIASES[cf] || [cf];
+          if (cfAliases.some(a => allProduced.has(a))) {
+            issues.push(`Stage ${stage.stage}: input_from "${inputField}" not produced — fallback to "${cf}"`);
+            fixedPipeline[i] = { ...fixedPipeline[i], input_from: cf };
+            repaired = true;
+            break;
+          }
+        }
+        
+        if (!repaired) {
+          issues.push(`Stage ${stage.stage}: input_from "${inputField}" truly unresolvable — set to null`);
+          fixedPipeline[i] = { ...fixedPipeline[i], input_from: null };
+        }
+      }
     }
   }
 
@@ -1437,19 +1526,22 @@ function estimatePipelineCost(pipeline: any[]): {
   let totalEstimatedRows = 0;
   let currentRowCount = 0;
   let totalCredits = 0;
+  let discoveryRowCount = 0; // Track Stage 1 discovery volume separately
   const stageFunnel: any[] = [];
 
   for (const stage of pipeline) {
     if (stage.type === "scrape") {
-      const expectedCount = stage.expected_output_count || (stage.stage === 1 ? 500 : currentRowCount);
-      if (stage.stage === 1 || !stage.input_from) {
-        // Discovery stage: use expected output count directly
+      if (stage.stage === 1) {
+        // Stage 1 = discovery: this defines "Records to scan"
+        const expectedCount = stage.expected_output_count || 500;
         currentRowCount = expectedCount;
-        totalEstimatedRows = currentRowCount; // Only discovery stages count as "records to scan"
+        discoveryRowCount = expectedCount;
+        totalEstimatedRows = discoveryRowCount;
       } else {
-        // Enrichment stage: processes existing leads
-        // Cost is proportional to current row count
+        // Enrichment stages: process existing leads, never exceed current pipeline flow
+        const expectedCount = stage.expected_output_count || currentRowCount;
         currentRowCount = Math.min(currentRowCount, expectedCount);
+        // Do NOT update totalEstimatedRows — it stays as Stage 1 volume
       }
       // Apify cost: ~$0.001 per result (1 credit = $0.01)
       const stageCost = Math.ceil(currentRowCount * 0.1);
@@ -1486,12 +1578,16 @@ function estimatePipelineCost(pipeline: any[]): {
   return { totalCredits, totalEstimatedRows, totalEstimatedLeads, stageFunnel };
 }
 
-const ROW_CAP_KEYS = ["maxItems", "maxResults", "maxCrawledPlacesPerSearch"];
+const ROW_CAP_KEYS = [
+  "maxItems", "maxResults", "maxCrawledPlacesPerSearch",
+  "count", "limit", "max_items", "max_results", "rows", "numResults",
+  "maxPagesPerQuery", "resultsPerPage", "maxRequestsPerStartUrl",
+];
 function inferRowCapFromParams(params: any): number | null {
   for (const key of ROW_CAP_KEYS) {
     if (params[key] !== undefined) {
       const val = typeof params[key] === "number" ? params[key] : parseInt(String(params[key]), 10);
-      if (!isNaN(val)) return val;
+      if (!isNaN(val) && val > 0) return val;
     }
   }
   return null;

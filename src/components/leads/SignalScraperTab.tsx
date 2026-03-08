@@ -341,7 +341,7 @@ export function SignalScraperTab() {
 // ── Pipeline Plan Display ──
 
 function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExecute, onCancel, isExecuting, credits }: {
-  currentPlan: { run_id: string; plan: any; estimation: any; warnings?: string[] };
+  currentPlan: { run_id: string; plan: any; estimation: any; warnings?: string[]; data_flow_fixes?: string[] };
   scheduleType: string;
   setScheduleType: (v: 'once' | 'daily' | 'weekly') => void;
   onExecute: () => void;
@@ -390,6 +390,18 @@ function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExe
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Data flow fixes */}
+        {currentPlan.data_flow_fixes && currentPlan.data_flow_fixes.length > 0 && (
+          <div className="space-y-1">
+            {currentPlan.data_flow_fixes.map((fix: string, i: number) => (
+              <Alert key={`fix-${i}`} className="border-blue-500/50 bg-blue-500/10">
+                <AlertTriangle className="h-4 w-4 text-blue-400" />
+                <AlertDescription className="text-xs text-blue-200">{fix}</AlertDescription>
+              </Alert>
+            ))}
+          </div>
+        )}
+
         {/* Warnings */}
         {currentPlan.warnings && currentPlan.warnings.length > 0 && (
           <div className="space-y-2">
