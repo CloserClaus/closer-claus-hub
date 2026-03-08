@@ -350,6 +350,52 @@ async function pipelineQualityCheck(
     description: (l.extra_data?.description || l.extra_data?.descriptionHtml || "").slice(0, 200),
   }));
 
+  // ── Gather search configuration context for the AI ──
+  const advancedSettings = run.advanced_settings || {};
+  const maxResultsPerSource = advancedSettings.max_results_per_source || 100;
+  const stage1Def = pipeline[0] || {};
+  const stage1Params = stage1Def.params_per_actor || {};
+  const stage1SearchQueries: string[] = [];
+  const stage1IndustryFilters: string[] = [];
+  for (const [actorKey, params] of Object.entries(stage1Params)) {
+    const p = params as any;
+    if (p?.search_query) stage1SearchQueries.push(p.search_query);
+    if (p?.searchQuery) stage1SearchQueries.push(p.searchQuery);
+    if (p?.queries) stage1SearchQueries.push(String(p.queries));
+    // Detect industry filter fields
+    for (const [k, v] of Object.entries(p || {})) {
+      if (/industry|category|vertical|sector/i.test(k) && v) {
+        stage1IndustryFilters.push(`${k}=${v}`);
+      }
+    }
+  }
+  const hasIndustryContext = stage1IndustryFilters.length > 0 ||
+    stage1SearchQueries.some(q => {
+      // Check if the search query contains industry-specific terms from the user's original query
+      const userWords = run.signal_query.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
+      return userWords.some((w: string) => q.toLowerCase().includes(w));
+    });
+
+  const searchConfigContext = `
+SEARCH CONFIGURATION CONTEXT:
+- Max results per source cap: ${maxResultsPerSource}
+- Stage 1 search queries: ${stage1SearchQueries.join(" | ") || "unknown"}
+- Stage 1 industry filters applied: ${stage1IndustryFilters.join(", ") || "none"}
+- Industry context in search query: ${hasIndustryContext ? "YES" : "NO"}
+
+IMPORTANT — SMALL DATASET HANDLING:
+If the dataset is small (≤ 500 records) and the relevance is low, this may NOT mean the search was bad.
+It could mean the max_results_per_source cap (currently ${maxResultsPerSource}) is too low for this niche.
+In that case:
+- Do NOT rate as USELESS. Rate as LOW instead.
+- Set reason to explain that the dataset cap is likely too small for the specificity of the query.
+- The system will suggest the user increase their max results per source.
+
+Only rate as USELESS when:
+1. The data is genuinely irrelevant (e.g., completely wrong topic, spam, garbage data), OR
+2. Critical downstream fields are completely empty AND the dataset is large (> 500), OR
+3. The search clearly targeted the wrong data source entirely`;
+
   try {
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -365,6 +411,7 @@ The user's original query was: "${run.signal_query}"
 This is stage ${stageNum} ("${stageDef.name}") of the pipeline.
 Total leads collected so far: ${totalCount || sampleLeads.length}
 Next stages need these data fields: ${nextStageNeeds.join(", ") || "none specific"}
+${searchConfigContext}
 
 Evaluate the sample data and respond with EXACTLY one JSON object:
 {
@@ -383,8 +430,8 @@ Evaluate the sample data and respond with EXACTLY one JSON object:
 Rating guide:
 - HIGH: >70% relevance AND required downstream fields are mostly populated
 - MEDIUM: 40-70% relevance OR some downstream fields missing but recoverable  
-- LOW: 20-40% relevance — data has value but downstream flow needs adjustment
-- USELESS: <20% relevance OR critical fields completely empty making downstream processing impossible`
+- LOW: 20-40% relevance — data has value but downstream flow needs adjustment. ALSO use LOW when dataset cap is too small for this niche (not USELESS).
+- USELESS: <20% relevance AND dataset is large (>500) OR data is completely garbage/wrong topic`
           },
           { role: "user", content: JSON.stringify(sampleData) },
         ],
@@ -402,6 +449,7 @@ Rating guide:
 
     const quality = parsed.quality || "MEDIUM";
     const reason = parsed.reason || "Unknown";
+    const datasetSize = totalCount || sampleLeads.length;
 
     if (quality === "HIGH" || quality === "MEDIUM") {
       return { quality, reason, suggestedAction: "continue" };
@@ -418,14 +466,20 @@ Rating guide:
       };
     }
 
-    // USELESS — provide actionable guidance based on dataset size
-    const datasetSize = totalCount || sampleLeads.length;
-    let actionableReason = reason;
-    if (datasetSize <= 200) {
-      actionableReason = `${reason}. The current dataset is too small (${datasetSize} records) and no relevant signals were found. Consider broadening your search criteria or increasing the max results per source.`;
-    } else {
-      actionableReason = `${reason}. Stage 1 returned ${datasetSize} results but very few matched your criteria. The search terms may need to be more specific to your target industry.`;
+    // USELESS — but check if this is really a small-cap issue disguised as bad data
+    if (datasetSize <= 500 && maxResultsPerSource <= 500) {
+      // Small dataset with low cap — this is likely a cap issue, not a data quality issue
+      const capReason = `${reason}. The max results per source is set to ${maxResultsPerSource}, which may be too low for this niche query. The search executed correctly but the dataset cap limited the results. Consider increasing max results per source to 1000+ for broader coverage.`;
+      console.log(`Stage ${stageNum}: USELESS downgraded to LOW — small cap (${maxResultsPerSource}) likely insufficient for niche query`);
+      return {
+        quality: "LOW",
+        reason: capReason,
+        suggestedAction: "continue",
+      };
     }
+
+    // Genuinely useless — large dataset but irrelevant
+    const actionableReason = `${reason}. Stage ${stageNum} returned ${datasetSize} results but very few matched your criteria "${run.signal_query}". The search terms may need to be more specific to your target industry.`;
     return { quality: "USELESS", reason: actionableReason, suggestedAction: "abort" };
   } catch (err) {
     console.warn("Quality check error:", err);
@@ -1199,8 +1253,25 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         .eq("run_id", run.id);
 
       if (!leadCount || leadCount === 0) {
-        const userMessage = `No results found from ${(stageDef.actors || []).join(" + ")} in stage ${stageNum}. This can happen when job boards or search sources return empty results for your query. Try broadening your search terms, expanding the date range, or adjusting your criteria.`;
-        console.log(`Stage ${stageNum}: ZERO RESULTS — aborting pipeline`);
+        // Check if all actor runs actually succeeded (meaning they ran but returned 0 items)
+        const stageActorRuns = (run.apify_run_ids || []).filter((r: any) => (r.pipelineStage || 1) === stageNum);
+        const allSucceeded = stageActorRuns.length > 0 && stageActorRuns.every((r: any) => r.status === "SUCCEEDED");
+        const advSettings = run.advanced_settings || {};
+        const maxPerSource = advSettings.max_results_per_source || 100;
+
+        let userMessage: string;
+        let notifTitle: string;
+
+        if (allSucceeded && maxPerSource <= 500) {
+          // Actors ran fine but 0 items — likely the cap is too small for this niche
+          userMessage = `No results found from ${(stageDef.actors || []).join(" + ")} in stage ${stageNum}. The search sources returned empty results, which often happens when the max results per source (${maxPerSource}) is too low for niche queries like "${run.signal_query}". Try increasing max results per source to 1000–5000, or broadening your search criteria.`;
+          notifTitle = "Signal Search — No Results (Try Increasing Limits)";
+        } else {
+          userMessage = `No results found from ${(stageDef.actors || []).join(" + ")} in stage ${stageNum}. This can happen when job boards or search sources return empty results for your query. Try broadening your search terms, expanding the date range, or adjusting your criteria.`;
+          notifTitle = "Signal Failed — No Results Found";
+        }
+
+        console.log(`Stage ${stageNum}: ZERO RESULTS — aborting pipeline (allSucceeded=${allSucceeded}, maxPerSource=${maxPerSource})`);
         
         const { error: abortError } = await serviceClient.from("signal_runs").update({
           status: "failed",
@@ -1209,14 +1280,13 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
           pipeline_adjustments: [...(run.pipeline_adjustments || []), {
             stage: stageNum,
             quality: "USELESS",
-            reason: "Stage produced 0 results — hard abort",
+            reason: `Stage produced 0 results — hard abort (cap: ${maxPerSource})`,
             timestamp: new Date().toISOString(),
           }],
         }).eq("id", run.id);
 
         if (abortError) {
           console.error(`Stage ${stageNum}: Failed to update status to failed:`, abortError);
-          // Retry once
           const { error: retryError } = await serviceClient.from("signal_runs").update({
             status: "failed",
             error_message: userMessage,
@@ -1228,7 +1298,7 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         if (run.user_id) {
           await serviceClient.from("notifications").insert({
             user_id: run.user_id, workspace_id: run.workspace_id,
-            type: "signal_failed", title: "Signal Failed — No Results Found",
+            type: "signal_failed", title: notifTitle,
             message: userMessage,
           });
         }
