@@ -29,6 +29,8 @@ export function EmailAccountsTab() {
   const [connectingGmail, setConnectingGmail] = useState(false);
   const [workspaceMembers, setWorkspaceMembers] = useState<{ id: string; full_name: string; email: string }[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [deleteProviderId, setDeleteProviderId] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   useEffect(() => {
     const gmailConnected = searchParams.get('gmail_connected');
