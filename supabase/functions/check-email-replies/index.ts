@@ -145,8 +145,7 @@ serve(async (req) => {
                 .eq('lead_id', fup.lead_id);
             }
 
-            // Get the reply message content
-            const msgId = searchData.messages[0].id;
+            // Get the reply message content (msgId already defined above)
             const msgRes = await fetch(
               `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgId}?format=full`,
               { headers: { 'Authorization': `Bearer ${accessToken}` } }

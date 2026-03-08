@@ -193,9 +193,13 @@ serve(async (req) => {
     if (lead_id) {
       const { data: lead } = await supabase
         .from('leads')
-        .select('email_sending_state')
+        .select('email_sending_state, opted_out')
         .eq('id', lead_id)
         .single();
+
+      if (lead?.opted_out) {
+        throw new Error('This lead has opted out of emails.');
+      }
 
       if (lead && lead.email_sending_state === 'active_sequence' && !sequence_id) {
         throw new Error('Lead already in active sequence. Cannot send manual email while sequence is active.');

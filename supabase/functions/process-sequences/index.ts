@@ -170,7 +170,7 @@ serve(async (req) => {
         // Get lead info
         const { data: lead } = await supabase
           .from('leads')
-          .select('first_name, last_name, email, company, title, phone')
+          .select('first_name, last_name, email, company, title, phone, opted_out')
           .eq('id', fup.lead_id)
           .single();
 
@@ -178,6 +178,19 @@ serve(async (req) => {
           await supabase.from('active_follow_ups').update({
             status: 'error', completed_at: now,
           }).eq('id', fup.id);
+          continue;
+        }
+
+        // Check opt-out
+        if (lead.opted_out) {
+          await supabase.from('active_follow_ups').update({
+            status: 'completed', completed_at: now,
+          }).eq('id', fup.id);
+          await supabase.from('leads').update({
+            email_sending_state: 'idle',
+          } as any).eq('id', fup.lead_id);
+          console.log(`Lead ${fup.lead_id} opted out, skipping sequence.`);
+          skipped++;
           continue;
         }
 
