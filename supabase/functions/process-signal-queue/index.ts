@@ -1337,128 +1337,61 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
     }
 
     if (stageNum === 1) {
-      // Discovery stage: use search_query, role_filter, and params_per_actor
+      // Discovery stage: use Query Normalization Engine
       const actorParams = stageDef.params_per_actor?.[actorKey] || {};
-      const searchQuery = stageDef.search_query || "";
-      const roleFilter: string[] | null = stageDef.role_filter || null;
+      const intent = parseSearchIntent(stageDef);
+      const platform = detectPlatform(actor);
       
-      // For hiring_intent with role_filter: use role_filter as job title, search_query as industry context
-      // Without role_filter: use search_query as before (combined keyword)
-      const keywords = roleFilter 
-        ? [roleFilter.join(" OR ")] // Single keyword from all role titles
-        : splitCompoundKeywords(searchQuery);
+      // Override location from actor params if available
+      intent.location = actorParams.location || actorParams.searchLocation || intent.location;
       
-      // Industry context for hiring_intent with role_filter
-      const industryContext = roleFilter ? searchQuery : null;
+      // Use normalization engine for deterministic URL/query construction
+      const platformQuery = buildPlatformSearchQuery(platform, intent, actorParams);
+      const input = { ...platformQuery.params };
+      
+      // Remove plan-provided URLs that may be stale/incomplete
+      if (platform === "linkedin" && platformQuery.url) {
+        delete input.splitCountry;
+      }
 
-      for (const keyword of keywords) {
-        const input = { ...actorParams };
-        const schemaKeys = Object.keys(actor.inputSchema);
-        const hasSchema = schemaKeys.length > 0;
+      // Set max results limit — but NEVER override planner-set caps
+      const KNOWN_LIMIT_FIELDS = ["maxItems", "limit", "count", "maxResults", "max_results", "rows", "numResults", "maxCrawledPlacesPerSearch", "maxCrawledPagesPerSearch"];
+      const hasExistingLimit = KNOWN_LIMIT_FIELDS.some(f => input[f] !== undefined);
+      const schemaKeys = Object.keys(actor.inputSchema);
+      const hasSchema = schemaKeys.length > 0;
 
-        // Category-based input construction — works with any dynamic actor
-        if (actor.category === "hiring_intent") {
-          // Job board actors: detect input format from schema or common patterns
-          const hasUrls = hasSchema ? !!actor.inputSchema["urls"] || !!actor.inputSchema["startUrls"] : false;
-          const hasTitleField = hasSchema ? !!actor.inputSchema["title"] || !!actor.inputSchema["position"] : false;
-          const hasSearchQuery = hasSchema ? !!actor.inputSchema["searchQuery"] || !!actor.inputSchema["search"] || !!actor.inputSchema["queries"] || !!actor.inputSchema["keyword"] || !!actor.inputSchema["keywords"] : false;
-
-          if (actor.actorId.includes("linkedin") || actor.label.toLowerCase().includes("linkedin")) {
-            // LinkedIn Jobs: build search URL combining role titles + industry context
-            const location = input.location || input.searchLocation || "United States";
-            // Always combine role keyword with industry context for accurate results
-            const searchKeyword = industryContext 
-              ? `${keyword} ${industryContext}` // e.g. "Sales Representative OR SDR marketing"
-              : keyword;
-            const encodedKeyword = encodeURIComponent(searchKeyword);
-            const encodedLocation = encodeURIComponent(location);
-            const searchUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=r604800`;
-            // Always force-override plan URLs — they may lack industry context
-            input.urls = [searchUrl];
-            input.startUrls = [{ url: searchUrl }];
-            input.splitByLocation = false;
-            delete input.splitCountry;
-          } else if (actor.actorId.includes("indeed") || actor.label.toLowerCase().includes("indeed")) {
-            // Indeed: combine role titles + industry into a single search query for best results
-            const fullQuery = industryContext ? `${keyword} ${industryContext}` : keyword;
-            if (hasTitleField) {
-              if (actor.inputSchema["title"]) input.title = fullQuery;
-              else if (actor.inputSchema["position"]) input.position = fullQuery;
-            } else {
-              input.title = fullQuery;
-              input.position = fullQuery;
-            }
-            // Also set searchQuery if available for broader matching
-            if (actor.inputSchema["searchQuery"]) input.searchQuery = fullQuery;
-            if (industryContext) {
-              if (actor.inputSchema["company"]) input.company = industryContext;
-              else if (actor.inputSchema["employer"]) input.employer = industryContext;
-            }
-          } else if (hasSearchQuery) {
-            // Generic job board with search field
-            // Combine role + industry for generic actors that have only a single search field
-            const fullQuery = industryContext ? `${industryContext} ${keyword}` : keyword;
-            const qField = schemaKeys.find(f => ["searchQuery", "search", "keyword", "keywords", "query"].includes(f));
-            if (qField) input[qField] = fullQuery;
-            const arrField = schemaKeys.find(f => ["queries", "searchTerms", "searchStringsArray"].includes(f));
-            if (arrField) input[arrField] = [fullQuery];
-          } else {
-            // No schema — provide all common field names
-            const fullQuery = industryContext ? `${industryContext} ${keyword}` : keyword;
-            input.title = input.title || keyword; // Title gets just the role
-            input.search = input.search || fullQuery;
-            input.searchQuery = input.searchQuery || fullQuery;
-            input.keyword = input.keyword || fullQuery;
-            input.queries = input.queries || [fullQuery];
-          }
+      if (!hasExistingLimit) {
+        if (hasSchema) {
+          const maxField = schemaKeys.find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
+          if (maxField) input[maxField] = actor.inputSchema[maxField]?.default || 500;
         } else {
-          // Non-hiring actors in stage 1 (e.g., Google Maps, business directories)
-          if (hasSchema) {
-            const keywordFields = ["title", "search", "searchQuery", "query", "keyword", "keywords", "searchTerm"];
-            const kf = keywordFields.find(f => actor.inputSchema[f]);
-            if (kf) input[kf] = keyword;
-            const arrayFields = ["searchStringsArray", "queries", "searchTerms"];
-            for (const af of arrayFields) {
-              if (actor.inputSchema[af]) input[af] = [keyword];
-            }
-          } else {
-            // No schema — supply common field names
-            input.search = input.search || keyword;
-            input.searchQuery = input.searchQuery || keyword;
-            input.queries = input.queries || [keyword];
-          }
+          input.maxResults = 500;
         }
+      }
 
-        // Set max results limit — but NEVER override planner-set caps
-        const KNOWN_LIMIT_FIELDS = ["maxItems", "limit", "count", "maxResults", "max_results", "rows", "numResults", "maxCrawledPlacesPerSearch", "maxCrawledPagesPerSearch"];
-        const hasExistingLimit = KNOWN_LIMIT_FIELDS.some(f => input[f] !== undefined);
+      const actorInput = buildGenericInput(actor, input);
+      if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
+      
+      // Log the constructed query for debugging
+      const queryDescription = intent.roles.length > 0 
+        ? `roles=[${intent.roles.join(", ")}] industry="${intent.industry}" location="${intent.location}"`
+        : `query="${stageDef.search_query}" location="${intent.location}"`;
+      console.log(`Stage ${stageNum}: ${platform} query: ${queryDescription}`);
+      if (platformQuery.url) console.log(`Stage ${stageNum}: URL: ${platformQuery.url}`);
 
-        if (!hasExistingLimit) {
-          if (hasSchema) {
-            const maxField = schemaKeys.find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
-            if (maxField) input[maxField] = actor.inputSchema[maxField]?.default || 500;
-          } else {
-            input.maxResults = 500;
-          }
-        }
-
-        const actorInput = buildGenericInput(actor, input);
-        if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
-
-        try {
-          const { runId, datasetId, usedActor } = await startApifyRunWithFallback(actor, actorInput, APIFY_API_TOKEN);
-          const usedKey = usedActor.key;
-          if (usedKey !== actorKey) console.log(`Stage ${stageNum}: Swapped ${actorKey} → ${usedKey} (fallback)`);
-          refs.push({ actorKey: usedKey, keyword, runId, datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
-          console.log(`Stage ${stageNum}: Started ${usedKey}:"${keyword}" → run ${runId}`);
-        } catch (err) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          if (isCapacityError(errMsg)) {
-            refs.push({ actorKey, keyword, runId: "", datasetId: "", status: "DEFERRED", pipelineStage: stageNum });
-          } else {
-            console.error(`Failed to start ${actorKey}:"${keyword}":`, err);
-            refs.push({ actorKey, keyword, runId: "", datasetId: "", status: "FAILED", pipelineStage: stageNum });
-          }
+      try {
+        const { runId, datasetId, usedActor } = await startApifyRunWithFallback(actor, actorInput, APIFY_API_TOKEN);
+        const usedKey = usedActor.key;
+        if (usedKey !== actorKey) console.log(`Stage ${stageNum}: Swapped ${actorKey} → ${usedKey} (fallback)`);
+        refs.push({ actorKey: usedKey, keyword: queryDescription, runId, datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
+        console.log(`Stage ${stageNum}: Started ${usedKey} → run ${runId}`);
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (isCapacityError(errMsg)) {
+          refs.push({ actorKey, keyword: queryDescription, runId: "", datasetId: "", status: "DEFERRED", pipelineStage: stageNum });
+        } else {
+          console.error(`Failed to start ${actorKey}:`, err);
+          refs.push({ actorKey, keyword: queryDescription, runId: "", datasetId: "", status: "FAILED", pipelineStage: stageNum });
         }
       }
     } else if (stageDef.input_transform === "linkedin_url_discovery") {
