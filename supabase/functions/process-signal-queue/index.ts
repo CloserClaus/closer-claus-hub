@@ -946,8 +946,9 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
     const actor = getActor(actorKey);
     if (!actor) continue;
 
-    // Runtime schema fetch: if actor has no inputSchema, fetch it from Apify before building params
-    if (!actor.inputSchema || Object.keys(actor.inputSchema).length === 0) {
+    // Runtime schema fetch: skip for verified actors (schema is hardcoded and accurate)
+    // Only fetch for dynamically-discovered actors with missing schemas
+    if (!(actor as any)._verified && (!actor.inputSchema || Object.keys(actor.inputSchema).length === 0)) {
       try {
         const actorIdEncoded = actor.actorId.replace("/", "~");
         const schemaResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${APIFY_API_TOKEN}`, { method: "GET" });
@@ -965,6 +966,8 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
           }
         }
       } catch (e) { console.warn(`Runtime schema fetch failed for ${actorKey}:`, e); }
+    } else if ((actor as any)._verified) {
+      console.log(`Skipping runtime schema fetch for verified actor ${actorKey}`);
     }
 
     if (stageNum === 1) {
