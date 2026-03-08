@@ -1422,16 +1422,16 @@ function estimatePipelineCost(pipeline: any[]): {
 
   for (const stage of pipeline) {
     if (stage.type === "scrape") {
-      const expectedCount = stage.expected_output_count || 500;
+      const expectedCount = stage.expected_output_count || (stage.stage === 1 ? 500 : currentRowCount);
       if (stage.stage === 1 || !stage.input_from) {
         // Discovery stage: use expected output count directly
         currentRowCount = expectedCount;
+        totalEstimatedRows = currentRowCount; // Only discovery stages count as "records to scan"
       } else {
         // Enrichment stage: processes existing leads
         // Cost is proportional to current row count
         currentRowCount = Math.min(currentRowCount, expectedCount);
       }
-      totalEstimatedRows += currentRowCount;
       // Apify cost: ~$0.001 per result (1 credit = $0.01)
       const stageCost = Math.ceil(currentRowCount * 0.1);
       totalCredits += stageCost;
