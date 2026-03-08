@@ -682,28 +682,8 @@ async function startApifyRunWithFallback(
     for (const backup of backups) {
       try {
         console.log(`Trying backup actor: ${backup.key} (${backup.label})`);
-        // Runtime schema fetch if backup has no inputSchema
-        if (!backup.inputSchema || Object.keys(backup.inputSchema).length === 0) {
-          try {
-            const actorIdEncoded = backup.actorId.replace("/", "~");
-            const schemaResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${token}`, { method: "GET" });
-            if (schemaResp.ok) {
-              const schemaData = await schemaResp.json();
-              const props = schemaData.properties || schemaData.data?.properties || {};
-              if (Object.keys(props).length > 0) {
-                const fetchedSchema: Record<string, InputField> = {};
-                for (const [key, val] of Object.entries(props as Record<string, any>)) {
-                  const type = val.type === "array"
-                    ? (val.items?.type === "object" || val.items?.properties ? "object[]" : "string[]")
-                    : (val.type === "integer" ? "number" : (val.type || "string"));
-                  fetchedSchema[key] = { type: type as any, required: false, default: val.default, description: (val.description || key).slice(0, 200) };
-                }
-                backup.inputSchema = fetchedSchema;
-                console.log(`Runtime schema fetch for ${backup.key}: ${Object.keys(fetchedSchema).length} fields discovered`);
-              }
-            }
-          } catch (e) { console.warn(`Runtime schema fetch failed for ${backup.key}:`, e); }
-        }
+        // Always fetch runtime schema (merges with catalog, cached)
+        await fetchAndMergeRuntimeSchema(backup, token);
         const backupInput = normalizeInputToSchema(backup, buildGenericInput(backup, input));
         if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
         const result = await startApifyRun(backup, backupInput, token);
