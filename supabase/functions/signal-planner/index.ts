@@ -1123,6 +1123,7 @@ async function handleGeneratePlan(
       status: "planned",
       pipeline_stage_count: pipelineStageCount,
       current_pipeline_stage: 0,
+      advanced_settings: advanced_settings || {},
     })
     .select()
     .single();
