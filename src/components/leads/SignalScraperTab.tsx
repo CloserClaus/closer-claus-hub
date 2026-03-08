@@ -448,7 +448,7 @@ function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExe
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">{firstPlan.signal_name}</CardTitle>
-            <Badge variant="outline">{estimation.source_label}</Badge>
+            <Badge variant="outline">{estimation?.source_label || 'Signal'}</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
