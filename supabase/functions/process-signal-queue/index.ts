@@ -1558,53 +1558,100 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
       }
       console.log(`Stage ${stageNum}: LinkedIn URL discovery completed from dataset ${collectedIndex + 1}`);
     } else if (actor.category === "people_data") {
-      // People-finding stage: UPDATE existing leads with person data
+      // People-finding stage: UPDATE existing leads with person data using SCORED matching
       const { data: allRunLeads } = await serviceClient
-        .from("signal_leads").select("id, company_name, domain, company_linkedin_url").eq("run_id", run.id).limit(10000);
+        .from("signal_leads").select("id, company_name, domain, company_linkedin_url, website").eq("run_id", run.id).limit(10000);
       const runLeads = allRunLeads || [];
+      
+      const MIN_MATCH_SCORE = 70;
+      let matchedCount = 0;
+      let totalPersonItems = 0;
+      // Track which leads already have a person assigned (prevent overwriting with lower-score match)
+      const assignedLeadIds = new Set<string>();
 
       for (const item of normalised) {
         const personCompany = (item.company_name || "").trim().toLowerCase();
         if (!personCompany) continue;
-
-        let matchedLeadId: string | null = null;
+        totalPersonItems++;
 
         const personLinkedIn = item._raw?.currentCompanyLinkedinUrl || item._raw?.companyLinkedinUrl || "";
         const personDomain = extractDomain(item._raw?.companyUrl || item._raw?.website || "");
-        if (personDomain) {
-          const domainMatch = runLeads.find((l: any) => l.domain && l.domain === personDomain);
-          if (domainMatch) matchedLeadId = domainMatch.id;
+        
+        // Score each lead candidate
+        let bestMatch: { id: string; score: number } | null = null;
+        
+        for (const lead of runLeads) {
+          if (assignedLeadIds.has(lead.id)) continue; // Already assigned
+          let score = 0;
+          
+          // Domain match = 100 (strongest signal)
+          if (personDomain && lead.domain && personDomain === lead.domain) {
+            score = 100;
+          }
+          
+          // LinkedIn company URL match = 90
+          if (score < 90 && personLinkedIn && lead.company_linkedin_url) {
+            const normPerson = personLinkedIn.toLowerCase().replace(/\/$/, "").replace(/^https?:\/\/(www\.)?/, "");
+            const normLead = lead.company_linkedin_url.toLowerCase().replace(/\/$/, "").replace(/^https?:\/\/(www\.)?/, "");
+            if (normPerson === normLead) score = Math.max(score, 90);
+          }
+          
+          // Exact company name match = 80
+          const leadName = (lead.company_name || "").trim().toLowerCase();
+          if (leadName && leadName === personCompany) {
+            score = Math.max(score, 80);
+          }
+          
+          // Fuzzy containment = 50 (only if names are reasonably long to avoid false positives)
+          if (score < 50 && leadName && leadName.length >= 4 && personCompany.length >= 4) {
+            if (leadName.includes(personCompany) || personCompany.includes(leadName)) {
+              // Penalize if the shorter name is very short (too generic)
+              const shorter = Math.min(leadName.length, personCompany.length);
+              const longer = Math.max(leadName.length, personCompany.length);
+              const ratio = shorter / longer;
+              if (ratio >= 0.4) { // "Acme" vs "Acme Corporation" = ok; "A" vs "Acme Corp" = reject
+                score = Math.max(score, 50);
+              }
+            }
+          }
+          
+          if (score > (bestMatch?.score || 0)) {
+            bestMatch = { id: lead.id, score };
+          }
         }
 
-        if (!matchedLeadId) {
-          const nameMatch = runLeads.find((l: any) => (l.company_name || "").trim().toLowerCase() === personCompany);
-          if (nameMatch) matchedLeadId = nameMatch.id;
-        }
-
-        if (!matchedLeadId) {
-          const fuzzyMatch = runLeads.find((l: any) => {
-            const leadName = (l.company_name || "").trim().toLowerCase();
-            return leadName && (leadName.includes(personCompany) || personCompany.includes(leadName));
-          });
-          if (fuzzyMatch) matchedLeadId = fuzzyMatch.id;
-        }
-
-        if (!matchedLeadId && personLinkedIn) {
-          const normalizedPersonLI = personLinkedIn.toLowerCase().replace(/\/$/, "");
-          const liMatch = runLeads.find((l: any) => l.company_linkedin_url && l.company_linkedin_url.toLowerCase().replace(/\/$/, "") === normalizedPersonLI);
-          if (liMatch) matchedLeadId = liMatch.id;
-        }
-
-        if (matchedLeadId) {
+        if (bestMatch && bestMatch.score >= MIN_MATCH_SCORE) {
+          assignedLeadIds.add(bestMatch.id);
+          matchedCount++;
           await serviceClient.from("signal_leads").update({
             contact_name: item.contact_name || null,
             title: item.title || null,
             linkedin_profile_url: item.linkedin_profile || null,
             pipeline_stage: `stage_${stageNum}`,
-          }).eq("id", matchedLeadId);
+          }).eq("id", bestMatch.id);
         }
       }
-      console.log(`Stage ${stageNum}: Updated leads with person data from dataset ${collectedIndex + 1}`);
+      
+      const matchRate = totalPersonItems > 0 ? Math.round((matchedCount / totalPersonItems) * 100) : 0;
+      console.log(`Stage ${stageNum}: Person matching — ${matchedCount}/${totalPersonItems} matched (${matchRate}%, min score: ${MIN_MATCH_SCORE})`);
+      
+      // Stage-level retry detection: if match rate is <20%, log warning for potential retry
+      if (matchRate < 20 && totalPersonItems > 5) {
+        console.warn(`Stage ${stageNum}: LOW MATCH RATE (${matchRate}%) — people search results poorly match existing leads. Consider broadening search titles or using different actor.`);
+        // Record the low match rate in pipeline_adjustments
+        const adjustments = run.pipeline_adjustments || [];
+        adjustments.push({
+          type: "low_people_match_rate",
+          stage: stageNum,
+          match_rate: matchRate,
+          matched: matchedCount,
+          total: totalPersonItems,
+          timestamp: new Date().toISOString(),
+        });
+        await serviceClient.from("signal_runs").update({
+          pipeline_adjustments: adjustments,
+        }).eq("id", run.id);
+      }
     } else {
       // Enrichment stage: UPDATE existing leads with enriched data
       for (const item of normalised) {
