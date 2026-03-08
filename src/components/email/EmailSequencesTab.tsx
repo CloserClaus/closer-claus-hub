@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Copy, Loader2, ChevronDown, Calendar } from 'lucide-react';
+import { Plus, Edit, Trash2, Copy, Loader2, ChevronDown, Calendar, AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DeleteConfirmDialog } from '@/components/crm/DeleteConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
