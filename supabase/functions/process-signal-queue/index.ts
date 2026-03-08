@@ -1868,7 +1868,7 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
               const platform = detectPlatform(backup);
               const actorParams = stageDef.params_per_actor?.[(stageDef.actors || [])[0]] || {};
               const platformQuery = buildPlatformSearchQuery(platform, intent, actorParams);
-              const backupInput = buildGenericInput(backup, platformQuery.params);
+              const backupInput = normalizeInputToSchema(backup, buildGenericInput(backup, platformQuery.params));
               if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
               
               try {
