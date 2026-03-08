@@ -1096,37 +1096,35 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
           const hasSearchQuery = hasSchema ? !!actor.inputSchema["searchQuery"] || !!actor.inputSchema["search"] || !!actor.inputSchema["queries"] || !!actor.inputSchema["keyword"] || !!actor.inputSchema["keywords"] : false;
 
           if (actor.actorId.includes("linkedin") || actor.label.toLowerCase().includes("linkedin")) {
-            // LinkedIn Jobs: build search URL
-            // When role_filter exists, use role titles as the keyword and add industry as a qualifier
+            // LinkedIn Jobs: build search URL combining role titles + industry context
             const location = input.location || input.searchLocation || "United States";
-            const searchKeyword = roleFilter 
-              ? keyword // role titles joined with OR
-              : keyword; // original combined keyword
+            // Always combine role keyword with industry context for accurate results
+            const searchKeyword = industryContext 
+              ? `${keyword} ${industryContext}` // e.g. "Sales Representative OR SDR marketing"
+              : keyword;
             const encodedKeyword = encodeURIComponent(searchKeyword);
             const encodedLocation = encodeURIComponent(location);
-            let searchUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=r604800`;
-            if (hasUrls || !hasSchema) {
-              input.urls = input.urls || [searchUrl];
-              input.startUrls = input.startUrls || [{ url: searchUrl }];
-            }
+            const searchUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=r604800`;
+            // Always force-override plan URLs — they may lack industry context
+            input.urls = [searchUrl];
+            input.startUrls = [{ url: searchUrl }];
             input.splitByLocation = false;
             delete input.splitCountry;
           } else if (actor.actorId.includes("indeed") || actor.label.toLowerCase().includes("indeed")) {
-            // Indeed: use role_filter as the title field, industry context separately
-            const titleValue = roleFilter ? keyword : keyword;
+            // Indeed: combine role titles + industry into a single search query for best results
+            const fullQuery = industryContext ? `${keyword} ${industryContext}` : keyword;
             if (hasTitleField) {
-              if (actor.inputSchema["title"]) input.title = titleValue;
-              else if (actor.inputSchema["position"]) input.position = titleValue;
+              if (actor.inputSchema["title"]) input.title = fullQuery;
+              else if (actor.inputSchema["position"]) input.position = fullQuery;
             } else {
-              input.title = input.title || titleValue;
-              input.position = input.position || titleValue;
+              input.title = fullQuery;
+              input.position = fullQuery;
             }
-            // If we have industry context and a dedicated company/industry field, set it
+            // Also set searchQuery if available for broader matching
+            if (actor.inputSchema["searchQuery"]) input.searchQuery = fullQuery;
             if (industryContext) {
               if (actor.inputSchema["company"]) input.company = industryContext;
               else if (actor.inputSchema["employer"]) input.employer = industryContext;
-              // Also try searchQuery for broader context
-              if (actor.inputSchema["searchQuery"]) input.searchQuery = `${industryContext} ${titleValue}`;
             }
           } else if (hasSearchQuery) {
             // Generic job board with search field
