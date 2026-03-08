@@ -971,38 +971,57 @@ async function handleGeneratePlan(
     enrichedUserMessage = `${query}\n\n[PARSED CONTEXT — use this to ensure Stage 1 precision]\n${contextParts.join("\n")}`;
   }
 
-  // Step 2: AI generates logical pipeline with stage_categories
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: enrichedUserMessage },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const status = response.status;
-    if (status === 429) return new Response(JSON.stringify({ error: "Rate limited. Please try again shortly." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    if (status === 402) return new Response(JSON.stringify({ error: "AI credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    throw new Error(`AI gateway error: ${status}`);
-  }
-
-  const aiResult = await response.json();
-  let planText = aiResult.choices?.[0]?.message?.content || "";
-  planText = planText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-  const jsonMatch = planText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-  if (jsonMatch) planText = jsonMatch[1];
-
+  // Step 2: AI generates logical pipeline with stage_categories (with retry)
+  let planText = "";
   let parsedPlan: any;
-  try {
-    parsedPlan = JSON.parse(planText);
-  } catch (parseErr) {
-    console.error("Failed to parse AI plan response:", planText.slice(0, 1000));
-    throw new Error("AI returned invalid plan. Please try rephrasing your query.");
+  const MAX_AI_RETRIES = 2;
+
+  for (let attempt = 0; attempt <= MAX_AI_RETRIES; attempt++) {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: enrichedUserMessage },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const status = response.status;
+      if (status === 429) return new Response(JSON.stringify({ error: "Rate limited. Please try again shortly." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (status === 402) return new Response(JSON.stringify({ error: "AI credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      throw new Error(`AI gateway error: ${status}`);
+    }
+
+    const aiResult = await response.json();
+    planText = aiResult.choices?.[0]?.message?.content || "";
+    planText = planText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const jsonMatch = planText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (jsonMatch) planText = jsonMatch[1];
+
+    if (!planText) {
+      console.warn(`AI returned empty response (attempt ${attempt + 1}/${MAX_AI_RETRIES + 1})`);
+      if (attempt < MAX_AI_RETRIES) {
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      throw new Error("AI returned an empty response after retries. Please try again.");
+    }
+
+    try {
+      parsedPlan = JSON.parse(planText);
+      break; // Success
+    } catch (parseErr) {
+      console.error(`Failed to parse AI plan response (attempt ${attempt + 1}):`, planText.slice(0, 1000));
+      if (attempt < MAX_AI_RETRIES) {
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      throw new Error("AI returned invalid plan. Please try rephrasing your query.");
+    }
   }
 
   if (parsedPlan.infeasible_reason) {
