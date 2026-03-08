@@ -641,7 +641,7 @@ async function startApifyRunWithFallback(
             }
           } catch (e) { console.warn(`Runtime schema fetch failed for ${backup.key}:`, e); }
         }
-        const backupInput = buildGenericInput(backup, input);
+        const backupInput = normalizeInputToSchema(backup, buildGenericInput(backup, input));
         if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
         const result = await startApifyRun(backup, backupInput, token);
         console.log(`Backup actor ${backup.key} started successfully → run ${result.runId}`);
