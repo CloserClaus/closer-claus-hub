@@ -1,16 +1,66 @@
 
 
-## Fix: Empty String SelectItem Value in BulkAssignDialog
+# Fix: Missing `estimation.source_label` Crash
 
-**Problem**: `src/components/crm/BulkAssignDialog.tsx` line 264 has `<SelectItem value="">All tags (distribute equally)</SelectItem>`. Radix UI's Select component does not allow empty string values on SelectItem — it's reserved for clearing the selection.
+## Root Cause
 
-**Fix**: Change the empty string value to `"all"` and update the logic that checks for this value.
+The backend response from `signal-planner` (line 1567-1581) returns flat fields:
+```json
+{ "run_id": "...", "plan": {...}, "estimated_rows": 500, "estimated_leads": 50, ... }
+```
 
-### Changes in `src/components/crm/BulkAssignDialog.tsx`
+But the frontend expects a nested `estimation` object with a `source_label` field:
+- `src/hooks/useSignalScraper.ts:164` — `data.estimation.source_label` crashes because `data.estimation` is `undefined`
+- `src/components/leads/SignalScraperTab.tsx:451` — `estimation.source_label` rendered in a Badge
 
-1. Change `<SelectItem value="">` to `<SelectItem value="all">` (line 264)
-2. Update the state initialization for the tag filter from `""` to `"all"` 
-3. Update any conditional logic that checks `=== ""` to check `=== "all"` instead
+The `source_label` field was never added to the backend response when the pipeline format was introduced. The frontend interface `SignalEstimation` declares it, but nothing populates it.
 
-Single file, ~3 lines changed.
+## Two Issues to Fix
+
+### 1. Backend: Add `estimation` wrapper with `source_label` to the response
+
+In `supabase/functions/signal-planner/index.ts` (line 1567-1581), wrap the cost/estimation fields in an `estimation` object and derive `source_label` from the first scrape stage's category (e.g., `"hiring_intent:linkedin"` → `"LinkedIn Jobs"`):
+
+```typescript
+return new Response(JSON.stringify({
+  run_id: insertData.id,
+  plan: parsedPlan,
+  warnings: warnings.length > 0 ? warnings : undefined,
+  estimation: {
+    estimated_rows: costEstimate.totalEstimatedRows,
+    estimated_leads: costEstimate.totalEstimatedLeads,
+    credits_to_charge: costEstimate.totalCredits,
+    cost_per_lead: costEstimate.totalEstimatedLeads > 0
+      ? (costEstimate.totalCredits / costEstimate.totalEstimatedLeads).toFixed(2)
+      : "N/A",
+    source_label: deriveSourceLabel(parsedPlan.pipeline),
+    stage_funnel: costEstimate.stageFunnel,
+    yield_rate: costEstimate.yieldRate,
+    yield_label: costEstimate.yieldLabel,
+    yield_guidance: costEstimate.yieldGuidance,
+  },
+}), ...);
+```
+
+Add a helper `deriveSourceLabel()` that finds the first scrape stage and looks up its category in `STAGE_CATEGORIES` to get the `.label` (e.g., "LinkedIn Jobs Scraper"). Fallback to the stage name or "Signal Search".
+
+### 2. Frontend: Add defensive fallback for `estimation`
+
+In `src/hooks/useSignalScraper.ts` line 164, guard against missing estimation:
+```typescript
+toast({ title: 'Signal Plan Generated', description: `Source: ${data.estimation?.source_label || 'Signal Search'}` });
+```
+
+In `src/components/leads/SignalScraperTab.tsx` line 451, guard similarly:
+```tsx
+<Badge variant="outline">{estimation?.source_label || 'Signal'}</Badge>
+```
+
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `supabase/functions/signal-planner/index.ts` | Wrap response in `estimation` object, add `deriveSourceLabel()` helper, add `source_label` and `cost_per_lead` |
+| `src/hooks/useSignalScraper.ts` | Defensive `?.` on `data.estimation` in toast |
+| `src/components/leads/SignalScraperTab.tsx` | Defensive `?.` fallback on `estimation.source_label` |
 
