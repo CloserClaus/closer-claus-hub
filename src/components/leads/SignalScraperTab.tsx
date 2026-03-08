@@ -7,14 +7,14 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
-import { Slider } from '@/components/ui/slider';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Zap, Loader2, Play, Clock, Trash2, RotateCcw, Plus, History,
   Globe, Phone, MapPin, Building2, Search, Mail, Sparkles,
   Briefcase, Rocket, FileText, AlertTriangle, ArrowRight, Filter, Users, User,
-  Bookmark, List, MoreHorizontal, Settings, Download,
+  Bookmark, List, MoreHorizontal, Settings, Download, RefreshCw,
 } from 'lucide-react';
 import { exportLeadsToCSV } from '@/lib/csvExport';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -30,22 +30,49 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import { CRMPagination } from '@/components/crm/Pagination';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 
 const PAGE_SIZE = 25;
 
 const ICON_MAP: Record<string, any> = { Briefcase, Rocket, MapPin, Zap, Sparkles };
 
 export interface AdvancedSettings {
-  max_results_per_source: number;
+  target_leads: number;
+  location: string;
+  company_size: 'any' | '1-10' | '11-50' | '51-200' | '200+';
+  decision_maker_titles: string;
   date_range: 'past_24h' | 'past_week' | 'past_2_weeks' | 'past_month';
+  quality: 'standard' | 'high';
+  // Legacy fields — computed internally for backend compatibility
+  max_results_per_source: number;
   ai_strictness: 'low' | 'medium' | 'high';
 }
 
 const DEFAULT_ADVANCED: AdvancedSettings = {
-  max_results_per_source: 2500,
+  target_leads: 100,
+  location: '',
+  company_size: 'any',
+  decision_maker_titles: '',
   date_range: 'past_week',
+  quality: 'standard',
+  max_results_per_source: 500,
   ai_strictness: 'medium',
 };
+
+// Translate user-intent settings into system settings
+function computeSystemSettings(settings: AdvancedSettings): AdvancedSettings {
+  // Target leads → max_results_per_source (assume ~20% pass rate)
+  const maxResults = settings.target_leads * 5;
+  // Quality → AI strictness
+  const strictness = settings.quality === 'high' ? 'high' : 'medium';
+  return {
+    ...settings,
+    max_results_per_source: maxResults,
+    ai_strictness: strictness,
+  };
+}
 
 export function SignalScraperTab() {
   const [query, setQuery] = useState('');
@@ -86,19 +113,21 @@ export function SignalScraperTab() {
     const finalQuery = q || query.trim();
     if (!finalQuery) return;
     if (q) setQuery(q);
-    generatePlan({ query: finalQuery, plan_override: planOverride, advanced_settings: advancedSettings });
+    const systemSettings = computeSystemSettings(advancedSettings);
+    generatePlan({ query: finalQuery, plan_override: planOverride, advanced_settings: systemSettings });
   };
 
-  const estimatedScrapeCost = ((advancedSettings.max_results_per_source / 1000) * 1.0 * 4 * 5).toFixed(0);
+  const estimatedScrapeCost = ((advancedSettings.target_leads * 5 / 1000) * 1.0 * 4 * 5).toFixed(0);
 
   const handleExecute = () => {
     if (!currentPlan) return;
     executeSignal({ run_id: currentPlan.run_id, schedule_type: scheduleType });
   };
 
-  const handleRerun = (run: SignalRun) => {
+  const handleRerun = (run: SignalRun, refinementContext?: any) => {
     setQuery(run.signal_query);
-    generatePlan({ query: run.signal_query, advanced_settings: advancedSettings });
+    const systemSettings = computeSystemSettings(advancedSettings);
+    generatePlan({ query: run.signal_query, advanced_settings: systemSettings, plan_override: refinementContext ? { refinement_context: refinementContext } : undefined });
   };
 
   const handleTemplate = (tpl: any) => {
@@ -172,69 +201,116 @@ export function SignalScraperTab() {
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-3 space-y-5 rounded-lg border border-border bg-muted/30 p-4">
-              {/* Max Results Per Source */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Max results per source</Label>
-                  <span className="text-sm font-semibold text-foreground">{advancedSettings.max_results_per_source.toLocaleString()}</span>
+              {/* Target Leads */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Target leads</Label>
+                  <Select
+                    value={String(advancedSettings.target_leads)}
+                    onValueChange={(v) => setAdvancedSettings(s => ({ ...s, target_leads: parseInt(v) }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="50">50 leads</SelectItem>
+                      <SelectItem value="100">100 leads</SelectItem>
+                      <SelectItem value="250">250 leads</SelectItem>
+                      <SelectItem value="500">500 leads</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">How many qualified leads you want. ~{estimatedScrapeCost} credits est.</p>
                 </div>
-                <Slider
-                  value={[advancedSettings.max_results_per_source]}
-                  onValueChange={([v]) => setAdvancedSettings(s => ({ ...s, max_results_per_source: v }))}
-                  min={100}
-                  max={5000}
-                  step={100}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>100 (cheaper)</span>
-                  <span>~{estimatedScrapeCost} credits est. scrape cost</span>
-                  <span>5,000 (broader)</span>
+
+                {/* Location */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Location</Label>
+                  <Input
+                    placeholder="e.g. Texas, London, United States"
+                    value={advancedSettings.location}
+                    onChange={(e) => setAdvancedSettings(s => ({ ...s, location: e.target.value }))}
+                    className="bg-background"
+                  />
+                  <p className="text-xs text-muted-foreground">Leave blank to auto-detect from your prompt.</p>
                 </div>
               </div>
 
-              {/* Date Range */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Date range</Label>
-                <Select
-                  value={advancedSettings.date_range}
-                  onValueChange={(v) => setAdvancedSettings(s => ({ ...s, date_range: v as any }))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="past_24h">Past 24 hours</SelectItem>
-                    <SelectItem value="past_week">Past week</SelectItem>
-                    <SelectItem value="past_2_weeks">Past 2 weeks</SelectItem>
-                    <SelectItem value="past_month">Past month</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">Controls how recent the scraped listings should be.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Company Size */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Company size</Label>
+                  <Select
+                    value={advancedSettings.company_size}
+                    onValueChange={(v) => setAdvancedSettings(s => ({ ...s, company_size: v as any }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any size</SelectItem>
+                      <SelectItem value="1-10">1–10 employees</SelectItem>
+                      <SelectItem value="11-50">11–50 employees</SelectItem>
+                      <SelectItem value="51-200">51–200 employees</SelectItem>
+                      <SelectItem value="200+">200+ employees</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Decision Maker Titles */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Decision maker titles</Label>
+                  <Input
+                    placeholder="e.g. CEO, Founder, VP Sales"
+                    value={advancedSettings.decision_maker_titles}
+                    onChange={(e) => setAdvancedSettings(s => ({ ...s, decision_maker_titles: e.target.value }))}
+                    className="bg-background"
+                  />
+                  <p className="text-xs text-muted-foreground">Comma-separated. Leave blank for auto-detect.</p>
+                </div>
               </div>
 
-              {/* AI Filtering Strictness */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">AI filtering strictness</Label>
-                <RadioGroup
-                  value={advancedSettings.ai_strictness}
-                  onValueChange={(v) => setAdvancedSettings(s => ({ ...s, ai_strictness: v as any }))}
-                  className="flex gap-4"
-                >
-                  {([
-                    { value: 'low', label: 'Low', desc: 'More leads, less filtering' },
-                    { value: 'medium', label: 'Medium', desc: 'Balanced' },
-                    { value: 'high', label: 'High', desc: 'Fewer, higher-quality leads' },
-                  ] as const).map(opt => (
-                    <div key={opt.value} className="flex items-center gap-1.5">
-                      <RadioGroupItem value={opt.value} id={`strict-${opt.value}`} />
-                      <Label htmlFor={`strict-${opt.value}`} className="text-sm cursor-pointer">
-                        {opt.label}
-                        <span className="text-xs text-muted-foreground ml-1">({opt.desc})</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Date Range */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Date range</Label>
+                  <Select
+                    value={advancedSettings.date_range}
+                    onValueChange={(v) => setAdvancedSettings(s => ({ ...s, date_range: v as any }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="past_24h">Past 24 hours</SelectItem>
+                      <SelectItem value="past_week">Past week</SelectItem>
+                      <SelectItem value="past_2_weeks">Past 2 weeks</SelectItem>
+                      <SelectItem value="past_month">Past month</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Quality */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Quality</Label>
+                  <RadioGroup
+                    value={advancedSettings.quality}
+                    onValueChange={(v) => setAdvancedSettings(s => ({ ...s, quality: v as any }))}
+                    className="flex gap-4"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <RadioGroupItem value="standard" id="quality-standard" />
+                      <Label htmlFor="quality-standard" className="text-sm cursor-pointer">
+                        Standard <span className="text-xs text-muted-foreground">(more leads)</span>
                       </Label>
                     </div>
-                  ))}
-                </RadioGroup>
+                    <div className="flex items-center gap-1.5">
+                      <RadioGroupItem value="high" id="quality-high" />
+                      <Label htmlFor="quality-high" className="text-sm cursor-pointer">
+                        High <span className="text-xs text-muted-foreground">(fewer, better)</span>
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
               </div>
             </CollapsibleContent>
           </Collapsible>
@@ -318,7 +394,7 @@ export function SignalScraperTab() {
                           key={run.id}
                           run={run}
                           onView={() => setViewingRunId(run.id)}
-                          onRerun={() => handleRerun(run)}
+                          onRerun={(refinementContext?: any) => handleRerun(run, refinementContext)}
                           onDelete={() => deleteSignal(run.id)}
                         />
                       ))}
@@ -548,8 +624,11 @@ function PlanActions({ scheduleType, setScheduleType, onExecute, onCancel, isExe
 
 // ── Signal History Row (table format) ──
 
-function SignalHistoryRow({ run, onView, onRerun, onDelete }: { run: SignalRun; onView: () => void; onRerun: () => void; onDelete: () => void }) {
+function SignalHistoryRow({ run, onView, onRerun, onDelete }: { run: SignalRun; onView: () => void; onRerun: (refinementContext?: any) => void; onDelete: () => void }) {
   const { toast } = useToast();
+  const [refineOpen, setRefineOpen] = useState(false);
+  const [refineReason, setRefineReason] = useState('');
+  const [refineType, setRefineType] = useState<string>('wrong_industry');
 
   const STALE_HEARTBEAT_MS = 5 * 60 * 1000;
   const heartbeatField = (run as any).updated_at || run.started_at;
@@ -570,6 +649,17 @@ function SignalHistoryRow({ run, onView, onRerun, onDelete }: { run: SignalRun; 
     onRerun();
   };
 
+  const handleRefine = () => {
+    const refinementContext = {
+      type: refineType,
+      reason: refineReason,
+      original_query: run.signal_query,
+    };
+    setRefineOpen(false);
+    setRefineReason('');
+    onRerun(refinementContext);
+  };
+
   const displayStatus = isStale ? 'stale' : run.status;
 
   const getProgressLabel = () => {
@@ -584,65 +674,113 @@ function SignalHistoryRow({ run, onView, onRerun, onDelete }: { run: SignalRun; 
   };
 
   return (
-    <tr className="border-b transition-colors hover:bg-muted/50">
-      <td className="p-3 align-middle">
-        <div className="min-w-0">
-          <div className="font-medium text-sm truncate max-w-[250px]">{run.signal_name || run.signal_query}</div>
-          {run.created_at && (
-            <div className="text-xs text-muted-foreground">
-              {formatDistanceToNow(new Date(run.created_at), { addSuffix: true })}
+    <>
+      <tr className="border-b transition-colors hover:bg-muted/50">
+        <td className="p-3 align-middle">
+          <div className="min-w-0">
+            <div className="font-medium text-sm truncate max-w-[250px]">{run.signal_name || run.signal_query}</div>
+            {run.created_at && (
+              <div className="text-xs text-muted-foreground">
+                {formatDistanceToNow(new Date(run.created_at), { addSuffix: true })}
+              </div>
+            )}
+            {run.error_message && run.status === 'failed' && (
+              <div className="text-destructive text-xs truncate max-w-[250px] mt-0.5" title={run.error_message}>
+                {run.error_message.slice(0, 60)}…
+              </div>
+            )}
+          </div>
+        </td>
+        <td className="p-3 align-middle hidden md:table-cell">
+          <div className="space-y-1">
+            <StatusBadge status={displayStatus} />
+            {run.status === 'running' && (
+              <div className="space-y-1">
+                <div className="text-xs text-primary">{getProgressLabel()}</div>
+                {isPipeline && currentStage > 0 && (
+                  <Progress value={(currentStage / totalStages) * 100} className="h-1 w-24" />
+                )}
+              </div>
+            )}
+          </div>
+        </td>
+        <td className="p-3 align-middle hidden sm:table-cell">
+          <span className="text-sm font-medium">{run.leads_discovered}</span>
+        </td>
+        <td className="p-3 align-middle hidden lg:table-cell">
+          <span className="text-sm">{run.actual_cost ?? run.estimated_cost}</span>
+          {run.actual_cost === 0 && run.status === 'completed' && (
+            <span className="text-xs text-green-500 ml-1">free</span>
+          )}
+        </td>
+        <td className="p-3 align-middle hidden md:table-cell">
+          <div className="flex items-center gap-1.5">
+            {run.schedule_type !== 'once' && (
+              <Badge variant="outline" className="text-xs"><Clock className="h-3 w-3 mr-1" />{run.schedule_type}</Badge>
+            )}
+            {run.retry_count > 0 && <span className="text-xs text-orange-400">⟳{run.retry_count}</span>}
+          </div>
+        </td>
+        <td className="p-3 align-middle text-right">
+          <div className="flex gap-1 justify-end">
+            {isStale && (
+              <Button size="sm" variant="outline" className="text-destructive h-7 text-xs" onClick={markAsFailed}>Mark Failed</Button>
+            )}
+            {run.status === 'completed' && run.leads_discovered > 0 && (
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onView}>View</Button>
+            )}
+            {run.status === 'completed' && (
+              <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={() => setRefineOpen(true)}>
+                <RefreshCw className="h-3 w-3" /> Refine
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onRerun()}><RotateCcw className="h-3.5 w-3.5" /></Button>
+            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={onDelete}><Trash2 className="h-3.5 w-3.5" /></Button>
+          </div>
+        </td>
+      </tr>
+
+      {/* Refine Dialog */}
+      <Dialog open={refineOpen} onOpenChange={setRefineOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Refine Results</DialogTitle>
+            <DialogDescription>Tell us what was wrong so we can improve the next run.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">What was wrong?</Label>
+              <Select value={refineType} onValueChange={setRefineType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="wrong_industry">Wrong industry / irrelevant companies</SelectItem>
+                  <SelectItem value="too_large">Companies too large</SelectItem>
+                  <SelectItem value="too_small">Companies too small</SelectItem>
+                  <SelectItem value="wrong_location">Wrong location / geography</SelectItem>
+                  <SelectItem value="wrong_titles">Wrong decision maker titles</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          )}
-          {run.error_message && run.status === 'failed' && (
-            <div className="text-destructive text-xs truncate max-w-[250px] mt-0.5" title={run.error_message}>
-              {run.error_message.slice(0, 60)}…
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Details (optional)</Label>
+              <Textarea
+                placeholder="e.g. Too many staffing agencies, wanted actual marketing agencies"
+                value={refineReason}
+                onChange={(e) => setRefineReason(e.target.value)}
+                className="min-h-[80px]"
+              />
             </div>
-          )}
-        </div>
-      </td>
-      <td className="p-3 align-middle hidden md:table-cell">
-        <div className="space-y-1">
-          <StatusBadge status={displayStatus} />
-          {run.status === 'running' && (
-            <div className="space-y-1">
-              <div className="text-xs text-primary">{getProgressLabel()}</div>
-              {isPipeline && currentStage > 0 && (
-                <Progress value={(currentStage / totalStages) * 100} className="h-1 w-24" />
-              )}
-            </div>
-          )}
-        </div>
-      </td>
-      <td className="p-3 align-middle hidden sm:table-cell">
-        <span className="text-sm font-medium">{run.leads_discovered}</span>
-      </td>
-      <td className="p-3 align-middle hidden lg:table-cell">
-        <span className="text-sm">{run.actual_cost ?? run.estimated_cost}</span>
-        {run.actual_cost === 0 && run.status === 'completed' && (
-          <span className="text-xs text-green-500 ml-1">free</span>
-        )}
-      </td>
-      <td className="p-3 align-middle hidden md:table-cell">
-        <div className="flex items-center gap-1.5">
-          {run.schedule_type !== 'once' && (
-            <Badge variant="outline" className="text-xs"><Clock className="h-3 w-3 mr-1" />{run.schedule_type}</Badge>
-          )}
-          {run.retry_count > 0 && <span className="text-xs text-orange-400">⟳{run.retry_count}</span>}
-        </div>
-      </td>
-      <td className="p-3 align-middle text-right">
-        <div className="flex gap-1 justify-end">
-          {isStale && (
-            <Button size="sm" variant="outline" className="text-destructive h-7 text-xs" onClick={markAsFailed}>Mark Failed</Button>
-          )}
-          {run.status === 'completed' && run.leads_discovered > 0 && (
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onView}>View</Button>
-          )}
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={onRerun}><RotateCcw className="h-3.5 w-3.5" /></Button>
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={onDelete}><Trash2 className="h-3.5 w-3.5" /></Button>
-        </div>
-      </td>
-    </tr>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRefineOpen(false)}>Cancel</Button>
+            <Button onClick={handleRefine}>
+              <RefreshCw className="h-4 w-4 mr-1" /> Refine & Rerun
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
