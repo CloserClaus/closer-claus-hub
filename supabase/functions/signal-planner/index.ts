@@ -775,14 +775,22 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const url = new URL(req.url);
-    if (url.pathname === "/generate-plan") {
-      const body = await req.json();
-      const userId = req.headers.get("x-user-id") || "anonymous";
+    const body = await req.json();
+    const action = body.action || "generate_plan";
+    const userId = req.headers.get("x-user-id") || body.user_id || "anonymous";
+
+    if (action === "generate_plan") {
       return await handleGeneratePlan(body, userId, supabaseClient);
     }
 
-    return new Response("Not found", { status: 404 });
+    if (action === "execute_signal") {
+      return await handleExecuteSignal(body, supabaseClient);
+    }
+
+    return new Response(JSON.stringify({ error: "Unknown action: " + action }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (err) {
     console.error(err);
     return new Response(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), {
