@@ -1587,6 +1587,17 @@ async function handleGeneratePlan(
   );
 }
 
+function deriveSourceLabel(pipeline: any[]): string {
+  if (!Array.isArray(pipeline)) return "Signal Search";
+  const firstScrape = pipeline.find((s: any) => s.type === "scrape" && s.stage_category);
+  if (firstScrape) {
+    const cat = STAGE_CATEGORIES[firstScrape.stage_category];
+    if (cat) return cat.label;
+    return firstScrape.name || "Signal Search";
+  }
+  return "Signal Search";
+}
+
 // ════════════════════════════════════════════════════════════════
 // ██  PLAN SCHEMA VALIDATION
 // ════════════════════════════════════════════════════════════════
