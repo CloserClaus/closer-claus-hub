@@ -807,6 +807,110 @@ function validatePipelinePlan(plan: any, query: string): string[] {
     }
   }
 
+  // ── Mandatory output field coverage check ──
+  const MANDATORY_FIELDS: Record<string, string[]> = {
+    contact_name: ["people_data"],
+    industry: ["company_data", "hiring_intent", "local_business"],
+    website: ["hiring_intent", "local_business", "company_data", "web_search"],
+    company_linkedin_url: ["company_data", "hiring_intent"],
+    linkedin_profile_url: ["people_data"],
+    employee_count: ["company_data"],
+  };
+
+  // Track which mandatory fields will be produced
+  const producedFields = new Set<string>();
+  for (const stage of pipeline) {
+    if (stage.type === "scrape" && stage.actors) {
+      for (const actorKey of stage.actors) {
+        const actor = getActor(actorKey);
+        if (!actor) continue;
+        for (const [field, paths] of Object.entries(actor.outputFields)) {
+          if (paths.length > 0) producedFields.add(field);
+        }
+        // people_data actors produce contact_name and linkedin_profile
+        if (actor.category === "people_data") {
+          producedFields.add("contact_name");
+          producedFields.add("linkedin_profile");
+        }
+      }
+      // Also check updates_fields
+      if (stage.updates_fields) {
+        for (const f of stage.updates_fields) producedFields.add(f);
+      }
+    }
+  }
+
+  // Map output field aliases
+  const fieldAliases: Record<string, string[]> = {
+    company_linkedin_url: ["linkedin", "company_linkedin_url"],
+    linkedin_profile_url: ["linkedin_profile", "linkedin_profile_url"],
+  };
+
+  const missingFields: string[] = [];
+  for (const mandatoryField of Object.keys(MANDATORY_FIELDS)) {
+    const aliases = fieldAliases[mandatoryField] || [mandatoryField];
+    if (!aliases.some(a => producedFields.has(a))) {
+      missingFields.push(mandatoryField);
+    }
+  }
+
+  if (missingFields.length > 0) {
+    warnings.push(`📋 Mandatory fields not covered by any stage: ${missingFields.join(", ")}. The pipeline may produce incomplete leads.`);
+    
+    // Auto-inject enrichment stages for missing fields
+    const needsPeopleStage = missingFields.includes("contact_name") || missingFields.includes("linkedin_profile_url");
+    const needsCompanyStage = missingFields.includes("industry") || missingFields.includes("employee_count") || missingFields.includes("company_linkedin_url");
+
+    const lastStageNum = Math.max(...pipeline.map((s: any) => s.stage || 0));
+
+    if (needsCompanyStage) {
+      const companyActor = [...discoveredActorMap.values()].find(a => a.category === "company_data");
+      if (companyActor) {
+        warnings.push(`🔧 Auto-injecting company enrichment stage for missing fields: ${missingFields.filter(f => ["industry", "employee_count", "company_linkedin_url"].includes(f)).join(", ")}`);
+        pipeline.push({
+          stage: lastStageNum + 1,
+          name: "Enrich Company Data",
+          type: "scrape",
+          actors: [companyActor.key],
+          input_from: "company_name",
+          dedup_after: false,
+          updates_fields: ["industry", "employee_count", "company_linkedin_url", "website"],
+          expected_output_count: pipeline[pipeline.length - 1]?.expected_output_count || 100,
+        });
+      }
+    }
+
+    if (needsPeopleStage) {
+      // Check if there's already a people stage
+      const hasPeopleStage = pipeline.some((s: any) => 
+        s.name?.toLowerCase().includes("decision maker") || 
+        s.name?.toLowerCase().includes("people") ||
+        (s.actors || []).some((a: string) => {
+          const actor = getActor(a);
+          return actor?.category === "people_data";
+        })
+      );
+      if (!hasPeopleStage) {
+        const peopleActor = [...discoveredActorMap.values()].find(a => a.category === "people_data");
+        if (peopleActor) {
+          const currentLastStage = Math.max(...pipeline.map((s: any) => s.stage || 0));
+          warnings.push(`🔧 Auto-injecting person enrichment stage for missing fields: contact_name, linkedin_profile_url`);
+          pipeline.push({
+            stage: currentLastStage + 1,
+            name: "Identify Decision Makers",
+            type: "scrape",
+            actors: [peopleActor.key],
+            input_from: "company_name",
+            search_titles: ["CEO", "Founder", "Owner", "Managing Director", "VP Sales", "Head of Sales"],
+            dedup_after: false,
+            updates_fields: ["contact_name", "linkedin_profile_url", "title"],
+            expected_output_count: pipeline[pipeline.length - 1]?.expected_output_count || 100,
+          });
+        }
+      }
+    }
+  }
+
   // ── Industry precision enforcement ──
   const industryTerms = inferQueryIndustry(query);
   if (industryTerms.length > 0) {
@@ -831,6 +935,14 @@ function validatePipelinePlan(plan: any, query: string): string[] {
           if (industryTerms.some(t => sqLower.includes(t))) {
             hasIndustryInSearchQuery = true;
           }
+        }
+      }
+
+      // Also check if industry is in search_query at stage level
+      if (stage1.search_query) {
+        const sqLower = stage1.search_query.toLowerCase();
+        if (industryTerms.some(t => sqLower.includes(t))) {
+          hasIndustryInSearchQuery = true;
         }
       }
 
@@ -863,6 +975,16 @@ function validatePipelinePlan(plan: any, query: string): string[] {
               p.search_query = `${industryPrefix} ${query}`;
             }
           }
+        }
+
+        // Also fix stage-level search_query
+        if (stage1.search_query && !stage1.search_query.toLowerCase().includes(industryPrefix)) {
+          const orParts = stage1.search_query.split(/\s+OR\s+/i);
+          stage1.search_query = orParts.map((part: string) => {
+            const trimmed = part.trim();
+            if (trimmed.toLowerCase().includes(industryPrefix.toLowerCase())) return trimmed;
+            return `${industryPrefix} ${trimmed}`;
+          }).join(" OR ");
         }
       }
     }
