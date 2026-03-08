@@ -1569,13 +1569,19 @@ async function handleGeneratePlan(
       run_id: insertData.id,
       plan: parsedPlan,
       warnings: warnings.length > 0 ? warnings : undefined,
-      estimated_credits: costEstimate.totalCredits,
-      estimated_rows: costEstimate.totalEstimatedRows,
-      estimated_leads: costEstimate.totalEstimatedLeads,
-      stage_funnel: costEstimate.stageFunnel,
-      yield_rate: costEstimate.yieldRate,
-      yield_label: costEstimate.yieldLabel,
-      yield_guidance: costEstimate.yieldGuidance,
+      estimation: {
+        estimated_rows: costEstimate.totalEstimatedRows,
+        estimated_leads: costEstimate.totalEstimatedLeads,
+        credits_to_charge: costEstimate.totalCredits,
+        cost_per_lead: costEstimate.totalEstimatedLeads > 0
+          ? (costEstimate.totalCredits / costEstimate.totalEstimatedLeads).toFixed(2)
+          : "N/A",
+        source_label: deriveSourceLabel(parsedPlan.pipeline),
+        stage_funnel: costEstimate.stageFunnel,
+        yield_rate: costEstimate.yieldRate,
+        yield_label: costEstimate.yieldLabel,
+        yield_guidance: costEstimate.yieldGuidance,
+      },
     }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );

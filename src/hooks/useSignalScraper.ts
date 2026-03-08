@@ -161,7 +161,7 @@ export function useSignalScraper() {
     },
     onSuccess: (data) => {
       setCurrentPlan(data);
-      toast({ title: 'Signal Plan Generated', description: `Source: ${data.estimation.source_label}` });
+      toast({ title: 'Signal Plan Generated', description: `Source: ${data.estimation?.source_label || 'Signal Search'}` });
     },
     onError: (error: any) => {
       toast({ title: 'Plan Generation Failed', description: error.message, variant: 'destructive' });
