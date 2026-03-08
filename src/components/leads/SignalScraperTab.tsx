@@ -22,7 +22,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { AddToListDialog } from '@/components/leads/AddToListDialog';
-import { useSignalScraper, SignalRun, SignalLead, isPipelinePlan, PipelinePlan, StageFunnelItem } from '@/hooks/useSignalScraper';
+import { useSignalScraper, SignalRun, SignalLead, isPipelinePlan, PipelinePlan, StageFunnelItem, PlanStageProgress } from '@/hooks/useSignalScraper';
 import { useLeadCredits } from '@/hooks/useLeadCredits';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
