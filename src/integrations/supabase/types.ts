@@ -3338,6 +3338,9 @@ export type Database = {
           next_run_at: string | null
           pipeline_adjustments: Json | null
           pipeline_stage_count: number
+          plan_phase: string | null
+          plan_stage_outputs: Json | null
+          plan_test_runs: Json | null
           processing_phase: string | null
           retry_count: number | null
           run_log: Json | null
@@ -3369,6 +3372,9 @@ export type Database = {
           next_run_at?: string | null
           pipeline_adjustments?: Json | null
           pipeline_stage_count?: number
+          plan_phase?: string | null
+          plan_stage_outputs?: Json | null
+          plan_test_runs?: Json | null
           processing_phase?: string | null
           retry_count?: number | null
           run_log?: Json | null
@@ -3400,6 +3406,9 @@ export type Database = {
           next_run_at?: string | null
           pipeline_adjustments?: Json | null
           pipeline_stage_count?: number
+          plan_phase?: string | null
+          plan_stage_outputs?: Json | null
+          plan_test_runs?: Json | null
           processing_phase?: string | null
           retry_count?: number | null
           run_log?: Json | null

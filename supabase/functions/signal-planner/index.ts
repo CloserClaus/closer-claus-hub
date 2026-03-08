@@ -902,6 +902,10 @@ serve(async (req) => {
       return await handleGeneratePlan(body, userId, supabaseClient);
     }
 
+    if (action === "check_plan_status") {
+      return await handleCheckPlanStatus(body, supabaseClient);
+    }
+
     if (action === "execute_signal") {
       return await handleExecuteSignal(body, supabaseClient);
     }
@@ -1480,73 +1484,31 @@ async function handleGeneratePlan(
     }
   }
 
-  // Step 3: Resolve actors for each stage (ALL categories use dynamic discovery + pre-flight)
-  console.log(`Resolving actors for ${parsedPlan.pipeline.filter((s: any) => s.type === "scrape").length} scrape stages...`);
-  const { resolvedPipeline, actorRegistry, warnings: resolveWarnings } =
-    await resolveActorsForPipeline(parsedPlan.pipeline, serviceClient);
-  parsedPlan.pipeline = resolvedPipeline;
-
-  // Populate discoveredActorMap so validateDataFlow and validatePipelinePlan work
-  discoveredActorMap = new Map(Object.entries(actorRegistry).map(([k, v]) => [k, v]));
-
-  // Step 4: Apply advanced settings caps to Stage 1
+  // Step 3: Apply advanced settings caps to Stage 1 (pre-actor resolution)
   const maxCap = advanced_settings?.max_results_per_source || null;
   for (const stage of parsedPlan.pipeline) {
     if (stage.stage === 1 && stage.type === "scrape") {
-      let totalInferred = 0;
-      const actorCount = Object.keys(stage.params_per_actor || {}).length || 1;
-      if (stage.params_per_actor) {
-        for (const actorKey of Object.keys(stage.params_per_actor)) {
-          const actorParams = stage.params_per_actor[actorKey];
-          let actorCapped = false;
-          for (const field of ROW_CAP_KEYS) {
-            if (actorParams[field] !== undefined) {
-              const numVal = typeof actorParams[field] === "number" ? actorParams[field] : parseInt(String(actorParams[field]), 10);
-              if (!isNaN(numVal) && numVal > 0) {
-                if (maxCap && numVal > maxCap) actorParams[field] = maxCap;
-                actorCapped = true;
-              }
-            }
-          }
-          if (!actorCapped) actorParams.maxItems = maxCap || 500;
-          const inferred = inferRowCapFromParams(actorParams);
-          totalInferred += inferred || (maxCap || 500);
-        }
-      } else {
-        totalInferred = maxCap || 500;
-      }
-      const computedCount = maxCap ? Math.min(totalInferred, maxCap * actorCount) : totalInferred;
-      stage.expected_output_count = computedCount;
+      stage.expected_output_count = maxCap || stage.expected_output_count || 500;
     }
   }
 
-  // Step 5: Validate data flow and auto-fix
+  // Step 4: Validate data flow and auto-fix
   const dataFlowResult = validateDataFlow(parsedPlan.pipeline);
   if (!dataFlowResult.valid) {
     console.log("Data flow issues detected and fixed:", dataFlowResult.issues);
     parsedPlan.pipeline = dataFlowResult.fixedPipeline;
   }
 
-  // Step 6: Embed actor_registry in the plan
-  parsedPlan.actor_registry = actorRegistry;
+  // Step 5: Validate plan (without actor-dependent checks)
+  const warnings = validatePipelinePlan(parsedPlan, query);
 
-  // Step 7: Validate and warn
-  const warnings = [...resolveWarnings, ...validatePipelinePlan(parsedPlan, query)];
+  // Step 6: Store advanced_settings in plan for later use
+  parsedPlan.advanced_settings = advanced_settings || {};
 
-  // Step 8: Cost estimation
-  const costEstimate = estimatePipelineCost(
-    parsedPlan.pipeline,
-    parsedPlan.estimated_yield_rate || null
-  );
-  parsedPlan.estimated_credits = costEstimate.totalCredits;
-  parsedPlan.estimated_rows = costEstimate.totalEstimatedRows;
-  parsedPlan.estimated_leads = costEstimate.totalEstimatedLeads;
-  parsedPlan.stage_funnel = costEstimate.stageFunnel;
-  parsedPlan.yield_rate = costEstimate.yieldRate;
-  parsedPlan.yield_label = costEstimate.yieldLabel;
-  parsedPlan.yield_guidance = costEstimate.yieldGuidance;
+  // Step 7: Save skeleton to database with plan_phase
+  const totalStages = parsedPlan.pipeline.length;
+  const firstStage = parsedPlan.pipeline[0]?.stage || 1;
 
-  // Step 9: Save to database
   const { data: insertData, error: insertError } = await serviceClient
     .from("signal_runs")
     .insert({
@@ -1555,33 +1517,32 @@ async function handleGeneratePlan(
       signal_query: query,
       signal_name: parsedPlan.signal_name || "Signal Search",
       signal_plan: parsedPlan,
-      status: "planned",
-      estimated_cost: costEstimate.totalCredits,
-      pipeline_stage_count: parsedPlan.pipeline?.length || 0,
+      status: "planning",
+      estimated_cost: 0,
+      pipeline_stage_count: totalStages,
+      plan_phase: `plan_validating_stage_${firstStage}`,
+      plan_test_runs: [],
+      plan_stage_outputs: {},
     })
     .select()
     .single();
 
   if (insertError) throw insertError;
 
+  console.log(`Plan skeleton saved: ${insertData.id} — ${totalStages} stages, starting validation at stage ${firstStage}`);
+
   return new Response(
     JSON.stringify({
       run_id: insertData.id,
-      plan: parsedPlan,
+      status: "planning",
+      phase: `plan_validating_stage_${firstStage}`,
+      signal_name: parsedPlan.signal_name || "Signal Search",
+      total_stages: totalStages,
       warnings: warnings.length > 0 ? warnings : undefined,
-      estimation: {
-        estimated_rows: costEstimate.totalEstimatedRows,
-        estimated_leads: costEstimate.totalEstimatedLeads,
-        credits_to_charge: costEstimate.totalCredits,
-        cost_per_lead: costEstimate.totalEstimatedLeads > 0
-          ? (costEstimate.totalCredits / costEstimate.totalEstimatedLeads).toFixed(2)
-          : "N/A",
-        source_label: deriveSourceLabel(parsedPlan.pipeline),
-        stage_funnel: costEstimate.stageFunnel,
-        yield_rate: costEstimate.yieldRate,
-        yield_label: costEstimate.yieldLabel,
-        yield_guidance: costEstimate.yieldGuidance,
-      },
+      data_flow_fixes: dataFlowResult.issues.length > 0 ? dataFlowResult.issues : undefined,
+      stages: parsedPlan.pipeline.map((s: any) => ({
+        stage: s.stage, name: s.name, type: s.type, status: "pending",
+      })),
     }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
