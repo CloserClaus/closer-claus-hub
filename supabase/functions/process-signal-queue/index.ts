@@ -1458,31 +1458,8 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
     const actor = getActor(actorKey);
     if (!actor) continue;
 
-    // Runtime schema fetch: skip for verified actors (schema is hardcoded and accurate)
-    // Only fetch for dynamically-discovered actors with missing schemas
-    if (!(actor as any)._verified && (!actor.inputSchema || Object.keys(actor.inputSchema).length === 0)) {
-      try {
-        const actorIdEncoded = actor.actorId.replace("/", "~");
-        const schemaResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${APIFY_API_TOKEN}`, { method: "GET" });
-        if (schemaResp.ok) {
-          const schemaData = await schemaResp.json();
-          const props = schemaData.properties || schemaData.data?.properties || {};
-          if (Object.keys(props).length > 0) {
-            const fetchedSchema: Record<string, InputField> = {};
-            for (const [key, val] of Object.entries(props as Record<string, any>)) {
-              const type = val.type === "array"
-                ? (val.items?.type === "object" || val.items?.properties ? "object[]" : "string[]")
-                : (val.type === "integer" ? "number" : (val.type || "string"));
-              fetchedSchema[key] = { type: type as any, required: false, default: val.default, description: (val.description || key).slice(0, 200) };
-            }
-            actor.inputSchema = fetchedSchema;
-            console.log(`Runtime schema fetch for ${actorKey}: ${Object.keys(fetchedSchema).length} fields discovered`);
-          }
-        }
-      } catch (e) { console.warn(`Runtime schema fetch failed for ${actorKey}:`, e); }
-    } else if ((actor as any)._verified) {
-      console.log(`Skipping runtime schema fetch for verified actor ${actorKey}`);
-    }
+    // Always fetch runtime schema — live types override hardcoded catalog (cached per actorId)
+    await fetchAndMergeRuntimeSchema(actor, APIFY_API_TOKEN);
 
     if (stageNum === 1) {
       // Discovery stage: use Query Normalization Engine
