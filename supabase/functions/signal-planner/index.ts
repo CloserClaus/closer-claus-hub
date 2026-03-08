@@ -188,8 +188,8 @@ const VERIFIED_ACTORS: Record<string, VerifiedActor> = {
     subCategory: "company_data:linkedin",
     label: "LinkedIn Company Scraper",
     inputSchema: {
-      urls: { type: "string[]", required: false, description: "LinkedIn company page URLs" },
-      startUrls: { type: "string[]", required: false, description: "Start URLs" },
+      urls: { type: "object[]", required: false, description: "LinkedIn company page URLs" },
+      startUrls: { type: "object[]", required: false, description: "Start URLs" },
       maxItems: { type: "number", required: false, default: 50, description: "Max results" },
     },
     outputFields: {
