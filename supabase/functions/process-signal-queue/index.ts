@@ -465,6 +465,90 @@ function buildGenericInput(actor: ActorEntry, params: Record<string, any>): Reco
 }
 
 // ═══════════════════════════════════════════════════════════
+// ██  SCHEMA-AWARE INPUT NORMALIZER
+// ═══════════════════════════════════════════════════════════
+// Runs AFTER buildGenericInput, BEFORE startApifyRun.
+// Coerces each field's value to match the actor's declared schema type.
+// If schema is empty/missing, returns input unchanged (preserves shotgun approach).
+
+function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): Record<string, any> {
+  if (!actor.inputSchema || Object.keys(actor.inputSchema).length === 0) {
+    return input; // No schema — can't normalize, pass through
+  }
+
+  const result = { ...input };
+  let coercions = 0;
+
+  for (const [field, schema] of Object.entries(actor.inputSchema)) {
+    if (result[field] === undefined) continue;
+    const value = result[field];
+    const declaredType = schema.type;
+
+    // ── string[] but got object[] (e.g., [{url: "..."}] → ["..."]) ──
+    if (declaredType === "string[]" && Array.isArray(value) && value.length > 0 && typeof value[0] === "object" && value[0] !== null) {
+      // Extract the first string property (usually "url")
+      const firstObj = value[0];
+      const stringProp = Object.keys(firstObj).find(k => typeof firstObj[k] === "string");
+      if (stringProp) {
+        result[field] = value.map((item: any) => typeof item === "object" && item !== null ? item[stringProp] : String(item));
+        coercions++;
+        console.log(`Schema coercion: "${field}" object[] → string[] (extracted .${stringProp}) for actor ${actor.actorId}`);
+      }
+    }
+    // ── string[] but got a single string → wrap in array ──
+    else if (declaredType === "string[]" && typeof value === "string") {
+      result[field] = [value];
+      coercions++;
+      console.log(`Schema coercion: "${field}" string → string[] for actor ${actor.actorId}`);
+    }
+    // ── object[] but got string[] (e.g., ["..."] → [{url: "..."}]) ──
+    else if (declaredType === "object[]" && Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
+      result[field] = value.map((item: string) => ({ url: item }));
+      coercions++;
+      console.log(`Schema coercion: "${field}" string[] → object[] (wrapped as {url}) for actor ${actor.actorId}`);
+    }
+    // ── number but got string ──
+    else if (declaredType === "number" && typeof value === "string") {
+      const parsed = parseFloat(value);
+      if (!isNaN(parsed)) {
+        result[field] = parsed;
+        coercions++;
+        console.log(`Schema coercion: "${field}" string → number for actor ${actor.actorId}`);
+      }
+    }
+    // ── string but got array → take first element ──
+    else if (declaredType === "string" && Array.isArray(value) && value.length > 0) {
+      result[field] = String(value[0]);
+      coercions++;
+      console.log(`Schema coercion: "${field}" array → string (first element) for actor ${actor.actorId}`);
+    }
+    // ── boolean but got string ──
+    else if (declaredType === "boolean" && typeof value === "string") {
+      result[field] = value === "true" || value === "1";
+      coercions++;
+      console.log(`Schema coercion: "${field}" string → boolean for actor ${actor.actorId}`);
+    }
+  }
+
+  // Also normalize fields NOT in schema but present in input — check if they're common URL array fields
+  // This handles the case where buildGenericInput passes through extra fields
+  for (const field of Object.keys(result)) {
+    if (actor.inputSchema[field]) continue; // Already handled above
+    // Skip non-array fields
+    if (!Array.isArray(result[field]) || result[field].length === 0) continue;
+    // Don't touch fields that are already plain strings
+    if (typeof result[field][0] !== "object") continue;
+    // For unknown array-of-object fields, leave as-is (we can't know the expected format)
+  }
+
+  if (coercions > 0) {
+    console.log(`normalizeInputToSchema: Applied ${coercions} coercion(s) for actor ${actor.actorId}`);
+  }
+
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════
 // ██  APIFY ASYNC HELPERS
 // ═══════════════════════════════════════════════════════════
 
