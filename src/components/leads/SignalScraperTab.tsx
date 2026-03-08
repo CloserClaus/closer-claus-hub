@@ -580,6 +580,7 @@ function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExe
           scheduleType={scheduleType} setScheduleType={setScheduleType}
           onExecute={onExecute} onCancel={onCancel} isExecuting={isExecuting}
           credits={credits} creditsNeeded={estimation.credits_to_charge}
+          onDryRun={onDryRun} isDryRunning={isDryRunning}
         />
       </CardContent>
     </Card>
