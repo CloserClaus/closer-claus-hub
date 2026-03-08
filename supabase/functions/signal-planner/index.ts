@@ -777,7 +777,14 @@ serve(async (req) => {
 
     const body = await req.json();
     const action = body.action || "generate_plan";
-    const userId = req.headers.get("x-user-id") || body.user_id || "anonymous";
+
+    // Extract user ID from auth header or body
+    let userId = body.user_id || "anonymous";
+    const authHeader = req.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const { data: { user } } = await supabaseClient.auth.getUser(authHeader.replace("Bearer ", ""));
+      if (user?.id) userId = user.id;
+    }
 
     if (action === "generate_plan") {
       return await handleGeneratePlan(body, userId, supabaseClient);
@@ -793,7 +800,8 @@ serve(async (req) => {
     });
   } catch (err) {
     console.error(err);
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), {
+    const msg = err instanceof Error ? err.message : (typeof err === 'object' && err !== null ? JSON.stringify(err) : String(err));
+    return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -1115,7 +1123,6 @@ async function handleGeneratePlan(
       status: "planned",
       pipeline_stage_count: pipelineStageCount,
       current_pipeline_stage: 0,
-      advanced_settings: advanced_settings || null,
     })
     .select()
     .single();
