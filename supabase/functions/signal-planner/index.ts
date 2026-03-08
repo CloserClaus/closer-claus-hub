@@ -1129,6 +1129,25 @@ async function handleGeneratePlan(
     );
   }
 
+  // ════════════════════════════════════════════════════════════════
+  // ██  STRICT PLAN SCHEMA VALIDATION — Catch bad plans before execution
+  // ════════════════════════════════════════════════════════════════
+
+  const planValidationErrors = validatePlanSchema(parsedPlan, query);
+  if (planValidationErrors.critical.length > 0) {
+    console.error("Plan failed schema validation:", planValidationErrors.critical);
+    // Auto-fix what we can
+    parsedPlan = autoFixPlan(parsedPlan, query, planValidationErrors);
+    // Re-validate after fixes
+    const recheck = validatePlanSchema(parsedPlan, query);
+    if (recheck.critical.length > 0) {
+      return new Response(
+        JSON.stringify({ error: `AI generated an invalid plan: ${recheck.critical.join("; ")}. Please rephrase your query.` }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+  }
+
   // Ensure pipeline format
   if (!parsedPlan.pipeline) {
     if (Array.isArray(parsedPlan)) {
