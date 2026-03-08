@@ -968,10 +968,19 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
     }
 
     if (stageNum === 1) {
-      // Discovery stage: use search_query and params_per_actor
+      // Discovery stage: use search_query, role_filter, and params_per_actor
       const actorParams = stageDef.params_per_actor?.[actorKey] || {};
       const searchQuery = stageDef.search_query || "";
-      const keywords = splitCompoundKeywords(searchQuery);
+      const roleFilter: string[] | null = stageDef.role_filter || null;
+      
+      // For hiring_intent with role_filter: use role_filter as job title, search_query as industry context
+      // Without role_filter: use search_query as before (combined keyword)
+      const keywords = roleFilter 
+        ? [roleFilter.join(" OR ")] // Single keyword from all role titles
+        : splitCompoundKeywords(searchQuery);
+      
+      // Industry context for hiring_intent with role_filter
+      const industryContext = roleFilter ? searchQuery : null;
 
       for (const keyword of keywords) {
         const input = { ...actorParams };
@@ -987,10 +996,14 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
 
           if (actor.actorId.includes("linkedin") || actor.label.toLowerCase().includes("linkedin")) {
             // LinkedIn Jobs: build search URL
+            // When role_filter exists, use role titles as the keyword and add industry as a qualifier
             const location = input.location || input.searchLocation || "United States";
-            const encodedKeyword = encodeURIComponent(keyword);
+            const searchKeyword = roleFilter 
+              ? keyword // role titles joined with OR
+              : keyword; // original combined keyword
+            const encodedKeyword = encodeURIComponent(searchKeyword);
             const encodedLocation = encodeURIComponent(location);
-            const searchUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=r604800`;
+            let searchUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=r604800`;
             if (hasUrls || !hasSchema) {
               input.urls = input.urls || [searchUrl];
               input.startUrls = input.startUrls || [{ url: searchUrl }];
@@ -998,28 +1011,38 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
             input.splitByLocation = false;
             delete input.splitCountry;
           } else if (actor.actorId.includes("indeed") || actor.label.toLowerCase().includes("indeed")) {
-            // Indeed: use title/position/query field
+            // Indeed: use role_filter as the title field, industry context separately
+            const titleValue = roleFilter ? keyword : keyword;
             if (hasTitleField) {
-              if (actor.inputSchema["title"]) input.title = keyword;
-              else if (actor.inputSchema["position"]) input.position = keyword;
+              if (actor.inputSchema["title"]) input.title = titleValue;
+              else if (actor.inputSchema["position"]) input.position = titleValue;
             } else {
-              // Fallback: try common field names
-              input.title = input.title || keyword;
-              input.position = input.position || keyword;
+              input.title = input.title || titleValue;
+              input.position = input.position || titleValue;
+            }
+            // If we have industry context and a dedicated company/industry field, set it
+            if (industryContext) {
+              if (actor.inputSchema["company"]) input.company = industryContext;
+              else if (actor.inputSchema["employer"]) input.employer = industryContext;
+              // Also try searchQuery for broader context
+              if (actor.inputSchema["searchQuery"]) input.searchQuery = `${industryContext} ${titleValue}`;
             }
           } else if (hasSearchQuery) {
             // Generic job board with search field
+            // Combine role + industry for generic actors that have only a single search field
+            const fullQuery = industryContext ? `${industryContext} ${keyword}` : keyword;
             const qField = schemaKeys.find(f => ["searchQuery", "search", "keyword", "keywords", "query"].includes(f));
-            if (qField) input[qField] = keyword;
+            if (qField) input[qField] = fullQuery;
             const arrField = schemaKeys.find(f => ["queries", "searchTerms", "searchStringsArray"].includes(f));
-            if (arrField) input[arrField] = [keyword];
+            if (arrField) input[arrField] = [fullQuery];
           } else {
-            // No schema — provide all common field names so one sticks
-            input.title = input.title || keyword;
-            input.search = input.search || keyword;
-            input.searchQuery = input.searchQuery || keyword;
-            input.keyword = input.keyword || keyword;
-            input.queries = input.queries || [keyword];
+            // No schema — provide all common field names
+            const fullQuery = industryContext ? `${industryContext} ${keyword}` : keyword;
+            input.title = input.title || keyword; // Title gets just the role
+            input.search = input.search || fullQuery;
+            input.searchQuery = input.searchQuery || fullQuery;
+            input.keyword = input.keyword || fullQuery;
+            input.queries = input.queries || [fullQuery];
           }
         } else {
           // Non-hiring actors in stage 1 (e.g., Google Maps, business directories)
