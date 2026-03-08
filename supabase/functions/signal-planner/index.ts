@@ -168,8 +168,8 @@ const VERIFIED_ACTORS: Record<string, VerifiedActor> = {
     label: "LinkedIn People Search",
     inputSchema: {
       searchUrl: { type: "string", required: false, description: "LinkedIn people search URL" },
-      urls: { type: "string[]", required: false, description: "Search URLs" },
-      startUrls: { type: "string[]", required: false, description: "Start URLs" },
+      urls: { type: "object[]", required: false, description: "Search URLs" },
+      startUrls: { type: "object[]", required: false, description: "Start URLs" },
       maxItems: { type: "number", required: false, default: 50, description: "Max results" },
     },
     outputFields: {
