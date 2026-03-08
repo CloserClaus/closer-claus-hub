@@ -1146,23 +1146,54 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
       }
 
       let inputValues: string[] = [];
+      let peopleSearchMode: "structured" | "url" = "url"; // Track how we're passing people data
       if ((actor.category === "people_data" || actor.actorId.includes("linkedin") && actor.label.toLowerCase().includes("people")) && stageDef.search_titles) {
-        const titles = stageDef.search_titles.join(" OR ");
-        for (const lead of existingLeads) {
-          // Use company_linkedin_url if available, otherwise use company_name
-          const companyLinkedinUrl = lead.company_linkedin_url || lead.linkedin;
-          const companyName = lead.company_name || "";
+        const titles = stageDef.search_titles;
+        const titlesStr = titles.join(" OR ");
+        
+        // Detect whether this actor expects structured params or URLs
+        const hasSchema = Object.keys(actor.inputSchema).length > 0;
+        const schemaKeys = Object.keys(actor.inputSchema);
+        const hasCompanyField = hasSchema && schemaKeys.some((k: string) => /company|organization|employer/i.test(k));
+        const hasTitleField = hasSchema && schemaKeys.some((k: string) => /title|position|role|headline/i.test(k));
+        const hasNameField = hasSchema && schemaKeys.some((k: string) => /name|keyword|search|query/i.test(k));
+        const hasUrlField = hasSchema && (!!actor.inputSchema["startUrls"] || !!actor.inputSchema["urls"] || !!actor.inputSchema["profileUrls"]);
+        
+        // Prefer structured params when actor supports them (company + title fields)
+        const useStructured = hasCompanyField || hasTitleField || (hasNameField && !hasUrlField);
+        
+        if (useStructured) {
+          peopleSearchMode = "structured";
+          console.log(`Stage ${stageNum}: People search using STRUCTURED params for ${actorKey} (company field: ${hasCompanyField}, title field: ${hasTitleField})`);
           
-          if (companyLinkedinUrl && companyLinkedinUrl.includes("linkedin.com")) {
-            // Extract company identifier from LinkedIn URL for more targeted search
-            const encodedTitles = encodeURIComponent(titles);
+          // Build structured search entries — one per lead
+          // We'll store JSON-encoded objects and parse them in the batch builder
+          for (const lead of existingLeads) {
+            const companyName = lead.company_name || "";
+            const companyLinkedinUrl = lead.company_linkedin_url || lead.linkedin || "";
+            if (!companyName && !companyLinkedinUrl) continue;
+            
+            // Store as JSON so we can parse later and build proper structured input
+            inputValues.push(JSON.stringify({
+              company: companyName,
+              companyLinkedinUrl,
+              titles: titlesStr,
+              leadId: lead.id,
+            }));
+          }
+        } else {
+          // Fallback: build LinkedIn search URLs (original behavior, improved)
+          peopleSearchMode = "url";
+          console.log(`Stage ${stageNum}: People search using URL mode for ${actorKey}`);
+          
+          for (const lead of existingLeads) {
+            const companyName = lead.company_name || "";
+            if (!companyName) continue;
+            
+            // Build cleaner search URLs — separate title and company for better precision
+            const encodedTitles = encodeURIComponent(titlesStr);
             const encodedCompany = encodeURIComponent(companyName);
-            inputValues.push(`https://www.linkedin.com/search/results/people/?keywords=${encodedTitles}%20${encodedCompany}`);
-          } else if (companyName) {
-            // Fallback: search by company name
-            const encodedTitles = encodeURIComponent(titles);
-            const encodedCompany = encodeURIComponent(companyName);
-            inputValues.push(`https://www.linkedin.com/search/results/people/?keywords=${encodedTitles}%20${encodedCompany}`);
+            inputValues.push(`https://www.linkedin.com/search/results/people/?keywords=${encodedTitles}&company=${encodedCompany}`);
           }
         }
       } else if (inputField === "company_linkedin_url") {
