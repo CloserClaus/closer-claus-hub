@@ -29,6 +29,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
+import { CRMPagination } from '@/components/crm/Pagination';
+
+const PAGE_SIZE = 25;
 
 const ICON_MAP: Record<string, any> = { Briefcase, Rocket, MapPin, Zap, Sparkles };
 
