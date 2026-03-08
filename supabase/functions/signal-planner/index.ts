@@ -777,7 +777,14 @@ serve(async (req) => {
 
     const body = await req.json();
     const action = body.action || "generate_plan";
-    const userId = req.headers.get("x-user-id") || body.user_id || "anonymous";
+
+    // Extract user ID from auth header or body
+    let userId = body.user_id || "anonymous";
+    const authHeader = req.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const { data: { user } } = await supabaseClient.auth.getUser(authHeader.replace("Bearer ", ""));
+      if (user?.id) userId = user.id;
+    }
 
     if (action === "generate_plan") {
       return await handleGeneratePlan(body, userId, supabaseClient);
