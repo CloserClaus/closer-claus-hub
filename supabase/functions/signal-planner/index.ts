@@ -455,9 +455,20 @@ Return ONLY a valid JSON object:
 {
   "signal_name": "<short descriptive name>",
   "logic_reasoning": "<1-2 sentences>",
+  "estimated_yield_rate": <float 0.01-0.60>,
   "pipeline": [ <array of stage objects> ],
   "infeasible_reason": null | "<explanation>"
 }
+
+## YIELD RATE ESTIMATION (CRITICAL)
+
+You MUST estimate \`estimated_yield_rate\` — the percentage of Stage 1 records that will survive ALL filter stages to become final leads.
+Base this on query specificity:
+- Niche queries (e.g., "biotech companies in Vermont hiring SDRs"): 0.02-0.05
+- Moderate queries (e.g., "marketing agencies hiring sales reps in the US"): 0.10-0.25
+- Broad queries (e.g., "tech companies in California hiring sales reps"): 0.30-0.50
+
+This should be the COMPOUND pass rate across all ai_filter stages. It helps users understand how many leads to expect from their scrape volume.
 
 No markdown, no explanation, just the JSON.`;
 }
