@@ -1746,19 +1746,23 @@ async function discoverActors(searchTerm: string, serviceClient: any): Promise<A
       });
 
       // Cache each actor as a separate row
-      await serviceClient.from("signal_actor_cache").upsert({
-        actor_id: actorId,
-        actor_key: actorKey,
-        label: item.title || item.name || actorId,
-        category: categoryKey,
-        description: (item.description || item.title || "").slice(0, 300),
-        input_schema: inputSchema,
-        output_fields: {},
-        monthly_users: monthlyUsers,
-        total_runs: totalRuns,
-        rating,
-        cached_at: new Date().toISOString(),
-      }, { onConflict: "actor_id" }).catch(() => {});
+      try {
+        await serviceClient.from("signal_actor_cache").upsert({
+          actor_id: actorId,
+          actor_key: actorKey,
+          label: item.title || item.name || actorId,
+          category: categoryKey,
+          description: (item.description || item.title || "").slice(0, 300),
+          input_schema: inputSchema,
+          output_fields: {},
+          monthly_users: monthlyUsers,
+          total_runs: totalRuns,
+          rating,
+          cached_at: new Date().toISOString(),
+        }, { onConflict: "actor_id" });
+      } catch (cacheErr) {
+        console.warn(`Cache write failed for ${actorId}:`, cacheErr);
+      }
     }
 
     // Sort by composite quality score (users * 0.4 + totalRuns * 0.0003 + rating * 200)
