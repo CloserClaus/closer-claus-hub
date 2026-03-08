@@ -6,20 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-function generateHmac(leadId: string, secret: string): string {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(leadId);
-  const keyData = encoder.encode(secret);
-  // Simple hash: we use a basic approach since SubtleCrypto is async
-  let hash = 0;
-  const combined = leadId + secret;
-  for (let i = 0; i < combined.length; i++) {
-    const char = combined.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return Math.abs(hash).toString(36);
-}
 
 async function generateHmacSHA256(leadId: string, secret: string): Promise<string> {
   const encoder = new TextEncoder();

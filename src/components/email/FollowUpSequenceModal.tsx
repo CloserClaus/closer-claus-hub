@@ -196,6 +196,17 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
         },
       });
 
+      // Create email conversation so it appears in Conversations tab
+      await supabase.from('email_conversations').insert({
+        workspace_id: currentWorkspace.id,
+        lead_id: lead.id,
+        assigned_to: user.id,
+        inbox_id: assignedInbox.id,
+        sequence_id: sequenceId,
+        campaign_name: name,
+        status: 'active',
+      } as any);
+
       // Audit log
       await supabase.from('email_audit_log').insert({
         workspace_id: currentWorkspace.id,

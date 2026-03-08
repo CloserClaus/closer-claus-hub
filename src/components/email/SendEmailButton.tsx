@@ -90,12 +90,18 @@ export function SendEmailButton({ leadId, leadEmail, leadName, variant = 'outlin
     if (!currentWorkspace || !selectedSequence || !user) return;
     setStartingSequence(true);
     try {
-      // Check if lead already has an active sequence
+      // Check if lead already has an active sequence or opted out
       const { data: leadData } = await supabase
         .from('leads')
-        .select('email_sending_state')
+        .select('email_sending_state, opted_out')
         .eq('id', leadId)
         .single();
+
+      if ((leadData as any)?.opted_out) {
+        toast({ variant: 'destructive', title: 'Lead opted out', description: 'This lead has unsubscribed from emails.' });
+        setStartingSequence(false);
+        return;
+      }
 
       if (leadData?.email_sending_state === 'active_sequence') {
         toast({ variant: 'destructive', title: 'Sequence already active', description: 'This lead already has an active email sequence.' });

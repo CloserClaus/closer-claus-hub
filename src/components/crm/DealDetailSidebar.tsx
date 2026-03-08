@@ -224,16 +224,25 @@ export function DealDetailSidebar({
 
             <ScrollArea className="flex-1">
               <div className="p-6 space-y-6">
+                {/* Opted Out Badge */}
+                {leadInfo && (leadInfo as any).opted_out && (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="destructive" className="text-xs">
+                      🚫 Opted Out
+                    </Badge>
+                  </div>
+                )}
+
                 {/* Email Action Buttons */}
                 {leadInfo && leadInfo.email && (
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowEmailComposer(true)}>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowEmailComposer(true)} disabled={(leadInfo as any).opted_out}>
                       <Send className="h-4 w-4 mr-2" />
-                      Send Email
+                      {(leadInfo as any).opted_out ? 'Opted Out' : 'Send Email'}
                     </Button>
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowFollowUpSequence(true)}>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setShowFollowUpSequence(true)} disabled={(leadInfo as any).opted_out}>
                       <Play className="h-4 w-4 mr-2" />
-                      Start Sequence
+                      {(leadInfo as any).opted_out ? 'Opted Out' : 'Start Sequence'}
                     </Button>
                   </div>
                 )}
