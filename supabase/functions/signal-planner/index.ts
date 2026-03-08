@@ -758,7 +758,7 @@ function validatePipelinePlan(plan: any, query: string): string[] {
       if (!hasIndustryInParams && !hasIndustryInSearchQuery) {
         warnings.push(`🏭 Industry terms [${industryTerms.join(", ")}] from your query are missing from Stage 1 search params. Auto-fixing search queries.`);
 
-        // Auto-fix: prepend industry terms to search queries
+        // Auto-fix: prepend industry terms to each OR-separated term in search queries
         const industryPrefix = industryTerms[0]; // Use the most specific match
         for (const [actorKey, actorParams] of Object.entries(params)) {
           const p = actorParams as any;
@@ -766,7 +766,14 @@ function validatePipelinePlan(plan: any, query: string): string[] {
           let fixed = false;
           for (const sfk of searchFieldKeys) {
             if (p?.[sfk] && typeof p[sfk] === "string") {
-              p[sfk] = `${industryPrefix} ${p[sfk]}`;
+              // Apply industry prefix to EACH OR-separated term, not just the beginning
+              const orParts = p[sfk].split(/\s+OR\s+/i);
+              p[sfk] = orParts.map((part: string) => {
+                const trimmed = part.trim();
+                // Don't prefix if industry term is already present
+                if (trimmed.toLowerCase().includes(industryPrefix.toLowerCase())) return trimmed;
+                return `${industryPrefix} ${trimmed}`;
+              }).join(" OR ");
               fixed = true;
               break;
             }
