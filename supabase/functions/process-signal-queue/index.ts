@@ -142,6 +142,274 @@ function splitCompoundKeywords(keyword: string): string[] {
   return [keyword.replace(/^['"]|['"]$/g, "").trim()];
 }
 
+// ═══════════════════════════════════════════════════════════
+// ██  QUERY NORMALIZATION ENGINE — Deterministic URL/query construction
+// ══════════════════════════════════════════════════════════
+// The AI decides WHAT to search (roles, industry, location).
+// This engine decides HOW to construct the platform-specific query.
+
+interface SearchIntent {
+  roles: string[];          // e.g. ["Sales Representative", "SDR", "BDR"]
+  industry: string;         // e.g. "marketing OR advertising"
+  location: string;         // e.g. "United States"
+  dateRange?: string;       // e.g. "r604800" (past week)
+}
+
+function parseSearchIntent(stageDef: any): SearchIntent {
+  const roleFilter: string[] | null = stageDef.role_filter || null;
+  const searchQuery: string = stageDef.search_query || "";
+  
+  return {
+    roles: roleFilter || [],
+    industry: roleFilter ? searchQuery : "", // When roles exist, search_query IS the industry
+    location: "United States", // Default, overridden by params
+    dateRange: "r604800",
+  };
+}
+
+interface PlatformQuery {
+  url?: string;
+  params: Record<string, any>;
+}
+
+function buildPlatformSearchQuery(
+  platform: "linkedin" | "indeed" | "glassdoor" | "google_maps" | "yelp" | "google_search" | "generic",
+  intent: SearchIntent,
+  existingParams: Record<string, any>
+): PlatformQuery {
+  const location = existingParams.location || existingParams.searchLocation || intent.location || "United States";
+  
+  // Build the combined search keyword: roles + industry context
+  let combinedKeyword: string;
+  if (intent.roles.length > 0 && intent.industry) {
+    // "Sales Representative OR SDR marketing OR advertising"
+    combinedKeyword = `${intent.roles.join(" OR ")} ${intent.industry}`;
+  } else if (intent.roles.length > 0) {
+    combinedKeyword = intent.roles.join(" OR ");
+  } else if (intent.industry) {
+    combinedKeyword = intent.industry;
+  } else {
+    combinedKeyword = existingParams.search_query || existingParams.keyword || "";
+  }
+
+  switch (platform) {
+    case "linkedin": {
+      const encodedKeyword = encodeURIComponent(combinedKeyword);
+      const encodedLocation = encodeURIComponent(location);
+      const url = `https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=${intent.dateRange || "r604800"}`;
+      return {
+        url,
+        params: {
+          ...existingParams,
+          urls: [url],
+          startUrls: [{ url }],
+          splitByLocation: false,
+        },
+      };
+    }
+    case "indeed": {
+      return {
+        params: {
+          ...existingParams,
+          position: combinedKeyword,
+          title: combinedKeyword,
+          location,
+          ...(existingParams.searchQuery !== undefined ? { searchQuery: combinedKeyword } : {}),
+        },
+      };
+    }
+    case "glassdoor": {
+      return {
+        params: {
+          ...existingParams,
+          keyword: combinedKeyword,
+          location,
+        },
+      };
+    }
+    case "google_maps": {
+      // For local business, combine industry + location into search strings
+      const searchTerms = intent.industry 
+        ? splitCompoundKeywords(intent.industry).map(term => `${term} ${location}`)
+        : [combinedKeyword];
+      return {
+        params: {
+          ...existingParams,
+          searchStringsArray: searchTerms,
+        },
+      };
+    }
+    case "yelp": {
+      return {
+        params: {
+          ...existingParams,
+          searchTerms: splitCompoundKeywords(intent.industry || combinedKeyword),
+          location,
+        },
+      };
+    }
+    case "google_search": {
+      return {
+        params: {
+          ...existingParams,
+          queries: combinedKeyword,
+        },
+      };
+    }
+    default: {
+      // Generic: try all common field names
+      return {
+        params: {
+          ...existingParams,
+          search: combinedKeyword,
+          searchQuery: combinedKeyword,
+          keyword: combinedKeyword,
+          queries: [combinedKeyword],
+          title: intent.roles.length > 0 ? intent.roles.join(" OR ") : combinedKeyword,
+        },
+      };
+    }
+  }
+}
+
+function detectPlatform(actor: ActorEntry): "linkedin" | "indeed" | "glassdoor" | "google_maps" | "yelp" | "google_search" | "generic" {
+  const id = actor.actorId.toLowerCase();
+  const label = actor.label.toLowerCase();
+  const sub = ((actor as any).subCategory || "").toLowerCase();
+  
+  if (id.includes("linkedin") || label.includes("linkedin") || sub.includes("linkedin")) {
+    if (sub.includes("people") || label.includes("people")) return "generic"; // People search uses different logic
+    if (sub.includes("company")) return "generic"; // Company scraper uses URLs
+    return "linkedin";
+  }
+  if (id.includes("indeed") || label.includes("indeed") || sub.includes("indeed")) return "indeed";
+  if (id.includes("glassdoor") || label.includes("glassdoor") || sub.includes("glassdoor")) return "glassdoor";
+  if (id.includes("google-places") || id.includes("crawler-google-places") || sub.includes("google_maps")) return "google_maps";
+  if (id.includes("yelp") || sub.includes("yelp")) return "yelp";
+  if (id.includes("google-search") || sub.includes("google_search") || sub.includes("web_search")) return "google_search";
+  return "generic";
+}
+
+// ═══════════════════════════════════════════════════════════
+// ██  ZERO-RESULT DIAGNOSTIC ENGINE
+// ═══════════════════════════════════════════════════════════
+
+interface DiagnosticResult {
+  diagnosis: "wrong_query" | "wrong_actor" | "empty_niche" | "actor_error" | "unknown";
+  suggestion: string;
+  correctedIntent?: SearchIntent;
+  shouldRetry: boolean;
+}
+
+async function diagnoseZeroResults(
+  run: any,
+  stageDef: any,
+  stageRefs: ApifyRunRef[],
+  serviceClient: any
+): Promise<DiagnosticResult> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  
+  // Check if actors actually ran successfully but returned empty
+  const allSucceeded = stageRefs.length > 0 && stageRefs.every(r => r.status === "SUCCEEDED");
+  const allFailed = stageRefs.length > 0 && stageRefs.every(r => r.status === "FAILED" || r.status === "TIMED-OUT");
+  
+  if (allFailed) {
+    return {
+      diagnosis: "actor_error",
+      suggestion: "All scraping actors failed to run. This may be a temporary issue with the data provider.",
+      shouldRetry: true,
+    };
+  }
+  
+  if (!allSucceeded) {
+    return {
+      diagnosis: "unknown",
+      suggestion: "Some actors are still running or in an unknown state.",
+      shouldRetry: false,
+    };
+  }
+  
+  // Actors succeeded but returned 0 results — diagnose why
+  const intent = parseSearchIntent(stageDef);
+  const platform = detectPlatform(
+    getActor(stageDef.actors?.[0] || "") || { actorId: "", label: "", category: "" } as any
+  );
+  
+  if (!LOVABLE_API_KEY) {
+    // Without AI, use heuristic diagnosis
+    if (intent.roles.length > 0 && !intent.industry) {
+      return {
+        diagnosis: "wrong_query",
+        suggestion: "Search has role titles but no industry context. Try adding industry terms.",
+        correctedIntent: { ...intent, industry: run.signal_query },
+        shouldRetry: true,
+      };
+    }
+    return {
+      diagnosis: "empty_niche",
+      suggestion: "The search combination may be too narrow. Try broader terms.",
+      shouldRetry: false,
+    };
+  }
+  
+  // Use AI to diagnose
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "system",
+            content: `You are debugging a lead generation search that returned 0 results.
+
+User's original query: "${run.signal_query}"
+Platform: ${platform}
+Search roles: ${intent.roles.join(", ") || "none"}
+Search industry: ${intent.industry || "none"}
+Location: ${intent.location}
+
+The scraper ran successfully but found no matching results. Diagnose why and suggest a correction.
+
+Return EXACTLY one JSON object:
+{
+  "diagnosis": "wrong_query" | "empty_niche" | "too_narrow",
+  "reason": "<one sentence explanation>",
+  "corrected_roles": ["role1", "role2"],
+  "corrected_industry": "broader industry term",
+  "should_retry": true|false
+}`
+          },
+          { role: "user", content: `Diagnose zero results for: roles=[${intent.roles.join(", ")}], industry="${intent.industry}", platform=${platform}` },
+        ],
+      }),
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      const content = result.choices?.[0]?.message?.content || "{}";
+      const parsed = JSON.parse(content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
+      
+      return {
+        diagnosis: parsed.diagnosis || "unknown",
+        suggestion: parsed.reason || "Unknown issue",
+        correctedIntent: parsed.should_retry ? {
+          roles: parsed.corrected_roles || intent.roles,
+          industry: parsed.corrected_industry || intent.industry,
+          location: intent.location,
+          dateRange: intent.dateRange,
+        } : undefined,
+        shouldRetry: parsed.should_retry || false,
+      };
+    }
+  } catch (err) {
+    console.warn("Diagnostic AI call failed:", err);
+  }
+  
+  return { diagnosis: "unknown", suggestion: "Could not determine cause", shouldRetry: false };
+}
+
 function extractDomain(url: string): string {
   if (!url) return "";
   try {
@@ -1069,128 +1337,61 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
     }
 
     if (stageNum === 1) {
-      // Discovery stage: use search_query, role_filter, and params_per_actor
+      // Discovery stage: use Query Normalization Engine
       const actorParams = stageDef.params_per_actor?.[actorKey] || {};
-      const searchQuery = stageDef.search_query || "";
-      const roleFilter: string[] | null = stageDef.role_filter || null;
+      const intent = parseSearchIntent(stageDef);
+      const platform = detectPlatform(actor);
       
-      // For hiring_intent with role_filter: use role_filter as job title, search_query as industry context
-      // Without role_filter: use search_query as before (combined keyword)
-      const keywords = roleFilter 
-        ? [roleFilter.join(" OR ")] // Single keyword from all role titles
-        : splitCompoundKeywords(searchQuery);
+      // Override location from actor params if available
+      intent.location = actorParams.location || actorParams.searchLocation || intent.location;
       
-      // Industry context for hiring_intent with role_filter
-      const industryContext = roleFilter ? searchQuery : null;
+      // Use normalization engine for deterministic URL/query construction
+      const platformQuery = buildPlatformSearchQuery(platform, intent, actorParams);
+      const input = { ...platformQuery.params };
+      
+      // Remove plan-provided URLs that may be stale/incomplete
+      if (platform === "linkedin" && platformQuery.url) {
+        delete input.splitCountry;
+      }
 
-      for (const keyword of keywords) {
-        const input = { ...actorParams };
-        const schemaKeys = Object.keys(actor.inputSchema);
-        const hasSchema = schemaKeys.length > 0;
+      // Set max results limit — but NEVER override planner-set caps
+      const KNOWN_LIMIT_FIELDS = ["maxItems", "limit", "count", "maxResults", "max_results", "rows", "numResults", "maxCrawledPlacesPerSearch", "maxCrawledPagesPerSearch"];
+      const hasExistingLimit = KNOWN_LIMIT_FIELDS.some(f => input[f] !== undefined);
+      const schemaKeys = Object.keys(actor.inputSchema);
+      const hasSchema = schemaKeys.length > 0;
 
-        // Category-based input construction — works with any dynamic actor
-        if (actor.category === "hiring_intent") {
-          // Job board actors: detect input format from schema or common patterns
-          const hasUrls = hasSchema ? !!actor.inputSchema["urls"] || !!actor.inputSchema["startUrls"] : false;
-          const hasTitleField = hasSchema ? !!actor.inputSchema["title"] || !!actor.inputSchema["position"] : false;
-          const hasSearchQuery = hasSchema ? !!actor.inputSchema["searchQuery"] || !!actor.inputSchema["search"] || !!actor.inputSchema["queries"] || !!actor.inputSchema["keyword"] || !!actor.inputSchema["keywords"] : false;
-
-          if (actor.actorId.includes("linkedin") || actor.label.toLowerCase().includes("linkedin")) {
-            // LinkedIn Jobs: build search URL combining role titles + industry context
-            const location = input.location || input.searchLocation || "United States";
-            // Always combine role keyword with industry context for accurate results
-            const searchKeyword = industryContext 
-              ? `${keyword} ${industryContext}` // e.g. "Sales Representative OR SDR marketing"
-              : keyword;
-            const encodedKeyword = encodeURIComponent(searchKeyword);
-            const encodedLocation = encodeURIComponent(location);
-            const searchUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=r604800`;
-            // Always force-override plan URLs — they may lack industry context
-            input.urls = [searchUrl];
-            input.startUrls = [{ url: searchUrl }];
-            input.splitByLocation = false;
-            delete input.splitCountry;
-          } else if (actor.actorId.includes("indeed") || actor.label.toLowerCase().includes("indeed")) {
-            // Indeed: combine role titles + industry into a single search query for best results
-            const fullQuery = industryContext ? `${keyword} ${industryContext}` : keyword;
-            if (hasTitleField) {
-              if (actor.inputSchema["title"]) input.title = fullQuery;
-              else if (actor.inputSchema["position"]) input.position = fullQuery;
-            } else {
-              input.title = fullQuery;
-              input.position = fullQuery;
-            }
-            // Also set searchQuery if available for broader matching
-            if (actor.inputSchema["searchQuery"]) input.searchQuery = fullQuery;
-            if (industryContext) {
-              if (actor.inputSchema["company"]) input.company = industryContext;
-              else if (actor.inputSchema["employer"]) input.employer = industryContext;
-            }
-          } else if (hasSearchQuery) {
-            // Generic job board with search field
-            // Combine role + industry for generic actors that have only a single search field
-            const fullQuery = industryContext ? `${industryContext} ${keyword}` : keyword;
-            const qField = schemaKeys.find(f => ["searchQuery", "search", "keyword", "keywords", "query"].includes(f));
-            if (qField) input[qField] = fullQuery;
-            const arrField = schemaKeys.find(f => ["queries", "searchTerms", "searchStringsArray"].includes(f));
-            if (arrField) input[arrField] = [fullQuery];
-          } else {
-            // No schema — provide all common field names
-            const fullQuery = industryContext ? `${industryContext} ${keyword}` : keyword;
-            input.title = input.title || keyword; // Title gets just the role
-            input.search = input.search || fullQuery;
-            input.searchQuery = input.searchQuery || fullQuery;
-            input.keyword = input.keyword || fullQuery;
-            input.queries = input.queries || [fullQuery];
-          }
+      if (!hasExistingLimit) {
+        if (hasSchema) {
+          const maxField = schemaKeys.find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
+          if (maxField) input[maxField] = actor.inputSchema[maxField]?.default || 500;
         } else {
-          // Non-hiring actors in stage 1 (e.g., Google Maps, business directories)
-          if (hasSchema) {
-            const keywordFields = ["title", "search", "searchQuery", "query", "keyword", "keywords", "searchTerm"];
-            const kf = keywordFields.find(f => actor.inputSchema[f]);
-            if (kf) input[kf] = keyword;
-            const arrayFields = ["searchStringsArray", "queries", "searchTerms"];
-            for (const af of arrayFields) {
-              if (actor.inputSchema[af]) input[af] = [keyword];
-            }
-          } else {
-            // No schema — supply common field names
-            input.search = input.search || keyword;
-            input.searchQuery = input.searchQuery || keyword;
-            input.queries = input.queries || [keyword];
-          }
+          input.maxResults = 500;
         }
+      }
 
-        // Set max results limit — but NEVER override planner-set caps
-        const KNOWN_LIMIT_FIELDS = ["maxItems", "limit", "count", "maxResults", "max_results", "rows", "numResults", "maxCrawledPlacesPerSearch", "maxCrawledPagesPerSearch"];
-        const hasExistingLimit = KNOWN_LIMIT_FIELDS.some(f => input[f] !== undefined);
+      const actorInput = buildGenericInput(actor, input);
+      if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
+      
+      // Log the constructed query for debugging
+      const queryDescription = intent.roles.length > 0 
+        ? `roles=[${intent.roles.join(", ")}] industry="${intent.industry}" location="${intent.location}"`
+        : `query="${stageDef.search_query}" location="${intent.location}"`;
+      console.log(`Stage ${stageNum}: ${platform} query: ${queryDescription}`);
+      if (platformQuery.url) console.log(`Stage ${stageNum}: URL: ${platformQuery.url}`);
 
-        if (!hasExistingLimit) {
-          if (hasSchema) {
-            const maxField = schemaKeys.find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
-            if (maxField) input[maxField] = actor.inputSchema[maxField]?.default || 500;
-          } else {
-            input.maxResults = 500;
-          }
-        }
-
-        const actorInput = buildGenericInput(actor, input);
-        if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
-
-        try {
-          const { runId, datasetId, usedActor } = await startApifyRunWithFallback(actor, actorInput, APIFY_API_TOKEN);
-          const usedKey = usedActor.key;
-          if (usedKey !== actorKey) console.log(`Stage ${stageNum}: Swapped ${actorKey} → ${usedKey} (fallback)`);
-          refs.push({ actorKey: usedKey, keyword, runId, datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
-          console.log(`Stage ${stageNum}: Started ${usedKey}:"${keyword}" → run ${runId}`);
-        } catch (err) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          if (isCapacityError(errMsg)) {
-            refs.push({ actorKey, keyword, runId: "", datasetId: "", status: "DEFERRED", pipelineStage: stageNum });
-          } else {
-            console.error(`Failed to start ${actorKey}:"${keyword}":`, err);
-            refs.push({ actorKey, keyword, runId: "", datasetId: "", status: "FAILED", pipelineStage: stageNum });
-          }
+      try {
+        const { runId, datasetId, usedActor } = await startApifyRunWithFallback(actor, actorInput, APIFY_API_TOKEN);
+        const usedKey = usedActor.key;
+        if (usedKey !== actorKey) console.log(`Stage ${stageNum}: Swapped ${actorKey} → ${usedKey} (fallback)`);
+        refs.push({ actorKey: usedKey, keyword: queryDescription, runId, datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
+        console.log(`Stage ${stageNum}: Started ${usedKey} → run ${runId}`);
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (isCapacityError(errMsg)) {
+          refs.push({ actorKey, keyword: queryDescription, runId: "", datasetId: "", status: "DEFERRED", pipelineStage: stageNum });
+        } else {
+          console.error(`Failed to start ${actorKey}:`, err);
+          refs.push({ actorKey, keyword: queryDescription, runId: "", datasetId: "", status: "FAILED", pipelineStage: stageNum });
         }
       }
     } else if (stageDef.input_transform === "linkedin_url_discovery") {
@@ -1477,123 +1678,138 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
       await dedupLeads(run, serviceClient);
     }
 
-    // HARD ABORT: If this is a discovery stage (stage 1 or no input_from) and we have 0 leads, try backup actors first
+    // ZERO-RESULT RECOVERY: If discovery stage has 0 leads, use diagnostic engine
     if (!stageDef.input_from) {
       const { count: leadCount } = await serviceClient
         .from("signal_leads").select("*", { count: "exact", head: true })
         .eq("run_id", run.id);
 
       if (!leadCount || leadCount === 0) {
-        const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN")!;
         const stageActorRuns = (run.apify_run_ids || []).filter((r: any) => (r.pipelineStage || 1) === stageNum);
-        const allSucceeded = stageActorRuns.length > 0 && stageActorRuns.every((r: any) => r.status === "SUCCEEDED");
-        const advSettings = run.advanced_settings || {};
-        const maxPerSource = advSettings.max_results_per_source || 100;
-
-        // ── ZERO-RESULT FALLBACK: Try backup actors before aborting ──
-        const usedActorKeys = new Set(stageActorRuns.map((r: any) => r.actorKey));
-        const primaryActors = (stageDef.actors || []).map((k: string) => getActor(k)).filter(Boolean);
-        const allBackups: ActorEntry[] = [];
-        for (const primary of primaryActors) {
-          if (!primary) continue;
-          const backups = findBackupActors(primary).filter(b => !usedActorKeys.has(b.key));
-          allBackups.push(...backups);
-        }
-        
-        // Only attempt backup if we haven't already tried (check pipeline_adjustments)
         const adjustments = run.pipeline_adjustments || [];
+        const alreadyTriedDiagnostic = adjustments.some((a: any) => a.type === "diagnostic_retry" && a.stage === stageNum);
         const alreadyTriedBackup = adjustments.some((a: any) => a.type === "zero_result_backup_attempt" && a.stage === stageNum);
 
-        if (allBackups.length > 0 && !alreadyTriedBackup) {
-          console.log(`Stage ${stageNum}: ZERO RESULTS from primary actors — trying ${allBackups.length} backup actors before aborting`);
+        // Step 1: Run diagnostic engine (only once per stage)
+        if (!alreadyTriedDiagnostic && !alreadyTriedBackup) {
+          console.log(`Stage ${stageNum}: ZERO RESULTS — running diagnostic engine`);
+          const diagnostic = await diagnoseZeroResults(run, stageDef, stageActorRuns, serviceClient);
+          console.log(`Stage ${stageNum}: Diagnosis: ${diagnostic.diagnosis} — ${diagnostic.suggestion}`);
           
-          const backupRefs: ApifyRunRef[] = [];
-          for (const backup of allBackups.slice(0, 2)) { // Try max 2 backups
-            // Runtime schema fetch for backup
-            if (!backup.inputSchema || Object.keys(backup.inputSchema).length === 0) {
-              try {
-                const actorIdEncoded = backup.actorId.replace("/", "~");
-                const schemaResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${APIFY_API_TOKEN}`, { method: "GET" });
-                if (schemaResp.ok) {
-                  const schemaData = await schemaResp.json();
-                  const props = schemaData.properties || schemaData.data?.properties || {};
-                  if (Object.keys(props).length > 0) {
-                    const fetchedSchema: Record<string, InputField> = {};
-                    for (const [key, val] of Object.entries(props as Record<string, any>)) {
-                      const type = val.type === "array" ? "string[]" : (val.type === "integer" ? "number" : (val.type || "string"));
-                      fetchedSchema[key] = { type: type as any, required: false, default: val.default, description: (val.description || key).slice(0, 200) };
-                    }
-                    backup.inputSchema = fetchedSchema;
-                    console.log(`Backup schema fetch for ${backup.key}: ${Object.keys(fetchedSchema).length} fields`);
-                  }
-                } else { await schemaResp.text(); }
-              } catch (e) { console.warn(`Backup schema fetch failed for ${backup.key}:`, e); }
-            }
-            
-            // Build input using primary actor's params (adapted to backup)
+          adjustments.push({
+            type: "diagnostic_retry",
+            stage: stageNum,
+            diagnosis: diagnostic.diagnosis,
+            suggestion: diagnostic.suggestion,
+            timestamp: new Date().toISOString(),
+          });
+
+          if (diagnostic.shouldRetry && diagnostic.correctedIntent) {
+            // Auto-retry with corrected search intent
+            console.log(`Stage ${stageNum}: Auto-retrying with corrected intent`);
             const primaryActorKey = (stageDef.actors || [])[0];
-            const primaryParams = stageDef.params_per_actor?.[primaryActorKey] || {};
-            const backupInput = buildGenericInput(backup, primaryParams);
-            if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
+            const actor = getActor(primaryActorKey);
             
-            try {
-              const result = await startApifyRun(backup, backupInput, APIFY_API_TOKEN);
-              backupRefs.push({ actorKey: backup.key, keyword: "backup_retry", runId: result.runId, datasetId: result.datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
-              console.log(`Stage ${stageNum}: Backup actor ${backup.key} started → run ${result.runId}`);
-            } catch (err) {
-              console.warn(`Stage ${stageNum}: Backup actor ${backup.key} failed to start:`, err);
+            if (actor) {
+              const platform = detectPlatform(actor);
+              const actorParams = stageDef.params_per_actor?.[primaryActorKey] || {};
+              const correctedQuery = buildPlatformSearchQuery(platform, diagnostic.correctedIntent, actorParams);
+              const correctedInput = buildGenericInput(actor, correctedQuery.params);
+              if (!correctedInput.proxyConfiguration) correctedInput.proxyConfiguration = { useApifyProxy: true };
+              
+              try {
+                const { runId, datasetId, usedActor } = await startApifyRunWithFallback(actor, correctedInput, APIFY_API_TOKEN);
+                const retryRef: ApifyRunRef = {
+                  actorKey: usedActor.key,
+                  keyword: `diagnostic_retry`,
+                  runId, datasetId,
+                  status: "RUNNING",
+                  startedAt: new Date().toISOString(),
+                  pipelineStage: stageNum,
+                };
+                
+                await serviceClient.from("signal_runs").update({
+                  apify_run_ids: [...(run.apify_run_ids || []), retryRef],
+                  processing_phase: `stage_${stageNum}_scraping`,
+                  collected_dataset_index: 0,
+                  pipeline_adjustments: adjustments,
+                  updated_at: new Date().toISOString(),
+                }).eq("id", run.id);
+                return; // Go back to polling
+              } catch (err) {
+                console.warn(`Stage ${stageNum}: Diagnostic retry failed to start:`, err);
+              }
             }
           }
+        }
 
-          if (backupRefs.length > 0) {
-            // Record that we tried backups, then go back to scraping phase
-            adjustments.push({
-              type: "zero_result_backup_attempt",
-              stage: stageNum,
-              backup_actors: backupRefs.map(r => r.actorKey),
-              timestamp: new Date().toISOString(),
-            });
-            await serviceClient.from("signal_runs").update({
-              apify_run_ids: [...(run.apify_run_ids || []), ...backupRefs],
-              processing_phase: `stage_${stageNum}_scraping`,
-              collected_dataset_index: 0,
-              pipeline_adjustments: adjustments,
-              updated_at: new Date().toISOString(),
-            }).eq("id", run.id);
-            return; // Go back to scraping/polling phase for the backup runs
+        // Step 2: Try backup actors (existing logic, simplified)
+        if (!alreadyTriedBackup) {
+          const usedActorKeys = new Set(stageActorRuns.map((r: any) => r.actorKey));
+          const primaryActors = (stageDef.actors || []).map((k: string) => getActor(k)).filter(Boolean);
+          const allBackups: ActorEntry[] = [];
+          for (const primary of primaryActors) {
+            if (!primary) continue;
+            allBackups.push(...findBackupActors(primary).filter(b => !usedActorKeys.has(b.key)));
+          }
+
+          if (allBackups.length > 0) {
+            console.log(`Stage ${stageNum}: Trying ${allBackups.length} backup actors`);
+            const backupRefs: ApifyRunRef[] = [];
+            
+            for (const backup of allBackups.slice(0, 2)) {
+              // Use normalization engine for backup actors too
+              const intent = parseSearchIntent(stageDef);
+              const platform = detectPlatform(backup);
+              const actorParams = stageDef.params_per_actor?.[(stageDef.actors || [])[0]] || {};
+              const platformQuery = buildPlatformSearchQuery(platform, intent, actorParams);
+              const backupInput = buildGenericInput(backup, platformQuery.params);
+              if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
+              
+              try {
+                const result = await startApifyRun(backup, backupInput, APIFY_API_TOKEN);
+                backupRefs.push({ actorKey: backup.key, keyword: "backup_retry", runId: result.runId, datasetId: result.datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
+              } catch (err) {
+                console.warn(`Stage ${stageNum}: Backup ${backup.key} failed:`, err);
+              }
+            }
+
+            if (backupRefs.length > 0) {
+              adjustments.push({ type: "zero_result_backup_attempt", stage: stageNum, backup_actors: backupRefs.map(r => r.actorKey), timestamp: new Date().toISOString() });
+              await serviceClient.from("signal_runs").update({
+                apify_run_ids: [...(run.apify_run_ids || []), ...backupRefs],
+                processing_phase: `stage_${stageNum}_scraping`,
+                collected_dataset_index: 0,
+                pipeline_adjustments: adjustments,
+                updated_at: new Date().toISOString(),
+              }).eq("id", run.id);
+              return;
+            }
           }
         }
 
-        // ── No backups available or backups already tried — abort ──
-        let userMessage: string;
-        let notifTitle: string;
-
-        if (allSucceeded && maxPerSource <= 500) {
-          userMessage = `No results found from ${(stageDef.actors || []).join(" + ")} in stage ${stageNum}. The search sources returned empty results, which often happens when the max results per source (${maxPerSource}) is too low for niche queries like "${run.signal_query}". Try increasing max results per source to 1000–5000, or broadening your search criteria.`;
-          notifTitle = "Signal Search — No Results (Try Increasing Limits)";
-        } else {
-          userMessage = `No results found from ${(stageDef.actors || []).join(" + ")} in stage ${stageNum}. This can happen when job boards or search sources return empty results for your query. Try broadening your search terms, expanding the date range, or adjusting your criteria.`;
-          notifTitle = "Signal Failed — No Results Found";
-        }
-
-        console.log(`Stage ${stageNum}: ZERO RESULTS — aborting pipeline (allSucceeded=${allSucceeded}, maxPerSource=${maxPerSource}, backupsAvailable=${allBackups.length})`);
+        // Step 3: All recovery attempts exhausted — fail with actionable message
+        const diagnosticAdj = adjustments.find((a: any) => a.type === "diagnostic_retry");
+        const diagSuggestion = diagnosticAdj?.suggestion || "";
+        const advSettings = run.advanced_settings || {};
+        const maxPerSource = advSettings.max_results_per_source || 100;
         
+        const userMessage = diagSuggestion 
+          ? `No results found. ${diagSuggestion} Try broadening your search terms or increasing max results per source (currently ${maxPerSource}).`
+          : `No results found for "${run.signal_query}". Try broader search terms, a different date range, or increasing max results per source to 1000+.`;
+
+        console.log(`Stage ${stageNum}: ZERO RESULTS — all recovery exhausted, aborting`);
         await serviceClient.from("signal_runs").update({
           status: "failed",
           error_message: userMessage,
           processing_phase: "aborted",
-          pipeline_adjustments: [...adjustments, {
-            stage: stageNum,
-            quality: "USELESS",
-            reason: `Stage produced 0 results — hard abort (cap: ${maxPerSource}, backups tried: ${alreadyTriedBackup})`,
-            timestamp: new Date().toISOString(),
-          }],
+          pipeline_adjustments: adjustments,
         }).eq("id", run.id);
 
         if (run.user_id) {
           await serviceClient.from("notifications").insert({
             user_id: run.user_id, workspace_id: run.workspace_id,
-            type: "signal_failed", title: notifTitle,
+            type: "signal_failed", title: "Signal — No Results Found",
             message: userMessage,
           });
         }
