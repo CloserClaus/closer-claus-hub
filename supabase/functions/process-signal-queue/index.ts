@@ -316,12 +316,20 @@ async function pipelineQualityCheck(
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return { quality: "HIGH", reason: "No API key, skipping quality check", suggestedAction: "continue" };
 
-  // Sample 15 leads from this stage
+  // Get total count first to determine sample size
+  const { count: totalCountPre } = await serviceClient
+    .from("signal_leads")
+    .select("*", { count: "exact", head: true })
+    .eq("run_id", run.id);
+
+  // Scale sample size with dataset: min(50, max(15, ceil(total * 0.05)))
+  const dynamicSampleSize = Math.min(50, Math.max(15, Math.ceil((totalCountPre || 0) * 0.05)));
+
   const { data: sampleLeads } = await serviceClient
     .from("signal_leads")
     .select("*")
     .eq("run_id", run.id)
-    .limit(15);
+    .limit(dynamicSampleSize);
 
   if (!sampleLeads || sampleLeads.length === 0) {
     return { quality: "USELESS", reason: "Stage produced 0 results", suggestedAction: "abort" };
