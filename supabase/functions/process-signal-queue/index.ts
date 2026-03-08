@@ -2031,10 +2031,81 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
       const matchRate = totalPersonItems > 0 ? Math.round((matchedCount / totalPersonItems) * 100) : 0;
       console.log(`Stage ${stageNum}: Person matching — ${matchedCount}/${totalPersonItems} matched (${matchRate}%, min score: ${MIN_MATCH_SCORE})`);
       
-      // Stage-level retry detection: if match rate is <20%, log warning for potential retry
-      if (matchRate < 20 && totalPersonItems > 5) {
-        console.warn(`Stage ${stageNum}: LOW MATCH RATE (${matchRate}%) — people search results poorly match existing leads. Consider broadening search titles or using different actor.`);
-        // Record the low match rate in pipeline_adjustments
+      // APOLLO FALLBACK: If match rate is <30%, trigger Apollo enrichment for unmatched leads
+      if (matchRate < 30 && totalPersonItems > 5) {
+        console.warn(`Stage ${stageNum}: LOW MATCH RATE (${matchRate}%) — triggering Apollo enrichment fallback`);
+        
+        // Find leads that still lack contact_name after people matching
+        const { data: unmatchedLeads } = await serviceClient
+          .from("signal_leads")
+          .select("id, company_name, domain, website")
+          .eq("run_id", run.id)
+          .is("contact_name", null)
+          .limit(100);
+        
+        if (unmatchedLeads && unmatchedLeads.length > 0) {
+          const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+          const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+          
+          if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+            let apolloEnriched = 0;
+            // Process in batches of 10 to avoid overwhelming Apollo
+            for (let batch = 0; batch < unmatchedLeads.length && batch < 50; batch += 10) {
+              const batchLeads = unmatchedLeads.slice(batch, batch + 10);
+              for (const lead of batchLeads) {
+                try {
+                  const enrichResp = await fetch(`${SUPABASE_URL}/functions/v1/apollo-enrich`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                    },
+                    body: JSON.stringify({
+                      workspace_id: run.workspace_id,
+                      domain: lead.domain || extractDomain(lead.website || ""),
+                      company_name: lead.company_name,
+                    }),
+                  });
+                  
+                  if (enrichResp.ok) {
+                    const enrichData = await enrichResp.json();
+                    if (enrichData?.contact_name || enrichData?.email || enrichData?.phone) {
+                      const updateData: Record<string, any> = {};
+                      if (enrichData.contact_name) updateData.contact_name = enrichData.contact_name;
+                      if (enrichData.email) updateData.email = enrichData.email;
+                      if (enrichData.phone) updateData.phone = enrichData.phone;
+                      if (enrichData.title) updateData.title = enrichData.title;
+                      if (enrichData.linkedin_url) updateData.linkedin_profile_url = enrichData.linkedin_url;
+                      
+                      await serviceClient.from("signal_leads").update(updateData).eq("id", lead.id);
+                      apolloEnriched++;
+                    }
+                  }
+                } catch (err) {
+                  console.warn(`Apollo enrichment failed for lead ${lead.id}:`, err);
+                }
+              }
+            }
+            
+            console.log(`Stage ${stageNum}: Apollo fallback enriched ${apolloEnriched}/${Math.min(unmatchedLeads.length, 50)} leads`);
+            
+            // Record the Apollo fallback in pipeline_adjustments
+            const adjustments = run.pipeline_adjustments || [];
+            adjustments.push({
+              type: "apollo_fallback",
+              stage: stageNum,
+              match_rate: matchRate,
+              apollo_enriched: apolloEnriched,
+              unmatched_total: unmatchedLeads.length,
+              timestamp: new Date().toISOString(),
+            });
+            await serviceClient.from("signal_runs").update({
+              pipeline_adjustments: adjustments,
+            }).eq("id", run.id);
+          }
+        }
+      } else if (matchRate < 20 && totalPersonItems > 5) {
+        // Record low match rate without Apollo (original behavior for very low match rates)
         const adjustments = run.pipeline_adjustments || [];
         adjustments.push({
           type: "low_people_match_rate",
