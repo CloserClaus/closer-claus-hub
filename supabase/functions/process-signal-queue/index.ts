@@ -546,7 +546,9 @@ async function startApifyRunWithFallback(
               if (Object.keys(props).length > 0) {
                 const fetchedSchema: Record<string, InputField> = {};
                 for (const [key, val] of Object.entries(props as Record<string, any>)) {
-                  const type = val.type === "array" ? "string[]" : (val.type === "integer" ? "number" : (val.type || "string"));
+                  const type = val.type === "array"
+                    ? (val.items?.type === "object" || val.items?.properties ? "object[]" : "string[]")
+                    : (val.type === "integer" ? "number" : (val.type || "string"));
                   fetchedSchema[key] = { type: type as any, required: false, default: val.default, description: (val.description || key).slice(0, 200) };
                 }
                 backup.inputSchema = fetchedSchema;
