@@ -464,25 +464,77 @@ const FALLBACK_INPUT_FROM: Record<string, string[]> = {
 
 function validateDataFlow(pipeline: any[]): { valid: boolean; issues: string[]; fixedPipeline: any[] } {
   const issues: string[] = [];
-  const fixedPipeline = [...pipeline];
+  let fixedPipeline = [...pipeline];
 
-  // Build cumulative produced-fields map from all prior stages
-  for (let i = 1; i < fixedPipeline.length; i++) {
-    const stage = fixedPipeline[i];
-    if (stage.type !== "scrape") continue;
-    if (!stage.input_from) continue;
-
-    const inputField = stage.input_from;
-
-    // Collect all fields produced by prior stages
+  // ── Helper: collect all fields produced by stages [0..endIdx) ──
+  function getProducedFieldsUpTo(endIdx: number): Set<string> {
     const allProduced = new Set<string>();
-    for (let j = 0; j < i; j++) {
+    for (let j = 0; j < endIdx; j++) {
       const prevStage = fixedPipeline[j];
       if (prevStage.type === "ai_filter") continue; // filters don't produce new fields
       for (const f of inferProducedFields(prevStage)) {
         allProduced.add(f);
       }
     }
+    return allProduced;
+  }
+
+  // ── Pass 1: Validate AI filter stages — check requires_fields against produced data ──
+  for (let i = 0; i < fixedPipeline.length; i++) {
+    const stage = fixedPipeline[i];
+    if (stage.type !== "ai_filter") continue;
+
+    const requiresFields: string[] = stage.requires_fields || [];
+    if (requiresFields.length === 0) continue; // no declared dependencies — skip
+
+    const allProduced = getProducedFieldsUpTo(i);
+
+    for (const reqField of requiresFields) {
+      const reqAliases = FIELD_ALIASES[reqField] || [reqField];
+      const found = reqAliases.some(a => allProduced.has(a));
+
+      if (!found) {
+        // Determine which enrichment stage could produce this field
+        const enrichmentNeeded = getEnrichmentForField(reqField);
+        if (enrichmentNeeded) {
+          issues.push(`Stage ${stage.stage}: ai_filter requires "${reqField}" but no prior stage produces it — auto-injecting ${enrichmentNeeded.stage_category} stage before this filter`);
+          
+          // Inject an enrichment stage before this filter
+          const newStageNum = stage.stage;
+          const enrichmentStage = {
+            stage: newStageNum,
+            name: `Auto-enrich for ${reqField}`,
+            type: "scrape",
+            stage_category: enrichmentNeeded.stage_category,
+            params: {},
+            input_from: enrichmentNeeded.input_from,
+            dedup_after: false,
+            updates_fields: enrichmentNeeded.produces,
+            expected_output_count: 0,
+          };
+
+          // Insert before current position and renumber all subsequent stages
+          fixedPipeline.splice(i, 0, enrichmentStage);
+          // Renumber stages from insertion point onward
+          for (let k = i; k < fixedPipeline.length; k++) {
+            fixedPipeline[k] = { ...fixedPipeline[k], stage: k + 1 };
+          }
+          i++; // skip past the filter we just validated (it moved forward by 1)
+        } else {
+          issues.push(`Stage ${stage.stage}: ai_filter requires "${reqField}" but no prior stage produces it and no enrichment source known — filter may reject everything`);
+        }
+      }
+    }
+  }
+
+  // ── Pass 2: Validate scrape stages — check input_from ──
+  for (let i = 1; i < fixedPipeline.length; i++) {
+    const stage = fixedPipeline[i];
+    if (stage.type !== "scrape") continue;
+    if (!stage.input_from) continue;
+
+    const inputField = stage.input_from;
+    const allProduced = getProducedFieldsUpTo(i);
 
     // Check if input_from (or any of its aliases) is produced
     const inputAliases = FIELD_ALIASES[inputField] || [inputField];
@@ -527,6 +579,18 @@ function validateDataFlow(pipeline: any[]): { valid: boolean; issues: string[]; 
   }
 
   return { valid: issues.length === 0, issues, fixedPipeline };
+}
+
+// Maps a required field to the enrichment stage category that produces it
+function getEnrichmentForField(field: string): { stage_category: string; input_from: string; produces: string[] } | null {
+  const fieldEnrichmentMap: Record<string, { stage_category: string; input_from: string; produces: string[] }> = {
+    employee_count: { stage_category: "company_data:linkedin", input_from: "company_name", produces: ["industry", "employee_count", "website", "linkedin", "description"] },
+    industry: { stage_category: "company_data:linkedin", input_from: "company_name", produces: ["industry", "employee_count", "website", "linkedin", "description"] },
+    company_linkedin_url: { stage_category: "web_search:google", input_from: "company_name", produces: ["company_name", "website", "description"] },
+    website: { stage_category: "web_search:google", input_from: "company_name", produces: ["company_name", "website", "description"] },
+    description: { stage_category: "enrichment:contact", input_from: "website", produces: ["email", "phone", "linkedin", "website"] },
+  };
+  return fieldEnrichmentMap[field] || null;
 }
 
 // ════════════════════════════════════════════════════════════════
