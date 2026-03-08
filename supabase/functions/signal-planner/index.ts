@@ -1125,18 +1125,31 @@ async function discoverActors(searchTerm: string, serviceClient: any): Promise<A
   const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN");
   if (!APIFY_API_TOKEN) return [];
 
-  // Check cache first (7-day TTL)
-  const cacheKey = searchTerm.toLowerCase().replace(/[^a-z0-9]/g, "_").slice(0, 100);
-  const { data: cached } = await serviceClient
+  // Check cache first (7-day TTL) — table stores individual actor rows with category column
+  const categoryKey = searchTerm.toLowerCase().trim();
+  const ttlThreshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: cachedActors } = await serviceClient
     .from("signal_actor_cache")
     .select("*")
-    .eq("cache_key", cacheKey)
-    .gte("cached_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-    .maybeSingle();
+    .eq("category", categoryKey)
+    .gte("cached_at", ttlThreshold)
+    .order("monthly_users", { ascending: false })
+    .limit(10);
 
-  if (cached?.actors && cached.actors.length > 0) {
-    console.log(`Actor cache HIT for "${searchTerm}": ${cached.actors.length} actors`);
-    return cached.actors;
+  if (cachedActors && cachedActors.length > 0) {
+    console.log(`Actor cache HIT for "${searchTerm}": ${cachedActors.length} actors`);
+    return cachedActors.map((row: any) => ({
+      key: row.actor_key || row.actor_id.replace(/[^a-zA-Z0-9]/g, "_"),
+      actorId: row.actor_id,
+      label: row.label || row.actor_id,
+      category: row.category || searchTerm,
+      description: row.description || "",
+      inputSchema: row.input_schema || {},
+      outputFields: row.output_fields || {},
+      monthlyUsers: row.monthly_users || 0,
+      totalRuns: row.total_runs || 0,
+      rating: row.rating || 0,
+    }));
   }
 
   // Search Apify Store
@@ -1183,33 +1196,40 @@ async function discoverActors(searchTerm: string, serviceClient: any): Promise<A
       } catch { /* proceed without schema */ }
 
       const actorKey = actorId.replace(/[^a-zA-Z0-9]/g, "_");
+      const monthlyUsers = item.stats?.totalUsers30Days || item.monthlyUsers || 0;
+      const totalRuns = item.stats?.totalRuns || item.totalRuns || 0;
+      const rating = item.stats?.rating || 0;
+
       actors.push({
         key: actorKey,
         actorId,
         label: item.title || item.name || actorId,
-        category: searchTerm.split(" ")[0] || "unknown",
+        category: categoryKey,
         description: (item.description || item.title || "").slice(0, 300),
         inputSchema,
-        outputFields: {}, // Will use UNIVERSAL_OUTPUT_PATHS at runtime
-        monthlyUsers: item.stats?.totalUsers30Days || item.monthlyUsers || 0,
-        totalRuns: item.stats?.totalRuns || item.totalRuns || 0,
-        rating: item.stats?.rating || 0,
+        outputFields: {},
+        monthlyUsers,
+        totalRuns,
+        rating,
       });
-    }
 
-    // Sort by popularity
-    actors.sort((a, b) => (b.monthlyUsers || 0) - (a.monthlyUsers || 0));
-
-    // Cache results
-    if (actors.length > 0) {
+      // Cache each actor as a separate row
       await serviceClient.from("signal_actor_cache").upsert({
-        cache_key: cacheKey,
-        search_term: searchTerm,
-        actors,
+        actor_id: actorId,
+        actor_key: actorKey,
+        label: item.title || item.name || actorId,
+        category: categoryKey,
+        description: (item.description || item.title || "").slice(0, 300),
+        input_schema: inputSchema,
+        output_fields: {},
+        monthly_users: monthlyUsers,
+        total_runs: totalRuns,
+        rating,
         cached_at: new Date().toISOString(),
-      }, { onConflict: "cache_key" }).catch(() => {});
+      }, { onConflict: "actor_id" }).catch(() => {});
     }
 
+    actors.sort((a, b) => (b.monthlyUsers || 0) - (a.monthlyUsers || 0));
     console.log(`Discovered ${actors.length} actors for "${searchTerm}"`);
     return actors;
   } catch (err) {
