@@ -573,6 +573,7 @@ function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): 
     return input; // No schema — can't normalize, pass through
   }
 
+  const schemaSource = (actor as any)._schemaSource || "catalog_fallback";
   const result = { ...input };
   let coercions = 0;
 
@@ -580,16 +581,23 @@ function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): 
     if (result[field] === undefined) continue;
     const value = result[field];
     const declaredType = schema.type;
+    const fieldSource = schema._schemaSource || schemaSource;
+    const isUrlField = /url/i.test(field);
 
+    // ── URL-array coercions: only apply when schema source is runtime (trusted) ──
     // ── string[] but got object[] (e.g., [{url: "..."}] → ["..."]) ──
     if (declaredType === "string[]" && Array.isArray(value) && value.length > 0 && typeof value[0] === "object" && value[0] !== null) {
-      // Extract the first string property (usually "url")
+      if (isUrlField && fieldSource !== "runtime") {
+        // Catalog fallback — preserve original shape to avoid destructive coercion
+        console.log(`Schema normalization SKIPPED: "${field}" object[]→string[] coercion blocked (source: ${fieldSource}, not trusted) for actor ${actor.actorId}`);
+        continue;
+      }
       const firstObj = value[0];
       const stringProp = Object.keys(firstObj).find(k => typeof firstObj[k] === "string");
       if (stringProp) {
         result[field] = value.map((item: any) => typeof item === "object" && item !== null ? item[stringProp] : String(item));
         coercions++;
-        console.log(`Schema coercion: "${field}" object[] → string[] (extracted .${stringProp}) for actor ${actor.actorId}`);
+        console.log(`Schema coercion: "${field}" object[] → string[] (extracted .${stringProp}, source: ${fieldSource}) for actor ${actor.actorId}`);
       }
     }
     // ── string[] but got a single string → wrap in array ──
@@ -600,9 +608,16 @@ function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): 
     }
     // ── object[] but got string[] (e.g., ["..."] → [{url: "..."}]) ──
     else if (declaredType === "object[]" && Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
-      result[field] = value.map((item: string) => ({ url: item }));
-      coercions++;
-      console.log(`Schema coercion: "${field}" string[] → object[] (wrapped as {url}) for actor ${actor.actorId}`);
+      if (isUrlField && fieldSource !== "runtime") {
+        // Catalog fallback for object[] — still safe to wrap strings as {url}, this is additive not destructive
+        result[field] = value.map((item: string) => ({ url: item }));
+        coercions++;
+        console.log(`Schema coercion: "${field}" string[] → object[] (wrapped as {url}, source: ${fieldSource}) for actor ${actor.actorId}`);
+      } else {
+        result[field] = value.map((item: string) => ({ url: item }));
+        coercions++;
+        console.log(`Schema coercion: "${field}" string[] → object[] (wrapped as {url}, source: ${fieldSource}) for actor ${actor.actorId}`);
+      }
     }
     // ── number but got string ──
     else if (declaredType === "number" && typeof value === "string") {
@@ -628,18 +643,14 @@ function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): 
   }
 
   // Also normalize fields NOT in schema but present in input — check if they're common URL array fields
-  // This handles the case where buildGenericInput passes through extra fields
   for (const field of Object.keys(result)) {
-    if (actor.inputSchema[field]) continue; // Already handled above
-    // Skip non-array fields
+    if (actor.inputSchema[field]) continue;
     if (!Array.isArray(result[field]) || result[field].length === 0) continue;
-    // Don't touch fields that are already plain strings
     if (typeof result[field][0] !== "object") continue;
-    // For unknown array-of-object fields, leave as-is (we can't know the expected format)
   }
 
   if (coercions > 0) {
-    console.log(`normalizeInputToSchema: Applied ${coercions} coercion(s) for actor ${actor.actorId}`);
+    console.log(`normalizeInputToSchema: Applied ${coercions} coercion(s) for actor ${actor.actorId} (schema source: ${schemaSource})`);
   }
 
   return result;
