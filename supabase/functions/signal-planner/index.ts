@@ -215,40 +215,27 @@ async function discoverActors(query: string, serviceClient: any): Promise<ActorE
           console.warn(`No inputSchema found for ${actorId} — actor params will be passed through directly at runtime`);
         }
 
-        // Pre-flight access check: dry-run test to verify actor is runnable
+        // Pre-flight access check: lightweight GET to verify actor is accessible (no dry-run)
         let isAccessible = true;
         try {
-          // Attempt to start a minimal run — if we get 403 "not rented", actor is inaccessible
-          const dryRunResp = await fetch(
-            `https://api.apify.com/v2/acts/${actorIdEncoded}/runs?token=${APIFY_API_TOKEN}`,
-            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ maxItems: 0 }) }
+          const accessResp = await fetch(
+            `https://api.apify.com/v2/acts/${actorIdEncoded}?token=${APIFY_API_TOKEN}`,
+            { method: "GET" }
           );
-          if (dryRunResp.ok) {
-            // Run started — abort it immediately
-            const dryRunData = await dryRunResp.json();
-            const dryRunId = dryRunData.data?.id;
-            if (dryRunId) {
-              try {
-                await fetch(`https://api.apify.com/v2/actor-runs/${dryRunId}/abort?token=${APIFY_API_TOKEN}`, { method: "POST" });
-              } catch { /* ignore abort error */ }
-            }
-          } else {
-            const errText = await dryRunResp.text();
-            const errLower = errText.toLowerCase();
-            if (dryRunResp.status === 403 || errLower.includes("actor-is-not-rented") || errLower.includes("not rented")) {
-              console.warn(`Actor ${actorId} failed dry-run (403 not rented) — skipping`);
+          if (accessResp.ok) {
+            const actorInfo = (await accessResp.json()).data;
+            if (actorInfo?.isDeprecated) {
+              console.warn(`Actor ${actorId} is deprecated — skipping`);
               isAccessible = false;
-            } else {
-              // Also check for deprecated via GET
-              const accessResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}?token=${APIFY_API_TOKEN}`, { method: "GET" });
-              if (accessResp.ok) {
-                const actorInfo = (await accessResp.json()).data;
-                if (actorInfo?.isDeprecated) {
-                  console.warn(`Actor ${actorId} is deprecated — skipping`);
-                  isAccessible = false;
-                }
-              }
             }
+            // Check if actor requires rental and isn't rented
+            if (actorInfo?.isPublic === false && !actorInfo?.isOwner) {
+              console.warn(`Actor ${actorId} is private/not rented — skipping`);
+              isAccessible = false;
+            }
+          } else if (accessResp.status === 403 || accessResp.status === 404) {
+            console.warn(`Actor ${actorId} inaccessible (${accessResp.status}) — skipping`);
+            isAccessible = false;
           }
         } catch (e) {
           console.warn(`Pre-flight access check failed for ${actorId}, assuming accessible:`, e);
