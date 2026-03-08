@@ -12,7 +12,7 @@ const corsHeaders = {
 // ════════════════════════════════════════════════════════════════
 
 interface InputField {
-  type: "string" | "number" | "boolean" | "string[]" | "enum";
+  type: "string" | "number" | "boolean" | "string[]" | "object[]" | "enum";
   required?: boolean;
   default?: any;
   values?: string[];
@@ -1579,7 +1579,9 @@ async function discoverActors(searchTerm: string, serviceClient: any): Promise<A
           const props = schemaData.properties || schemaData.data?.properties ||
             schemaData.schema?.properties || {};
           for (const [key, val] of Object.entries(props as Record<string, any>)) {
-            const type = val.type === "array" ? "string[]" : (val.type === "integer" ? "number" : (val.type || "string"));
+            const type = val.type === "array"
+              ? (val.items?.type === "object" || val.items?.properties ? "object[]" : "string[]")
+              : (val.type === "integer" ? "number" : (val.type || "string"));
             inputSchema[key] = {
               type: type as any,
               required: val.required || false,

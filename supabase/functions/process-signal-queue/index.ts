@@ -10,7 +10,7 @@ const corsHeaders = {
 // ── Universal Output Field Paths — works with ANY Apify actor ──
 
 interface InputField {
-  type: "string" | "number" | "boolean" | "string[]" | "enum";
+  type: "string" | "number" | "boolean" | "string[]" | "object[]" | "enum";
   required?: boolean;
   default?: any;
   values?: string[];
@@ -465,6 +465,90 @@ function buildGenericInput(actor: ActorEntry, params: Record<string, any>): Reco
 }
 
 // ═══════════════════════════════════════════════════════════
+// ██  SCHEMA-AWARE INPUT NORMALIZER
+// ═══════════════════════════════════════════════════════════
+// Runs AFTER buildGenericInput, BEFORE startApifyRun.
+// Coerces each field's value to match the actor's declared schema type.
+// If schema is empty/missing, returns input unchanged (preserves shotgun approach).
+
+function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): Record<string, any> {
+  if (!actor.inputSchema || Object.keys(actor.inputSchema).length === 0) {
+    return input; // No schema — can't normalize, pass through
+  }
+
+  const result = { ...input };
+  let coercions = 0;
+
+  for (const [field, schema] of Object.entries(actor.inputSchema)) {
+    if (result[field] === undefined) continue;
+    const value = result[field];
+    const declaredType = schema.type;
+
+    // ── string[] but got object[] (e.g., [{url: "..."}] → ["..."]) ──
+    if (declaredType === "string[]" && Array.isArray(value) && value.length > 0 && typeof value[0] === "object" && value[0] !== null) {
+      // Extract the first string property (usually "url")
+      const firstObj = value[0];
+      const stringProp = Object.keys(firstObj).find(k => typeof firstObj[k] === "string");
+      if (stringProp) {
+        result[field] = value.map((item: any) => typeof item === "object" && item !== null ? item[stringProp] : String(item));
+        coercions++;
+        console.log(`Schema coercion: "${field}" object[] → string[] (extracted .${stringProp}) for actor ${actor.actorId}`);
+      }
+    }
+    // ── string[] but got a single string → wrap in array ──
+    else if (declaredType === "string[]" && typeof value === "string") {
+      result[field] = [value];
+      coercions++;
+      console.log(`Schema coercion: "${field}" string → string[] for actor ${actor.actorId}`);
+    }
+    // ── object[] but got string[] (e.g., ["..."] → [{url: "..."}]) ──
+    else if (declaredType === "object[]" && Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
+      result[field] = value.map((item: string) => ({ url: item }));
+      coercions++;
+      console.log(`Schema coercion: "${field}" string[] → object[] (wrapped as {url}) for actor ${actor.actorId}`);
+    }
+    // ── number but got string ──
+    else if (declaredType === "number" && typeof value === "string") {
+      const parsed = parseFloat(value);
+      if (!isNaN(parsed)) {
+        result[field] = parsed;
+        coercions++;
+        console.log(`Schema coercion: "${field}" string → number for actor ${actor.actorId}`);
+      }
+    }
+    // ── string but got array → take first element ──
+    else if (declaredType === "string" && Array.isArray(value) && value.length > 0) {
+      result[field] = String(value[0]);
+      coercions++;
+      console.log(`Schema coercion: "${field}" array → string (first element) for actor ${actor.actorId}`);
+    }
+    // ── boolean but got string ──
+    else if (declaredType === "boolean" && typeof value === "string") {
+      result[field] = value === "true" || value === "1";
+      coercions++;
+      console.log(`Schema coercion: "${field}" string → boolean for actor ${actor.actorId}`);
+    }
+  }
+
+  // Also normalize fields NOT in schema but present in input — check if they're common URL array fields
+  // This handles the case where buildGenericInput passes through extra fields
+  for (const field of Object.keys(result)) {
+    if (actor.inputSchema[field]) continue; // Already handled above
+    // Skip non-array fields
+    if (!Array.isArray(result[field]) || result[field].length === 0) continue;
+    // Don't touch fields that are already plain strings
+    if (typeof result[field][0] !== "object") continue;
+    // For unknown array-of-object fields, leave as-is (we can't know the expected format)
+  }
+
+  if (coercions > 0) {
+    console.log(`normalizeInputToSchema: Applied ${coercions} coercion(s) for actor ${actor.actorId}`);
+  }
+
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════
 // ██  APIFY ASYNC HELPERS
 // ═══════════════════════════════════════════════════════════
 
@@ -546,7 +630,9 @@ async function startApifyRunWithFallback(
               if (Object.keys(props).length > 0) {
                 const fetchedSchema: Record<string, InputField> = {};
                 for (const [key, val] of Object.entries(props as Record<string, any>)) {
-                  const type = val.type === "array" ? "string[]" : (val.type === "integer" ? "number" : (val.type || "string"));
+                  const type = val.type === "array"
+                    ? (val.items?.type === "object" || val.items?.properties ? "object[]" : "string[]")
+                    : (val.type === "integer" ? "number" : (val.type || "string"));
                   fetchedSchema[key] = { type: type as any, required: false, default: val.default, description: (val.description || key).slice(0, 200) };
                 }
                 backup.inputSchema = fetchedSchema;
@@ -555,7 +641,7 @@ async function startApifyRunWithFallback(
             }
           } catch (e) { console.warn(`Runtime schema fetch failed for ${backup.key}:`, e); }
         }
-        const backupInput = buildGenericInput(backup, input);
+        const backupInput = normalizeInputToSchema(backup, buildGenericInput(backup, input));
         if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
         const result = await startApifyRun(backup, backupInput, token);
         console.log(`Backup actor ${backup.key} started successfully → run ${result.runId}`);
@@ -1341,7 +1427,9 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
           if (Object.keys(props).length > 0) {
             const fetchedSchema: Record<string, InputField> = {};
             for (const [key, val] of Object.entries(props as Record<string, any>)) {
-              const type = val.type === "array" ? "string[]" : (val.type === "integer" ? "number" : (val.type || "string"));
+              const type = val.type === "array"
+                ? (val.items?.type === "object" || val.items?.properties ? "object[]" : "string[]")
+                : (val.type === "integer" ? "number" : (val.type || "string"));
               fetchedSchema[key] = { type: type as any, required: false, default: val.default, description: (val.description || key).slice(0, 200) };
             }
             actor.inputSchema = fetchedSchema;
@@ -1386,7 +1474,7 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         }
       }
 
-      const actorInput = buildGenericInput(actor, input);
+      const actorInput = normalizeInputToSchema(actor, buildGenericInput(actor, input));
       if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
       
       // Log the constructed query for debugging
@@ -1437,7 +1525,7 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         const actorParams = stageDef.params_per_actor?.[actorKey] || {};
         const input: Record<string, any> = { ...actorParams, queries };
 
-        const actorInput = buildGenericInput(actor, input);
+        const actorInput = normalizeInputToSchema(actor, buildGenericInput(actor, input));
         if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
 
         try {
@@ -1616,7 +1704,7 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
           }
         }
 
-        const actorInput = buildGenericInput(actor, input);
+        const actorInput = normalizeInputToSchema(actor, buildGenericInput(actor, input));
         if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
 
         try {
@@ -1731,7 +1819,7 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
               const platform = detectPlatform(actor);
               const actorParams = stageDef.params_per_actor?.[primaryActorKey] || {};
               const correctedQuery = buildPlatformSearchQuery(platform, diagnostic.correctedIntent, actorParams);
-              const correctedInput = buildGenericInput(actor, correctedQuery.params);
+              const correctedInput = normalizeInputToSchema(actor, buildGenericInput(actor, correctedQuery.params));
               if (!correctedInput.proxyConfiguration) correctedInput.proxyConfiguration = { useApifyProxy: true };
               
               try {
@@ -1780,7 +1868,7 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
               const platform = detectPlatform(backup);
               const actorParams = stageDef.params_per_actor?.[(stageDef.actors || [])[0]] || {};
               const platformQuery = buildPlatformSearchQuery(platform, intent, actorParams);
-              const backupInput = buildGenericInput(backup, platformQuery.params);
+              const backupInput = normalizeInputToSchema(backup, buildGenericInput(backup, platformQuery.params));
               if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
               
               try {
@@ -2631,7 +2719,7 @@ async function legacyPhaseStarting(run: any, serviceClient: any) {
       const maxField = Object.keys(actor.inputSchema).find(f => f.toLowerCase().includes("max") || f === "count" || f === "limit");
       if (maxField && !iterPlan.search_params[maxField]) iterPlan.search_params[maxField] = actor.inputSchema[maxField]?.default || 500;
 
-      const actorInput = buildGenericInput(actor, iterPlan.search_params);
+      const actorInput = normalizeInputToSchema(actor, buildGenericInput(actor, iterPlan.search_params));
       if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
 
       try {
