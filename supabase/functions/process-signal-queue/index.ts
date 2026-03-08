@@ -1111,21 +1111,20 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
             input.splitByLocation = false;
             delete input.splitCountry;
           } else if (actor.actorId.includes("indeed") || actor.label.toLowerCase().includes("indeed")) {
-            // Indeed: use role_filter as the title field, industry context separately
-            const titleValue = roleFilter ? keyword : keyword;
+            // Indeed: combine role titles + industry into a single search query for best results
+            const fullQuery = industryContext ? `${keyword} ${industryContext}` : keyword;
             if (hasTitleField) {
-              if (actor.inputSchema["title"]) input.title = titleValue;
-              else if (actor.inputSchema["position"]) input.position = titleValue;
+              if (actor.inputSchema["title"]) input.title = fullQuery;
+              else if (actor.inputSchema["position"]) input.position = fullQuery;
             } else {
-              input.title = input.title || titleValue;
-              input.position = input.position || titleValue;
+              input.title = fullQuery;
+              input.position = fullQuery;
             }
-            // If we have industry context and a dedicated company/industry field, set it
+            // Also set searchQuery if available for broader matching
+            if (actor.inputSchema["searchQuery"]) input.searchQuery = fullQuery;
             if (industryContext) {
               if (actor.inputSchema["company"]) input.company = industryContext;
               else if (actor.inputSchema["employer"]) input.employer = industryContext;
-              // Also try searchQuery for broader context
-              if (actor.inputSchema["searchQuery"]) input.searchQuery = `${industryContext} ${titleValue}`;
             }
           } else if (hasSearchQuery) {
             // Generic job board with search field

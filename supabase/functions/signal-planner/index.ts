@@ -360,17 +360,26 @@ For "ai_filter" stages:
 ## ROLE FILTER vs SEARCH QUERY (CRITICAL for hiring_intent pipelines)
 
 When the user searches for specific job roles at companies in a particular industry:
-- \`search_query\` = the INDUSTRY CONTEXT (e.g., "marketing agency", "SaaS companies")
+- \`search_query\` = the INDUSTRY CONTEXT (broad or narrow, matching user intent)
 - \`role_filter\` = the EXACT JOB TITLES the user wants (e.g., ["SDR", "Sales Representative"])
 
-The processor uses \`role_filter\` as the job title field, and \`search_query\` for industry context.
+The processor combines role_filter titles with search_query industry context into the job search URL.
 
-Example:
+Example 1 (specific business type):
 - User: "Find marketing agencies hiring SDRs"
 - search_query: "marketing agency OR advertising agency"
 - role_filter: ["SDR", "Sales Development Representative", "Sales Representative"]
 
-NEVER combine industry terms with role titles into a single string like "marketing agency SDR".
+Example 2 (broad industry):
+- User: "Find companies in the marketing industry hiring sales reps"
+- search_query: "marketing OR advertising OR digital marketing"
+- role_filter: ["Sales Representative", "Account Executive", "Sales Manager"]
+
+IMPORTANT: Match the user's intent breadth.
+- "Companies in the marketing industry" → use broad industry terms like "marketing OR advertising"
+- "Marketing agencies" → use specific business types like "marketing agency OR advertising agency"
+When the user says "industry" or "companies in X", use BROAD industry terms, NOT specific business types.
+
 If the user does NOT specify particular roles, omit role_filter (null).
 
 ## MANDATORY OUTPUT FIELDS (CRITICAL — EVERY pipeline MUST produce these)
