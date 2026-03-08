@@ -1654,9 +1654,14 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
       }
     } else {
       // Enrichment stage: UPDATE existing leads with enriched data
+      // Support matching by domain OR company name (fallback when domain is missing)
+      const { data: allEnrichLeads } = await serviceClient
+        .from("signal_leads").select("id, company_name, domain").eq("run_id", run.id).limit(10000);
+      const enrichLeads = allEnrichLeads || [];
+      
       for (const item of normalised) {
         const domain = extractDomain(item.website || "");
-        if (!domain) continue;
+        const itemCompanyName = (item.company_name || "").trim().toLowerCase();
 
         const updateData: Record<string, any> = { pipeline_stage: `stage_${stageNum}` };
         const updatesFields = stageDef.updates_fields || [];
@@ -1675,8 +1680,33 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         if (item.description) updateData.website_content = String(item.description).slice(0, 5000);
         if (item.linkedin) updateData.company_linkedin_url = item.linkedin;
 
-        await serviceClient.from("signal_leads").update(updateData)
-          .eq("run_id", run.id).eq("domain", domain);
+        // Primary match: by domain
+        if (domain) {
+          await serviceClient.from("signal_leads").update(updateData)
+            .eq("run_id", run.id).eq("domain", domain);
+        } 
+        // Fallback match: by company name when domain is missing
+        else if (itemCompanyName) {
+          // Find leads matching by exact company name (case-insensitive)
+          const matchingLeads = enrichLeads.filter((l: any) => {
+            const leadName = (l.company_name || "").trim().toLowerCase();
+            return leadName === itemCompanyName;
+          });
+          for (const lead of matchingLeads) {
+            await serviceClient.from("signal_leads").update(updateData).eq("id", lead.id);
+          }
+          // If no exact match, try fuzzy
+          if (matchingLeads.length === 0) {
+            const fuzzyLeads = enrichLeads.filter((l: any) => {
+              const leadName = (l.company_name || "").trim().toLowerCase();
+              return leadName && leadName.length >= 4 && itemCompanyName.length >= 4 && 
+                (leadName.includes(itemCompanyName) || itemCompanyName.includes(leadName));
+            });
+            for (const lead of fuzzyLeads) {
+              await serviceClient.from("signal_leads").update(updateData).eq("id", lead.id);
+            }
+          }
+        }
       }
       console.log(`Stage ${stageNum}: Enriched leads from dataset ${collectedIndex + 1}`);
     }
