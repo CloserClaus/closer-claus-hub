@@ -222,9 +222,16 @@ serve(async (req) => {
       }
     }
 
+    // Append unsubscribe footer if lead_id is provided
+    let finalBody = body;
+    if (lead_id) {
+      const unsubToken = await generateUnsubscribeToken(lead_id);
+      finalBody = appendUnsubscribeFooter(body, lead_id, unsubToken, supabaseUrl);
+    }
+
     // Route to provider handler
     const handler = PROVIDER_HANDLERS[provider.provider_type] || PROVIDER_HANDLERS.other;
-    const payload = { to_email, subject, body, lead_id };
+    const payload = { to_email, subject, body: finalBody, lead_id };
     const result = await handler(inbox, provider, payload);
 
     if (!result.success) {
