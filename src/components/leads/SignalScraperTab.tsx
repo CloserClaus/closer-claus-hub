@@ -1002,9 +1002,14 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
                               <Globe className="h-4 w-4" />
                             </a>
                           )}
-                          {(lead.linkedin_profile_url || lead.linkedin) && (
-                            <a href={(lead.linkedin_profile_url || lead.linkedin || '').startsWith('http') ? (lead.linkedin_profile_url || lead.linkedin || '') : `https://${lead.linkedin_profile_url || lead.linkedin}`} target="_blank" rel="noopener" className="text-muted-foreground hover:text-foreground" title="LinkedIn Profile">
+                          {lead.linkedin_profile_url && (
+                            <a href={lead.linkedin_profile_url.startsWith('http') ? lead.linkedin_profile_url : `https://${lead.linkedin_profile_url}`} target="_blank" rel="noopener" className="text-muted-foreground hover:text-foreground" title="Person Profile">
                               <User className="h-4 w-4" />
+                            </a>
+                          )}
+                          {!lead.linkedin_profile_url && lead.linkedin && !lead.company_linkedin_url && (
+                            <a href={lead.linkedin.startsWith('http') ? lead.linkedin : `https://${lead.linkedin}`} target="_blank" rel="noopener" className="text-muted-foreground hover:text-foreground" title="Company LinkedIn">
+                              <Building2 className="h-4 w-4" />
                             </a>
                           )}
                           {lead.company_linkedin_url && (
