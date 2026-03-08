@@ -89,6 +89,7 @@ export function SignalScraperTab() {
     generatePlan, isGenerating,
     executeSignal, isExecuting,
     deleteSignal,
+    dryRun, isDryRunning,
   } = useSignalScraper();
 
   const { credits } = useLeadCredits();

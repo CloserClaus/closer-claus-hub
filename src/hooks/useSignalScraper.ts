@@ -224,6 +224,21 @@ export function useSignalScraper() {
     },
   });
 
+  const dryRunMutation = useMutation({
+    mutationFn: async (runId: string) => {
+      if (!currentWorkspace?.id) throw new Error('No workspace selected');
+      const { data, error } = await supabase.functions.invoke('signal-planner', {
+        body: { action: 'dry_run', run_id: runId, workspace_id: currentWorkspace.id },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onError: (error: any) => {
+      toast({ title: 'Dry Run Failed', description: error.message, variant: 'destructive' });
+    },
+  });
+
   return {
     currentPlan,
     setCurrentPlan,
@@ -235,5 +250,7 @@ export function useSignalScraper() {
     isExecuting: executeSignalMutation.isPending,
     useSignalLeads,
     deleteSignal: deleteSignalMutation.mutate,
+    dryRun: dryRunMutation.mutateAsync,
+    isDryRunning: dryRunMutation.isPending,
   };
 }
