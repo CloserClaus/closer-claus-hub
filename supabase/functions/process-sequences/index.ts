@@ -259,7 +259,19 @@ serve(async (req) => {
         };
 
         const subject = replaceVars(currentStep.subject);
-        const body = replaceVars(currentStep.body);
+        let body = replaceVars(currentStep.body);
+
+        // Append unsubscribe footer
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const encoder = new TextEncoder();
+        const hmacKey = await crypto.subtle.importKey(
+          'raw', encoder.encode(serviceKey),
+          { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+        );
+        const sig = await crypto.subtle.sign('HMAC', hmacKey, encoder.encode(fup.lead_id));
+        const unsubToken = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+        const unsubUrl = `${supabaseUrl}/functions/v1/unsubscribe?lead_id=${fup.lead_id}&token=${unsubToken}`;
+        body += `\n\n---\nIf you no longer wish to receive these emails, click here to unsubscribe: ${unsubUrl}`;
 
         // Random delay (stagger)
         const minDelay = settings?.random_delay_min_seconds ?? 45;
