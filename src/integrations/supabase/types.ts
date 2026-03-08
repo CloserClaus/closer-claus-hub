@@ -3323,6 +3323,7 @@ export type Database = {
       signal_runs: {
         Row: {
           actual_cost: number | null
+          advanced_settings: Json | null
           apify_run_ids: Json | null
           collected_dataset_index: number | null
           created_at: string
@@ -3353,6 +3354,7 @@ export type Database = {
         }
         Insert: {
           actual_cost?: number | null
+          advanced_settings?: Json | null
           apify_run_ids?: Json | null
           collected_dataset_index?: number | null
           created_at?: string
@@ -3383,6 +3385,7 @@ export type Database = {
         }
         Update: {
           actual_cost?: number | null
+          advanced_settings?: Json | null
           apify_run_ids?: Json | null
           collected_dataset_index?: number | null
           created_at?: string

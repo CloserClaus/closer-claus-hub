@@ -1,35 +1,16 @@
 
 
-# Fix: Persist Advanced Settings Through the Pipeline
+## Fix: Empty String SelectItem Value in BulkAssignDialog
 
-## Problem
-Advanced settings (max results per source, date range, AI strictness) are used during plan generation to shape the AI prompt and cap actor params, but they are **never saved** to the database. The `signal_runs` table lacks an `advanced_settings` column, so `process-signal-queue` always falls back to defaults.
+**Problem**: `src/components/crm/BulkAssignDialog.tsx` line 264 has `<SelectItem value="">All tags (distribute equally)</SelectItem>`. Radix UI's Select component does not allow empty string values on SelectItem — it's reserved for clearing the selection.
 
-## Fix
+**Fix**: Change the empty string value to `"all"` and update the logic that checks for this value.
 
-### 1. Add `advanced_settings` column to `signal_runs`
-Create a database migration:
-```sql
-ALTER TABLE public.signal_runs 
-ADD COLUMN IF NOT EXISTS advanced_settings jsonb DEFAULT '{}';
-```
+### Changes in `src/components/crm/BulkAssignDialog.tsx`
 
-### 2. Update the INSERT in `signal-planner/index.ts`
-Re-add `advanced_settings` to the insert statement (line ~1115) now that the column exists:
-```typescript
-.insert({
-  ...existing fields,
-  advanced_settings: advanced_settings || {},
-})
-```
+1. Change `<SelectItem value="">` to `<SelectItem value="all">` (line 264)
+2. Update the state initialization for the tag filter from `""` to `"all"` 
+3. Update any conditional logic that checks `=== ""` to check `=== "all"` instead
 
-### 3. No changes needed in `process-signal-queue`
-It already reads `run.advanced_settings` at lines 392 and 1492 — once the column exists and is populated, those reads will return real values instead of `{}`.
-
-## Files Modified
-- Database migration (new column)
-- `supabase/functions/signal-planner/index.ts` — 1 line added to INSERT
-
-## Estimated size
-~5 lines changed
+Single file, ~3 lines changed.
 
