@@ -1760,6 +1760,37 @@ async function pipelineFinalize(run: any, serviceClient: any) {
     }
   }
 
+  // ── Mandatory field coverage check ──
+  const MANDATORY_FIELDS = ["contact_name", "industry", "website", "company_linkedin_url", "linkedin_profile_url", "employee_count"];
+  const { data: coverageSample } = await serviceClient
+    .from("signal_leads").select("contact_name, industry, website, company_linkedin_url, linkedin_profile_url, employee_count")
+    .eq("run_id", run.id).limit(200);
+
+  if (coverageSample && coverageSample.length > 0) {
+    const fieldGaps: string[] = [];
+    const fieldCoverage: Record<string, number> = {};
+    for (const field of MANDATORY_FIELDS) {
+      const count = coverageSample.filter((l: any) => l[field] && l[field] !== "").length;
+      const pct = Math.round((count / coverageSample.length) * 100);
+      fieldCoverage[field] = pct;
+      if (pct < 30) {
+        fieldGaps.push(field);
+      }
+    }
+    if (fieldGaps.length > 0) {
+      console.log(`Pipeline ${run.id}: Field gaps detected (<30% coverage): ${fieldGaps.join(", ")}. Coverage: ${JSON.stringify(fieldCoverage)}`);
+      // Store field_gaps on the run for UI display
+      await serviceClient.from("signal_runs").update({
+        pipeline_adjustments: [...(run.pipeline_adjustments || []), {
+          type: "field_gap_warning",
+          field_gaps: fieldGaps,
+          field_coverage: fieldCoverage,
+          timestamp: new Date().toISOString(),
+        }],
+      }).eq("id", run.id);
+    }
+  }
+
   // Workspace dedup
   const { data: finalLeads } = await serviceClient
     .from("signal_leads").select("*").eq("run_id", run.id).limit(10000);
@@ -1865,11 +1896,17 @@ async function pipelineFinalize(run: any, serviceClient: any) {
 
   if (run.user_id) {
     const adjustments = run.pipeline_adjustments || [];
-    const adjustmentNote = adjustments.length > 0 ? ` Pipeline was adapted ${adjustments.length} time(s) during execution.` : "";
+    const fieldGapAdj = adjustments.find((a: any) => a.type === "field_gap_warning");
+    const adjustmentNote = adjustments.filter((a: any) => a.type !== "field_gap_warning").length > 0 
+      ? ` Pipeline was adapted ${adjustments.filter((a: any) => a.type !== "field_gap_warning").length} time(s) during execution.` 
+      : "";
+    const fieldGapNote = fieldGapAdj 
+      ? ` Note: Some fields have low coverage: ${fieldGapAdj.field_gaps.join(", ")}.` 
+      : "";
     await serviceClient.from("notifications").insert({
       user_id: run.user_id, workspace_id: run.workspace_id,
       type: "signal_complete", title: "Signal Complete!",
-      message: `Your signal "${run.signal_name || run.signal_query}" completed ${pipeline.length} stages and found ${leadsCount} leads. ${actualCredits} credits charged.${adjustmentNote}`,
+      message: `Your signal "${run.signal_name || run.signal_query}" completed ${pipeline.length} stages and found ${leadsCount} leads. ${actualCredits} credits charged.${adjustmentNote}${fieldGapNote}`,
     });
   }
 
