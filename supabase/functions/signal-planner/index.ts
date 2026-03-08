@@ -1287,6 +1287,99 @@ async function handleGeneratePlan(
 }
 
 // ════════════════════════════════════════════════════════════════
+// ██  STRICT PLAN SCHEMA VALIDATION & AUTO-FIX
+// ════════════════════════════════════════════════════════════════
+
+interface PlanValidation {
+  critical: string[];   // Must fix or reject
+  warnings: string[];   // Logged but not blocking
+}
+
+function validatePlanSchema(plan: any, userQuery: string): PlanValidation {
+  const critical: string[] = [];
+  const warnings: string[] = [];
+  const pipeline = plan.pipeline || [];
+
+  if (!pipeline || !Array.isArray(pipeline) || pipeline.length === 0) {
+    critical.push("Pipeline is empty or missing");
+    return { critical, warnings };
+  }
+
+  // 1. Stage 1 must be a scrape with no input_from
+  const stage1 = pipeline[0];
+  if (!stage1) { critical.push("No stage 1"); return { critical, warnings }; }
+  if (stage1.type !== "scrape") critical.push("Stage 1 must be type 'scrape'");
+  if (stage1.input_from) critical.push("Stage 1 must not have input_from");
+  if (!stage1.stage_category && !stage1.actors?.length) critical.push("Stage 1 has no stage_category or actors");
+
+  // 2. Every scrape stage must have stage_category or actors
+  for (const stage of pipeline) {
+    if (stage.type === "scrape" && !stage.stage_category && (!stage.actors || stage.actors.length === 0)) {
+      critical.push(`Stage ${stage.stage}: scrape stage has no stage_category or actors`);
+    }
+    if (stage.type === "ai_filter" && !stage.prompt) {
+      critical.push(`Stage ${stage.stage}: ai_filter stage has no prompt`);
+    }
+  }
+
+  // 3. For hiring_intent: verify search_query contains industry context from user query
+  if (stage1.stage_category?.startsWith("hiring_intent")) {
+    const searchQuery = (stage1.search_query || "").toLowerCase();
+    const roleFilter = stage1.role_filter;
+    
+    if (roleFilter && roleFilter.length > 0 && !searchQuery) {
+      critical.push("Hiring intent with role_filter but empty search_query (missing industry context)");
+    }
+  }
+
+  // 4. Stages must have sequential numbers
+  for (let i = 0; i < pipeline.length; i++) {
+    if (pipeline[i].stage !== i + 1) {
+      warnings.push(`Stage numbering gap: expected ${i + 1}, got ${pipeline[i].stage}`);
+    }
+  }
+
+  return { critical, warnings };
+}
+
+function autoFixPlan(plan: any, userQuery: string, validation: PlanValidation): any {
+  const fixed = JSON.parse(JSON.stringify(plan));
+  const pipeline = fixed.pipeline || [];
+
+  // Fix stage numbering
+  for (let i = 0; i < pipeline.length; i++) {
+    pipeline[i].stage = i + 1;
+  }
+
+  // Fix missing industry context in hiring_intent search_query
+  const stage1 = pipeline[0];
+  if (stage1?.stage_category?.startsWith("hiring_intent") && stage1.role_filter?.length > 0 && !stage1.search_query) {
+    // Extract industry terms from user query
+    const industries = inferQueryIndustry(userQuery);
+    if (industries.length > 0) {
+      stage1.search_query = industries.join(" OR ");
+      console.log(`Auto-fix: Set search_query to "${stage1.search_query}" from user query industry`);
+    } else {
+      // Use the full user query minus role-like words as industry context
+      const roleWords = new Set((stage1.role_filter || []).flatMap((r: string) => r.toLowerCase().split(/\s+/)));
+      const queryWords = userQuery.split(/\s+/).filter(w => !roleWords.has(w.toLowerCase()) && w.length > 2);
+      stage1.search_query = queryWords.join(" ");
+      console.log(`Auto-fix: Derived search_query "${stage1.search_query}" from user query`);
+    }
+  }
+
+  // Fix missing ai_filter prompts
+  for (const stage of pipeline) {
+    if (stage.type === "ai_filter" && !stage.prompt) {
+      stage.prompt = `Does this company match the user's search: "${userQuery}"? Only accept if clearly relevant.`;
+    }
+  }
+
+  fixed.pipeline = pipeline;
+  return fixed;
+}
+
+// ════════════════════════════════════════════════════════════════
 // ██  HELPER FUNCTIONS — Query parsing, actor discovery, validation
 // ════════════════════════════════════════════════════════════════
 
