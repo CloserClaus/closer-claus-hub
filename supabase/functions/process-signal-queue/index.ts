@@ -1228,9 +1228,51 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         const input: Record<string, any> = { ...actorParams };
 
         const hasSchema = Object.keys(actor.inputSchema).length > 0;
+        const schemaKeys = Object.keys(actor.inputSchema);
 
-        // Determine how to pass the batch to this actor
-        if (hasSchema) {
+        // For people_data with structured mode: build proper structured params
+        if (actor.category === "people_data" && peopleSearchMode === "structured") {
+          const parsedEntries = batch.map(v => { try { return JSON.parse(v); } catch { return null; } }).filter(Boolean);
+          
+          // Find the best schema fields for company and title
+          const companyField = schemaKeys.find((k: string) => /^company$|^organization$|^employer$/i.test(k)) 
+            || schemaKeys.find((k: string) => /company|organization|employer/i.test(k));
+          const titleField = schemaKeys.find((k: string) => /^title$|^position$|^role$/i.test(k))
+            || schemaKeys.find((k: string) => /title|position|role|headline/i.test(k));
+          const searchField = schemaKeys.find((k: string) => /^search$|^query$|^keyword$|^keywords$/i.test(k))
+            || schemaKeys.find((k: string) => /search|query|keyword/i.test(k));
+          
+          if (companyField || titleField) {
+            // Actor supports structured company/title — pass as search queries
+            const queries = parsedEntries.map((e: any) => `${e.titles} ${e.company}`);
+            if (companyField && titleField) {
+              // Best case: separate fields
+              input[companyField] = parsedEntries.map((e: any) => e.company);
+              input[titleField] = parsedEntries[0]?.titles || "";
+            } else if (searchField) {
+              input[searchField] = queries.join("\n");
+            }
+            // Also provide URLs as fallback
+            if (actor.inputSchema["startUrls"]) {
+              input.startUrls = parsedEntries.map((e: any) => ({
+                url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(e.titles)}%20${encodeURIComponent(e.company)}`
+              }));
+            }
+          } else if (searchField) {
+            input[searchField] = parsedEntries.map((e: any) => `${e.titles} ${e.company}`);
+          } else {
+            // Fallback to URL mode even in structured mode
+            input.startUrls = parsedEntries.map((e: any) => ({
+              url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(e.titles)}%20${encodeURIComponent(e.company)}`
+            }));
+            input.urls = parsedEntries.map((e: any) => 
+              `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(e.titles)}%20${encodeURIComponent(e.company)}`
+            );
+          }
+          console.log(`Stage ${stageNum}: Built structured people input — companyField: ${companyField}, titleField: ${titleField}, searchField: ${searchField}`);
+        }
+        // Determine how to pass the batch to this actor (non-people or URL mode people)
+        else if (hasSchema) {
           if (actor.inputSchema["startUrls"]) {
             input.startUrls = batch.map(url => ({ url }));
           } else if (actor.inputSchema["profileUrls"]) {
