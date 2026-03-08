@@ -297,31 +297,40 @@ export function SignalScraperTab() {
               No signals yet. Describe the leads you want above to get started.
             </p>
           ) : (
-            <div className="relative w-full overflow-auto">
-              <table className="w-full caption-bottom text-sm">
-                <thead className="[&_tr]:border-b">
-                  <tr className="border-b transition-colors">
-                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Signal</th>
-                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">Status</th>
-                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden sm:table-cell">Leads</th>
-                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden lg:table-cell">Credits</th>
-                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">Run</th>
-                    <th className="h-10 px-3 text-right align-middle font-medium text-muted-foreground">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="[&_tr:last-child]:border-0">
-                  {signalHistory.map((run) => (
-                    <SignalHistoryRow
-                      key={run.id}
-                      run={run}
-                      onView={() => setViewingRunId(run.id)}
-                      onRerun={() => handleRerun(run)}
-                      onDelete={() => deleteSignal(run.id)}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="relative w-full overflow-auto">
+                <table className="w-full caption-bottom text-sm">
+                  <thead className="[&_tr]:border-b">
+                    <tr className="border-b transition-colors">
+                      <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Signal</th>
+                      <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">Status</th>
+                      <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden sm:table-cell">Leads</th>
+                      <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden lg:table-cell">Credits</th>
+                      <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">Run</th>
+                      <th className="h-10 px-3 text-right align-middle font-medium text-muted-foreground">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="[&_tr:last-child]:border-0">
+                    {signalHistory
+                      .slice((historyPage - 1) * PAGE_SIZE, historyPage * PAGE_SIZE)
+                      .map((run) => (
+                        <SignalHistoryRow
+                          key={run.id}
+                          run={run}
+                          onView={() => setViewingRunId(run.id)}
+                          onRerun={() => handleRerun(run)}
+                          onDelete={() => deleteSignal(run.id)}
+                        />
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              <CRMPagination
+                currentPage={historyPage}
+                totalPages={Math.ceil(signalHistory.length / PAGE_SIZE)}
+                onPageChange={setHistoryPage}
+              />
+            </>
           )}
         </CardContent>
       </Card>
