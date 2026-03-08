@@ -1198,7 +1198,7 @@ async function handleGeneratePlan(
 
   // Inject advanced settings
   if (advanced_settings) {
-    const maxResults = advanced_settings.max_results_per_source || 2500;
+    const maxResults = advanced_settings.max_results_per_source || 500;
     const dateRange = advanced_settings.date_range || "past_week";
     const strictness = advanced_settings.ai_strictness || "medium";
 
