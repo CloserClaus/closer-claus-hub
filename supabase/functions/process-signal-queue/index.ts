@@ -569,6 +569,36 @@ Return a JSON array of replacement stages (with correct stage numbers continuing
     const newStages = Array.isArray(parsed) ? parsed : parsed.pipeline || [];
     if (newStages.length === 0) return null;
 
+    // Post-reconfiguration validation: ensure person-enrichment wasn't dropped
+    const originalHadPersonEnrichment = remainingStages.some((s: any) => 
+      s.name?.toLowerCase().includes("decision maker") || 
+      s.name?.toLowerCase().includes("people") || 
+      s.name?.toLowerCase().includes("person") ||
+      (s.type === "scrape" && s.actors?.some((a: string) => a.toLowerCase().includes("people") || a.toLowerCase().includes("person")))
+    );
+    const newHasPersonEnrichment = newStages.some((s: any) => 
+      s.name?.toLowerCase().includes("decision maker") || 
+      s.name?.toLowerCase().includes("people") || 
+      s.name?.toLowerCase().includes("person") ||
+      (s.type === "scrape" && s.actors?.some((a: string) => a.toLowerCase().includes("people") || a.toLowerCase().includes("person")))
+    );
+    
+    if (originalHadPersonEnrichment && !newHasPersonEnrichment && fieldCoverage["company_name"] >= 30) {
+      console.log("Person-enrichment stage was dropped during reconfiguration — re-injecting");
+      const lastStageNum = newStages.length > 0 ? Math.max(...newStages.map((s: any) => s.stage || 0)) : currentStage;
+      newStages.push({
+        stage: lastStageNum + 1,
+        name: "Identify Decision Makers",
+        type: "scrape",
+        actors: remainingStages.find((s: any) => s.name?.toLowerCase().includes("decision maker") || s.name?.toLowerCase().includes("people"))?.actors || ["linkedin_people"],
+        input_from: "company_name",
+        search_titles: ["CEO", "Founder", "Owner", "Managing Director", "VP Sales", "Head of Sales"],
+        dedup_after: false,
+        updates_fields: ["contact_name", "linkedin_profile_url", "title"],
+        expected_output_count: Math.min((sampleLeads?.length || 50), 200),
+      });
+    }
+
     return newStages;
   } catch (err) {
     console.warn("Pipeline reconfiguration failed:", err);

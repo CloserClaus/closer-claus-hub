@@ -1048,6 +1048,32 @@ async function handleGeneratePlan(
     systemPrompt += `- Filtering strictness: ${strictnessMap[strictness] || strictnessMap.medium}\n`;
   }
 
+  // Inject plan_override hints from templates
+  if (plan_override) {
+    systemPrompt += `\n\n## TEMPLATE HINTS (from plan_override — follow these instructions)\n`;
+    if (plan_override.ai_filter_instruction) {
+      systemPrompt += `- AI FILTER REQUIREMENT: ${plan_override.ai_filter_instruction}\n`;
+    }
+    if (plan_override.pipeline_hints) {
+      systemPrompt += `- PIPELINE HINTS: ${plan_override.pipeline_hints}\n`;
+    }
+    if (plan_override.person_enrichment) {
+      systemPrompt += `- PERSON ENRICHMENT: ${plan_override.person_enrichment}\n`;
+    }
+    // Pass any extra string hints
+    if (typeof plan_override === "string") {
+      systemPrompt += `- ${plan_override}\n`;
+    }
+  }
+
+  // Add job-title relevance instruction for ai_filter stages
+  systemPrompt += `\n\n## AI FILTER: JOB-TITLE RELEVANCE (CRITICAL)
+When the user's query specifies particular job roles (e.g., "SDR", "Sales Representative", "marketing manager"), your ai_filter stage prompt MUST include explicit job-title relevance checking:
+- The filter prompt must instruct the AI to REJECT leads where the scraped job title does NOT match the user's intended roles.
+- Example: if the user searches for "companies hiring SDRs", the filter must reject "Marketing Specialist", "Paid Social Specialist", etc. — only keep "SDR", "Sales Representative", "Business Development Representative", "Account Executive", and close variants.
+- Include the specific role keywords from the user's query in the ai_filter prompt so the AI knows exactly which titles to accept.
+`;
+
   // Enrich user query with parsed context so the AI doesn't have to re-derive intent
   const parsedIndustryTerms = inferQueryIndustry(query);
   const geographyTerms = extractGeography(query);
