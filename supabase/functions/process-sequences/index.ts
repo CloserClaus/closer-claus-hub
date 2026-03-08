@@ -372,10 +372,12 @@ serve(async (req) => {
             } as any);
           }
 
-          // Increment sends_today
-          await supabase.from('email_inboxes')
-            .update({ sends_today: (inboxData.sends_today || 0) + 1 } as any)
-            .eq('id', inboxId);
+          // Increment sends_today atomically
+          await supabase.rpc('increment_inbox_sends_today' as any, { p_inbox_id: inboxId }).catch(async () => {
+            await supabase.from('email_inboxes')
+              .update({ sends_today: (inboxData.sends_today || 0) + 1 } as any)
+              .eq('id', inboxId);
+          });
 
           // Update lead
           await supabase.from('leads')
