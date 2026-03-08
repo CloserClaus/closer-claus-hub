@@ -62,6 +62,69 @@ const VERIFIED_ACTOR_CATALOG: Record<string, { actorId: string; category: string
   "enrichment:contact": { actorId: "alexey/contact-info-scraper", category: "enrichment", subCategory: "enrichment:contact", label: "Website Contact Info Scraper", inputSchema: { startUrls: { type: "string[]", required: true, description: "Website URLs to scrape contacts from" }, maxRequestsPerStartUrl: { type: "number", required: false, default: 5, description: "Max pages per site" } }, outputFields: { email: ["emails", "email"], phone: ["phones", "phone", "phoneNumbers"], linkedin: ["linkedIn", "linkedin"], website: ["url"] } },
 };
 
+// ── Runtime Schema Authority — always fetch live schema, cache in-memory ──
+const _runtimeSchemaCache = new Map<string, Record<string, InputField>>();
+
+async function fetchAndMergeRuntimeSchema(actor: ActorEntry, token: string): Promise<void> {
+  const cacheKey = actor.actorId;
+
+  // Return cached result if available
+  if (_runtimeSchemaCache.has(cacheKey)) {
+    const cached = _runtimeSchemaCache.get(cacheKey)!;
+    // Merge: runtime types override hardcoded, but keep hardcoded fields as fallback
+    const merged: Record<string, InputField> = { ...(actor.inputSchema || {}) };
+    for (const [key, val] of Object.entries(cached)) {
+      merged[key] = { ...(merged[key] || {}), ...val, type: val.type }; // runtime type always wins
+    }
+    actor.inputSchema = merged;
+    return;
+  }
+
+  try {
+    const actorIdEncoded = actor.actorId.replace("/", "~");
+    const schemaResp = await fetch(
+      `https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${token}`,
+      { method: "GET" }
+    );
+    if (!schemaResp.ok) {
+      console.warn(`Runtime schema fetch returned ${schemaResp.status} for ${actor.actorId}, using catalog fallback`);
+      return;
+    }
+    const schemaData = await schemaResp.json();
+    const props = schemaData.properties || schemaData.data?.properties || {};
+    if (Object.keys(props).length === 0) {
+      console.warn(`Runtime schema for ${actor.actorId} has no properties, using catalog fallback`);
+      return;
+    }
+
+    const fetchedSchema: Record<string, InputField> = {};
+    for (const [key, val] of Object.entries(props as Record<string, any>)) {
+      const type = val.type === "array"
+        ? (val.items?.type === "object" || val.items?.properties ? "object[]" : "string[]")
+        : (val.type === "integer" ? "number" : (val.type || "string"));
+      fetchedSchema[key] = {
+        type: type as any,
+        required: false,
+        default: val.default,
+        description: (val.description || key).slice(0, 200),
+      };
+    }
+
+    // Cache the fetched schema
+    _runtimeSchemaCache.set(cacheKey, fetchedSchema);
+    console.log(`Runtime schema fetched for ${actor.actorId}: ${Object.keys(fetchedSchema).length} fields`);
+
+    // Merge: runtime types override hardcoded, keep hardcoded fields as fallback
+    const merged: Record<string, InputField> = { ...(actor.inputSchema || {}) };
+    for (const [key, val] of Object.entries(fetchedSchema)) {
+      merged[key] = { ...(merged[key] || {}), ...val, type: val.type };
+    }
+    actor.inputSchema = merged;
+  } catch (e) {
+    console.warn(`Runtime schema fetch failed for ${actor.actorId}, using catalog fallback:`, e);
+  }
+}
+
 function resolveVerifiedActor(stageCategory: string): ActorEntry | null {
   const v = VERIFIED_ACTOR_CATALOG[stageCategory];
   if (!v) return null;
