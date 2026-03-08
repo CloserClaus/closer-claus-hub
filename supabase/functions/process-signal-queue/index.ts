@@ -1311,7 +1311,13 @@ async function advancePipelineStage(run: any, currentStage: number, pipeline: an
 // ── Pipeline: Validation ──
 
 async function pipelineValidating(run: any, stageDef: any, stageNum: number, pipeline: any[], serviceClient: any) {
-  const qualityResult = await qualityCheckStage(run, stageNum, stageDef, pipeline, serviceClient);
+  let qualityResult: { quality: string; reason: string; suggestedAction: string; reconfiguredPipeline?: any[] };
+  try {
+    qualityResult = await qualityCheckStage(run, stageNum, stageDef, pipeline, serviceClient);
+  } catch (err) {
+    console.warn(`Stage ${stageNum} quality check threw error, defaulting to MEDIUM:`, err);
+    qualityResult = { quality: "MEDIUM", reason: "Quality check threw an error, proceeding cautiously", suggestedAction: "continue" };
+  }
   console.log(`Stage ${stageNum} quality: ${qualityResult.quality} — ${qualityResult.reason}`);
 
   const adjustments = [...(run.pipeline_adjustments || []), {
