@@ -1525,7 +1525,7 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         const actorParams = stageDef.params_per_actor?.[actorKey] || {};
         const input: Record<string, any> = { ...actorParams, queries };
 
-        const actorInput = buildGenericInput(actor, input);
+        const actorInput = normalizeInputToSchema(actor, buildGenericInput(actor, input));
         if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
 
         try {
