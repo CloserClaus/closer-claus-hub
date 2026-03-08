@@ -906,6 +906,10 @@ serve(async (req) => {
       return await handleCheckPlanStatus(body, supabaseClient);
     }
 
+    if (action === "advance_plan") {
+      return await handleCheckPlanStatus(body, supabaseClient);
+    }
+
     if (action === "execute_signal") {
       return await handleExecuteSignal(body, supabaseClient);
     }
