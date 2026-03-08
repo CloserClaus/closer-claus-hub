@@ -89,6 +89,7 @@ export function SignalScraperTab() {
     generatePlan, isGenerating,
     executeSignal, isExecuting,
     deleteSignal,
+    dryRun, isDryRunning,
   } = useSignalScraper();
 
   const { credits } = useLeadCredits();
@@ -341,6 +342,11 @@ export function SignalScraperTab() {
         onCancel={() => setCurrentPlan(null)}
         isExecuting={isExecuting}
         credits={credits}
+        onDryRun={async () => {
+          const result = await dryRun(currentPlan.run_id);
+          return result;
+        }}
+        isDryRunning={isDryRunning}
       />}
 
       {/* Results for a specific run */}
@@ -418,7 +424,7 @@ export function SignalScraperTab() {
 
 // ── Pipeline Plan Display ──
 
-function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExecute, onCancel, isExecuting, credits }: {
+function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExecute, onCancel, isExecuting, credits, onDryRun, isDryRunning }: {
   currentPlan: { run_id: string; plan: any; estimation: any; warnings?: string[]; data_flow_fixes?: string[] };
   scheduleType: string;
   setScheduleType: (v: 'once' | 'daily' | 'weekly') => void;
@@ -426,6 +432,8 @@ function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExe
   onCancel: () => void;
   isExecuting: boolean;
   credits: number;
+  onDryRun: () => Promise<any>;
+  isDryRunning: boolean;
 }) {
   const plan = currentPlan?.plan;
   const estimation = currentPlan?.estimation || {};
@@ -449,6 +457,7 @@ function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExe
             scheduleType={scheduleType} setScheduleType={setScheduleType}
             onExecute={onExecute} onCancel={onCancel} isExecuting={isExecuting}
             credits={credits} creditsNeeded={estimation.credits_to_charge}
+            onDryRun={onDryRun} isDryRunning={isDryRunning}
           />
         </CardContent>
       </Card>
@@ -571,6 +580,7 @@ function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExe
           scheduleType={scheduleType} setScheduleType={setScheduleType}
           onExecute={onExecute} onCancel={onCancel} isExecuting={isExecuting}
           credits={credits} creditsNeeded={estimation.credits_to_charge}
+          onDryRun={onDryRun} isDryRunning={isDryRunning}
         />
       </CardContent>
     </Card>
@@ -600,11 +610,25 @@ function LegacyPlanStats({ estimation }: { estimation: any }) {
   );
 }
 
-function PlanActions({ scheduleType, setScheduleType, onExecute, onCancel, isExecuting, credits, creditsNeeded }: {
+function PlanActions({ scheduleType, setScheduleType, onExecute, onCancel, isExecuting, credits, creditsNeeded, onDryRun, isDryRunning }: {
   scheduleType: string; setScheduleType: (v: 'once' | 'daily' | 'weekly') => void;
   onExecute: () => void; onCancel: () => void; isExecuting: boolean;
   credits: number; creditsNeeded: number;
+  onDryRun: () => Promise<any>; isDryRunning: boolean;
 }) {
+  const [dryRunResult, setDryRunResult] = useState<any>(null);
+  const [dryRunOpen, setDryRunOpen] = useState(false);
+
+  const handleDryRun = async () => {
+    try {
+      const result = await onDryRun();
+      setDryRunResult(result);
+      setDryRunOpen(true);
+    } catch {
+      // error handled by hook toast
+    }
+  };
+
   return (
     <>
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -620,6 +644,13 @@ function PlanActions({ scheduleType, setScheduleType, onExecute, onCancel, isExe
           </RadioGroup>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleDryRun} disabled={isDryRunning}>
+            {isDryRunning ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Simulating...</>
+            ) : (
+              <><FileText className="h-4 w-4" /> Dry Run</>
+            )}
+          </Button>
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
           <Button onClick={onExecute} disabled={isExecuting || credits < creditsNeeded}>
             {isExecuting ? (
@@ -635,6 +666,33 @@ function PlanActions({ scheduleType, setScheduleType, onExecute, onCancel, isExe
           Insufficient credits. You need {creditsNeeded - credits} more credits.
         </p>
       )}
+
+      <Dialog open={dryRunOpen} onOpenChange={setDryRunOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Dry Run — Actor Inputs Preview
+            </DialogTitle>
+            <DialogDescription>
+              These are the exact inputs that would be sent to each actor. No scrape was executed.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            <pre className="text-xs bg-muted p-4 rounded-lg overflow-auto whitespace-pre-wrap break-all font-mono">
+              {dryRunResult ? JSON.stringify(dryRunResult, null, 2) : 'Loading...'}
+            </pre>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => {
+              navigator.clipboard.writeText(JSON.stringify(dryRunResult, null, 2));
+            }}>
+              <Download className="h-4 w-4 mr-1" /> Copy JSON
+            </Button>
+            <Button variant="outline" onClick={() => setDryRunOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
