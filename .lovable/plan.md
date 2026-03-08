@@ -1,32 +1,49 @@
 
 
-# Replace Signal Scraper Templates with Marketing Agency Signal Templates
+# Make Signal Templates Viable with Apify + AI Filtering Stack
 
-## Current State
-The `signal_templates` table has 3 templates focused on general sales/SDR hiring. Need to replace them with templates that track signals useful specifically for **marketing agencies** looking for clients.
+## Problem
+The 6 marketing templates have `query_template` values written as Google search operators (`site:linkedin.com/jobs`, `site:google.com/maps "1 star"`, etc.), but they're used as **natural language prompts** for the AI pipeline planner. This causes two failures:
+
+1. **Actor discovery misses**: `extractComprehensiveSearchTerms()` doesn't have keyword triggers for "review", "e-commerce", "shopify", "funded", "crunchbase", "social media", "traffic", "new business", etc. — so the planner can't find relevant Apify actors.
+2. **AI confusion**: The planner AI receives Google search syntax instead of a clear intent description, leading to poor pipeline designs.
 
 ## Plan
 
-### Database Migration: Replace all 3 existing templates
+### 1. Rewrite all 6 `query_template` values (DB update)
 
-Delete existing templates and insert new ones tailored to marketing agency prospecting signals:
+Replace Google-search-operator queries with clear natural language that the AI planner can reason about and that `extractComprehensiveSearchTerms` can parse:
 
-1. **"Businesses Hiring for Marketing Roles"** — Companies posting marketing manager/coordinator/CMO jobs signal they're investing in growth but may need agency help. (`hiring_intent`, icon: `Briefcase`)
+| Template | Current (broken) | New (viable) |
+|---|---|---|
+| Hiring for Marketing Roles | `site:linkedin.com/jobs OR site:indeed.com "marketing manager"...` | `Find companies hiring marketing managers, marketing coordinators, or CMO roles {{location}}` |
+| New Businesses Without Websites | `"new business" OR "just launched"...` | `Find new local businesses recently opened or registered that may need a website {{location}} {{industry}}` |
+| Poor Google Reviews | `site:google.com/maps "1 star"...` | `Find local businesses on Google Maps with low ratings or few reviews {{location}} {{industry}}` |
+| Hiring but No Social Media | `site:indeed.com... -site:instagram.com...` | `Find companies posting job ads on job boards {{industry}} {{location}}` |
+| E-commerce Low Traffic | `site:shopify.com OR "powered by WooCommerce"...` | `Find e-commerce stores and online shops on Shopify or WooCommerce {{industry}} {{location}}` |
+| Recently Funded | `"raised" OR "funding round"... site:crunchbase.com` | `Find startups and companies that recently raised funding or completed a funding round {{industry}} {{location}}` |
 
-2. **"New Businesses Without Websites"** — Recently registered businesses or startups that lack a web presence — prime prospects for web design, SEO, and branding services. (`discovery`, icon: `Search`)
+### 2. Add missing keyword triggers in `extractComprehensiveSearchTerms()` (signal-planner edge function)
 
-3. **"Local Businesses with Poor Google Reviews"** — Businesses with low review counts or poor ratings need reputation management, local SEO, and digital marketing help. (`discovery`, icon: `MapPin`)
+Add these new keyword → search term mappings so the right Apify actors get discovered:
 
-4. **"Companies Running Job Ads but No Social Media"** — Businesses actively hiring (growth signal) but with minimal social media presence — need social media marketing, content, and brand awareness services. (`discovery`, icon: `Zap`)
+```text
+"review" / "rating"       → "google maps scraper", "review scraper"
+"ecommerce" / "shopify"   → "shopify scraper", "ecommerce scraper"
+"funded" / "funding"      → "crunchbase scraper", "startup scraper"
+"social media"            → "social media scraper", "instagram scraper"
+"new business" / "opened" → "google maps scraper", "business directory"
+"traffic" / "seo"         → "website crawler", "seo scraper"
+```
 
-5. **"E-commerce Stores with Low Traffic"** — Online stores that are underperforming in search/traffic — signals need for SEO, PPC, email marketing, or conversion optimization. (`discovery`, icon: `Rocket`)
+### 3. Add `plan_override` hints for complex templates (DB update)
 
-6. **"Businesses Recently Funded"** — Startups/companies that recently raised funding often allocate budget to marketing — ideal time to pitch agency services. (`discovery`, icon: `Sparkles`)
+For templates requiring multi-step logic that the AI might miss, add `plan_override` guidance:
 
-### Single SQL migration
-- `DELETE` all existing rows from `signal_templates`
-- `INSERT` 6 new marketing-agency-focused templates with appropriate `query_template`, `description`, `category`, `icon`, and `sort_order`
+- **Poor Google Reviews**: hint to use Google Maps scraper with rating filters, then AI filter for low ratings
+- **Hiring but No Social Media**: hint to scrape job boards first, then AI filter to flag companies lacking social profiles
+- **E-commerce Low Traffic**: hint to discover Shopify/WooCommerce stores, then AI filter for low-authority signals
 
-### No frontend changes needed
-The component already renders templates dynamically from the database.
-
+### Files Modified
+- `supabase/functions/signal-planner/index.ts` — add ~15 lines of keyword triggers in `extractComprehensiveSearchTerms()`
+- Database `signal_templates` table — update 6 rows (query_template + plan_override)
