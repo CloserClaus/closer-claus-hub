@@ -572,16 +572,26 @@ Completed stages: ${JSON.stringify(completedStages.map((s: any) => s.name))}
 Current field coverage in leads: ${JSON.stringify(fieldCoverage)}
 Quality assessment: ${JSON.stringify(qualityData)}
 
-Available actors: linkedin_companies (needs company_linkedin_url), linkedin_people (needs company_name OR company_linkedin_url), contact_enrichment (needs website), google_search (can find LinkedIn URLs), website_crawler (needs website).
+Available STAGE CATEGORIES (use stage_category field, NOT actor names):
+- "people_data:linkedin" → LinkedIn People Search. Needs: company_name (>30%) OR company_linkedin_url. Outputs: contact_name, linkedin_profile, title
+- "company_data:linkedin" → LinkedIn Company Scraper. Needs: company_linkedin_url. Outputs: industry, employee_count, website
+- "enrichment:contact" → Website Contact Scraper. Needs: website (>30%). Outputs: email, phone
+- "web_search:google" → Google Search. Needs: search query. Outputs: website, description. Can find LinkedIn URLs.
+- "hiring_intent:linkedin" → LinkedIn Jobs. Outputs: company_name, linkedin, industry
+- "hiring_intent:indeed" → Indeed Jobs. Outputs: company_name, title, location
 
 RULES:
+- Output each stage with "stage_category" (e.g. "people_data:linkedin"), NOT "actors"
 - You can ONLY use fields that have >30% coverage as inputs
-- If company_linkedin_url coverage is <30%, you MUST add a google_search LinkedIn URL discovery stage before any stage that needs it
-- If website coverage is <30%, you cannot use contact_enrichment or website_crawler
+- If company_linkedin_url coverage is <30%, you MUST add a "web_search:google" discovery stage before any stage that needs it
+- If website coverage is <30%, you cannot use "enrichment:contact"
 - Keep the same end goal: find qualified leads matching the user's query
-- **CRITICAL: NEVER drop person-enrichment or "Identify Decision Makers" stages.** If the original pipeline included a stage to find people/decision makers (e.g., using linkedin_people or any people_data actor), you MUST keep it or replace it with an alternative that works with available data. Person enrichment stages can use company_name (>30% coverage is sufficient) — the processor will build LinkedIn search URLs from company names. If company_name coverage is >30%, keep the person-enrichment stage using input_from: "company_name".
+- **CRITICAL: NEVER drop person-enrichment or "Identify Decision Makers" stages.** If the original pipeline included a stage to find people/decision makers, you MUST keep it using stage_category "people_data:linkedin". Person enrichment can use company_name (>30% coverage is sufficient).
 
-Return a JSON array of replacement stages (with correct stage numbers continuing from ${currentStage + 1}). Or return {"abort": true, "reason": "explanation"} if the goal is infeasible.`
+Return a JSON array of replacement stages with "stage_category" field (not "actors"). Or return {"abort": true, "reason": "explanation"} if infeasible.
+
+Example stage format:
+{ "stage": 3, "name": "Find Decision Makers", "type": "scrape", "stage_category": "people_data:linkedin", "input_from": "company_name", "params": {}, "expected_output_count": 100 }`
           },
           { role: "user", content: `Redesign remaining pipeline. Original remaining stages: ${JSON.stringify(remainingStages)}` },
         ],
@@ -602,28 +612,75 @@ Return a JSON array of replacement stages (with correct stage numbers continuing
     const newStages = Array.isArray(parsed) ? parsed : parsed.pipeline || [];
     if (newStages.length === 0) return null;
 
+    // ── Resolve stage_category → real actors for each reconfigured stage ──
+    for (const stage of newStages) {
+      if (stage.type === "scrape" && stage.stage_category) {
+        const resolved = resolveVerifiedActor(stage.stage_category);
+        if (resolved) {
+          stage.actors = [resolved.key];
+          stage.params_per_actor = { [resolved.key]: stage.params || {} };
+          // Register in the plan's actor registry so getActor() works at execution time
+          planActorRegistry.set(resolved.key, resolved);
+          console.log(`Reconfiguration: resolved ${stage.stage_category} → ${resolved.actorId} (key: ${resolved.key})`);
+        } else {
+          // Fallback: try using stage_category as-is (legacy compat)
+          console.warn(`Reconfiguration: no verified actor for category "${stage.stage_category}", stage may fail`);
+        }
+      }
+      // Legacy compat: if AI still outputs actors[] with old names, try to resolve them
+      if (stage.type === "scrape" && stage.actors && !stage.stage_category) {
+        const legacyMap: Record<string, string> = {
+          "linkedin_people": "people_data:linkedin",
+          "linkedin_companies": "company_data:linkedin",
+          "contact_enrichment": "enrichment:contact",
+          "google_search": "web_search:google",
+          "website_crawler": "enrichment:contact",
+        };
+        for (const actorName of stage.actors) {
+          const mappedCategory = legacyMap[actorName];
+          if (mappedCategory) {
+            const resolved = resolveVerifiedActor(mappedCategory);
+            if (resolved) {
+              stage.actors = [resolved.key];
+              stage.stage_category = mappedCategory;
+              stage.params_per_actor = { [resolved.key]: stage.params || {} };
+              planActorRegistry.set(resolved.key, resolved);
+              console.log(`Reconfiguration: legacy actor "${actorName}" → ${resolved.actorId}`);
+              break;
+            }
+          }
+        }
+      }
+    }
+
     // Post-reconfiguration validation: ensure person-enrichment wasn't dropped
     const originalHadPersonEnrichment = remainingStages.some((s: any) => 
       s.name?.toLowerCase().includes("decision maker") || 
       s.name?.toLowerCase().includes("people") || 
       s.name?.toLowerCase().includes("person") ||
+      s.stage_category === "people_data:linkedin" ||
       (s.type === "scrape" && s.actors?.some((a: string) => a.toLowerCase().includes("people") || a.toLowerCase().includes("person")))
     );
     const newHasPersonEnrichment = newStages.some((s: any) => 
       s.name?.toLowerCase().includes("decision maker") || 
       s.name?.toLowerCase().includes("people") || 
       s.name?.toLowerCase().includes("person") ||
-      (s.type === "scrape" && s.actors?.some((a: string) => a.toLowerCase().includes("people") || a.toLowerCase().includes("person")))
+      s.stage_category === "people_data:linkedin"
     );
     
     if (originalHadPersonEnrichment && !newHasPersonEnrichment && fieldCoverage["company_name"] >= 30) {
       console.log("Person-enrichment stage was dropped during reconfiguration — re-injecting");
       const lastStageNum = newStages.length > 0 ? Math.max(...newStages.map((s: any) => s.stage || 0)) : currentStage;
+      const resolved = resolveVerifiedActor("people_data:linkedin");
+      const actorKey = resolved?.key || "2SyF0bVxmgQr8SsLY";
+      if (resolved) planActorRegistry.set(actorKey, resolved);
       newStages.push({
         stage: lastStageNum + 1,
         name: "Identify Decision Makers",
         type: "scrape",
-        actors: remainingStages.find((s: any) => s.name?.toLowerCase().includes("decision maker") || s.name?.toLowerCase().includes("people"))?.actors || ["linkedin_people"],
+        stage_category: "people_data:linkedin",
+        actors: [actorKey],
+        params_per_actor: { [actorKey]: {} },
         input_from: "company_name",
         search_titles: ["CEO", "Founder", "Owner", "Managing Director", "VP Sales", "Head of Sales"],
         dedup_after: false,
