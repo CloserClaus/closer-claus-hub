@@ -334,6 +334,64 @@ export function SignalScraperTab() {
         </CardContent>
       </Card>
 
+      {/* Planning Progress */}
+      {planningProgress && !currentPlan && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                Validating Pipeline
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={cancelPlanning}>Cancel</Button>
+            </div>
+            <CardDescription>
+              Testing each stage with real data to ensure compatibility...
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {(planningProgress.stages || []).map((stage) => (
+                <div key={stage.stage} className="flex items-center gap-3 py-1.5">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold bg-muted text-muted-foreground">
+                    {stage.stage}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium truncate">{stage.name}</span>
+                      {stage.actor_label && (
+                        <span className="text-xs text-muted-foreground truncate">({stage.actor_label})</span>
+                      )}
+                    </div>
+                    {stage.chain_warning && (
+                      <p className="text-xs text-yellow-600 mt-0.5">{stage.chain_warning}</p>
+                    )}
+                  </div>
+                  <div>
+                    {stage.status === 'pending' && <Badge variant="secondary" className="text-xs">Pending</Badge>}
+                    {stage.status === 'discovering' && <Badge className="text-xs bg-blue-500/20 text-blue-700 border-blue-300">Discovering...</Badge>}
+                    {stage.status === 'testing' && <Badge className="text-xs bg-amber-500/20 text-amber-700 border-amber-300"><Loader2 className="h-3 w-3 animate-spin mr-1" />Testing</Badge>}
+                    {(stage.status === 'validated' || stage.status === 'auto_validated') && <Badge className="text-xs bg-green-500/20 text-green-700 border-green-300">✓ Validated</Badge>}
+                    {stage.status === 'failed' && <Badge variant="destructive" className="text-xs">Failed</Badge>}
+                    {stage.status === 'skipped' && <Badge variant="outline" className="text-xs">Skipped</Badge>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4">
+              <Progress value={
+                planningProgress.stages.length > 0
+                  ? (planningProgress.stages.filter(s => ['validated', 'auto_validated', 'failed', 'skipped'].includes(s.status)).length / planningProgress.stages.length) * 100
+                  : 0
+              } className="h-2" />
+              <p className="text-xs text-muted-foreground mt-1">
+                {planningProgress.stages.filter(s => ['validated', 'auto_validated', 'failed', 'skipped'].includes(s.status)).length} / {planningProgress.stages.length} stages validated
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Pipeline Plan Display */}
       {currentPlan && <PipelinePlanDisplay
         currentPlan={currentPlan}
