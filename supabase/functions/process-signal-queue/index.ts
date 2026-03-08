@@ -142,6 +142,274 @@ function splitCompoundKeywords(keyword: string): string[] {
   return [keyword.replace(/^['"]|['"]$/g, "").trim()];
 }
 
+// ═══════════════════════════════════════════════════════════
+// ██  QUERY NORMALIZATION ENGINE — Deterministic URL/query construction
+// ══════════════════════════════════════════════════════════
+// The AI decides WHAT to search (roles, industry, location).
+// This engine decides HOW to construct the platform-specific query.
+
+interface SearchIntent {
+  roles: string[];          // e.g. ["Sales Representative", "SDR", "BDR"]
+  industry: string;         // e.g. "marketing OR advertising"
+  location: string;         // e.g. "United States"
+  dateRange?: string;       // e.g. "r604800" (past week)
+}
+
+function parseSearchIntent(stageDef: any): SearchIntent {
+  const roleFilter: string[] | null = stageDef.role_filter || null;
+  const searchQuery: string = stageDef.search_query || "";
+  
+  return {
+    roles: roleFilter || [],
+    industry: roleFilter ? searchQuery : "", // When roles exist, search_query IS the industry
+    location: "United States", // Default, overridden by params
+    dateRange: "r604800",
+  };
+}
+
+interface PlatformQuery {
+  url?: string;
+  params: Record<string, any>;
+}
+
+function buildPlatformSearchQuery(
+  platform: "linkedin" | "indeed" | "glassdoor" | "google_maps" | "yelp" | "google_search" | "generic",
+  intent: SearchIntent,
+  existingParams: Record<string, any>
+): PlatformQuery {
+  const location = existingParams.location || existingParams.searchLocation || intent.location || "United States";
+  
+  // Build the combined search keyword: roles + industry context
+  let combinedKeyword: string;
+  if (intent.roles.length > 0 && intent.industry) {
+    // "Sales Representative OR SDR marketing OR advertising"
+    combinedKeyword = `${intent.roles.join(" OR ")} ${intent.industry}`;
+  } else if (intent.roles.length > 0) {
+    combinedKeyword = intent.roles.join(" OR ");
+  } else if (intent.industry) {
+    combinedKeyword = intent.industry;
+  } else {
+    combinedKeyword = existingParams.search_query || existingParams.keyword || "";
+  }
+
+  switch (platform) {
+    case "linkedin": {
+      const encodedKeyword = encodeURIComponent(combinedKeyword);
+      const encodedLocation = encodeURIComponent(location);
+      const url = `https://www.linkedin.com/jobs/search/?keywords=${encodedKeyword}&location=${encodedLocation}&f_TPR=${intent.dateRange || "r604800"}`;
+      return {
+        url,
+        params: {
+          ...existingParams,
+          urls: [url],
+          startUrls: [{ url }],
+          splitByLocation: false,
+        },
+      };
+    }
+    case "indeed": {
+      return {
+        params: {
+          ...existingParams,
+          position: combinedKeyword,
+          title: combinedKeyword,
+          location,
+          ...(existingParams.searchQuery !== undefined ? { searchQuery: combinedKeyword } : {}),
+        },
+      };
+    }
+    case "glassdoor": {
+      return {
+        params: {
+          ...existingParams,
+          keyword: combinedKeyword,
+          location,
+        },
+      };
+    }
+    case "google_maps": {
+      // For local business, combine industry + location into search strings
+      const searchTerms = intent.industry 
+        ? splitCompoundKeywords(intent.industry).map(term => `${term} ${location}`)
+        : [combinedKeyword];
+      return {
+        params: {
+          ...existingParams,
+          searchStringsArray: searchTerms,
+        },
+      };
+    }
+    case "yelp": {
+      return {
+        params: {
+          ...existingParams,
+          searchTerms: splitCompoundKeywords(intent.industry || combinedKeyword),
+          location,
+        },
+      };
+    }
+    case "google_search": {
+      return {
+        params: {
+          ...existingParams,
+          queries: combinedKeyword,
+        },
+      };
+    }
+    default: {
+      // Generic: try all common field names
+      return {
+        params: {
+          ...existingParams,
+          search: combinedKeyword,
+          searchQuery: combinedKeyword,
+          keyword: combinedKeyword,
+          queries: [combinedKeyword],
+          title: intent.roles.length > 0 ? intent.roles.join(" OR ") : combinedKeyword,
+        },
+      };
+    }
+  }
+}
+
+function detectPlatform(actor: ActorEntry): "linkedin" | "indeed" | "glassdoor" | "google_maps" | "yelp" | "google_search" | "generic" {
+  const id = actor.actorId.toLowerCase();
+  const label = actor.label.toLowerCase();
+  const sub = ((actor as any).subCategory || "").toLowerCase();
+  
+  if (id.includes("linkedin") || label.includes("linkedin") || sub.includes("linkedin")) {
+    if (sub.includes("people") || label.includes("people")) return "generic"; // People search uses different logic
+    if (sub.includes("company")) return "generic"; // Company scraper uses URLs
+    return "linkedin";
+  }
+  if (id.includes("indeed") || label.includes("indeed") || sub.includes("indeed")) return "indeed";
+  if (id.includes("glassdoor") || label.includes("glassdoor") || sub.includes("glassdoor")) return "glassdoor";
+  if (id.includes("google-places") || id.includes("crawler-google-places") || sub.includes("google_maps")) return "google_maps";
+  if (id.includes("yelp") || sub.includes("yelp")) return "yelp";
+  if (id.includes("google-search") || sub.includes("google_search") || sub.includes("web_search")) return "google_search";
+  return "generic";
+}
+
+// ═══════════════════════════════════════════════════════════
+// ██  ZERO-RESULT DIAGNOSTIC ENGINE
+// ═══════════════════════════════════════════════════════════
+
+interface DiagnosticResult {
+  diagnosis: "wrong_query" | "wrong_actor" | "empty_niche" | "actor_error" | "unknown";
+  suggestion: string;
+  correctedIntent?: SearchIntent;
+  shouldRetry: boolean;
+}
+
+async function diagnoseZeroResults(
+  run: any,
+  stageDef: any,
+  stageRefs: ApifyRunRef[],
+  serviceClient: any
+): Promise<DiagnosticResult> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  
+  // Check if actors actually ran successfully but returned empty
+  const allSucceeded = stageRefs.length > 0 && stageRefs.every(r => r.status === "SUCCEEDED");
+  const allFailed = stageRefs.length > 0 && stageRefs.every(r => r.status === "FAILED" || r.status === "TIMED-OUT");
+  
+  if (allFailed) {
+    return {
+      diagnosis: "actor_error",
+      suggestion: "All scraping actors failed to run. This may be a temporary issue with the data provider.",
+      shouldRetry: true,
+    };
+  }
+  
+  if (!allSucceeded) {
+    return {
+      diagnosis: "unknown",
+      suggestion: "Some actors are still running or in an unknown state.",
+      shouldRetry: false,
+    };
+  }
+  
+  // Actors succeeded but returned 0 results — diagnose why
+  const intent = parseSearchIntent(stageDef);
+  const platform = detectPlatform(
+    getActor(stageDef.actors?.[0] || "") || { actorId: "", label: "", category: "" } as any
+  );
+  
+  if (!LOVABLE_API_KEY) {
+    // Without AI, use heuristic diagnosis
+    if (intent.roles.length > 0 && !intent.industry) {
+      return {
+        diagnosis: "wrong_query",
+        suggestion: "Search has role titles but no industry context. Try adding industry terms.",
+        correctedIntent: { ...intent, industry: run.signal_query },
+        shouldRetry: true,
+      };
+    }
+    return {
+      diagnosis: "empty_niche",
+      suggestion: "The search combination may be too narrow. Try broader terms.",
+      shouldRetry: false,
+    };
+  }
+  
+  // Use AI to diagnose
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "system",
+            content: `You are debugging a lead generation search that returned 0 results.
+
+User's original query: "${run.signal_query}"
+Platform: ${platform}
+Search roles: ${intent.roles.join(", ") || "none"}
+Search industry: ${intent.industry || "none"}
+Location: ${intent.location}
+
+The scraper ran successfully but found no matching results. Diagnose why and suggest a correction.
+
+Return EXACTLY one JSON object:
+{
+  "diagnosis": "wrong_query" | "empty_niche" | "too_narrow",
+  "reason": "<one sentence explanation>",
+  "corrected_roles": ["role1", "role2"],
+  "corrected_industry": "broader industry term",
+  "should_retry": true|false
+}`
+          },
+          { role: "user", content: `Diagnose zero results for: roles=[${intent.roles.join(", ")}], industry="${intent.industry}", platform=${platform}` },
+        ],
+      }),
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      const content = result.choices?.[0]?.message?.content || "{}";
+      const parsed = JSON.parse(content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
+      
+      return {
+        diagnosis: parsed.diagnosis || "unknown",
+        suggestion: parsed.reason || "Unknown issue",
+        correctedIntent: parsed.should_retry ? {
+          roles: parsed.corrected_roles || intent.roles,
+          industry: parsed.corrected_industry || intent.industry,
+          location: intent.location,
+          dateRange: intent.dateRange,
+        } : undefined,
+        shouldRetry: parsed.should_retry || false,
+      };
+    }
+  } catch (err) {
+    console.warn("Diagnostic AI call failed:", err);
+  }
+  
+  return { diagnosis: "unknown", suggestion: "Could not determine cause", shouldRetry: false };
+}
+
 function extractDomain(url: string): string {
   if (!url) return "";
   try {
