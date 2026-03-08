@@ -394,7 +394,7 @@ export function SignalScraperTab() {
                           key={run.id}
                           run={run}
                           onView={() => setViewingRunId(run.id)}
-                          onRerun={() => handleRerun(run)}
+                          onRerun={(refinementContext?: any) => handleRerun(run, refinementContext)}
                           onDelete={() => deleteSignal(run.id)}
                         />
                       ))}
