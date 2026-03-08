@@ -187,17 +187,53 @@ Before designing stages, think about the most efficient approach:
 - What is the NARROWEST starting point? (e.g., for "agencies hiring sales reps" → start with job boards, NOT a broad list of all agencies)
 - What data do you need at the end? (company name, contact info, decision maker)
 - What's the MINIMUM number of stages?
-- How can you filter BEFORE expensive enrichment?
 - Include your reasoning in "logic_reasoning" in your output.
 
-### Step 2: FLOW — Design the stage sequence
-Based on your logic:
+### Step 2: FLOW — Design the stage sequence (DATA-AWARE)
+Based on your logic, follow this pattern:
 1. Discovery (scrape the narrowest source first)
-2. Filter (AI removes non-matches before enrichment)
-3. Enrich (add missing data: LinkedIn URLs, employee count)
-4. Filter again (apply size/criteria filters)
+2. Lightweight filter (ONLY on fields the discovery stage actually outputs)
+3. Enrich (scrape websites / LinkedIn company pages to get industry, headcount, etc.)
+4. Deep filter (NOW you can filter by industry, company type, headcount — because the data exists)
 5. People (find decision makers)
 6. Contact (get email/phone)
+
+## AI FILTER DATA-AVAILABILITY RULES (CRITICAL — READ CAREFULLY)
+
+An AI filter can ONLY filter on fields that prior SCRAPE stages have ACTUALLY PRODUCED. Each data source outputs specific fields:
+
+### What each source category outputs:
+- **hiring_intent (LinkedIn Jobs, Indeed, Glassdoor)** → company_name, title (job title), location, description. That's it.
+  - You CAN filter: job title relevance, location, basic keyword in company name/description
+  - You CANNOT filter: industry type, company size, headcount, whether it's an agency vs corporation
+- **local_business (Google Maps, Yelp)** → company_name, website, phone, location, industry, description
+  - You CAN filter: industry, location, business type (from description)
+  - You CANNOT filter: headcount, employee_count (not provided)
+- **web_search:google** → company_name, website, description (snippet)
+  - You CAN filter: basic relevance from description snippet
+  - You CANNOT filter: industry classification, headcount, company details
+- **company_data:linkedin** → company_name, industry, employee_count, website, linkedin, location, description
+  - You CAN filter: industry, employee_count, company size, company type
+- **enrichment:contact** → email, phone, linkedin, website
+  - Produces contact info only — no filterable company data
+
+### Data-Aware Flow Rules:
+- To filter by "is this a marketing agency?" → you MUST first scrape the company website OR company_data:linkedin, THEN filter
+- To filter by employee_count/headcount → you MUST first scrape company_data:linkedin, THEN filter
+- To filter by job title relevance → you CAN filter right after a hiring_intent stage
+- NEVER place an AI filter that references fields not yet scraped
+
+### CORRECT vs INCORRECT flow examples:
+
+WRONG: LinkedIn Jobs → AI Filter "is this a marketing agency with <50 employees?" → Enrich
+(LinkedIn Jobs doesn't output industry classification or employee_count — the filter has no data to work with)
+
+RIGHT: LinkedIn Jobs → AI Filter "is the job title a sales role?" → Scrape company websites → AI Filter "is this a marketing agency?" → Scrape company LinkedIn → AI Filter "does it have <50 employees?" → People → Contact
+
+WRONG: Indeed Jobs → AI Filter "reject if not in SaaS industry" → People
+(Indeed doesn't output industry — filter would reject everything)
+
+RIGHT: Indeed Jobs → AI Filter "is the job title relevant?" → company_data:linkedin → AI Filter "is this a SaaS company?" → People → Contact
 
 ### Step 3: STAGE CATEGORY SELECTION — Choose data source types
 For each scrape stage, select a STAGE CATEGORY. The system will automatically discover and validate the best available actor for each category.
