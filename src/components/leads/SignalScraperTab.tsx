@@ -624,8 +624,11 @@ function PlanActions({ scheduleType, setScheduleType, onExecute, onCancel, isExe
 
 // ── Signal History Row (table format) ──
 
-function SignalHistoryRow({ run, onView, onRerun, onDelete }: { run: SignalRun; onView: () => void; onRerun: () => void; onDelete: () => void }) {
+function SignalHistoryRow({ run, onView, onRerun, onDelete }: { run: SignalRun; onView: () => void; onRerun: (refinementContext?: any) => void; onDelete: () => void }) {
   const { toast } = useToast();
+  const [refineOpen, setRefineOpen] = useState(false);
+  const [refineReason, setRefineReason] = useState('');
+  const [refineType, setRefineType] = useState<string>('wrong_industry');
 
   const STALE_HEARTBEAT_MS = 5 * 60 * 1000;
   const heartbeatField = (run as any).updated_at || run.started_at;
@@ -646,6 +649,17 @@ function SignalHistoryRow({ run, onView, onRerun, onDelete }: { run: SignalRun; 
     onRerun();
   };
 
+  const handleRefine = () => {
+    const refinementContext = {
+      type: refineType,
+      reason: refineReason,
+      original_query: run.signal_query,
+    };
+    setRefineOpen(false);
+    setRefineReason('');
+    onRerun(refinementContext);
+  };
+
   const displayStatus = isStale ? 'stale' : run.status;
 
   const getProgressLabel = () => {
@@ -660,65 +674,113 @@ function SignalHistoryRow({ run, onView, onRerun, onDelete }: { run: SignalRun; 
   };
 
   return (
-    <tr className="border-b transition-colors hover:bg-muted/50">
-      <td className="p-3 align-middle">
-        <div className="min-w-0">
-          <div className="font-medium text-sm truncate max-w-[250px]">{run.signal_name || run.signal_query}</div>
-          {run.created_at && (
-            <div className="text-xs text-muted-foreground">
-              {formatDistanceToNow(new Date(run.created_at), { addSuffix: true })}
+    <>
+      <tr className="border-b transition-colors hover:bg-muted/50">
+        <td className="p-3 align-middle">
+          <div className="min-w-0">
+            <div className="font-medium text-sm truncate max-w-[250px]">{run.signal_name || run.signal_query}</div>
+            {run.created_at && (
+              <div className="text-xs text-muted-foreground">
+                {formatDistanceToNow(new Date(run.created_at), { addSuffix: true })}
+              </div>
+            )}
+            {run.error_message && run.status === 'failed' && (
+              <div className="text-destructive text-xs truncate max-w-[250px] mt-0.5" title={run.error_message}>
+                {run.error_message.slice(0, 60)}…
+              </div>
+            )}
+          </div>
+        </td>
+        <td className="p-3 align-middle hidden md:table-cell">
+          <div className="space-y-1">
+            <StatusBadge status={displayStatus} />
+            {run.status === 'running' && (
+              <div className="space-y-1">
+                <div className="text-xs text-primary">{getProgressLabel()}</div>
+                {isPipeline && currentStage > 0 && (
+                  <Progress value={(currentStage / totalStages) * 100} className="h-1 w-24" />
+                )}
+              </div>
+            )}
+          </div>
+        </td>
+        <td className="p-3 align-middle hidden sm:table-cell">
+          <span className="text-sm font-medium">{run.leads_discovered}</span>
+        </td>
+        <td className="p-3 align-middle hidden lg:table-cell">
+          <span className="text-sm">{run.actual_cost ?? run.estimated_cost}</span>
+          {run.actual_cost === 0 && run.status === 'completed' && (
+            <span className="text-xs text-green-500 ml-1">free</span>
+          )}
+        </td>
+        <td className="p-3 align-middle hidden md:table-cell">
+          <div className="flex items-center gap-1.5">
+            {run.schedule_type !== 'once' && (
+              <Badge variant="outline" className="text-xs"><Clock className="h-3 w-3 mr-1" />{run.schedule_type}</Badge>
+            )}
+            {run.retry_count > 0 && <span className="text-xs text-orange-400">⟳{run.retry_count}</span>}
+          </div>
+        </td>
+        <td className="p-3 align-middle text-right">
+          <div className="flex gap-1 justify-end">
+            {isStale && (
+              <Button size="sm" variant="outline" className="text-destructive h-7 text-xs" onClick={markAsFailed}>Mark Failed</Button>
+            )}
+            {run.status === 'completed' && run.leads_discovered > 0 && (
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onView}>View</Button>
+            )}
+            {run.status === 'completed' && (
+              <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={() => setRefineOpen(true)}>
+                <RefreshCw className="h-3 w-3" /> Refine
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onRerun()}><RotateCcw className="h-3.5 w-3.5" /></Button>
+            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={onDelete}><Trash2 className="h-3.5 w-3.5" /></Button>
+          </div>
+        </td>
+      </tr>
+
+      {/* Refine Dialog */}
+      <Dialog open={refineOpen} onOpenChange={setRefineOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Refine Results</DialogTitle>
+            <DialogDescription>Tell us what was wrong so we can improve the next run.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">What was wrong?</Label>
+              <Select value={refineType} onValueChange={setRefineType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="wrong_industry">Wrong industry / irrelevant companies</SelectItem>
+                  <SelectItem value="too_large">Companies too large</SelectItem>
+                  <SelectItem value="too_small">Companies too small</SelectItem>
+                  <SelectItem value="wrong_location">Wrong location / geography</SelectItem>
+                  <SelectItem value="wrong_titles">Wrong decision maker titles</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          )}
-          {run.error_message && run.status === 'failed' && (
-            <div className="text-destructive text-xs truncate max-w-[250px] mt-0.5" title={run.error_message}>
-              {run.error_message.slice(0, 60)}…
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Details (optional)</Label>
+              <Textarea
+                placeholder="e.g. Too many staffing agencies, wanted actual marketing agencies"
+                value={refineReason}
+                onChange={(e) => setRefineReason(e.target.value)}
+                className="min-h-[80px]"
+              />
             </div>
-          )}
-        </div>
-      </td>
-      <td className="p-3 align-middle hidden md:table-cell">
-        <div className="space-y-1">
-          <StatusBadge status={displayStatus} />
-          {run.status === 'running' && (
-            <div className="space-y-1">
-              <div className="text-xs text-primary">{getProgressLabel()}</div>
-              {isPipeline && currentStage > 0 && (
-                <Progress value={(currentStage / totalStages) * 100} className="h-1 w-24" />
-              )}
-            </div>
-          )}
-        </div>
-      </td>
-      <td className="p-3 align-middle hidden sm:table-cell">
-        <span className="text-sm font-medium">{run.leads_discovered}</span>
-      </td>
-      <td className="p-3 align-middle hidden lg:table-cell">
-        <span className="text-sm">{run.actual_cost ?? run.estimated_cost}</span>
-        {run.actual_cost === 0 && run.status === 'completed' && (
-          <span className="text-xs text-green-500 ml-1">free</span>
-        )}
-      </td>
-      <td className="p-3 align-middle hidden md:table-cell">
-        <div className="flex items-center gap-1.5">
-          {run.schedule_type !== 'once' && (
-            <Badge variant="outline" className="text-xs"><Clock className="h-3 w-3 mr-1" />{run.schedule_type}</Badge>
-          )}
-          {run.retry_count > 0 && <span className="text-xs text-orange-400">⟳{run.retry_count}</span>}
-        </div>
-      </td>
-      <td className="p-3 align-middle text-right">
-        <div className="flex gap-1 justify-end">
-          {isStale && (
-            <Button size="sm" variant="outline" className="text-destructive h-7 text-xs" onClick={markAsFailed}>Mark Failed</Button>
-          )}
-          {run.status === 'completed' && run.leads_discovered > 0 && (
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onView}>View</Button>
-          )}
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={onRerun}><RotateCcw className="h-3.5 w-3.5" /></Button>
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={onDelete}><Trash2 className="h-3.5 w-3.5" /></Button>
-        </div>
-      </td>
-    </tr>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRefineOpen(false)}>Cancel</Button>
+            <Button onClick={handleRefine}>
+              <RefreshCw className="h-4 w-4 mr-1" /> Refine & Rerun
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

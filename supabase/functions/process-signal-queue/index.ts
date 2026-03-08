@@ -159,10 +159,27 @@ function parseSearchIntent(stageDef: any): SearchIntent {
   const roleFilter: string[] | null = stageDef.role_filter || null;
   const searchQuery: string = stageDef.search_query || "";
   
+  // Extract location from actor params — planner embeds geography there
+  let location = "United States"; // fallback default
+  const paramsPerActor = stageDef.params_per_actor || {};
+  for (const [, actorParams] of Object.entries(paramsPerActor)) {
+    const ap = actorParams as Record<string, any>;
+    if (ap?.location) { location = ap.location; break; }
+    if (ap?.searchLocation) { location = ap.searchLocation; break; }
+    // Check for location embedded in URLs
+    if (ap?.urls?.[0]) {
+      const urlMatch = String(ap.urls[0]).match(/location=([^&]+)/);
+      if (urlMatch) { location = decodeURIComponent(urlMatch[1]); break; }
+    }
+  }
+  // Also check top-level params
+  if (stageDef.params?.location) location = stageDef.params.location;
+  if (stageDef.params?.searchLocation) location = stageDef.params.searchLocation;
+  
   return {
     roles: roleFilter || [],
     industry: roleFilter ? searchQuery : "", // When roles exist, search_query IS the industry
-    location: "United States", // Default, overridden by params
+    location,
     dateRange: "r604800",
   };
 }
