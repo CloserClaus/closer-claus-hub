@@ -1004,7 +1004,7 @@ async function handleGeneratePlan(
   userId: string,
   serviceClient: any
 ) {
-  const { query, workspace_id, advanced_settings } = params;
+  const { query, workspace_id, plan_override, advanced_settings } = params;
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
