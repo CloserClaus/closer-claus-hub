@@ -174,7 +174,7 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await anonClient.auth.getUser();
     if (authError || !user) throw new Error('Unauthorized');
 
-    const { to_email, subject, body, lead_id, workspace_id, sequence_id, sequence_step } = await req.json();
+    const { to_email, subject, body, lead_id, workspace_id, sequence_id, sequence_step, conversation_id } = await req.json();
 
     if (!workspace_id || !to_email || !subject || !body) {
       throw new Error('Missing required fields: workspace_id, to_email, subject, body');
