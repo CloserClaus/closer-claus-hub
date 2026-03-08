@@ -323,11 +323,17 @@ function extractComprehensiveSearchTerms(query: string): string[] {
   if (lower.includes("crunchbase")) terms.add("crunchbase scraper");
   if (lower.includes("amazon")) terms.add("amazon scraper");
 
-  // ALWAYS include essential categories needed for most lead gen pipelines
-  terms.add("contact email extractor");
-  terms.add("linkedin people search");
-  terms.add("google search scraper");
-  terms.add("linkedin company scraper");
+  // Only add essential tools if query intent suggests they're needed
+  if (lower.includes("contact") || lower.includes("email") || lower.includes("enrich") || lower.includes("find")) {
+    terms.add("contact email extractor");
+  }
+  if (lower.includes("linkedin") || lower.includes("company") || lower.includes("people") || lower.includes("decision maker")) {
+    terms.add("linkedin people search");
+    terms.add("linkedin company scraper");
+  }
+  if (lower.includes("search") || lower.includes("find") || lower.includes("discover")) {
+    terms.add("google search scraper");
+  }
 
   // If very few terms, add generic
   if (terms.size < 4) terms.add("lead generation scraper");
