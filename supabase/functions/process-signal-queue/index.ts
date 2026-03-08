@@ -705,6 +705,31 @@ async function startApifyRun(actor: ActorEntry, input: Record<string, any>, toke
   return { runId: data.data.id, datasetId: data.data.defaultDatasetId };
 }
 
+// ── Self-healing URL shape flip for startUrls invalid-input errors ──
+function flipStartUrlsShape(input: Record<string, any>): Record<string, any> | null {
+  const urlFields = ["startUrls", "urls"];
+  const flipped = { ...input };
+  let didFlip = false;
+
+  for (const field of urlFields) {
+    if (!Array.isArray(flipped[field]) || flipped[field].length === 0) continue;
+    const first = flipped[field][0];
+    if (typeof first === "string") {
+      // string[] → object[]
+      flipped[field] = flipped[field].map((item: string) => ({ url: item }));
+      didFlip = true;
+      console.log(`URL flip: "${field}" string[] → object[] ({url})`);
+    } else if (typeof first === "object" && first !== null && first.url) {
+      // object[] → string[]
+      flipped[field] = flipped[field].map((item: any) => item.url || String(item));
+      didFlip = true;
+      console.log(`URL flip: "${field}" object[] → string[]`);
+    }
+  }
+
+  return didFlip ? flipped : null;
+}
+
 async function startApifyRunWithFallback(
   actor: ActorEntry,
   input: Record<string, any>,
@@ -715,6 +740,22 @@ async function startApifyRunWithFallback(
     return { ...result, usedActor: actor };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
+
+    // ── Self-healing: detect invalid-input on URL fields and retry with flipped shape ──
+    if (errMsg.includes("invalid-input") || (errMsg.includes("400") && /startUrls|urls/i.test(errMsg))) {
+      console.warn(`Detected invalid-input for ${actor.key}, attempting URL shape flip retry`);
+      const flippedInput = flipStartUrlsShape(input);
+      if (flippedInput) {
+        try {
+          const result = await startApifyRun(actor, flippedInput, token);
+          console.log(`URL shape flip succeeded for ${actor.key} → run ${result.runId}`);
+          return { ...result, usedActor: actor };
+        } catch (flipErr) {
+          console.warn(`URL shape flip retry also failed for ${actor.key}:`, flipErr instanceof Error ? flipErr.message : String(flipErr));
+        }
+      }
+    }
+
     if (!isNotRentedError(errMsg)) throw err;
 
     console.warn(`Actor ${actor.key} is not rented (403), trying backups for subCategory "${(actor as any).subCategory || actor.category}"`);
@@ -727,7 +768,6 @@ async function startApifyRunWithFallback(
     for (const backup of backups) {
       try {
         console.log(`Trying backup actor: ${backup.key} (${backup.label})`);
-        // Always fetch runtime schema (merges with catalog, cached)
         await fetchAndMergeRuntimeSchema(backup, token);
         const backupInput = normalizeInputToSchema(backup, buildGenericInput(backup, input));
         if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
@@ -736,12 +776,22 @@ async function startApifyRunWithFallback(
         return { ...result, usedActor: backup };
       } catch (backupErr) {
         const backupErrMsg = backupErr instanceof Error ? backupErr.message : String(backupErr);
+        // Also try URL flip for backup actors
+        if (backupErrMsg.includes("invalid-input") || (backupErrMsg.includes("400") && /startUrls|urls/i.test(backupErrMsg))) {
+          const flippedBackup = flipStartUrlsShape(backupInput);
+          if (flippedBackup) {
+            try {
+              const result = await startApifyRun(backup, flippedBackup, token);
+              console.log(`Backup ${backup.key} URL flip succeeded → run ${result.runId}`);
+              return { ...result, usedActor: backup };
+            } catch { /* fall through */ }
+          }
+        }
         console.warn(`Backup actor ${backup.key} also failed: ${backupErrMsg}`);
         continue;
       }
     }
 
-    // All backups exhausted — throw, do NOT fall through
     throw new Error(`Actor ${actor.key} not rented and all ${backups.length} same-type backup actors failed. Original error: ${errMsg}`);
   }
 }

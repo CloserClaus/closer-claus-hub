@@ -229,7 +229,7 @@ const VERIFIED_ACTORS: Record<string, VerifiedActor> = {
     subCategory: "enrichment:contact",
     label: "Website Contact Info Scraper",
     inputSchema: {
-      startUrls: { type: "string[]", required: true, description: "Website URLs to scrape contacts from" },
+      startUrls: { type: "object[]", required: true, description: "Website URLs to scrape contacts from" },
       maxRequestsPerStartUrl: { type: "number", required: false, default: 5, description: "Max pages per site" },
     },
     outputFields: {
