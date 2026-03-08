@@ -33,232 +33,132 @@ interface ActorEntry {
 }
 
 // ════════════════════════════════════════════════════════════════
-// ██  VERIFIED ACTOR CATALOG — Hardcoded schemas for reliability
+// ██  STAGE CATEGORIES — Abstract registry (no hardcoded actor IDs)
 // ════════════════════════════════════════════════════════════════
 
-interface VerifiedActor {
-  actorId: string;
+interface StageCategory {
   category: string;
   subCategory: string;
   label: string;
-  inputSchema: Record<string, InputField>;
-  outputFields: Record<string, string[]>;
+  searchTerms: string[];
+  expectedInputs: Record<string, string>;
+  expectedOutputs: string[];
 }
 
-const VERIFIED_ACTORS: Record<string, VerifiedActor> = {
+const STAGE_CATEGORIES: Record<string, StageCategory> = {
   "local_business:google_maps": {
-    actorId: "compass/crawler-google-places",
     category: "local_business",
     subCategory: "local_business:google_maps",
     label: "Google Maps Places Scraper",
-    inputSchema: {
-      searchStringsArray: { type: "string[]", required: true, description: "Search queries (e.g. 'plumbers Austin TX')" },
-      maxCrawledPlacesPerSearch: { type: "number", required: false, default: 100, description: "Max results per search query" },
-      language: { type: "string", required: false, default: "en", description: "Language code" },
-      countryCode: { type: "string", required: false, description: "Country code (e.g. 'us')" },
+    searchTerms: ["google maps scraper", "google places scraper"],
+    expectedInputs: {
+      searchStringsArray: "Search queries (e.g. 'plumbers Austin TX')",
+      maxCrawledPlacesPerSearch: "Max results per search query",
+      language: "Language code",
+      countryCode: "Country code (e.g. 'us')",
     },
-    outputFields: {
-      company_name: ["title"],
-      website: ["website"],
-      phone: ["phone"],
-      email: ["email", "emails"],
-      location: ["address", "fullAddress"],
-      city: ["city"],
-      state: ["state"],
-      country: ["country", "countryCode"],
-      industry: ["category", "categories", "categoryName"],
-      description: ["description"],
-      linkedin: [],
-    },
+    expectedOutputs: ["company_name", "website", "phone", "email", "location", "city", "state", "country", "industry", "description"],
   },
   "local_business:yelp": {
-    actorId: "yin/yelp-scraper",
     category: "local_business",
     subCategory: "local_business:yelp",
     label: "Yelp Business Scraper",
-    inputSchema: {
-      searchTerms: { type: "string[]", required: true, description: "Search terms" },
-      location: { type: "string", required: false, description: "Location (e.g. 'Austin, TX')" },
-      maxItems: { type: "number", required: false, default: 100, description: "Max results" },
+    searchTerms: ["yelp scraper", "yelp business scraper"],
+    expectedInputs: {
+      searchTerms: "Search terms",
+      location: "Location (e.g. 'Austin, TX')",
+      maxItems: "Max results",
     },
-    outputFields: {
-      company_name: ["name", "businessName"],
-      website: ["website"],
-      phone: ["phone", "displayPhone"],
-      location: ["address"],
-      city: ["city"],
-      state: ["state"],
-      country: ["country"],
-      industry: ["categories"],
-      description: ["snippet"],
-      email: [],
-      linkedin: [],
-    },
+    expectedOutputs: ["company_name", "website", "phone", "location", "city", "state", "country", "industry", "description"],
   },
   "hiring_intent:indeed": {
-    actorId: "misceres/indeed-scraper",
     category: "hiring_intent",
     subCategory: "hiring_intent:indeed",
     label: "Indeed Job Scraper",
-    inputSchema: {
-      position: { type: "string", required: false, description: "Job title/position to search" },
-      location: { type: "string", required: false, description: "Location (e.g. 'Austin, TX')" },
-      country: { type: "string", required: false, default: "US", description: "Country code" },
-      maxItems: { type: "number", required: false, default: 100, description: "Max results" },
+    searchTerms: ["indeed scraper", "indeed job scraper"],
+    expectedInputs: {
+      position: "Job title/position to search",
+      location: "Location (e.g. 'Austin, TX')",
+      country: "Country code",
+      maxItems: "Max results",
     },
-    outputFields: {
-      company_name: ["company", "companyName"],
-      title: ["positionName", "title"],
-      location: ["jobLocation", "location"],
-      industry: [],
-      salary: ["salary"],
-      website: ["companyUrl", "url"],
-      description: ["description"],
-      linkedin: [],
-      employee_count: [],
-    },
+    expectedOutputs: ["company_name", "title", "location", "website", "description", "salary"],
   },
   "hiring_intent:linkedin": {
-    actorId: "hMvNSpz3JnHgl5jkh",
     category: "hiring_intent",
     subCategory: "hiring_intent:linkedin",
     label: "LinkedIn Jobs Scraper",
-    inputSchema: {
-      urls: { type: "object[]", required: false, description: "LinkedIn job search URLs" },
-      startUrls: { type: "object[]", required: false, description: "Start URLs for crawling" },
-      maxItems: { type: "number", required: false, default: 100, description: "Max results" },
+    searchTerms: ["linkedin jobs scraper", "linkedin job search scraper"],
+    expectedInputs: {
+      urls: "LinkedIn job search URLs",
+      startUrls: "Start URLs for crawling",
+      maxItems: "Max results",
     },
-    outputFields: {
-      company_name: ["companyName", "company"],
-      title: ["title", "jobTitle"],
-      location: ["location", "jobLocation"],
-      linkedin: ["companyLinkedinUrl"],
-      website: ["companyUrl"],
-      description: ["description"],
-      industry: ["companyIndustry"],
-      employee_count: ["companyEmployeesCount"],
-    },
+    expectedOutputs: ["company_name", "title", "location", "linkedin", "website", "description", "industry", "employee_count"],
   },
   "hiring_intent:glassdoor": {
-    actorId: "bebity/glassdoor-scraper",
     category: "hiring_intent",
     subCategory: "hiring_intent:glassdoor",
     label: "Glassdoor Job Scraper",
-    inputSchema: {
-      keyword: { type: "string", required: false, description: "Job keyword" },
-      location: { type: "string", required: false, description: "Location" },
-      maxItems: { type: "number", required: false, default: 100, description: "Max results" },
+    searchTerms: ["glassdoor scraper", "glassdoor job scraper"],
+    expectedInputs: {
+      keyword: "Job keyword",
+      location: "Location",
+      maxItems: "Max results",
     },
-    outputFields: {
-      company_name: ["employer.name", "companyName"],
-      title: ["jobTitle", "title"],
-      location: ["location"],
-      industry: ["employer.industry"],
-      salary: ["salary", "salaryInfo"],
-      website: ["employer.corporateWebsite"],
-      description: ["description"],
-      linkedin: [],
-      employee_count: ["employer.employeesCount"],
-    },
+    expectedOutputs: ["company_name", "title", "location", "industry", "salary", "website", "description", "employee_count"],
   },
   "people_data:linkedin": {
-    actorId: "2SyF0bVxmgQr8SsLY",
     category: "people_data",
     subCategory: "people_data:linkedin",
     label: "LinkedIn People Search",
-    inputSchema: {
-      searchUrl: { type: "string", required: false, description: "LinkedIn people search URL" },
-      urls: { type: "object[]", required: false, description: "Search URLs" },
-      startUrls: { type: "object[]", required: false, description: "Start URLs" },
-      maxItems: { type: "number", required: false, default: 50, description: "Max results" },
+    searchTerms: ["linkedin people scraper", "linkedin profile scraper", "linkedin people search"],
+    expectedInputs: {
+      searchUrl: "LinkedIn people search URL",
+      urls: "Search URLs",
+      startUrls: "Start URLs",
+      maxItems: "Max results",
     },
-    outputFields: {
-      contact_name: ["fullName", "name", "firstName"],
-      title: ["headline", "title"],
-      linkedin_profile: ["profileUrl", "url", "linkedinUrl"],
-      company_name: ["companyName", "currentCompany"],
-      location: ["location", "geoLocation"],
-      city: ["city"],
-      country: ["country"],
-    },
+    expectedOutputs: ["contact_name", "title", "linkedin_profile", "company_name", "location", "city", "country"],
   },
   "company_data:linkedin": {
-    actorId: "voyager/linkedin-company-scraper",
     category: "company_data",
     subCategory: "company_data:linkedin",
     label: "LinkedIn Company Scraper",
-    inputSchema: {
-      urls: { type: "object[]", required: false, description: "LinkedIn company page URLs" },
-      startUrls: { type: "object[]", required: false, description: "Start URLs" },
-      maxItems: { type: "number", required: false, default: 50, description: "Max results" },
+    searchTerms: ["linkedin company scraper", "linkedin company profile"],
+    expectedInputs: {
+      urls: "LinkedIn company page URLs",
+      startUrls: "Start URLs",
+      maxItems: "Max results",
     },
-    outputFields: {
-      company_name: ["name", "companyName"],
-      industry: ["industry", "industries"],
-      employee_count: ["employeeCount", "staffCount", "employeesOnLinkedIn"],
-      website: ["website", "websiteUrl"],
-      linkedin: ["url", "linkedinUrl"],
-      location: ["headquarters", "location"],
-      city: ["headquartersCity", "city"],
-      country: ["headquartersCountry", "country"],
-      description: ["description", "tagline"],
-    },
+    expectedOutputs: ["company_name", "industry", "employee_count", "website", "linkedin", "location", "city", "country", "description"],
   },
   "web_search:google": {
-    actorId: "apify/google-search-scraper",
     category: "web_search",
     subCategory: "web_search:google",
     label: "Google Search Scraper",
-    inputSchema: {
-      queries: { type: "string", required: true, description: "Search query string" },
-      maxPagesPerQuery: { type: "number", required: false, default: 1, description: "Pages of results per query" },
-      resultsPerPage: { type: "number", required: false, default: 10, description: "Results per page" },
-      countryCode: { type: "string", required: false, description: "Country code" },
-      languageCode: { type: "string", required: false, description: "Language code" },
+    searchTerms: ["google search scraper", "google serp scraper"],
+    expectedInputs: {
+      queries: "Search query string",
+      maxPagesPerQuery: "Pages of results per query",
+      resultsPerPage: "Results per page",
+      countryCode: "Country code",
+      languageCode: "Language code",
     },
-    outputFields: {
-      company_name: ["title"],
-      website: ["url", "link"],
-      description: ["description", "snippet"],
-      linkedin: [],
-    },
+    expectedOutputs: ["company_name", "website", "description"],
   },
   "enrichment:contact": {
-    actorId: "alexey/contact-info-scraper",
     category: "enrichment",
     subCategory: "enrichment:contact",
     label: "Website Contact Info Scraper",
-    inputSchema: {
-      startUrls: { type: "object[]", required: true, description: "Website URLs to scrape contacts from" },
-      maxRequestsPerStartUrl: { type: "number", required: false, default: 5, description: "Max pages per site" },
+    searchTerms: ["contact info scraper", "website email scraper", "contact scraper"],
+    expectedInputs: {
+      startUrls: "Website URLs to scrape contacts from",
+      maxRequestsPerStartUrl: "Max pages per site",
     },
-    outputFields: {
-      email: ["emails", "email"],
-      phone: ["phones", "phone", "phoneNumbers"],
-      linkedin: ["linkedIn", "linkedin"],
-      website: ["url"],
-      company_name: ["name"],
-    },
+    expectedOutputs: ["email", "phone", "linkedin", "website", "company_name"],
   },
 };
-
-// Helper to get a verified actor entry as an ActorEntry
-function verifiedToActorEntry(catKey: string, v: VerifiedActor): ActorEntry {
-  return {
-    key: v.actorId.replace(/[^a-zA-Z0-9]/g, "_"),
-    actorId: v.actorId,
-    label: v.label,
-    category: v.category,
-    description: v.label,
-    inputSchema: v.inputSchema,
-    outputFields: v.outputFields,
-    monthlyUsers: 10000, // High default to prefer verified actors
-    totalRuns: 100000,
-    rating: 5,
-    _verified: true,
-    subCategory: v.subCategory,
-  } as any;
-}
 
 // Runtime map — populated fresh from Apify Store on every plan generation
 let discoveredActorMap: Map<string, ActorEntry> = new Map();
@@ -269,20 +169,13 @@ function getActor(key: string): ActorEntry | undefined { return discoveredActorM
 // ════════════════════════════════════════════════════════════════
 
 function buildPipelinePlannerPrompt(): string {
-  // Build category descriptions from VERIFIED_ACTORS
-  const categoryDescriptions = Object.entries(VERIFIED_ACTORS).map(([catKey, actor]) => {
-    const params = Object.entries(actor.inputSchema)
-      .map(([name, s]) => {
-        let desc = `     ${name} (${s.type}${s.required ? ", REQUIRED" : ""})`;
-        if (s.default !== undefined) desc += ` [default: ${JSON.stringify(s.default)}]`;
-        desc += ` — ${s.description}`;
-        return desc;
-      })
+  // Build category descriptions from STAGE_CATEGORIES
+  const categoryDescriptions = Object.entries(STAGE_CATEGORIES).map(([catKey, cat]) => {
+    const params = Object.entries(cat.expectedInputs)
+      .map(([name, desc]) => `     ${name} — ${desc}`)
       .join("\n");
-    const outputs = Object.entries(actor.outputFields)
-      .map(([key, paths]) => paths.length === 0 ? `${key}: ✗` : `${key}: ✓`)
-      .join(", ");
-    return `- ${catKey} (${actor.label})\n   Input params:\n${params}\n   Outputs: ${outputs}`;
+    const outputs = cat.expectedOutputs.map(f => `${f}: ✓`).join(", ");
+    return `- ${catKey} (${cat.label})\n   Input params:\n${params}\n   Outputs: ${outputs}`;
   }).join("\n\n");
 
   return `You are a lead generation pipeline architect. You design COST-EFFECTIVE multi-stage scraping and filtering pipelines.
@@ -307,16 +200,16 @@ Based on your logic:
 6. Contact (get email/phone)
 
 ### Step 3: STAGE CATEGORY SELECTION — Choose data source types
-For each scrape stage, select a STAGE CATEGORY. The system will automatically map categories to the best available actor.
+For each scrape stage, select a STAGE CATEGORY. The system will automatically discover and validate the best available actor for each category.
 
 CRITICAL RULES:
-- PREFER categories from the KNOWN CATEGORIES list (they have verified, reliable actors)
+- PREFER categories from the KNOWN CATEGORIES list (they have reliable, dynamically-discovered actors)
 - You MAY use CUSTOM categories if no known category fits (e.g., "custom:crunchbase", "custom:facebook_pages")
 - Custom categories will be resolved dynamically — slightly higher failure risk
 - For custom categories, use generic params: { "query": "...", "location": "...", "maxResults": N }
 - NEVER use actor keys or actor IDs — only stage categories
 
-## KNOWN STAGE CATEGORIES (verified — high reliability)
+## KNOWN STAGE CATEGORIES (dynamically resolved — actors selected by popularity & reliability)
 
 ${categoryDescriptions}
 
@@ -500,12 +393,12 @@ function inferProducedFields(stage: any): Set<string> {
     for (const f of stage.updates_fields) produced.add(f);
   }
 
-  // From verified actor output fields
+  // From stage category expected outputs
   if (stage.type === "scrape" && stage.stage_category) {
-    const verified = VERIFIED_ACTORS[stage.stage_category];
-    if (verified) {
-      for (const [field, paths] of Object.entries(verified.outputFields)) {
-        if (paths.length > 0) produced.add(field);
+    const cat = STAGE_CATEGORIES[stage.stage_category];
+    if (cat) {
+      for (const field of cat.expectedOutputs) {
+        produced.add(field);
       }
     }
   }
@@ -613,98 +506,84 @@ async function resolveActorsForPipeline(
 
     const category = stage.stage_category;
     if (!category) {
-      // Legacy format — stage already has actors[] set (e.g. from ai_filter reconfiguration)
+      // Legacy format — stage already has actors[] set
       if (stage.actors && stage.actors.length > 0) continue;
       warnings.push(`Stage ${stage.stage} has no stage_category — cannot resolve actor`);
       continue;
     }
 
-    const verified = VERIFIED_ACTORS[category];
-    if (verified) {
-      // ── Verified actor: use directly, no discovery needed ──
-      const actorEntry = verifiedToActorEntry(category, verified);
-      actorRegistry[actorEntry.key] = actorEntry;
-      stage.actors = [actorEntry.key];
-      // Convert params → params_per_actor
-      if (stage.params && !stage.params_per_actor) {
-        stage.params_per_actor = { [actorEntry.key]: stage.params };
-      }
-      console.log(`Stage ${stage.stage}: Resolved ${category} → verified actor ${verified.actorId}`);
-    } else {
-      // ── Dynamic discovery for unknown categories ──
-      console.log(`Stage ${stage.stage}: ${category} not in verified catalog — discovering dynamically`);
-      const searchTerm = category.replace("custom:", "").replace(/_/g, " ").replace(":", " ");
+    // ── ALL categories go through dynamic discovery ──
+    const stageCat = STAGE_CATEGORIES[category];
+    const searchTerms = stageCat?.searchTerms || [category.replace("custom:", "").replace(/_/g, " ").replace(":", " ")];
+    
+    console.log(`Stage ${stage.stage}: Discovering actors for ${category} using terms: ${searchTerms.join(", ")}`);
 
-      let discoveredForCategory: ActorEntry[] = [];
-      try {
-        discoveredForCategory = await discoverActors(searchTerm, serviceClient);
-      } catch (err) {
-        warnings.push(`Stage ${stage.stage}: Actor discovery failed for "${category}": ${err}`);
-        continue;
-      }
-
-      // ── Per-actor pre-flight validation ──
-      const nextStage = pipeline.find((s: any) => s.stage === stage.stage + 1);
-      const nextRequiredFields = nextStage?.input_from ? [nextStage.input_from] : [];
-      // Also include expected output field requirements
-      if (nextStage?.type === "scrape" && nextStage?.stage_category) {
-        const nextVerified = VERIFIED_ACTORS[nextStage.stage_category];
-        if (nextVerified) {
-          // Next stage needs whatever its input_from field maps to
-        }
-      }
-
-      let preflightPassed = false;
-      for (const candidate of discoveredForCategory.slice(0, 3)) {
-        const result = await preflightValidateActor(candidate, stage, nextRequiredFields, APIFY_API_TOKEN);
-        if (result.passed) {
-          actorRegistry[candidate.key] = { ...candidate, _verified: false } as any;
-          stage.actors = [candidate.key];
-          if (stage.params && !stage.params_per_actor) {
-            stage.params_per_actor = { [candidate.key]: stage.params };
-          }
-          console.log(`Stage ${stage.stage}: Pre-flight PASSED for ${candidate.actorId} (dynamic)`);
-          preflightPassed = true;
-
-          // Add remaining candidates as backups
-          for (const backup of discoveredForCategory.filter(a => a.key !== candidate.key).slice(0, 2)) {
-            actorRegistry[backup.key] = { ...backup, _isBackup: true, _backupForSubCategory: (candidate as any).subCategory || candidate.category } as any;
-          }
-          break;
-        } else {
-          console.log(`Stage ${stage.stage}: Pre-flight FAILED for ${candidate.actorId}: ${result.reason}`);
-        }
-      }
-
-      if (!preflightPassed) {
-        warnings.push(`Stage ${stage.stage}: No actor passed pre-flight for "${category}". Using best candidate without validation.`);
-        if (discoveredForCategory.length > 0) {
-          const fallback = discoveredForCategory[0];
-          actorRegistry[fallback.key] = fallback;
-          stage.actors = [fallback.key];
-          if (stage.params && !stage.params_per_actor) {
-            stage.params_per_actor = { [fallback.key]: stage.params };
+    let discoveredForCategory: ActorEntry[] = [];
+    try {
+      // Try multiple search terms and merge results
+      const allDiscovered: ActorEntry[] = [];
+      const seenActorIds = new Set<string>();
+      for (const term of searchTerms) {
+        const results = await discoverActors(term, serviceClient);
+        for (const actor of results) {
+          if (!seenActorIds.has(actor.actorId)) {
+            seenActorIds.add(actor.actorId);
+            // Tag with subCategory for backup matching
+            (actor as any).subCategory = stageCat?.subCategory || category;
+            allDiscovered.push(actor);
           }
         }
+      }
+      discoveredForCategory = allDiscovered;
+    } catch (err) {
+      warnings.push(`Stage ${stage.stage}: Actor discovery failed for "${category}": ${err}`);
+      continue;
+    }
+
+    if (discoveredForCategory.length === 0) {
+      warnings.push(`Stage ${stage.stage}: No actors found for "${category}"`);
+      continue;
+    }
+
+    // ── Per-actor pre-flight validation ──
+    const nextStage = pipeline.find((s: any) => s.stage === stage.stage + 1);
+    const nextRequiredFields = nextStage?.input_from ? [nextStage.input_from] : [];
+
+    let preflightPassed = false;
+    for (const candidate of discoveredForCategory.slice(0, 3)) {
+      const result = await preflightValidateActor(candidate, stage, nextRequiredFields, APIFY_API_TOKEN);
+      if (result.passed) {
+        actorRegistry[candidate.key] = candidate;
+        stage.actors = [candidate.key];
+        if (stage.params && !stage.params_per_actor) {
+          stage.params_per_actor = { [candidate.key]: stage.params };
+        }
+        console.log(`Stage ${stage.stage}: Pre-flight PASSED for ${candidate.actorId} (users: ${candidate.monthlyUsers}, runs: ${candidate.totalRuns}, rating: ${candidate.rating})`);
+        preflightPassed = true;
+
+        // Add remaining candidates as backups
+        for (const backup of discoveredForCategory.filter(a => a.key !== candidate.key).slice(0, 2)) {
+          actorRegistry[backup.key] = { ...backup, _isBackup: true, _backupForSubCategory: (candidate as any).subCategory || candidate.category } as any;
+        }
+        break;
+      } else {
+        console.log(`Stage ${stage.stage}: Pre-flight FAILED for ${candidate.actorId}: ${result.reason}`);
       }
     }
-  }
 
-  // ── Add backup verified actors for each used verified category ──
-  for (const stage of pipeline) {
-    if (stage.type !== "scrape" || !stage.actors) continue;
-    const primaryKey = stage.actors[0];
-    const primary = actorRegistry[primaryKey];
-    if (!primary || !(primary as any)._verified) continue;
-
-    // Find other verified actors in the same broad category as backups
-    const backups = Object.entries(VERIFIED_ACTORS)
-      .filter(([, v]) => v.category === primary.category && v.actorId !== primary.actorId)
-      .slice(0, 2);
-    for (const [catKey, backup] of backups) {
-      const bEntry = verifiedToActorEntry(catKey, backup);
-      if (!actorRegistry[bEntry.key]) {
-        actorRegistry[bEntry.key] = { ...bEntry, _isBackup: true, _backupForSubCategory: (primary as any).subCategory || primary.category } as any;
+    if (!preflightPassed) {
+      warnings.push(`Stage ${stage.stage}: No actor passed pre-flight for "${category}". Using best candidate without validation.`);
+      if (discoveredForCategory.length > 0) {
+        const fallback = discoveredForCategory[0];
+        actorRegistry[fallback.key] = fallback;
+        stage.actors = [fallback.key];
+        if (stage.params && !stage.params_per_actor) {
+          stage.params_per_actor = { [fallback.key]: stage.params };
+        }
+        // Add remaining as backups
+        for (const backup of discoveredForCategory.filter(a => a.key !== fallback.key).slice(0, 2)) {
+          actorRegistry[backup.key] = { ...backup, _isBackup: true, _backupForSubCategory: (fallback as any).subCategory || fallback.category } as any;
+        }
       }
     }
   }
@@ -803,6 +682,24 @@ async function preflightValidateActor(
         reason: `Output missing fields needed by next stage: ${missingForNext.join(", ")}`,
         outputFields: [...populatedFields],
       };
+    }
+
+    // Check minimum field coverage against category's expected outputs
+    const stageCat = STAGE_CATEGORIES[stageDef.stage_category];
+    if (stageCat) {
+      const expectedFields = stageCat.expectedOutputs;
+      const coveredCount = expectedFields.filter(f => {
+        const aliases = FIELD_ALIASES[f] || [f];
+        return aliases.some(a => populatedFields.has(a));
+      }).length;
+      const coverageRatio = coveredCount / expectedFields.length;
+      if (coverageRatio < 0.3) {
+        return {
+          passed: false,
+          reason: `Output covers only ${Math.round(coverageRatio * 100)}% of expected fields (${coveredCount}/${expectedFields.length})`,
+          outputFields: [...populatedFields],
+        };
+      }
     }
 
     return { passed: true, reason: "OK", outputFields: [...populatedFields] };
@@ -1231,7 +1128,7 @@ async function handleGeneratePlan(
     }
   }
 
-  // Step 3: Resolve actors for each stage (verified first, dynamic fallback + pre-flight)
+  // Step 3: Resolve actors for each stage (ALL categories use dynamic discovery + pre-flight)
   console.log(`Resolving actors for ${parsedPlan.pipeline.filter((s: any) => s.type === "scrape").length} scrape stages...`);
   const { resolvedPipeline, actorRegistry, warnings: resolveWarnings } =
     await resolveActorsForPipeline(parsedPlan.pipeline, serviceClient);
@@ -1285,34 +1182,30 @@ async function handleGeneratePlan(
   const warnings = [...resolveWarnings, ...validatePipelinePlan(parsedPlan, query)];
 
   // Step 8: Cost estimation
-  const aiYieldRate = parsedPlan.estimated_yield_rate || null;
-  const { totalCredits, totalEstimatedRows, totalEstimatedLeads, stageFunnel, yieldRate, yieldLabel, yieldGuidance } = estimatePipelineCost(parsedPlan.pipeline, aiYieldRate);
-  const costPerLead = totalEstimatedLeads > 0 ? (totalCredits / totalEstimatedLeads).toFixed(1) : "N/A";
+  const costEstimate = estimatePipelineCost(
+    parsedPlan.pipeline,
+    parsedPlan.estimated_yield_rate || null
+  );
+  parsedPlan.estimated_credits = costEstimate.totalCredits;
+  parsedPlan.estimated_rows = costEstimate.totalEstimatedRows;
+  parsedPlan.estimated_leads = costEstimate.totalEstimatedLeads;
+  parsedPlan.stage_funnel = costEstimate.stageFunnel;
+  parsedPlan.yield_rate = costEstimate.yieldRate;
+  parsedPlan.yield_label = costEstimate.yieldLabel;
+  parsedPlan.yield_guidance = costEstimate.yieldGuidance;
 
-  const signalName = parsedPlan.signal_name || "Signal";
-  const pipelineStageCount = parsedPlan.pipeline.length;
-
-  const usedActorKeys = new Set<string>();
-  for (const stage of parsedPlan.pipeline) {
-    if (stage.actors) stage.actors.forEach((a: string) => usedActorKeys.add(a));
-  }
-  const sourceLabels = [...usedActorKeys].map(k => actorRegistry[k]?.label || discoveredActorMap.get(k)?.label || k);
-
-  // Step 9: Save plan
-  const { data: run, error: insertError } = await serviceClient
+  // Step 9: Save to database
+  const { data: insertData, error: insertError } = await serviceClient
     .from("signal_runs")
     .insert({
-      user_id: userId,
       workspace_id,
-      signal_name: signalName,
+      user_id: userId,
       signal_query: query,
+      signal_name: parsedPlan.signal_name || "Signal Search",
       signal_plan: parsedPlan,
-      estimated_cost: totalCredits,
-      estimated_leads: totalEstimatedLeads,
       status: "planned",
-      pipeline_stage_count: pipelineStageCount,
-      current_pipeline_stage: 0,
-      advanced_settings: advanced_settings || {},
+      estimated_cost: costEstimate.totalCredits,
+      pipeline_stage_count: parsedPlan.pipeline?.length || 0,
     })
     .select()
     .single();
@@ -1321,77 +1214,64 @@ async function handleGeneratePlan(
 
   return new Response(
     JSON.stringify({
-      run_id: run.id,
+      run_id: insertData.id,
       plan: parsedPlan,
-      estimation: {
-        estimated_rows: totalEstimatedRows,
-        estimated_leads: totalEstimatedLeads,
-        credits_to_charge: totalCredits,
-        cost_per_lead: costPerLead,
-        source_label: sourceLabels.join(" + "),
-        stage_funnel: stageFunnel,
-        yield_rate: yieldRate,
-        yield_label: yieldLabel,
-        yield_guidance: yieldGuidance,
-      },
-      warnings,
-      data_flow_fixes: dataFlowResult.issues.length > 0 ? dataFlowResult.issues : undefined,
-      logic_reasoning: parsedPlan.logic_reasoning || null,
+      warnings: warnings.length > 0 ? warnings : undefined,
+      estimated_credits: costEstimate.totalCredits,
+      estimated_rows: costEstimate.totalEstimatedRows,
+      estimated_leads: costEstimate.totalEstimatedLeads,
+      stage_funnel: costEstimate.stageFunnel,
+      yield_rate: costEstimate.yieldRate,
+      yield_label: costEstimate.yieldLabel,
+      yield_guidance: costEstimate.yieldGuidance,
     }),
-    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
 }
 
 // ════════════════════════════════════════════════════════════════
-// ██  STRICT PLAN SCHEMA VALIDATION & AUTO-FIX
+// ██  PLAN SCHEMA VALIDATION
 // ════════════════════════════════════════════════════════════════
 
 interface PlanValidation {
-  critical: string[];   // Must fix or reject
-  warnings: string[];   // Logged but not blocking
+  critical: string[];
+  warnings: string[];
 }
 
 function validatePlanSchema(plan: any, userQuery: string): PlanValidation {
   const critical: string[] = [];
   const warnings: string[] = [];
-  const pipeline = plan.pipeline || [];
 
-  if (!pipeline || !Array.isArray(pipeline) || pipeline.length === 0) {
-    critical.push("Pipeline is empty or missing");
+  const pipeline = plan.pipeline || [];
+  if (!Array.isArray(pipeline) || pipeline.length === 0) {
+    critical.push("Pipeline is empty or not an array");
     return { critical, warnings };
   }
 
-  // 1. Stage 1 must be a scrape with no input_from
-  const stage1 = pipeline[0];
-  if (!stage1) { critical.push("No stage 1"); return { critical, warnings }; }
-  if (stage1.type !== "scrape") critical.push("Stage 1 must be type 'scrape'");
-  if (stage1.input_from) critical.push("Stage 1 must not have input_from");
-  if (!stage1.stage_category && !stage1.actors?.length) critical.push("Stage 1 has no stage_category or actors");
-
-  // 2. Every scrape stage must have stage_category or actors
-  for (const stage of pipeline) {
-    if (stage.type === "scrape" && !stage.stage_category && (!stage.actors || stage.actors.length === 0)) {
-      critical.push(`Stage ${stage.stage}: scrape stage has no stage_category or actors`);
-    }
-    if (stage.type === "ai_filter" && !stage.prompt) {
-      critical.push(`Stage ${stage.stage}: ai_filter stage has no prompt`);
-    }
-  }
-
-  // 3. For hiring_intent: verify search_query contains industry context from user query
-  if (stage1.stage_category?.startsWith("hiring_intent")) {
-    const searchQuery = (stage1.search_query || "").toLowerCase();
-    const roleFilter = stage1.role_filter;
-    
-    if (roleFilter && roleFilter.length > 0 && !searchQuery) {
-      critical.push("Hiring intent with role_filter but empty search_query (missing industry context)");
-    }
-  }
-
-  // 4. Stages must have sequential numbers
+  // Validate stage numbering
   for (let i = 0; i < pipeline.length; i++) {
     if (pipeline[i].stage !== i + 1) {
-      warnings.push(`Stage numbering gap: expected ${i + 1}, got ${pipeline[i].stage}`);
+      warnings.push(`Stage numbering gap at index ${i}: expected ${i + 1}, got ${pipeline[i].stage}`);
+    }
+  }
+
+  // Validate each stage
+  for (const stage of pipeline) {
+    if (stage.type === "scrape") {
+      if (!stage.stage_category) {
+        critical.push(`Stage ${stage.stage} is a scrape stage without stage_category`);
+      }
+    } else if (stage.type === "ai_filter") {
+      if (!stage.prompt) {
+        warnings.push(`Stage ${stage.stage} is an ai_filter without prompt`);
+      }
+    }
+  }
+
+  // Check for hiring_intent stages that should have search_query when using role_filter
+  for (const stage of pipeline) {
+    if (stage.stage_category?.startsWith("hiring_intent") && stage.role_filter?.length > 0 && !stage.search_query) {
+      critical.push(`Stage ${stage.stage}: hiring_intent with role_filter but no search_query (industry context missing)`);
     }
   }
 
@@ -1533,7 +1413,7 @@ async function discoverActors(searchTerm: string, serviceClient: any): Promise<A
 
   if (cachedActors && cachedActors.length > 0) {
     console.log(`Actor cache HIT for "${searchTerm}": ${cachedActors.length} actors`);
-    return cachedActors.map((row: any) => ({
+    const actors = cachedActors.map((row: any) => ({
       key: row.actor_key || row.actor_id.replace(/[^a-zA-Z0-9]/g, "_"),
       actorId: row.actor_id,
       label: row.label || row.actor_id,
@@ -1545,6 +1425,13 @@ async function discoverActors(searchTerm: string, serviceClient: any): Promise<A
       totalRuns: row.total_runs || 0,
       rating: row.rating || 0,
     }));
+    // Sort by composite quality score
+    actors.sort((a: ActorEntry, b: ActorEntry) => {
+      const scoreA = (a.monthlyUsers || 0) * 0.4 + (a.totalRuns || 0) * 0.0003 + (a.rating || 0) * 200;
+      const scoreB = (b.monthlyUsers || 0) * 0.4 + (b.totalRuns || 0) * 0.0003 + (b.rating || 0) * 200;
+      return scoreB - scoreA;
+    });
+    return actors;
   }
 
   // Search Apify Store
@@ -1626,8 +1513,13 @@ async function discoverActors(searchTerm: string, serviceClient: any): Promise<A
       }, { onConflict: "actor_id" }).catch(() => {});
     }
 
-    actors.sort((a, b) => (b.monthlyUsers || 0) - (a.monthlyUsers || 0));
-    console.log(`Discovered ${actors.length} actors for "${searchTerm}"`);
+    // Sort by composite quality score (users * 0.4 + totalRuns * 0.0003 + rating * 200)
+    actors.sort((a, b) => {
+      const scoreA = (a.monthlyUsers || 0) * 0.4 + (a.totalRuns || 0) * 0.0003 + (a.rating || 0) * 200;
+      const scoreB = (b.monthlyUsers || 0) * 0.4 + (b.totalRuns || 0) * 0.0003 + (b.rating || 0) * 200;
+      return scoreB - scoreA;
+    });
+    console.log(`Discovered ${actors.length} actors for "${searchTerm}" (sorted by quality score)`);
     return actors;
   } catch (err) {
     console.error(`Actor discovery error for "${searchTerm}":`, err);
@@ -1655,15 +1547,15 @@ function validatePipelinePlan(plan: any, query: string): string[] {
     warnings.push("Stage 1 should not have input_from (it's the initial discovery)");
   }
 
-  // Check for mandatory output fields coverage
+  // Check for mandatory output fields coverage using STAGE_CATEGORIES
   const mandatoryFields = ["contact_name", "industry", "website", "company_linkedin_url", "linkedin_profile_url", "employee_count"];
   const producedFields = new Set<string>();
   for (const stage of pipeline) {
     if (stage.type === "scrape" && stage.stage_category) {
-      const verified = VERIFIED_ACTORS[stage.stage_category];
-      if (verified) {
-        for (const [field, paths] of Object.entries(verified.outputFields)) {
-          if (paths.length > 0) producedFields.add(field);
+      const cat = STAGE_CATEGORIES[stage.stage_category];
+      if (cat) {
+        for (const field of cat.expectedOutputs) {
+          producedFields.add(field);
         }
       }
     }

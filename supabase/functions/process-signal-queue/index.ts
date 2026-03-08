@@ -50,19 +50,6 @@ const UNIVERSAL_OUTPUT_PATHS: Record<string, string[]> = {
   salary: ["salary", "salaryInfo", "baseSalary"],
 };
 
-// ── Verified Actor Catalog (minimal mirror of signal-planner) ──
-const VERIFIED_ACTOR_CATALOG: Record<string, { actorId: string; category: string; subCategory: string; label: string; inputSchema: Record<string, InputField>; outputFields: Record<string, string[]> }> = {
-  "local_business:google_maps": { actorId: "compass/crawler-google-places", category: "local_business", subCategory: "local_business:google_maps", label: "Google Maps Places Scraper", inputSchema: { searchStringsArray: { type: "string[]", required: true, description: "Search queries" }, maxCrawledPlacesPerSearch: { type: "number", required: false, default: 100, description: "Max results per search" } }, outputFields: { company_name: ["title"], website: ["website"], phone: ["phone"], email: ["email", "emails"], location: ["address", "fullAddress"], industry: ["category", "categories", "categoryName"] } },
-  "local_business:yelp": { actorId: "yin/yelp-scraper", category: "local_business", subCategory: "local_business:yelp", label: "Yelp Business Scraper", inputSchema: { searchTerms: { type: "string[]", required: true, description: "Search terms" }, location: { type: "string", required: false, description: "Location" }, maxItems: { type: "number", required: false, default: 100, description: "Max results" } }, outputFields: { company_name: ["name", "businessName"], website: ["website"], phone: ["phone", "displayPhone"], location: ["address"], industry: ["categories"] } },
-  "hiring_intent:indeed": { actorId: "misceres/indeed-scraper", category: "hiring_intent", subCategory: "hiring_intent:indeed", label: "Indeed Job Scraper", inputSchema: { position: { type: "string", required: false, description: "Job title" }, location: { type: "string", required: false, description: "Location" }, country: { type: "string", required: false, default: "US", description: "Country code" }, maxItems: { type: "number", required: false, default: 100, description: "Max results" } }, outputFields: { company_name: ["company", "companyName"], title: ["positionName", "title"], location: ["jobLocation", "location"], website: ["companyUrl", "url"], description: ["description"] } },
-  "hiring_intent:linkedin": { actorId: "hMvNSpz3JnHgl5jkh", category: "hiring_intent", subCategory: "hiring_intent:linkedin", label: "LinkedIn Jobs Scraper", inputSchema: { urls: { type: "object[]", required: false, description: "LinkedIn job search URLs" }, startUrls: { type: "object[]", required: false, description: "Start URLs" }, maxItems: { type: "number", required: false, default: 100, description: "Max results" } }, outputFields: { company_name: ["companyName", "company"], title: ["title", "jobTitle"], location: ["location", "jobLocation"], linkedin: ["companyLinkedinUrl"], website: ["companyUrl"], industry: ["companyIndustry"], employee_count: ["companyEmployeesCount"] } },
-  "hiring_intent:glassdoor": { actorId: "bebity/glassdoor-scraper", category: "hiring_intent", subCategory: "hiring_intent:glassdoor", label: "Glassdoor Job Scraper", inputSchema: { keyword: { type: "string", required: false, description: "Job keyword" }, location: { type: "string", required: false, description: "Location" }, maxItems: { type: "number", required: false, default: 100, description: "Max results" } }, outputFields: { company_name: ["employer.name", "companyName"], title: ["jobTitle", "title"], location: ["location"], industry: ["employer.industry"], website: ["employer.corporateWebsite"], employee_count: ["employer.employeesCount"] } },
-  "people_data:linkedin": { actorId: "2SyF0bVxmgQr8SsLY", category: "people_data", subCategory: "people_data:linkedin", label: "LinkedIn People Search", inputSchema: { searchUrl: { type: "string", required: false, description: "LinkedIn people search URL" }, urls: { type: "object[]", required: false, description: "Search URLs" }, startUrls: { type: "object[]", required: false, description: "Start URLs" }, maxItems: { type: "number", required: false, default: 50, description: "Max results" } }, outputFields: { contact_name: ["fullName", "name", "firstName"], title: ["headline", "title"], linkedin_profile: ["profileUrl", "url", "linkedinUrl"], company_name: ["companyName", "currentCompany"], location: ["location", "geoLocation"] } },
-  "company_data:linkedin": { actorId: "voyager/linkedin-company-scraper", category: "company_data", subCategory: "company_data:linkedin", label: "LinkedIn Company Scraper", inputSchema: { urls: { type: "object[]", required: false, description: "LinkedIn company page URLs" }, startUrls: { type: "object[]", required: false, description: "Start URLs" }, maxItems: { type: "number", required: false, default: 50, description: "Max results" } }, outputFields: { company_name: ["name", "companyName"], industry: ["industry", "industries"], employee_count: ["employeeCount", "staffCount", "employeesOnLinkedIn"], website: ["website", "websiteUrl"], linkedin: ["url", "linkedinUrl"], location: ["headquarters", "location"] } },
-  "web_search:google": { actorId: "apify/google-search-scraper", category: "web_search", subCategory: "web_search:google", label: "Google Search Scraper", inputSchema: { queries: { type: "string", required: true, description: "Search query string" }, maxPagesPerQuery: { type: "number", required: false, default: 1, description: "Pages per query" }, resultsPerPage: { type: "number", required: false, default: 10, description: "Results per page" } }, outputFields: { company_name: ["title"], website: ["url", "link"], description: ["description", "snippet"] } },
-  "enrichment:contact": { actorId: "alexey/contact-info-scraper", category: "enrichment", subCategory: "enrichment:contact", label: "Website Contact Info Scraper", inputSchema: { startUrls: { type: "object[]", required: true, description: "Website URLs to scrape contacts from" }, maxRequestsPerStartUrl: { type: "number", required: false, default: 5, description: "Max pages per site" } }, outputFields: { email: ["emails", "email"], phone: ["phones", "phone", "phoneNumbers"], linkedin: ["linkedIn", "linkedin"], website: ["url"] } },
-};
-
 // ── Runtime Schema Authority — always fetch live schema, cache in-memory ──
 const _runtimeSchemaCache = new Map<string, { fields: Record<string, InputField>; source: "runtime" | "catalog_fallback" }>();
 
@@ -76,7 +63,6 @@ async function fetchAndMergeRuntimeSchema(actor: ActorEntry, token: string): Pro
     for (const [key, val] of Object.entries(cached.fields)) {
       merged[key] = { ...(merged[key] || {}), ...val, type: val.type, _schemaSource: cached.source };
     }
-    // Mark all fields with source
     for (const key of Object.keys(merged)) {
       if (!merged[key]._schemaSource) merged[key]._schemaSource = cached.source;
     }
@@ -89,8 +75,8 @@ async function fetchAndMergeRuntimeSchema(actor: ActorEntry, token: string): Pro
   const actorIdEncoded = actor.actorId.replace("/", "~");
   const endpoints = [
     `https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${token}`,
-    `https://api.apify.com/v2/acts/${actorIdEncoded}?token=${token}`, // actor metadata (schema embedded)
-    `https://api.apify.com/v2/store/${actorIdEncoded}?token=${token}`, // store listing
+    `https://api.apify.com/v2/acts/${actorIdEncoded}?token=${token}`,
+    `https://api.apify.com/v2/store/${actorIdEncoded}?token=${token}`,
   ];
 
   for (let i = 0; i < endpoints.length; i++) {
@@ -101,7 +87,6 @@ async function fetchAndMergeRuntimeSchema(actor: ActorEntry, token: string): Pro
         continue;
       }
       const data = await resp.json();
-      // Extract properties from different response shapes
       let props: Record<string, any> = {};
       if (data.properties && Object.keys(data.properties).length > 0) {
         props = data.properties;
@@ -148,10 +133,9 @@ async function fetchAndMergeRuntimeSchema(actor: ActorEntry, token: string): Pro
   }
 
   // All endpoints failed — mark as catalog fallback
-  console.warn(`All schema endpoints failed for ${actor.actorId}, using catalog fallback`);
+  console.warn(`All schema endpoints failed for ${actor.actorId}, using existing schema as fallback`);
   _runtimeSchemaCache.set(cacheKey, { fields: actor.inputSchema || {}, source: "catalog_fallback" });
   (actor as any)._schemaSource = "catalog_fallback";
-  // Mark all existing fields
   if (actor.inputSchema) {
     for (const key of Object.keys(actor.inputSchema)) {
       actor.inputSchema[key]._schemaSource = "catalog_fallback";
@@ -159,24 +143,15 @@ async function fetchAndMergeRuntimeSchema(actor: ActorEntry, token: string): Pro
   }
 }
 
-function resolveVerifiedActor(stageCategory: string): ActorEntry | null {
-  const v = VERIFIED_ACTOR_CATALOG[stageCategory];
-  if (!v) return null;
-  const key = v.actorId.replace(/[^a-zA-Z0-9]/g, "_");
-  return {
-    key,
-    actorId: v.actorId,
-    label: v.label,
-    category: v.category,
-    description: v.label,
-    inputSchema: v.inputSchema,
-    outputFields: v.outputFields,
-    monthlyUsers: 10000,
-    totalRuns: 100000,
-    rating: 5,
-    _verified: true,
-    subCategory: v.subCategory,
-  } as any;
+// ── Resolve actor for a category from plan's actor registry ──
+function resolveActorForCategory(stageCategory: string): ActorEntry | null {
+  // Search plan's actor registry for matching actor
+  for (const [, actor] of planActorRegistry.entries()) {
+    const sub = (actor as any).subCategory || "";
+    if (sub === stageCategory) return actor;
+    if (actor.category === stageCategory.split(":")[0]) return actor;
+  }
+  return null;
 }
 
 // ── Dynamic Actor Registry — loaded from each run's plan ──
@@ -205,7 +180,6 @@ function getNestedValue(obj: any, path: string): any {
 }
 
 function normaliseGenericResults(actor: ActorEntry | null, items: any[]): any[] {
-  // Use actor's outputFields if available and non-empty, otherwise fall back to universal paths
   const fieldPaths = (actor?.outputFields && Object.keys(actor.outputFields).length > 0)
     ? actor.outputFields
     : UNIVERSAL_OUTPUT_PATHS;
@@ -242,40 +216,35 @@ function splitCompoundKeywords(keyword: string): string[] {
 // ═══════════════════════════════════════════════════════════
 // ██  QUERY NORMALIZATION ENGINE — Deterministic URL/query construction
 // ══════════════════════════════════════════════════════════
-// The AI decides WHAT to search (roles, industry, location).
-// This engine decides HOW to construct the platform-specific query.
 
 interface SearchIntent {
-  roles: string[];          // e.g. ["Sales Representative", "SDR", "BDR"]
-  industry: string;         // e.g. "marketing OR advertising"
-  location: string;         // e.g. "United States"
-  dateRange?: string;       // e.g. "r604800" (past week)
+  roles: string[];
+  industry: string;
+  location: string;
+  dateRange?: string;
 }
 
 function parseSearchIntent(stageDef: any): SearchIntent {
   const roleFilter: string[] | null = stageDef.role_filter || null;
   const searchQuery: string = stageDef.search_query || "";
   
-  // Extract location from actor params — planner embeds geography there
-  let location = "United States"; // fallback default
+  let location = "United States";
   const paramsPerActor = stageDef.params_per_actor || {};
   for (const [, actorParams] of Object.entries(paramsPerActor)) {
     const ap = actorParams as Record<string, any>;
     if (ap?.location) { location = ap.location; break; }
     if (ap?.searchLocation) { location = ap.searchLocation; break; }
-    // Check for location embedded in URLs
     if (ap?.urls?.[0]) {
       const urlMatch = String(ap.urls[0]).match(/location=([^&]+)/);
       if (urlMatch) { location = decodeURIComponent(urlMatch[1]); break; }
     }
   }
-  // Also check top-level params
   if (stageDef.params?.location) location = stageDef.params.location;
   if (stageDef.params?.searchLocation) location = stageDef.params.searchLocation;
   
   return {
     roles: roleFilter || [],
-    industry: roleFilter ? searchQuery : "", // When roles exist, search_query IS the industry
+    industry: roleFilter ? searchQuery : "",
     location,
     dateRange: "r604800",
   };
@@ -293,11 +262,16 @@ function buildPlatformSearchQuery(
 ): PlatformQuery {
   const location = existingParams.location || existingParams.searchLocation || intent.location || "United States";
   
-  // Build the combined search keyword: roles + industry context
+  // Build the combined search keyword
   let combinedKeyword: string;
   if (intent.roles.length > 0 && intent.industry) {
-    // "Sales Representative OR SDR marketing OR advertising"
-    combinedKeyword = `${intent.roles.join(" OR ")} ${intent.industry}`;
+    // FIX: For LinkedIn, use ONLY roles as keywords — industry is too broad for LinkedIn keyword field
+    // Industry context is handled by the AI filter stage
+    if (platform === "linkedin") {
+      combinedKeyword = intent.roles.join(" OR ");
+    } else {
+      combinedKeyword = `${intent.roles.join(" OR ")} ${intent.industry}`;
+    }
   } else if (intent.roles.length > 0) {
     combinedKeyword = intent.roles.join(" OR ");
   } else if (intent.industry) {
@@ -342,7 +316,6 @@ function buildPlatformSearchQuery(
       };
     }
     case "google_maps": {
-      // For local business, combine industry + location into search strings
       const searchTerms = intent.industry 
         ? splitCompoundKeywords(intent.industry).map(term => `${term} ${location}`)
         : [combinedKeyword];
@@ -371,7 +344,6 @@ function buildPlatformSearchQuery(
       };
     }
     default: {
-      // Generic: try all common field names
       return {
         params: {
           ...existingParams,
@@ -392,8 +364,8 @@ function detectPlatform(actor: ActorEntry): "linkedin" | "indeed" | "glassdoor" 
   const sub = ((actor as any).subCategory || "").toLowerCase();
   
   if (id.includes("linkedin") || label.includes("linkedin") || sub.includes("linkedin")) {
-    if (sub.includes("people") || label.includes("people")) return "generic"; // People search uses different logic
-    if (sub.includes("company")) return "generic"; // Company scraper uses URLs
+    if (sub.includes("people") || label.includes("people")) return "generic";
+    if (sub.includes("company")) return "generic";
     return "linkedin";
   }
   if (id.includes("indeed") || label.includes("indeed") || sub.includes("indeed")) return "indeed";
@@ -423,7 +395,6 @@ async function diagnoseZeroResults(
 ): Promise<DiagnosticResult> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   
-  // Check if actors actually ran successfully but returned empty
   const allSucceeded = stageRefs.length > 0 && stageRefs.every(r => r.status === "SUCCEEDED");
   const allFailed = stageRefs.length > 0 && stageRefs.every(r => r.status === "FAILED" || r.status === "TIMED-OUT");
   
@@ -443,14 +414,12 @@ async function diagnoseZeroResults(
     };
   }
   
-  // Actors succeeded but returned 0 results — diagnose why
   const intent = parseSearchIntent(stageDef);
   const platform = detectPlatform(
     getActor(stageDef.actors?.[0] || "") || { actorId: "", label: "", category: "" } as any
   );
   
   if (!LOVABLE_API_KEY) {
-    // Without AI, use heuristic diagnosis
     if (intent.roles.length > 0 && !intent.industry) {
       return {
         diagnosis: "wrong_query",
@@ -466,7 +435,6 @@ async function diagnoseZeroResults(
     };
   }
   
-  // Use AI to diagnose
   try {
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -535,8 +503,6 @@ function extractDomain(url: string): string {
 }
 
 function buildGenericInput(actor: ActorEntry, params: Record<string, any>): Record<string, any> {
-  // If inputSchema is empty/missing, pass through ALL provided params directly
-  // This is critical for dynamically discovered actors whose schema couldn't be fetched
   if (!actor.inputSchema || Object.keys(actor.inputSchema).length === 0) {
     console.log(`buildGenericInput: No inputSchema for ${actor.key}, passing through all ${Object.keys(params).length} params`);
     return { ...params };
@@ -550,8 +516,6 @@ function buildGenericInput(actor: ActorEntry, params: Record<string, any>): Reco
     result[field] = value;
   }
 
-  // Also pass through any params that aren't in the schema but were explicitly provided
-  // (the planner knows what params the actor needs even if schema fetch failed partially)
   for (const [key, value] of Object.entries(params)) {
     if (result[key] === undefined && value !== undefined) {
       result[key] = value;
@@ -564,13 +528,10 @@ function buildGenericInput(actor: ActorEntry, params: Record<string, any>): Reco
 // ═══════════════════════════════════════════════════════════
 // ██  SCHEMA-AWARE INPUT NORMALIZER
 // ═══════════════════════════════════════════════════════════
-// Runs AFTER buildGenericInput, BEFORE startApifyRun.
-// Coerces each field's value to match the actor's declared schema type.
-// If schema is empty/missing, returns input unchanged (preserves shotgun approach).
 
 function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): Record<string, any> {
   if (!actor.inputSchema || Object.keys(actor.inputSchema).length === 0) {
-    return input; // No schema — can't normalize, pass through
+    return input;
   }
 
   const schemaSource = (actor as any)._schemaSource || "catalog_fallback";
@@ -584,11 +545,8 @@ function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): 
     const fieldSource = schema._schemaSource || schemaSource;
     const isUrlField = /url/i.test(field);
 
-    // ── URL-array coercions: only apply when schema source is runtime (trusted) ──
-    // ── string[] but got object[] (e.g., [{url: "..."}] → ["..."]) ──
     if (declaredType === "string[]" && Array.isArray(value) && value.length > 0 && typeof value[0] === "object" && value[0] !== null) {
       if (isUrlField && fieldSource !== "runtime") {
-        // Catalog fallback — preserve original shape to avoid destructive coercion
         console.log(`Schema normalization SKIPPED: "${field}" object[]→string[] coercion blocked (source: ${fieldSource}, not trusted) for actor ${actor.actorId}`);
         continue;
       }
@@ -600,26 +558,16 @@ function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): 
         console.log(`Schema coercion: "${field}" object[] → string[] (extracted .${stringProp}, source: ${fieldSource}) for actor ${actor.actorId}`);
       }
     }
-    // ── string[] but got a single string → wrap in array ──
     else if (declaredType === "string[]" && typeof value === "string") {
       result[field] = [value];
       coercions++;
       console.log(`Schema coercion: "${field}" string → string[] for actor ${actor.actorId}`);
     }
-    // ── object[] but got string[] (e.g., ["..."] → [{url: "..."}]) ──
     else if (declaredType === "object[]" && Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
-      if (isUrlField && fieldSource !== "runtime") {
-        // Catalog fallback for object[] — still safe to wrap strings as {url}, this is additive not destructive
-        result[field] = value.map((item: string) => ({ url: item }));
-        coercions++;
-        console.log(`Schema coercion: "${field}" string[] → object[] (wrapped as {url}, source: ${fieldSource}) for actor ${actor.actorId}`);
-      } else {
-        result[field] = value.map((item: string) => ({ url: item }));
-        coercions++;
-        console.log(`Schema coercion: "${field}" string[] → object[] (wrapped as {url}, source: ${fieldSource}) for actor ${actor.actorId}`);
-      }
+      result[field] = value.map((item: string) => ({ url: item }));
+      coercions++;
+      console.log(`Schema coercion: "${field}" string[] → object[] (wrapped as {url}, source: ${fieldSource}) for actor ${actor.actorId}`);
     }
-    // ── number but got string ──
     else if (declaredType === "number" && typeof value === "string") {
       const parsed = parseFloat(value);
       if (!isNaN(parsed)) {
@@ -628,13 +576,11 @@ function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): 
         console.log(`Schema coercion: "${field}" string → number for actor ${actor.actorId}`);
       }
     }
-    // ── string but got array → take first element ──
     else if (declaredType === "string" && Array.isArray(value) && value.length > 0) {
       result[field] = String(value[0]);
       coercions++;
       console.log(`Schema coercion: "${field}" array → string (first element) for actor ${actor.actorId}`);
     }
-    // ── boolean but got string ──
     else if (declaredType === "boolean" && typeof value === "string") {
       result[field] = value === "true" || value === "1";
       coercions++;
@@ -642,7 +588,6 @@ function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): 
     }
   }
 
-  // Also normalize fields NOT in schema but present in input — check if they're common URL array fields
   for (const field of Object.keys(result)) {
     if (actor.inputSchema[field]) continue;
     if (!Array.isArray(result[field]) || result[field].length === 0) continue;
@@ -681,11 +626,9 @@ function findBackupActors(primaryActor: ActorEntry): ActorEntry[] {
   return [...planActorRegistry.values()]
     .filter(a => {
       if (!(a as any)._isBackup) return false;
-      // Strict: match subCategory if available (prevents cross-type fallback like Google Maps → LinkedIn Jobs)
       if (subCategory && (a as any).subCategory) {
         return (a as any).subCategory === subCategory;
       }
-      // Fallback: match broad category only if subCategory is unavailable
       return a.category === primaryActor.category;
     })
     .sort((a, b) => (b.monthlyUsers || 0) - (a.monthlyUsers || 0));
@@ -715,12 +658,10 @@ function flipStartUrlsShape(input: Record<string, any>): Record<string, any> | n
     if (!Array.isArray(flipped[field]) || flipped[field].length === 0) continue;
     const first = flipped[field][0];
     if (typeof first === "string") {
-      // string[] → object[]
       flipped[field] = flipped[field].map((item: string) => ({ url: item }));
       didFlip = true;
       console.log(`URL flip: "${field}" string[] → object[] ({url})`);
     } else if (typeof first === "object" && first !== null && first.url) {
-      // object[] → string[]
       flipped[field] = flipped[field].map((item: any) => item.url || String(item));
       didFlip = true;
       console.log(`URL flip: "${field}" object[] → string[]`);
@@ -740,165 +681,124 @@ async function startApifyRunWithFallback(
     return { ...result, usedActor: actor };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
+    console.warn(`Primary actor ${actor.key} failed: ${errMsg.slice(0, 200)}`);
 
-    // ── Self-healing: detect invalid-input on URL fields and retry with flipped shape ──
-    if (errMsg.includes("invalid-input") || (errMsg.includes("400") && /startUrls|urls/i.test(errMsg))) {
-      console.warn(`Detected invalid-input for ${actor.key}, attempting URL shape flip retry`);
-      const flippedInput = flipStartUrlsShape(input);
-      if (flippedInput) {
+    // ── Self-healing: flip startUrls shape and retry ──
+    if (errMsg.includes("INPUT") || errMsg.includes("invalid") || errMsg.includes("schema")) {
+      const flipped = flipStartUrlsShape(input);
+      if (flipped) {
         try {
-          const result = await startApifyRun(actor, flippedInput, token);
-          console.log(`URL shape flip succeeded for ${actor.key} → run ${result.runId}`);
+          console.log(`Retrying ${actor.key} with flipped URL shape`);
+          const result = await startApifyRun(actor, flipped, token);
           return { ...result, usedActor: actor };
-        } catch (flipErr) {
-          console.warn(`URL shape flip retry also failed for ${actor.key}:`, flipErr instanceof Error ? flipErr.message : String(flipErr));
+        } catch (retryErr) {
+          console.warn(`Flipped retry also failed for ${actor.key}: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`);
         }
       }
     }
 
-    if (!isNotRentedError(errMsg)) throw err;
-
-    console.warn(`Actor ${actor.key} is not rented (403), trying backups for subCategory "${(actor as any).subCategory || actor.category}"`);
-    const backups = findBackupActors(actor);
-
-    if (backups.length === 0) {
-      throw new Error(`Actor ${actor.key} not rented and no same-type backup actors available (subCategory: ${(actor as any).subCategory || actor.category}). Original error: ${errMsg}`);
-    }
-
-    for (const backup of backups) {
-      let backupInput: Record<string, any> = {};
-      try {
-        console.log(`Trying backup actor: ${backup.key} (${backup.label})`);
-        await fetchAndMergeRuntimeSchema(backup, token);
-        backupInput = normalizeInputToSchema(backup, buildGenericInput(backup, input));
-        if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
-        const result = await startApifyRun(backup, backupInput, token);
-        console.log(`Backup actor ${backup.key} started successfully → run ${result.runId}`);
-        return { ...result, usedActor: backup };
-      } catch (backupErr) {
-        const backupErrMsg = backupErr instanceof Error ? backupErr.message : String(backupErr);
-        // Also try URL flip for backup actors
-        if (backupErrMsg.includes("invalid-input") || (backupErrMsg.includes("400") && /startUrls|urls/i.test(backupErrMsg))) {
-          const flippedBackup = flipStartUrlsShape(backupInput);
-          if (flippedBackup) {
-            try {
-              const result = await startApifyRun(backup, flippedBackup, token);
-              console.log(`Backup ${backup.key} URL flip succeeded → run ${result.runId}`);
-              return { ...result, usedActor: backup };
-            } catch { /* fall through */ }
-          }
+    // ── Fallback: try backup actors ──
+    if (isNotRentedError(errMsg) || errMsg.includes("403") || errMsg.includes("401")) {
+      const backups = findBackupActors(actor);
+      for (const backup of backups) {
+        try {
+          await fetchAndMergeRuntimeSchema(backup, token);
+          const backupInput = normalizeInputToSchema(backup, buildGenericInput(backup, input));
+          if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
+          console.log(`Trying backup actor ${backup.key} (${backup.actorId})`);
+          const result = await startApifyRun(backup, backupInput, token);
+          return { ...result, usedActor: backup };
+        } catch (backupErr) {
+          console.warn(`Backup ${backup.key} also failed: ${backupErr instanceof Error ? backupErr.message : String(backupErr)}`);
         }
-        console.warn(`Backup actor ${backup.key} also failed: ${backupErrMsg}`);
-        continue;
       }
     }
 
-    throw new Error(`Actor ${actor.key} not rented and all ${backups.length} same-type backup actors failed. Original error: ${errMsg}`);
+    throw err;
   }
+}
+
+function isCapacityError(errMsg: string): boolean {
+  const lower = errMsg.toLowerCase();
+  return lower.includes("memory-limit") || lower.includes("402") || lower.includes("capacity");
 }
 
 async function pollApifyRun(runId: string, token: string): Promise<string> {
   const resp = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${token}`, { method: "GET" });
-  if (!resp.ok) throw new Error(`Apify poll failed (${resp.status})`);
+  if (!resp.ok) return "FAILED";
   const data = await resp.json();
-  return data.data.status;
+  return data.data?.status || "FAILED";
 }
 
-async function collectApifyResults(datasetId: string, token: string, maxItems?: number): Promise<any[]> {
-  const PAGE_SIZE = 500;
-  let allItems: any[] = [];
-  let offset = 0;
-  while (true) {
-    const resp = await fetch(
-      `https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}&clean=true&limit=${PAGE_SIZE}&offset=${offset}`,
-      { method: "GET" }
-    );
-    if (!resp.ok) throw new Error(`Apify collect failed (${resp.status})`);
-    const items = await resp.json();
-    allItems.push(...items);
-    if (items.length < PAGE_SIZE) break;
-    if (maxItems && allItems.length >= maxItems) {
-      allItems = allItems.slice(0, maxItems);
-      break;
-    }
-    offset += PAGE_SIZE;
-  }
-  return maxItems ? allItems.slice(0, maxItems) : allItems;
-}
-
-async function abortApifyRun(runId: string, token: string): Promise<void> {
+async function abortApifyRun(runId: string, token: string) {
   try {
     await fetch(`https://api.apify.com/v2/actor-runs/${runId}/abort?token=${token}`, { method: "POST" });
   } catch { /* ignore */ }
 }
 
-function isCapacityError(errMsg: string): boolean {
-  const lower = errMsg.toLowerCase();
-  return lower.includes("actor-memory-limit-exceeded") || lower.includes("memory limit") ||
-    (lower.includes("402") && (lower.includes("memory") || lower.includes("capacity")));
+async function collectApifyResults(datasetId: string, token: string, maxItems?: number): Promise<any[]> {
+  const allItems: any[] = [];
+  const pageSize = 500;
+  let offset = 0;
+  const effectiveMax = maxItems || 10000;
+
+  while (offset < effectiveMax) {
+    const limit = Math.min(pageSize, effectiveMax - offset);
+    const resp = await fetch(
+      `https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}&clean=true&limit=${limit}&offset=${offset}`,
+      { method: "GET" }
+    );
+    if (!resp.ok) break;
+    const items = await resp.json();
+    if (!items || items.length === 0) break;
+    allItems.push(...items);
+    if (items.length < limit) break;
+    offset += items.length;
+  }
+
+  return allItems;
 }
 
 // ═══════════════════════════════════════════════════════════
-// ██  INTER-STAGE QUALITY VALIDATION
+// ██  QUALITY CHECK & RECONFIGURATION
 // ═══════════════════════════════════════════════════════════
 
-interface QualityCheckResult {
-  quality: "HIGH" | "MEDIUM" | "LOW" | "USELESS";
-  reason: string;
-  suggestedAction?: "continue" | "reconfigure" | "abort";
-  reconfiguredPipeline?: any[];
-}
-
-async function pipelineQualityCheck(
+async function qualityCheckStage(
   run: any,
   stageNum: number,
   stageDef: any,
   pipeline: any[],
   serviceClient: any
-): Promise<QualityCheckResult> {
+): Promise<{ quality: string; reason: string; suggestedAction: string; reconfiguredPipeline?: any[] }> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) return { quality: "HIGH", reason: "No API key, skipping quality check", suggestedAction: "continue" };
+  if (!LOVABLE_API_KEY) return { quality: "MEDIUM", reason: "No API key for quality check", suggestedAction: "continue" };
 
-  // Get total count first to determine sample size
-  const { count: totalCountPre } = await serviceClient
+  const { data: sampleLeads, count: totalCount } = await serviceClient
     .from("signal_leads")
-    .select("*", { count: "exact", head: true })
-    .eq("run_id", run.id);
-
-  // Scale sample size with dataset: min(50, max(15, ceil(total * 0.05)))
-  const dynamicSampleSize = Math.min(50, Math.max(15, Math.ceil((totalCountPre || 0) * 0.05)));
-
-  const { data: sampleLeads } = await serviceClient
-    .from("signal_leads")
-    .select("*")
+    .select("*", { count: "exact" })
     .eq("run_id", run.id)
-    .limit(dynamicSampleSize);
+    .limit(50);
 
   if (!sampleLeads || sampleLeads.length === 0) {
-    return { quality: "USELESS", reason: "Stage produced 0 results", suggestedAction: "abort" };
+    return { quality: "USELESS", reason: "No leads found", suggestedAction: "abort" };
   }
 
-  // Reuse the total count from above
-  const totalCount = totalCountPre;
-
-  // Build context about what the next stages need
-  const remainingStages = pipeline.slice(stageNum);
-  const nextStageNeeds = remainingStages
-    .filter((s: any) => s.type === "scrape" && s.input_from)
-    .map((s: any) => s.input_from);
-
-  const sampleData = sampleLeads.map((l: any) => ({
-    company_name: l.company_name,
-    website: l.website,
-    domain: l.domain,
-    industry: l.industry,
-    employee_count: l.employee_count,
+  const sampleSize = Math.min(50, Math.max(15, Math.ceil((totalCount || sampleLeads.length) * 0.05)));
+  const sampleData = sampleLeads.slice(0, sampleSize).map((l: any) => ({
+    company_name: l.company_name, website: l.website, domain: l.domain,
+    industry: l.industry, employee_count: l.employee_count,
+    title: l.title, location: l.location,
     company_linkedin_url: l.company_linkedin_url,
-    title: l.title,
-    description: (l.extra_data?.description || l.extra_data?.descriptionHtml || "").slice(0, 200),
+    description: (l.extra_data?.description || l.extra_data?.descriptionHtml || "").slice(0, 300),
   }));
 
-  // ── Gather search configuration context for the AI ──
+  const nextStageNeeds: string[] = [];
+  for (let i = stageNum; i < pipeline.length; i++) {
+    const ns = pipeline[i];
+    if (ns.input_from) nextStageNeeds.push(ns.input_from);
+    if (ns.updates_fields) nextStageNeeds.push(...ns.updates_fields);
+  }
+
   const advancedSettings = run.advanced_settings || {};
   const maxResultsPerSource = advancedSettings.max_results_per_source || 100;
   const stage1Def = pipeline[0] || {};
@@ -910,7 +810,6 @@ async function pipelineQualityCheck(
     if (p?.search_query) stage1SearchQueries.push(p.search_query);
     if (p?.searchQuery) stage1SearchQueries.push(p.searchQuery);
     if (p?.queries) stage1SearchQueries.push(String(p.queries));
-    // Detect industry filter fields
     for (const [k, v] of Object.entries(p || {})) {
       if (/industry|category|vertical|sector/i.test(k) && v) {
         stage1IndustryFilters.push(`${k}=${v}`);
@@ -919,7 +818,6 @@ async function pipelineQualityCheck(
   }
   const hasIndustryContext = stage1IndustryFilters.length > 0 ||
     stage1SearchQueries.some(q => {
-      // Check if the search query contains industry-specific terms from the user's original query
       const userWords = run.signal_query.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
       return userWords.some((w: string) => q.toLowerCase().includes(w));
     });
@@ -1004,7 +902,6 @@ Rating guide:
     }
 
     if (quality === "LOW") {
-      // Try to reconfigure downstream pipeline
       const reconfigured = await reconfigurePipeline(run, stageNum, pipeline, parsed, serviceClient);
       return {
         quality,
@@ -1014,9 +911,7 @@ Rating guide:
       };
     }
 
-    // USELESS — but check if this is really a small-cap issue disguised as bad data
     if (datasetSize <= 500 && maxResultsPerSource <= 500) {
-      // Small dataset with low cap — this is likely a cap issue, not a data quality issue
       const capReason = `${reason}. The max results per source is set to ${maxResultsPerSource}, which may be too low for this niche query. The search executed correctly but the dataset cap limited the results. Consider increasing max results per source to 1000+ for broader coverage.`;
       console.log(`Stage ${stageNum}: USELESS downgraded to LOW — small cap (${maxResultsPerSource}) likely insufficient for niche query`);
       return {
@@ -1026,7 +921,6 @@ Rating guide:
       };
     }
 
-    // Genuinely useless — large dataset but irrelevant
     const actionableReason = `${reason}. Stage ${stageNum} returned ${datasetSize} results but very few matched your criteria "${run.signal_query}". The search terms may need to be more specific to your target industry.`;
     return { quality: "USELESS", reason: actionableReason, suggestedAction: "abort" };
   } catch (err) {
@@ -1045,7 +939,6 @@ async function reconfigurePipeline(
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return null;
 
-  // Only allow 1 reconfiguration per run
   const existingAdjustments = run.pipeline_adjustments || [];
   if (existingAdjustments.length >= 1) {
     console.log("Max reconfiguration limit reached, skipping");
@@ -1055,7 +948,6 @@ async function reconfigurePipeline(
   const completedStages = pipeline.slice(0, currentStage);
   const remainingStages = pipeline.slice(currentStage);
 
-  // Get current lead field coverage
   const { data: sampleLeads } = await serviceClient
     .from("signal_leads").select("*").eq("run_id", run.id).limit(20);
 
@@ -1125,16 +1017,14 @@ Example stage format:
     // ── Resolve stage_category → real actors for each reconfigured stage ──
     for (const stage of newStages) {
       if (stage.type === "scrape" && stage.stage_category) {
-        const resolved = resolveVerifiedActor(stage.stage_category);
+        const resolved = resolveActorForCategory(stage.stage_category);
         if (resolved) {
           stage.actors = [resolved.key];
           stage.params_per_actor = { [resolved.key]: stage.params || {} };
-          // Register in the plan's actor registry so getActor() works at execution time
           planActorRegistry.set(resolved.key, resolved);
           console.log(`Reconfiguration: resolved ${stage.stage_category} → ${resolved.actorId} (key: ${resolved.key})`);
         } else {
-          // Fallback: try using stage_category as-is (legacy compat)
-          console.warn(`Reconfiguration: no verified actor for category "${stage.stage_category}", stage may fail`);
+          console.warn(`Reconfiguration: no actor in registry for category "${stage.stage_category}", stage may fail`);
         }
       }
       // Legacy compat: if AI still outputs actors[] with old names, try to resolve them
@@ -1149,7 +1039,7 @@ Example stage format:
         for (const actorName of stage.actors) {
           const mappedCategory = legacyMap[actorName];
           if (mappedCategory) {
-            const resolved = resolveVerifiedActor(mappedCategory);
+            const resolved = resolveActorForCategory(mappedCategory);
             if (resolved) {
               stage.actors = [resolved.key];
               stage.stage_category = mappedCategory;
@@ -1181,16 +1071,16 @@ Example stage format:
     if (originalHadPersonEnrichment && !newHasPersonEnrichment && fieldCoverage["company_name"] >= 30) {
       console.log("Person-enrichment stage was dropped during reconfiguration — re-injecting");
       const lastStageNum = newStages.length > 0 ? Math.max(...newStages.map((s: any) => s.stage || 0)) : currentStage;
-      const resolved = resolveVerifiedActor("people_data:linkedin");
-      const actorKey = resolved?.key || "2SyF0bVxmgQr8SsLY";
+      const resolved = resolveActorForCategory("people_data:linkedin");
+      const actorKey = resolved?.key || "people_data_linkedin";
       if (resolved) planActorRegistry.set(actorKey, resolved);
       newStages.push({
         stage: lastStageNum + 1,
         name: "Identify Decision Makers",
         type: "scrape",
         stage_category: "people_data:linkedin",
-        actors: [actorKey],
-        params_per_actor: { [actorKey]: {} },
+        actors: resolved ? [actorKey] : [],
+        params_per_actor: resolved ? { [actorKey]: {} } : {},
         input_from: "company_name",
         search_titles: ["CEO", "Founder", "Owner", "Managing Director", "VP Sales", "Head of Sales"],
         dedup_after: false,
@@ -1275,137 +1165,97 @@ serve(async (req) => {
         }
 
         if (run.status === "queued") {
-          const { data: leased, error: leaseErr } = await serviceClient
-            .from("signal_runs")
-            .update({
-              status: "running", started_at: new Date().toISOString(),
-              error_message: null, processing_phase: isPipeline ? "stage_1_starting" : "starting",
-              apify_run_ids: [], current_keyword_index: 0, collected_dataset_index: 0,
-              current_pipeline_stage: 0,
-            })
-            .eq("id", run.id).eq("status", "queued").select().maybeSingle();
-
-          if (leaseErr || !leased) continue;
+          // Increment retry_count in the same update to be container-kill-proof
+          await serviceClient.from("signal_runs").update({
+            status: "running",
+            started_at: new Date().toISOString(),
+            processing_phase: isPipeline ? "stage_1_starting" : "starting",
+            retry_count: (run.retry_count || 0) + 1,
+            updated_at: new Date().toISOString(),
+          }).eq("id", run.id);
 
           if (isPipeline) {
-            await processPipelinePhase(leased, serviceClient);
-          } else {
-            await processLegacyPhase(leased, serviceClient);
+            loadActorRegistry(plan);
           }
           processed++;
           continue;
         }
 
-        if (run.status === "running") {
-          const phase = run.processing_phase || "pending";
-
-          if (phase === "pending" || phase === "done") {
-            const newRetryCount = (run.retry_count || 0) + 1;
-            if (newRetryCount >= MAX_RETRIES) {
-              await serviceClient.from("signal_runs").update({
-                status: "failed", retry_count: newRetryCount,
-                error_message: `Failed after ${MAX_RETRIES} attempts`,
-              }).eq("id", run.id);
-              failed++;
-            } else {
-              await serviceClient.from("signal_runs").update({
-                status: "queued", retry_count: newRetryCount, started_at: null,
-                processing_phase: "pending", apify_run_ids: [], current_keyword_index: 0,
-                collected_dataset_index: 0, current_pipeline_stage: 0,
-              }).eq("id", run.id);
-            }
-            continue;
-          }
-
-          if (isPipeline) {
-            await processPipelinePhase(run, serviceClient);
-          } else {
-            await processLegacyPhase(run, serviceClient);
-          }
-          processed++;
+        // Running — route to correct phase
+        if (isPipeline) {
+          loadActorRegistry(plan);
+          await processPipelinePhase(run, serviceClient);
+        } else {
+          loadActorRegistry(plan);
+          await processLegacyPhase(run, serviceClient);
         }
+        processed++;
       } catch (err) {
-        console.error(`Phase error for ${run.id}:`, err);
-        await handlePhaseError(run, err, serviceClient);
         failed++;
+        console.error(`Error processing signal ${run.id}:`, err);
+        const errMsg = err instanceof Error ? err.message : String(err);
+
+        if ((run.retry_count || 0) >= MAX_RETRIES) {
+          await serviceClient.from("signal_runs").update({
+            status: "failed",
+            error_message: `Failed after ${MAX_RETRIES} retries: ${errMsg.slice(0, 500)}`,
+          }).eq("id", run.id);
+
+          if (run.user_id) {
+            await serviceClient.from("notifications").insert({
+              user_id: run.user_id,
+              workspace_id: run.workspace_id,
+              type: "signal_failed",
+              title: "Signal Failed",
+              message: `Your signal "${run.signal_name || run.signal_query}" failed: ${errMsg.slice(0, 200)}`,
+            });
+          }
+        }
       }
     }
 
     return new Response(
-      JSON.stringify({ message: `Processed ${processed} signals, ${failed} failed`, processed, failed }),
+      JSON.stringify({ message: `Processed ${processed} signals (${failed} failed)`, processed, failed }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (e) {
-    console.error("process-signal-queue error:", e);
+  } catch (err) {
+    console.error("Signal queue error:", err);
+    const errMsg = err instanceof Error ? err.message : String(err);
     return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
+      JSON.stringify({ error: errMsg }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
 
 // ═══════════════════════════════════════════════════════════
-// ██  ERROR HANDLER
-// ═══════════════════════════════════════════════════════════
-
-async function handlePhaseError(run: any, err: unknown, serviceClient: any) {
-  const errorMsg = err instanceof Error ? err.message : String(err);
-  const retryCount = (run.retry_count || 0) + 1;
-
-  if (retryCount >= MAX_RETRIES) {
-    await serviceClient.from("signal_runs").update({
-      status: "failed", retry_count: retryCount,
-      error_message: `Failed after ${MAX_RETRIES} attempts: ${errorMsg}`,
-    }).eq("id", run.id);
-
-    if (run.user_id) {
-      await serviceClient.from("notifications").insert({
-        user_id: run.user_id, workspace_id: run.workspace_id,
-        type: "signal_failed", title: "Signal Failed",
-        message: `Your signal "${run.signal_name || run.signal_query}" failed: ${errorMsg.slice(0, 200)}`,
-      });
-    }
-  } else {
-    await serviceClient.from("signal_runs").update({
-      status: "queued", retry_count: retryCount, started_at: null,
-      processing_phase: "pending", apify_run_ids: [], current_keyword_index: 0,
-      collected_dataset_index: 0, current_pipeline_stage: 0,
-      error_message: `Attempt ${retryCount} failed: ${errorMsg}`,
-    }).eq("id", run.id);
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// ██  PIPELINE EXECUTOR
+// ██  PIPELINE PHASE ROUTER
 // ═══════════════════════════════════════════════════════════
 
 async function processPipelinePhase(run: any, serviceClient: any) {
-  // Load actor registry from this run's plan (no hardcoded catalog)
-  loadActorRegistry(run.signal_plan);
-
   const phase = run.processing_phase || "stage_1_starting";
-  console.log(`Pipeline signal ${run.id} phase=${phase}`);
+  const plan = run.signal_plan;
+  const pipeline = plan.pipeline || [];
 
-  const match = phase.match(/^stage_(\d+)_(.+)$/);
-  if (!match) {
-    const stageIdx = run.current_pipeline_stage || 0;
+  const phaseMatch = phase.match(/stage_(\d+)_(\w+)/);
+  if (!phaseMatch) {
+    console.error(`Unknown pipeline phase: ${phase}`);
+    return;
+  }
+
+  const stageNum = parseInt(phaseMatch[1], 10);
+  const subPhase = phaseMatch[2];
+
+  const stageDef = pipeline.find((s: any) => s.stage === stageNum);
+  if (!stageDef) {
+    console.error(`Stage ${stageNum} not found in pipeline`);
     await serviceClient.from("signal_runs").update({
-      processing_phase: `stage_${stageIdx + 1}_starting`,
-      updated_at: new Date().toISOString(),
+      status: "failed", error_message: `Stage ${stageNum} not found in pipeline definition`,
     }).eq("id", run.id);
     return;
   }
 
-  const stageNum = parseInt(match[1]);
-  const subPhase = match[2];
-  const pipeline = run.signal_plan?.pipeline || [];
-  const stageIdx = stageNum - 1;
-  const stageDef = pipeline[stageIdx];
-
-  if (!stageDef) {
-    await pipelineFinalize(run, serviceClient);
-    return;
-  }
+  console.log(`Pipeline ${run.id}: stage=${stageNum} phase=${subPhase} type=${stageDef.type}`);
 
   if (stageDef.type === "scrape") {
     switch (subPhase) {
@@ -1419,85 +1269,104 @@ async function processPipelinePhase(run: any, serviceClient: any) {
         await pipelineScrapeCollecting(run, stageDef, stageNum, pipeline, serviceClient);
         break;
       case "validating":
-        await pipelineStageValidating(run, stageDef, stageNum, pipeline, serviceClient);
+        await pipelineValidating(run, stageDef, stageNum, pipeline, serviceClient);
         break;
-      default:
-        await serviceClient.from("signal_runs").update({
-          processing_phase: `stage_${stageNum}_starting`,
-          updated_at: new Date().toISOString(),
-        }).eq("id", run.id);
     }
   } else if (stageDef.type === "ai_filter") {
     switch (subPhase) {
-      case "ai_filter":
+      case "starting":
+      case "filtering":
         await pipelineAiFilter(run, stageDef, stageNum, pipeline, serviceClient);
         break;
       case "validating":
-        await pipelineStageValidating(run, stageDef, stageNum, pipeline, serviceClient);
+        await pipelineValidating(run, stageDef, stageNum, pipeline, serviceClient);
         break;
-      default:
-        await pipelineAiFilter(run, stageDef, stageNum, pipeline, serviceClient);
     }
   }
 }
 
-// ── Pipeline: Stage Validation (NEW — runs after collecting/filtering) ──
+// ── Pipeline: Advance to next stage ──
 
-async function pipelineStageValidating(run: any, stageDef: any, stageNum: number, pipeline: any[], serviceClient: any) {
-  console.log(`Stage ${stageNum}: Running quality validation`);
+async function advancePipelineStage(run: any, currentStage: number, pipeline: any[], serviceClient: any) {
+  const nextStageDef = pipeline.find((s: any) => s.stage === currentStage + 1);
+  if (!nextStageDef) {
+    await pipelineFinalize(run, pipeline, serviceClient);
+    return;
+  }
 
-  const qualityResult = await pipelineQualityCheck(run, stageNum, stageDef, pipeline, serviceClient);
+  const nextPhase = nextStageDef.type === "ai_filter"
+    ? `stage_${currentStage + 1}_starting`
+    : `stage_${currentStage + 1}_starting`;
+
+  await serviceClient.from("signal_runs").update({
+    processing_phase: nextPhase,
+    current_pipeline_stage: currentStage,
+    collected_dataset_index: 0,
+    updated_at: new Date().toISOString(),
+  }).eq("id", run.id);
+
+  console.log(`Pipeline ${run.id}: Advanced to stage ${currentStage + 1} (${nextStageDef.type})`);
+}
+
+// ── Pipeline: Validation ──
+
+async function pipelineValidating(run: any, stageDef: any, stageNum: number, pipeline: any[], serviceClient: any) {
+  const qualityResult = await qualityCheckStage(run, stageNum, stageDef, pipeline, serviceClient);
   console.log(`Stage ${stageNum} quality: ${qualityResult.quality} — ${qualityResult.reason}`);
 
-  // Record the quality check
-  const adjustments = run.pipeline_adjustments || [];
-  adjustments.push({
+  const adjustments = [...(run.pipeline_adjustments || []), {
+    type: "quality_check",
     stage: stageNum,
     quality: qualityResult.quality,
     reason: qualityResult.reason,
     timestamp: new Date().toISOString(),
-  });
+  }];
 
-  if (qualityResult.suggestedAction === "abort") {
-    // Stage 1 abort = whole run fails
-    const userMessage = `Signal stopped after stage ${stageNum}: ${qualityResult.reason}`;
+  if (qualityResult.quality === "USELESS" && qualityResult.suggestedAction === "abort") {
+    const userMessage = qualityResult.reason || `Stage ${stageNum} produced data that doesn't match your search criteria.`;
     await serviceClient.from("signal_runs").update({
       status: "failed",
       error_message: userMessage,
+      processing_phase: "aborted",
       pipeline_adjustments: adjustments,
     }).eq("id", run.id);
 
     if (run.user_id) {
       await serviceClient.from("notifications").insert({
         user_id: run.user_id, workspace_id: run.workspace_id,
-        type: "signal_failed", title: "Signal Stopped — Data Quality Issue",
+        type: "signal_failed", title: "Signal — Quality Too Low",
         message: userMessage,
       });
     }
     return;
   }
 
-  if (qualityResult.suggestedAction === "reconfigure" && qualityResult.reconfiguredPipeline) {
-    // Replace remaining pipeline stages
-    const completedStages = pipeline.slice(0, stageNum);
-    const newPipeline = [...completedStages, ...qualityResult.reconfiguredPipeline];
-    // Persist any newly resolved actors into the plan's actor_registry
-    const existingRegistry = run.signal_plan?.actor_registry || {};
-    const mergedRegistry = { ...existingRegistry };
-    for (const [key, actor] of planActorRegistry.entries()) {
-      if (!mergedRegistry[key]) {
-        mergedRegistry[key] = actor;
+  // Check for field gaps that need warning
+  if (stageNum === 1) {
+    const { data: leadsForGap } = await serviceClient
+      .from("signal_leads").select("company_name, website, company_linkedin_url, industry, employee_count")
+      .eq("run_id", run.id).limit(50);
+    
+    if (leadsForGap && leadsForGap.length >= 5) {
+      const gapFields = ["company_name", "website", "company_linkedin_url", "industry", "employee_count"];
+      const fieldGaps: string[] = [];
+      for (const field of gapFields) {
+        const populated = leadsForGap.filter((l: any) => l[field] && l[field] !== "").length;
+        const coverage = Math.round((populated / leadsForGap.length) * 100);
+        if (coverage < 30) fieldGaps.push(`${field} (${coverage}%)`);
+      }
+      if (fieldGaps.length > 0) {
+        adjustments.push({ type: "field_gap_warning", stage: stageNum, field_gaps: fieldGaps, timestamp: new Date().toISOString() });
       }
     }
-    const updatedPlan = { ...run.signal_plan, pipeline: newPipeline, actor_registry: mergedRegistry };
+  }
 
-    adjustments.push({
-      stage: stageNum,
-      action: "reconfigure",
-      old_remaining_stages: pipeline.slice(stageNum).length,
-      new_remaining_stages: qualityResult.reconfiguredPipeline.length,
-      timestamp: new Date().toISOString(),
-    });
+  if (qualityResult.reconfiguredPipeline) {
+    const newPipeline = [
+      ...pipeline.slice(0, stageNum),
+      ...qualityResult.reconfiguredPipeline,
+    ];
+    const updatedPlan = { ...run.signal_plan, pipeline: newPipeline };
 
     await serviceClient.from("signal_runs").update({
       signal_plan: updatedPlan,
@@ -1526,7 +1395,6 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
   const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN");
   if (!APIFY_API_TOKEN) throw new Error("APIFY_API_TOKEN not configured");
 
-  // Check credits (only for stage 1)
   if (stageNum === 1) {
     const { data: credits } = await serviceClient
       .from("lead_credits").select("credits_balance").eq("workspace_id", run.workspace_id).maybeSingle();
@@ -1554,28 +1422,22 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
     const actor = getActor(actorKey);
     if (!actor) continue;
 
-    // Always fetch runtime schema — live types override hardcoded catalog (cached per actorId)
     await fetchAndMergeRuntimeSchema(actor, APIFY_API_TOKEN);
 
     if (stageNum === 1) {
-      // Discovery stage: use Query Normalization Engine
       const actorParams = stageDef.params_per_actor?.[actorKey] || {};
       const intent = parseSearchIntent(stageDef);
       const platform = detectPlatform(actor);
       
-      // Override location from actor params if available
       intent.location = actorParams.location || actorParams.searchLocation || intent.location;
       
-      // Use normalization engine for deterministic URL/query construction
       const platformQuery = buildPlatformSearchQuery(platform, intent, actorParams);
       const input = { ...platformQuery.params };
       
-      // Remove plan-provided URLs that may be stale/incomplete
       if (platform === "linkedin" && platformQuery.url) {
         delete input.splitCountry;
       }
 
-      // Set max results limit — but NEVER override planner-set caps
       const KNOWN_LIMIT_FIELDS = ["maxItems", "limit", "count", "maxResults", "max_results", "rows", "numResults", "maxCrawledPlacesPerSearch", "maxCrawledPagesPerSearch"];
       const hasExistingLimit = KNOWN_LIMIT_FIELDS.some(f => input[f] !== undefined);
       const schemaKeys = Object.keys(actor.inputSchema);
@@ -1593,7 +1455,6 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
       const actorInput = normalizeInputToSchema(actor, buildGenericInput(actor, input));
       if (!actorInput.proxyConfiguration) actorInput.proxyConfiguration = { useApifyProxy: true };
       
-      // Log the constructed query for debugging
       const queryDescription = intent.roles.length > 0 
         ? `roles=[${intent.roles.join(", ")}] industry="${intent.industry}" location="${intent.location}"`
         : `query="${stageDef.search_query}" location="${intent.location}"`;
@@ -1616,7 +1477,6 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         }
       }
     } else if (stageDef.input_transform === "linkedin_url_discovery") {
-      // Special: LinkedIn URL discovery via Google Search
       const { data: existingLeads } = await serviceClient
         .from("signal_leads").select("id, company_name, company_linkedin_url").eq("run_id", run.id).limit(10000);
 
@@ -1625,7 +1485,6 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         break;
       }
 
-      // Only process leads that DON'T already have LinkedIn URLs
       const leadsNeedingLinkedIn = existingLeads.filter((l: any) => !l.company_linkedin_url && l.company_name);
 
       if (leadsNeedingLinkedIn.length === 0) {
@@ -1633,7 +1492,6 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         break;
       }
 
-      // Batch company names into Google Search queries
       const BATCH_SIZE = 20;
       for (let i = 0; i < leadsNeedingLinkedIn.length; i += BATCH_SIZE) {
         const batch = leadsNeedingLinkedIn.slice(i, i + BATCH_SIZE);
@@ -1654,7 +1512,6 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         }
       }
     } else {
-      // Enrichment stages: build input from existing leads
       const inputField = stageDef.input_from;
       if (!inputField) continue;
 
@@ -1667,12 +1524,11 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
       }
 
       let inputValues: string[] = [];
-      let peopleSearchMode: "structured" | "url" = "url"; // Track how we're passing people data
+      let peopleSearchMode: "structured" | "url" = "url";
       if ((actor.category === "people_data" || actor.actorId.includes("linkedin") && actor.label.toLowerCase().includes("people")) && stageDef.search_titles) {
         const titles = stageDef.search_titles;
         const titlesStr = titles.join(" OR ");
         
-        // Detect whether this actor expects structured params or URLs
         const hasSchema = Object.keys(actor.inputSchema).length > 0;
         const schemaKeys = Object.keys(actor.inputSchema);
         const hasCompanyField = hasSchema && schemaKeys.some((k: string) => /company|organization|employer/i.test(k));
@@ -1680,21 +1536,17 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         const hasNameField = hasSchema && schemaKeys.some((k: string) => /name|keyword|search|query/i.test(k));
         const hasUrlField = hasSchema && (!!actor.inputSchema["startUrls"] || !!actor.inputSchema["urls"] || !!actor.inputSchema["profileUrls"]);
         
-        // Prefer structured params when actor supports them (company + title fields)
         const useStructured = hasCompanyField || hasTitleField || (hasNameField && !hasUrlField);
         
         if (useStructured) {
           peopleSearchMode = "structured";
-          console.log(`Stage ${stageNum}: People search using STRUCTURED params for ${actorKey} (company field: ${hasCompanyField}, title field: ${hasTitleField})`);
+          console.log(`Stage ${stageNum}: People search using STRUCTURED params for ${actorKey}`);
           
-          // Build structured search entries — one per lead
-          // We'll store JSON-encoded objects and parse them in the batch builder
           for (const lead of existingLeads) {
             const companyName = lead.company_name || "";
             const companyLinkedinUrl = lead.company_linkedin_url || lead.linkedin || "";
             if (!companyName && !companyLinkedinUrl) continue;
             
-            // Store as JSON so we can parse later and build proper structured input
             inputValues.push(JSON.stringify({
               company: companyName,
               companyLinkedinUrl,
@@ -1703,7 +1555,6 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
             }));
           }
         } else {
-          // Fallback: build LinkedIn search URLs (original behavior, improved)
           peopleSearchMode = "url";
           console.log(`Stage ${stageNum}: People search using URL mode for ${actorKey}`);
           
@@ -1711,7 +1562,6 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
             const companyName = lead.company_name || "";
             if (!companyName) continue;
             
-            // Build cleaner search URLs — separate title and company for better precision
             const encodedTitles = encodeURIComponent(titlesStr);
             const encodedCompany = encodeURIComponent(companyName);
             inputValues.push(`https://www.linkedin.com/search/results/people/?keywords=${encodedTitles}&company=${encodedCompany}`);
@@ -1727,7 +1577,6 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
           .filter((v: string) => v && v.length > 0)
           .map((v: string) => v.startsWith("http") ? v : `https://${v}`);
       } else if (inputField === "company_name") {
-        // For google_search or other actors that take company names
         inputValues = existingLeads
           .map((l: any) => l.company_name)
           .filter((v: string) => v && v.trim().length > 0);
@@ -1751,11 +1600,9 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         const hasSchema = Object.keys(actor.inputSchema).length > 0;
         const schemaKeys = Object.keys(actor.inputSchema);
 
-        // For people_data with structured mode: build proper structured params
         if (actor.category === "people_data" && peopleSearchMode === "structured") {
           const parsedEntries = batch.map(v => { try { return JSON.parse(v); } catch { return null; } }).filter(Boolean);
           
-          // Find the best schema fields for company and title
           const companyField = schemaKeys.find((k: string) => /^company$|^organization$|^employer$/i.test(k)) 
             || schemaKeys.find((k: string) => /company|organization|employer/i.test(k));
           const titleField = schemaKeys.find((k: string) => /^title$|^position$|^role$/i.test(k))
@@ -1764,16 +1611,13 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
             || schemaKeys.find((k: string) => /search|query|keyword/i.test(k));
           
           if (companyField || titleField) {
-            // Actor supports structured company/title — pass as search queries
             const queries = parsedEntries.map((e: any) => `${e.titles} ${e.company}`);
             if (companyField && titleField) {
-              // Best case: separate fields
               input[companyField] = parsedEntries.map((e: any) => e.company);
               input[titleField] = parsedEntries[0]?.titles || "";
             } else if (searchField) {
               input[searchField] = queries.join("\n");
             }
-            // Also provide URLs as fallback
             if (actor.inputSchema["startUrls"]) {
               input.startUrls = parsedEntries.map((e: any) => ({
                 url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(e.titles)}%20${encodeURIComponent(e.company)}`
@@ -1782,7 +1626,6 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
           } else if (searchField) {
             input[searchField] = parsedEntries.map((e: any) => `${e.titles} ${e.company}`);
           } else {
-            // Fallback to URL mode even in structured mode
             input.startUrls = parsedEntries.map((e: any) => ({
               url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(e.titles)}%20${encodeURIComponent(e.company)}`
             }));
@@ -1792,7 +1635,6 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
           }
           console.log(`Stage ${stageNum}: Built structured people input — companyField: ${companyField}, titleField: ${titleField}, searchField: ${searchField}`);
         }
-        // Determine how to pass the batch to this actor (non-people or URL mode people)
         else if (hasSchema) {
           if (actor.inputSchema["startUrls"]) {
             input.startUrls = batch.map(url => ({ url }));
@@ -1803,12 +1645,10 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
           } else if (actor.inputSchema["queries"]) {
             input.queries = batch;
           } else {
-            // Schema exists but none of the common fields match — try all
             input.startUrls = batch.map(url => ({ url }));
             input.urls = batch;
           }
         } else {
-          // No schema — provide all common input formats so one sticks
           const looksLikeUrls = batch[0]?.startsWith("http");
           if (looksLikeUrls) {
             input.startUrls = batch.map(url => ({ url }));
@@ -1835,11 +1675,9 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
     }
   }
 
-  // Check if ALL refs failed or empty (zero-result detection)
   const hasSuccessfulStart = refs.some(r => r.status === "RUNNING");
   if (!hasSuccessfulStart && refs.length > 0) {
     console.log(`Stage ${stageNum}: All actor runs failed to start`);
-    // Skip to validation which will handle the zero-result case
   }
 
   await serviceClient.from("signal_runs").update({
@@ -1894,77 +1732,78 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
   const collectedIndex = run.collected_dataset_index || 0;
 
   if (collectedIndex >= stageRefs.length) {
-    // All datasets collected for this stage — dedup if needed, then validate
     if (stageDef.dedup_after) {
       await dedupLeads(run, serviceClient);
     }
 
-    // ZERO-RESULT RECOVERY: If discovery stage has 0 leads, use diagnostic engine
+    // LOW-YIELD / ZERO-RESULT RECOVERY for Stage 1
     if (!stageDef.input_from) {
       const { count: leadCount } = await serviceClient
         .from("signal_leads").select("*", { count: "exact", head: true })
         .eq("run_id", run.id);
 
-      if (!leadCount || leadCount === 0) {
+      // FIX: Extend threshold from 0 to <10 for Stage 1 to trigger earlier recovery
+      if (!leadCount || leadCount < 10) {
         const stageActorRuns = (run.apify_run_ids || []).filter((r: any) => (r.pipelineStage || 1) === stageNum);
         const adjustments = run.pipeline_adjustments || [];
         const alreadyTriedDiagnostic = adjustments.some((a: any) => a.type === "diagnostic_retry" && a.stage === stageNum);
         const alreadyTriedBackup = adjustments.some((a: any) => a.type === "zero_result_backup_attempt" && a.stage === stageNum);
 
-        // Step 1: Run diagnostic engine (only once per stage)
-        if (!alreadyTriedDiagnostic && !alreadyTriedBackup) {
-          console.log(`Stage ${stageNum}: ZERO RESULTS — running diagnostic engine`);
-          const diagnostic = await diagnoseZeroResults(run, stageDef, stageActorRuns, serviceClient);
-          console.log(`Stage ${stageNum}: Diagnosis: ${diagnostic.diagnosis} — ${diagnostic.suggestion}`);
-          
-          adjustments.push({
-            type: "diagnostic_retry",
-            stage: stageNum,
-            diagnosis: diagnostic.diagnosis,
-            suggestion: diagnostic.suggestion,
-            timestamp: new Date().toISOString(),
-          });
-
-          if (diagnostic.shouldRetry && diagnostic.correctedIntent) {
-            // Auto-retry with corrected search intent
-            console.log(`Stage ${stageNum}: Auto-retrying with corrected intent`);
-            const primaryActorKey = (stageDef.actors || [])[0];
-            const actor = getActor(primaryActorKey);
+        if (leadCount === 0) {
+          // Step 1: Run diagnostic engine (only once per stage)
+          if (!alreadyTriedDiagnostic && !alreadyTriedBackup) {
+            console.log(`Stage ${stageNum}: ZERO RESULTS — running diagnostic engine`);
+            const diagnostic = await diagnoseZeroResults(run, stageDef, stageActorRuns, serviceClient);
+            console.log(`Stage ${stageNum}: Diagnosis: ${diagnostic.diagnosis} — ${diagnostic.suggestion}`);
             
-            if (actor) {
-              const platform = detectPlatform(actor);
-              const actorParams = stageDef.params_per_actor?.[primaryActorKey] || {};
-              const correctedQuery = buildPlatformSearchQuery(platform, diagnostic.correctedIntent, actorParams);
-              const correctedInput = normalizeInputToSchema(actor, buildGenericInput(actor, correctedQuery.params));
-              if (!correctedInput.proxyConfiguration) correctedInput.proxyConfiguration = { useApifyProxy: true };
+            adjustments.push({
+              type: "diagnostic_retry",
+              stage: stageNum,
+              diagnosis: diagnostic.diagnosis,
+              suggestion: diagnostic.suggestion,
+              timestamp: new Date().toISOString(),
+            });
+
+            if (diagnostic.shouldRetry && diagnostic.correctedIntent) {
+              console.log(`Stage ${stageNum}: Auto-retrying with corrected intent`);
+              const primaryActorKey = (stageDef.actors || [])[0];
+              const actor = getActor(primaryActorKey);
               
-              try {
-                const { runId, datasetId, usedActor } = await startApifyRunWithFallback(actor, correctedInput, APIFY_API_TOKEN);
-                const retryRef: ApifyRunRef = {
-                  actorKey: usedActor.key,
-                  keyword: `diagnostic_retry`,
-                  runId, datasetId,
-                  status: "RUNNING",
-                  startedAt: new Date().toISOString(),
-                  pipelineStage: stageNum,
-                };
+              if (actor) {
+                const platform = detectPlatform(actor);
+                const actorParams = stageDef.params_per_actor?.[primaryActorKey] || {};
+                const correctedQuery = buildPlatformSearchQuery(platform, diagnostic.correctedIntent, actorParams);
+                const correctedInput = normalizeInputToSchema(actor, buildGenericInput(actor, correctedQuery.params));
+                if (!correctedInput.proxyConfiguration) correctedInput.proxyConfiguration = { useApifyProxy: true };
                 
-                await serviceClient.from("signal_runs").update({
-                  apify_run_ids: [...(run.apify_run_ids || []), retryRef],
-                  processing_phase: `stage_${stageNum}_scraping`,
-                  collected_dataset_index: 0,
-                  pipeline_adjustments: adjustments,
-                  updated_at: new Date().toISOString(),
-                }).eq("id", run.id);
-                return; // Go back to polling
-              } catch (err) {
-                console.warn(`Stage ${stageNum}: Diagnostic retry failed to start:`, err);
+                try {
+                  const { runId, datasetId, usedActor } = await startApifyRunWithFallback(actor, correctedInput, APIFY_API_TOKEN);
+                  const retryRef: ApifyRunRef = {
+                    actorKey: usedActor.key,
+                    keyword: `diagnostic_retry`,
+                    runId, datasetId,
+                    status: "RUNNING",
+                    startedAt: new Date().toISOString(),
+                    pipelineStage: stageNum,
+                  };
+                  
+                  await serviceClient.from("signal_runs").update({
+                    apify_run_ids: [...(run.apify_run_ids || []), retryRef],
+                    processing_phase: `stage_${stageNum}_scraping`,
+                    collected_dataset_index: 0,
+                    pipeline_adjustments: adjustments,
+                    updated_at: new Date().toISOString(),
+                  }).eq("id", run.id);
+                  return;
+                } catch (err) {
+                  console.warn(`Stage ${stageNum}: Diagnostic retry failed to start:`, err);
+                }
               }
             }
           }
         }
 
-        // Step 2: Try backup actors (existing logic, simplified)
+        // Step 2: Try backup actors (for both 0 and <10 results)
         if (!alreadyTriedBackup) {
           const usedActorKeys = new Set(stageActorRuns.map((r: any) => r.actorKey));
           const primaryActors = (stageDef.actors || []).map((k: string) => getActor(k)).filter(Boolean);
@@ -1975,11 +1814,10 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
           }
 
           if (allBackups.length > 0) {
-            console.log(`Stage ${stageNum}: Trying ${allBackups.length} backup actors`);
+            console.log(`Stage ${stageNum}: Low yield (${leadCount || 0} leads) — trying ${allBackups.length} backup actors`);
             const backupRefs: ApifyRunRef[] = [];
             
             for (const backup of allBackups.slice(0, 2)) {
-              // Use normalization engine for backup actors too
               const intent = parseSearchIntent(stageDef);
               const platform = detectPlatform(backup);
               const actorParams = stageDef.params_per_actor?.[(stageDef.actors || [])[0]] || {};
@@ -1996,7 +1834,7 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
             }
 
             if (backupRefs.length > 0) {
-              adjustments.push({ type: "zero_result_backup_attempt", stage: stageNum, backup_actors: backupRefs.map(r => r.actorKey), timestamp: new Date().toISOString() });
+              adjustments.push({ type: "zero_result_backup_attempt", stage: stageNum, backup_actors: backupRefs.map(r => r.actorKey), lead_count: leadCount || 0, timestamp: new Date().toISOString() });
               await serviceClient.from("signal_runs").update({
                 apify_run_ids: [...(run.apify_run_ids || []), ...backupRefs],
                 processing_phase: `stage_${stageNum}_scraping`,
@@ -2009,32 +1847,36 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
           }
         }
 
-        // Step 3: All recovery attempts exhausted — fail with actionable message
-        const diagnosticAdj = adjustments.find((a: any) => a.type === "diagnostic_retry");
-        const diagSuggestion = diagnosticAdj?.suggestion || "";
-        const advSettings = run.advanced_settings || {};
-        const maxPerSource = advSettings.max_results_per_source || 100;
-        
-        const userMessage = diagSuggestion 
-          ? `No results found. ${diagSuggestion} Try broadening your search terms or increasing max results per source (currently ${maxPerSource}).`
-          : `No results found for "${run.signal_query}". Try broader search terms, a different date range, or increasing max results per source to 1000+.`;
+        // Step 3: If truly 0 results after all recovery — fail
+        if (!leadCount || leadCount === 0) {
+          const diagnosticAdj = adjustments.find((a: any) => a.type === "diagnostic_retry");
+          const diagSuggestion = diagnosticAdj?.suggestion || "";
+          const advSettings = run.advanced_settings || {};
+          const maxPerSource = advSettings.max_results_per_source || 100;
+          
+          const userMessage = diagSuggestion 
+            ? `No results found. ${diagSuggestion} Try broadening your search terms or increasing max results per source (currently ${maxPerSource}).`
+            : `No results found for "${run.signal_query}". Try broader search terms, a different date range, or increasing max results per source to 1000+.`;
 
-        console.log(`Stage ${stageNum}: ZERO RESULTS — all recovery exhausted, aborting`);
-        await serviceClient.from("signal_runs").update({
-          status: "failed",
-          error_message: userMessage,
-          processing_phase: "aborted",
-          pipeline_adjustments: adjustments,
-        }).eq("id", run.id);
+          console.log(`Stage ${stageNum}: ZERO RESULTS — all recovery exhausted, aborting`);
+          await serviceClient.from("signal_runs").update({
+            status: "failed",
+            error_message: userMessage,
+            processing_phase: "aborted",
+            pipeline_adjustments: adjustments,
+          }).eq("id", run.id);
 
-        if (run.user_id) {
-          await serviceClient.from("notifications").insert({
-            user_id: run.user_id, workspace_id: run.workspace_id,
-            type: "signal_failed", title: "Signal — No Results Found",
-            message: userMessage,
-          });
+          if (run.user_id) {
+            await serviceClient.from("notifications").insert({
+              user_id: run.user_id, workspace_id: run.workspace_id,
+              type: "signal_failed", title: "Signal — No Results Found",
+              message: userMessage,
+            });
+          }
+          return;
         }
-        return;
+        // If <10 but >0, log and continue (recovery attempts have been made)
+        console.log(`Stage ${stageNum}: Low yield (${leadCount} leads) — proceeding after recovery attempts`);
       }
     }
 
@@ -2084,7 +1926,6 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
   // Collect next dataset
   const ref = stageRefs[collectedIndex];
   try {
-    // Infer the max items cap from the stage's actor params to avoid over-fetching
     const stageActorParams = stageDef?.params_per_actor?.[ref.actorKey] || {};
     const KNOWN_LIMIT_FIELDS = ["maxItems", "limit", "count", "maxResults", "max_results", "rows", "numResults", "maxCrawledPlacesPerSearch"];
     const stageMaxItems = KNOWN_LIMIT_FIELDS.reduce((cap: number | undefined, f) => {
@@ -2102,7 +1943,6 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
     const normalised = normaliseGenericResults(actor, items);
 
     if (stageNum === 1) {
-      // Discovery stage: INSERT new leads
       const leadsToInsert = normalised.map((item: any) => {
         const raw = item._raw || item;
         return {
@@ -2127,7 +1967,6 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
       }
       console.log(`Stage ${stageNum}: Inserted ${leadsToInsert.length} leads from dataset ${collectedIndex + 1}`);
     } else if (stageDef.input_transform === "linkedin_url_discovery") {
-      // LinkedIn URL discovery: extract LinkedIn company URLs from Google Search results
       const { data: allRunLeads } = await serviceClient
         .from("signal_leads").select("id, company_name, company_linkedin_url").eq("run_id", run.id).limit(10000);
       const runLeads = allRunLeads || [];
@@ -2136,29 +1975,25 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         const url = item.website || item._raw?.url || item._raw?.link || "";
         if (!url.includes("linkedin.com/company")) continue;
 
-        // Extract company name from the Google search result title or description
         const resultTitle = (item.company_name || item._raw?.title || "").toLowerCase();
         
-        // Try to match with existing leads
         for (const lead of runLeads) {
-          if (lead.company_linkedin_url) continue; // Already has one
+          if (lead.company_linkedin_url) continue;
           const leadName = (lead.company_name || "").toLowerCase();
           if (!leadName) continue;
 
-          // Fuzzy match: result title contains company name or vice versa
           if (resultTitle.includes(leadName) || leadName.includes(resultTitle.split(" - ")[0].split(" |")[0].trim())) {
             await serviceClient.from("signal_leads").update({
               company_linkedin_url: url,
               pipeline_stage: `stage_${stageNum}`,
             }).eq("id", lead.id);
-            lead.company_linkedin_url = url; // Prevent double-assignment
+            lead.company_linkedin_url = url;
             break;
           }
         }
       }
       console.log(`Stage ${stageNum}: LinkedIn URL discovery completed from dataset ${collectedIndex + 1}`);
     } else if (actor.category === "people_data") {
-      // People-finding stage: UPDATE existing leads with person data using SCORED matching
       const { data: allRunLeads } = await serviceClient
         .from("signal_leads").select("id, company_name, domain, company_linkedin_url, website").eq("run_id", run.id).limit(10000);
       const runLeads = allRunLeads || [];
@@ -2166,7 +2001,6 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
       const MIN_MATCH_SCORE = 70;
       let matchedCount = 0;
       let totalPersonItems = 0;
-      // Track which leads already have a person assigned (prevent overwriting with lower-score match)
       const assignedLeadIds = new Set<string>();
 
       for (const item of normalised) {
@@ -2177,39 +2011,33 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         const personLinkedIn = item._raw?.currentCompanyLinkedinUrl || item._raw?.companyLinkedinUrl || "";
         const personDomain = extractDomain(item._raw?.companyUrl || item._raw?.website || "");
         
-        // Score each lead candidate
         let bestMatch: { id: string; score: number } | null = null;
         
         for (const lead of runLeads) {
-          if (assignedLeadIds.has(lead.id)) continue; // Already assigned
+          if (assignedLeadIds.has(lead.id)) continue;
           let score = 0;
           
-          // Domain match = 100 (strongest signal)
           if (personDomain && lead.domain && personDomain === lead.domain) {
             score = 100;
           }
           
-          // LinkedIn company URL match = 90
           if (score < 90 && personLinkedIn && lead.company_linkedin_url) {
             const normPerson = personLinkedIn.toLowerCase().replace(/\/$/, "").replace(/^https?:\/\/(www\.)?/, "");
             const normLead = lead.company_linkedin_url.toLowerCase().replace(/\/$/, "").replace(/^https?:\/\/(www\.)?/, "");
             if (normPerson === normLead) score = Math.max(score, 90);
           }
           
-          // Exact company name match = 80
           const leadName = (lead.company_name || "").trim().toLowerCase();
           if (leadName && leadName === personCompany) {
             score = Math.max(score, 80);
           }
           
-          // Fuzzy containment = 50 (only if names are reasonably long to avoid false positives)
           if (score < 50 && leadName && leadName.length >= 4 && personCompany.length >= 4) {
             if (leadName.includes(personCompany) || personCompany.includes(leadName)) {
-              // Penalize if the shorter name is very short (too generic)
               const shorter = Math.min(leadName.length, personCompany.length);
               const longer = Math.max(leadName.length, personCompany.length);
               const ratio = shorter / longer;
-              if (ratio >= 0.4) { // "Acme" vs "Acme Corporation" = ok; "A" vs "Acme Corp" = reject
+              if (ratio >= 0.4) {
                 score = Math.max(score, 50);
               }
             }
@@ -2235,11 +2063,9 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
       const matchRate = totalPersonItems > 0 ? Math.round((matchedCount / totalPersonItems) * 100) : 0;
       console.log(`Stage ${stageNum}: Person matching — ${matchedCount}/${totalPersonItems} matched (${matchRate}%, min score: ${MIN_MATCH_SCORE})`);
       
-      // APOLLO FALLBACK: If match rate is <30%, trigger Apollo enrichment for unmatched leads
       if (matchRate < 30 && totalPersonItems > 5) {
         console.warn(`Stage ${stageNum}: LOW MATCH RATE (${matchRate}%) — triggering Apollo enrichment fallback`);
         
-        // Find leads that still lack contact_name after people matching
         const { data: unmatchedLeads } = await serviceClient
           .from("signal_leads")
           .select("id, company_name, domain, website")
@@ -2253,7 +2079,6 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
           
           if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
             let apolloEnriched = 0;
-            // Process in batches of 10 to avoid overwhelming Apollo
             for (let batch = 0; batch < unmatchedLeads.length && batch < 50; batch += 10) {
               const batchLeads = unmatchedLeads.slice(batch, batch + 10);
               for (const lead of batchLeads) {
@@ -2293,7 +2118,6 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
             
             console.log(`Stage ${stageNum}: Apollo fallback enriched ${apolloEnriched}/${Math.min(unmatchedLeads.length, 50)} leads`);
             
-            // Record the Apollo fallback in pipeline_adjustments
             const adjustments = run.pipeline_adjustments || [];
             adjustments.push({
               type: "apollo_fallback",
@@ -2309,7 +2133,6 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
           }
         }
       } else if (matchRate < 20 && totalPersonItems > 5) {
-        // Record low match rate without Apollo (original behavior for very low match rates)
         const adjustments = run.pipeline_adjustments || [];
         adjustments.push({
           type: "low_people_match_rate",
@@ -2324,8 +2147,6 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         }).eq("id", run.id);
       }
     } else {
-      // Enrichment stage: UPDATE existing leads with enriched data
-      // Support matching by domain OR company name (fallback when domain is missing)
       const { data: allEnrichLeads } = await serviceClient
         .from("signal_leads").select("id, company_name, domain").eq("run_id", run.id).limit(10000);
       const enrichLeads = allEnrichLeads || [];
@@ -2351,14 +2172,11 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         if (item.description) updateData.website_content = String(item.description).slice(0, 5000);
         if (item.linkedin) updateData.company_linkedin_url = item.linkedin;
 
-        // Primary match: by domain
         if (domain) {
           await serviceClient.from("signal_leads").update(updateData)
             .eq("run_id", run.id).eq("domain", domain);
         } 
-        // Fallback match: by company name when domain is missing
         else if (itemCompanyName) {
-          // Find leads matching by exact company name (case-insensitive)
           const matchingLeads = enrichLeads.filter((l: any) => {
             const leadName = (l.company_name || "").trim().toLowerCase();
             return leadName === itemCompanyName;
@@ -2366,7 +2184,6 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
           for (const lead of matchingLeads) {
             await serviceClient.from("signal_leads").update(updateData).eq("id", lead.id);
           }
-          // If no exact match, try fuzzy
           if (matchingLeads.length === 0) {
             const fuzzyLeads = enrichLeads.filter((l: any) => {
               const leadName = (l.company_name || "").trim().toLowerCase();
@@ -2397,7 +2214,6 @@ async function pipelineAiFilter(run: any, stageDef: any, stageNum: number, pipel
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
     console.warn("LOVABLE_API_KEY not set, skipping AI filter");
-    // Go to validation instead of directly advancing
     await serviceClient.from("signal_runs").update({
       processing_phase: `stage_${stageNum}_validating`,
       updated_at: new Date().toISOString(),
@@ -2412,6 +2228,22 @@ async function pipelineAiFilter(run: any, stageDef: any, stageNum: number, pipel
     await serviceClient.from("signal_runs").update({
       processing_phase: `stage_${stageNum}_validating`,
       updated_at: new Date().toISOString(),
+    }).eq("id", run.id);
+    return;
+  }
+
+  // FIX: Min-dataset guard — skip AI classification on tiny datasets
+  if (leads.length < 5) {
+    console.log(`Stage ${stageNum} AI filter: SKIPPED — only ${leads.length} leads (min 5 required for reliable classification)`);
+    await serviceClient.from("signal_runs").update({
+      processing_phase: `stage_${stageNum}_validating`,
+      updated_at: new Date().toISOString(),
+      pipeline_adjustments: [...(run.pipeline_adjustments || []), {
+        type: "ai_filter_skipped",
+        stage: stageNum,
+        reason: `Only ${leads.length} leads — too few for reliable AI classification`,
+        timestamp: new Date().toISOString(),
+      }],
     }).eq("id", run.id);
     return;
   }
@@ -2453,16 +2285,12 @@ Return a JSON array of booleans, one per company. Only return the JSON array, no
                 for (const field of inputFields) {
                   obj[field] = b[field] || b.extra_data?.[field] || "";
                 }
-                if (!obj.company_name) obj.company_name = b.company_name || "";
-                if (!obj.domain) obj.domain = b.domain || extractDomain(b.website || "");
-                if (!obj.industry) obj.industry = b.industry || "";
-                if (!obj.employee_count) obj.employee_count = b.employee_count || "";
-                if (!obj.description) {
-                  const desc = b.website_content || b.extra_data?.description || b.extra_data?.descriptionHtml || "";
-                  obj.description = typeof desc === "string" ? desc.slice(0, 500) : "";
-                }
+                obj.domain = b.domain || "";
+                obj.employee_count = b.employee_count || "";
+                const desc = b.extra_data?.description || b.extra_data?.descriptionHtml || "";
+                obj.description = typeof desc === "string" ? desc.slice(0, 300) : "";
                 return obj;
-              }))
+              })),
             },
           ],
         }),
@@ -2470,187 +2298,85 @@ Return a JSON array of booleans, one per company. Only return the JSON array, no
 
       if (classifyResponse.ok) {
         const result = await classifyResponse.json();
-        let bools: boolean[] = [];
-        try {
-          const content = result.choices?.[0]?.message?.content || "[]";
-          bools = JSON.parse(content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
-        } catch { bools = batch.map(() => true); }
-        batch.forEach((item: any, idx: number) => { if (!bools[idx]) failedIds.push(item.id); });
+        const content = result.choices?.[0]?.message?.content || "[]";
+        const booleans = JSON.parse(content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
+        batch.forEach((item: any, idx: number) => {
+          if (Array.isArray(booleans) && booleans[idx] === false) {
+            failedIds.push(item.id);
+          }
+        });
       }
     } catch (err) {
-      console.error(`AI filter batch error:`, err);
+      console.warn(`Stage ${stageNum}: AI filter batch error:`, err);
     }
   }
 
   if (failedIds.length > 0) {
+    console.log(`Stage ${stageNum} AI filter: Removing ${failedIds.length}/${leads.length} leads`);
     for (let i = 0; i < failedIds.length; i += 200) {
       await serviceClient.from("signal_leads").delete().in("id", failedIds.slice(i, i + 200));
     }
   }
 
-  console.log(`Stage ${stageNum} AI filter: ${leads.length - failedIds.length} passed, ${failedIds.length} rejected`);
-
-  // Go to validation
   await serviceClient.from("signal_runs").update({
     processing_phase: `stage_${stageNum}_validating`,
     updated_at: new Date().toISOString(),
   }).eq("id", run.id);
 }
 
-// ── Advance to next pipeline stage ──
-
-async function advancePipelineStage(run: any, currentStageNum: number, pipeline: any[], serviceClient: any) {
-  const nextStageNum = currentStageNum + 1;
-  const nextStageDef = pipeline[nextStageNum - 1];
-
-  if (!nextStageDef) {
-    await pipelineFinalize(run, serviceClient);
-    return;
-  }
-
-  const nextPhase = nextStageDef.type === "ai_filter"
-    ? `stage_${nextStageNum}_ai_filter`
-    : `stage_${nextStageNum}_starting`;
-
-  await serviceClient.from("signal_runs").update({
-    processing_phase: nextPhase,
-    current_pipeline_stage: nextStageNum - 1,
-    collected_dataset_index: 0,
-    apify_run_ids: run.apify_run_ids || [],
-    updated_at: new Date().toISOString(),
-  }).eq("id", run.id);
-}
-
-// ── Dedup leads ──
+// ── Dedup Leads ──
 
 async function dedupLeads(run: any, serviceClient: any) {
+  const JOB_BOARD_DOMAINS = new Set(["indeed.com", "linkedin.com", "yelp.com", "yellowpages.com", "google.com"]);
   const { data: allLeads } = await serviceClient
     .from("signal_leads").select("*").eq("run_id", run.id).limit(10000);
   if (!allLeads || allLeads.length === 0) return;
 
-  const JOB_BOARD_DOMAINS = new Set(["indeed.com", "linkedin.com", "yelp.com", "yellowpages.com", "google.com", "glassdoor.com"]);
   const seen = new Set<string>();
   const removeIds: string[] = [];
-
   for (const lead of allLeads) {
     const domain = extractDomain(lead.website || "");
     const effectiveDomain = (domain && !JOB_BOARD_DOMAINS.has(domain)) ? domain : "";
-    const companyTitle = (lead.company_name || "").trim().toLowerCase();
-    const key = effectiveDomain || (companyTitle ? `${companyTitle}::${lead.source || ""}` : "");
-    if (key && !seen.has(key)) { seen.add(key); }
-    else if (key) { removeIds.push(lead.id); }
+    const key = effectiveDomain || ((lead.company_name || "").trim().toLowerCase() ? `${(lead.company_name || "").trim().toLowerCase()}::${lead.source || ""}` : "");
+    if (key && !seen.has(key)) seen.add(key);
+    else if (key) removeIds.push(lead.id);
   }
-
   if (removeIds.length > 0) {
     for (let i = 0; i < removeIds.length; i += 200) {
       await serviceClient.from("signal_leads").delete().in("id", removeIds.slice(i, i + 200));
     }
+    console.log(`Dedup: Removed ${removeIds.length} duplicates`);
   }
-  console.log(`Dedup: ${allLeads.length} → ${allLeads.length - removeIds.length} leads`);
 }
 
-// ── Pipeline Finalize ──
+// ── Pipeline: Finalize ──
 
-async function pipelineFinalize(run: any, serviceClient: any) {
-  console.log(`Pipeline ${run.id}: FINALIZING`);
-
-  // Clean up orphaned leads that never advanced past stage_1 (if pipeline has multiple stages)
-  const pipeline = run.signal_plan?.pipeline || [];
-  if (pipeline.length > 2) {
-    // Count leads stuck at stage_1 vs leads that advanced
-    const { count: stage1Count } = await serviceClient
-      .from("signal_leads").select("*", { count: "exact", head: true })
-      .eq("run_id", run.id).eq("pipeline_stage", "stage_1");
-    
-    const { count: advancedCount } = await serviceClient
-      .from("signal_leads").select("*", { count: "exact", head: true })
-      .eq("run_id", run.id).neq("pipeline_stage", "stage_1");
-
-    // If there are leads that advanced AND many stuck at stage_1, clean up orphans
-    if ((advancedCount || 0) > 0 && (stage1Count || 0) > (advancedCount || 0) * 2) {
-      console.log(`Cleaning up ${stage1Count} orphaned stage_1 leads (${advancedCount} leads advanced)`);
-      // Delete in batches
-      const { data: orphans } = await serviceClient
-        .from("signal_leads").select("id").eq("run_id", run.id).eq("pipeline_stage", "stage_1").limit(10000);
-      if (orphans && orphans.length > 0) {
-        const orphanIds = orphans.map((o: any) => o.id);
-        for (let i = 0; i < orphanIds.length; i += 200) {
-          await serviceClient.from("signal_leads").delete().in("id", orphanIds.slice(i, i + 200));
-        }
-      }
-    }
-  }
-
-  // ── Mandatory field coverage check ──
-  const MANDATORY_FIELDS = ["contact_name", "industry", "website", "company_linkedin_url", "linkedin_profile_url", "employee_count"];
-  const { data: coverageSample } = await serviceClient
-    .from("signal_leads").select("contact_name, industry, website, company_linkedin_url, linkedin_profile_url, employee_count")
-    .eq("run_id", run.id).limit(200);
-
-  if (coverageSample && coverageSample.length > 0) {
-    const fieldGaps: string[] = [];
-    const fieldCoverage: Record<string, number> = {};
-    for (const field of MANDATORY_FIELDS) {
-      const count = coverageSample.filter((l: any) => l[field] && l[field] !== "").length;
-      const pct = Math.round((count / coverageSample.length) * 100);
-      fieldCoverage[field] = pct;
-      if (pct < 30) {
-        fieldGaps.push(field);
-      }
-    }
-    if (fieldGaps.length > 0) {
-      console.log(`Pipeline ${run.id}: Field gaps detected (<30% coverage): ${fieldGaps.join(", ")}. Coverage: ${JSON.stringify(fieldCoverage)}`);
-      // Store field_gaps on the run for UI display
-      await serviceClient.from("signal_runs").update({
-        pipeline_adjustments: [...(run.pipeline_adjustments || []), {
-          type: "field_gap_warning",
-          field_gaps: fieldGaps,
-          field_coverage: fieldCoverage,
-          timestamp: new Date().toISOString(),
-        }],
-      }).eq("id", run.id);
-    }
-  }
-
-  // Workspace dedup
-  const { data: finalLeads } = await serviceClient
+async function pipelineFinalize(run: any, pipeline: any[], serviceClient: any) {
+  const { data: allLeads } = await serviceClient
     .from("signal_leads").select("*").eq("run_id", run.id).limit(10000);
+  const leads = allLeads || [];
 
+  // Cross-run dedup
   const JOB_BOARD_DOMAINS = new Set(["indeed.com", "linkedin.com", "yelp.com", "yellowpages.com", "google.com"]);
-
   const { data: existingKeys } = await serviceClient
     .from("signal_dedup_keys").select("dedup_key, dedup_type").eq("workspace_id", run.workspace_id);
   const existingSet = new Set((existingKeys || []).map((k: any) => `${k.dedup_type}:${k.dedup_key}`));
-
-  const { data: crmLeads } = await serviceClient
-    .from("leads").select("email, phone, linkedin_url").eq("workspace_id", run.workspace_id);
-  const crmSet = new Set<string>();
-  (crmLeads || []).forEach((l: any) => {
-    if (l.email) crmSet.add(`domain:${l.email.split("@")[1]}`);
-    if (l.phone) crmSet.add(`phone:${l.phone.replace(/\D/g, "")}`);
-    if (l.linkedin_url) crmSet.add(`linkedin:${l.linkedin_url}`);
-  });
 
   const uniqueLeads: any[] = [];
   const duplicateIds: string[] = [];
   const newDedupKeys: any[] = [];
 
-  for (const item of (finalLeads || [])) {
+  for (const item of leads) {
     const domain = extractDomain(item.website || "");
     const effectiveDomain = (domain && !JOB_BOARD_DOMAINS.has(domain)) ? domain : "";
-    const phone = (item.phone || "").replace(/\D/g, "");
-    const linkedin = item.linkedin || "";
-
     let isDuplicate = false;
-    if (effectiveDomain && (existingSet.has(`domain:${effectiveDomain}`) || crmSet.has(`domain:${effectiveDomain}`))) isDuplicate = true;
-    if (!isDuplicate && phone && (existingSet.has(`phone:${phone}`) || crmSet.has(`phone:${phone}`))) isDuplicate = true;
-    if (!isDuplicate && linkedin && (existingSet.has(`linkedin:${linkedin}`) || crmSet.has(`linkedin:${linkedin}`))) isDuplicate = true;
-
+    if (effectiveDomain && existingSet.has(`domain:${effectiveDomain}`)) isDuplicate = true;
     if (!isDuplicate) {
       uniqueLeads.push(item);
-      if (effectiveDomain) { existingSet.add(`domain:${effectiveDomain}`); newDedupKeys.push({ workspace_id: run.workspace_id, dedup_key: effectiveDomain, dedup_type: "domain", signal_lead_id: item.id }); }
-      if (phone) { existingSet.add(`phone:${phone}`); newDedupKeys.push({ workspace_id: run.workspace_id, dedup_key: phone, dedup_type: "phone", signal_lead_id: item.id }); }
-      if (linkedin) { existingSet.add(`linkedin:${linkedin}`); newDedupKeys.push({ workspace_id: run.workspace_id, dedup_key: linkedin, dedup_type: "linkedin", signal_lead_id: item.id }); }
+      if (effectiveDomain) {
+        existingSet.add(`domain:${effectiveDomain}`);
+        newDedupKeys.push({ workspace_id: run.workspace_id, dedup_key: effectiveDomain, dedup_type: "domain", signal_lead_id: item.id });
+      }
     } else {
       duplicateIds.push(item.id);
     }
@@ -2667,47 +2393,34 @@ async function pipelineFinalize(run: any, serviceClient: any) {
     }
   }
 
-  // Calculate cost based on actual pipeline work
   const { count: finalCount } = await serviceClient
     .from("signal_leads").select("*", { count: "exact", head: true }).eq("run_id", run.id);
   const leadsCount = finalCount ?? uniqueLeads.length;
 
-  // ── CREDIT RECONCILIATION: Use actual collected row counts, not plan estimates ──
+  // Cost calculation
   let actualCredits = 0;
   if (leadsCount > 0) {
-    // Count actual rows collected per stage from apify_run_ids
-    const allRefs: ApifyRunRef[] = run.apify_run_ids || [];
     let totalActualScrapedRows = 0;
     let totalAiFilteredRows = 0;
-    
-    // Sum actual dataset sizes from succeeded runs
+    const allRefs: ApifyRunRef[] = run.apify_run_ids || [];
     for (const ref of allRefs) {
       if (ref.status === "SUCCEEDED" && ref.datasetId) {
-        // Use the collected data count — we track this during collection
-        // Approximate from leads in DB for this stage
-        totalActualScrapedRows += 500; // conservative per-run estimate
+        totalActualScrapedRows += 500;
       }
     }
-    
-    // Better: use actual leads count as ground truth for scrape volume
-    // The real scrape volume = leads before filtering + filtered out leads
-    // But we only have final count. Use pipeline structure for AI filter estimate.
     for (const stage of pipeline) {
       if (stage.type === "ai_filter") {
-        // AI filter processed approximately current lead count / pass_rate rows
-        const passRate = stage.expected_pass_rate || 0.20;
-        totalAiFilteredRows += Math.ceil(leadsCount / passRate);
+        totalAiFilteredRows += leadsCount * 2;
       }
     }
     
-    // Use the larger of: actual ref count or estimated from plan
     const planScrapedRows = pipeline
       .filter((s: any) => s.type === "scrape")
       .reduce((sum: number, s: any) => sum + (s.expected_output_count || 0), 0);
     
     const effectiveScrapedRows = Math.max(
       totalActualScrapedRows,
-      planScrapedRows > 0 ? planScrapedRows : leadsCount * 3 // fallback: ~3x final leads
+      planScrapedRows > 0 ? planScrapedRows : leadsCount * 3
     );
 
     const scrapeCostUsd = (effectiveScrapedRows / 1000) * 1.0;
@@ -2716,7 +2429,6 @@ async function pipelineFinalize(run: any, serviceClient: any) {
     actualCredits = Math.max(5, Math.ceil(totalUsd * 5));
   }
 
-  // Reconcile against upfront deduction
   const upfrontCredits = run.estimated_cost || 0;
   if (actualCredits > 0) {
     const { data: creditsData } = await serviceClient
@@ -2724,14 +2436,12 @@ async function pipelineFinalize(run: any, serviceClient: any) {
     const balance = creditsData?.credits_balance || 0;
     
     if (upfrontCredits > 0) {
-      // Credits were already deducted at plan time — reconcile the delta
       const delta = actualCredits - upfrontCredits;
       if (delta !== 0) {
         await serviceClient.from("lead_credits").update({ credits_balance: balance - delta }).eq("workspace_id", run.workspace_id);
         console.log(`Credit reconciliation: upfront=${upfrontCredits}, actual=${actualCredits}, delta=${delta}`);
       }
     } else {
-      // No upfront deduction — charge full amount
       await serviceClient.from("lead_credits").update({ credits_balance: balance - actualCredits }).eq("workspace_id", run.workspace_id);
     }
   }
@@ -2821,7 +2531,6 @@ async function legacyPhaseStarting(run: any, serviceClient: any) {
         iterPlan.search_params["urls"] = [`https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(keyword)}&location=${encodeURIComponent(location)}&f_TPR=r604800`];
         delete iterPlan.search_params["searchKeywords"];
         delete iterPlan.search_params["searchLocation"];
-        // Force disable splitByLocation
         iterPlan.search_params["splitByLocation"] = false;
         delete iterPlan.search_params["splitCountry"];
       } else {
