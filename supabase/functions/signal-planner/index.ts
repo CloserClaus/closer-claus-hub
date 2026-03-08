@@ -1285,7 +1285,8 @@ async function handleGeneratePlan(
   const warnings = [...resolveWarnings, ...validatePipelinePlan(parsedPlan, query)];
 
   // Step 8: Cost estimation
-  const { totalCredits, totalEstimatedRows, totalEstimatedLeads, stageFunnel } = estimatePipelineCost(parsedPlan.pipeline);
+  const aiYieldRate = parsedPlan.estimated_yield_rate || null;
+  const { totalCredits, totalEstimatedRows, totalEstimatedLeads, stageFunnel, yieldRate, yieldLabel, yieldGuidance } = estimatePipelineCost(parsedPlan.pipeline, aiYieldRate);
   const costPerLead = totalEstimatedLeads > 0 ? (totalCredits / totalEstimatedLeads).toFixed(1) : "N/A";
 
   const signalName = parsedPlan.signal_name || "Signal";
