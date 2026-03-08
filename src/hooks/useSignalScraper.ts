@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -109,6 +109,30 @@ export interface SignalLead {
   company_linkedin_url: string | null;
 }
 
+// ── Planning progress types ──
+export interface PlanStageProgress {
+  stage: number;
+  name: string;
+  type: string;
+  status: 'pending' | 'discovering' | 'testing' | 'validated' | 'failed' | 'auto_validated' | 'skipped';
+  actor_label?: string;
+  chain_warning?: string;
+}
+
+export interface PlanningProgress {
+  run_id: string;
+  status: string;
+  phase: string;
+  stages: PlanStageProgress[];
+  signal_name?: string;
+  total_stages?: number;
+  test_results?: any[];
+  // When validated:
+  plan?: any;
+  estimation?: SignalEstimation;
+  warnings?: string[];
+}
+
 // ── Helpers ──
 
 export function isPipelinePlan(plan: SignalPlan | null): plan is PipelinePlan {
@@ -125,6 +149,80 @@ export function useSignalScraper() {
     estimation: SignalEstimation;
     warnings?: string[];
   } | null>(null);
+
+  // Planning progress state
+  const [planningProgress, setPlanningProgress] = useState<PlanningProgress | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, []);
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
+
+  const pollPlanStatus = useCallback(async (runId: string) => {
+    if (!currentWorkspace?.id) return;
+    try {
+      const { data, error } = await supabase.functions.invoke('signal-planner', {
+        body: { action: 'check_plan_status', run_id: runId, workspace_id: currentWorkspace.id },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const progress: PlanningProgress = {
+        run_id: runId,
+        status: data.status,
+        phase: data.phase,
+        stages: data.stages || [],
+        signal_name: data.signal_name,
+        total_stages: data.total_stages,
+        test_results: data.test_results,
+        plan: data.plan,
+        estimation: data.estimation,
+        warnings: data.warnings,
+      };
+
+      setPlanningProgress(progress);
+
+      // Check if planning is complete
+      if (data.status === 'planned' && data.plan && data.estimation) {
+        stopPolling();
+        setIsGeneratingPlan(false);
+        setCurrentPlan({
+          run_id: runId,
+          plan: data.plan,
+          estimation: data.estimation,
+          warnings: data.warnings,
+        });
+        setPlanningProgress(null);
+        toast({ title: 'Signal Plan Generated', description: `Source: ${data.estimation?.source_label || 'Signal Search'}` });
+      } else if (data.status === 'failed') {
+        stopPolling();
+        setIsGeneratingPlan(false);
+        setPlanningProgress(null);
+        toast({ title: 'Plan Generation Failed', description: data.error || 'Unknown error', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      console.error('Plan polling error:', err);
+      // Don't stop polling on transient errors
+    }
+  }, [currentWorkspace?.id, stopPolling, toast]);
+
+  const startPolling = useCallback((runId: string) => {
+    stopPolling();
+    // Poll immediately, then every 5 seconds
+    pollPlanStatus(runId);
+    pollingRef.current = setInterval(() => pollPlanStatus(runId), 5000);
+  }, [pollPlanStatus, stopPolling]);
 
   const { data: signalHistory = [], isLoading: historyLoading } = useQuery({
     queryKey: ['signal-runs', currentWorkspace?.id],
@@ -160,10 +258,27 @@ export function useSignalScraper() {
       return data;
     },
     onSuccess: (data) => {
-      setCurrentPlan(data);
-      toast({ title: 'Signal Plan Generated', description: `Source: ${data.estimation?.source_label || 'Signal Search'}` });
+      if (data.status === 'planning' && data.run_id) {
+        // New validate-as-you-build flow: start polling
+        setIsGeneratingPlan(true);
+        setPlanningProgress({
+          run_id: data.run_id,
+          status: 'planning',
+          phase: data.phase || 'plan_validating_stage_1',
+          stages: data.stages || [],
+          signal_name: data.signal_name,
+          total_stages: data.total_stages,
+        });
+        startPolling(data.run_id);
+      } else if (data.plan && data.estimation) {
+        // Legacy immediate response
+        setCurrentPlan(data);
+        toast({ title: 'Signal Plan Generated', description: `Source: ${data.estimation?.source_label || 'Signal Search'}` });
+      }
     },
     onError: (error: any) => {
+      setIsGeneratingPlan(false);
+      setPlanningProgress(null);
       toast({ title: 'Plan Generation Failed', description: error.message, variant: 'destructive' });
     },
   });
@@ -239,18 +354,27 @@ export function useSignalScraper() {
     },
   });
 
+  const cancelPlanning = useCallback(() => {
+    stopPolling();
+    setIsGeneratingPlan(false);
+    setPlanningProgress(null);
+  }, [stopPolling]);
+
   return {
     currentPlan,
     setCurrentPlan,
     signalHistory,
     historyLoading,
     generatePlan: generatePlanMutation.mutate,
-    isGenerating: generatePlanMutation.isPending,
+    isGenerating: generatePlanMutation.isPending || isGeneratingPlan,
     executeSignal: executeSignalMutation.mutate,
     isExecuting: executeSignalMutation.isPending,
     useSignalLeads,
     deleteSignal: deleteSignalMutation.mutate,
     dryRun: dryRunMutation.mutateAsync,
     isDryRunning: dryRunMutation.isPending,
+    // New planning progress
+    planningProgress,
+    cancelPlanning,
   };
 }

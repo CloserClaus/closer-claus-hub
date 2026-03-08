@@ -906,6 +906,10 @@ serve(async (req) => {
       return await handleCheckPlanStatus(body, supabaseClient);
     }
 
+    if (action === "advance_plan") {
+      return await handleCheckPlanStatus(body, supabaseClient);
+    }
+
     if (action === "execute_signal") {
       return await handleExecuteSignal(body, supabaseClient);
     }
@@ -1022,6 +1026,593 @@ async function handleExecuteSignal(
   });
 }
 
+
+// ════════════════════════════════════════════════════════════════
+// ██  CHECK PLAN STATUS — State machine for validate-as-you-build
+// ════════════════════════════════════════════════════════════════
+
+async function handleCheckPlanStatus(
+  body: { run_id: string; workspace_id?: string },
+  serviceClient: any
+) {
+  const { run_id } = body;
+  if (!run_id) {
+    return new Response(JSON.stringify({ error: "run_id is required" }), {
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { data: run, error: fetchErr } = await serviceClient
+    .from("signal_runs").select("*").eq("id", run_id).single();
+
+  if (fetchErr || !run) {
+    return new Response(JSON.stringify({ error: "Signal run not found" }), {
+      status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // If already validated or not in planning, return current state
+  if (run.status !== "planning") {
+    return new Response(JSON.stringify({
+      run_id, status: run.status, phase: run.plan_phase || "done",
+      plan: run.signal_plan, estimation: null,
+    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  const plan = run.signal_plan;
+  if (!plan || !plan.pipeline) {
+    return new Response(JSON.stringify({ error: "No pipeline plan found" }), {
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const phase = run.plan_phase || "plan_generating";
+  const pipeline = plan.pipeline;
+
+  // ── Phase Router ──
+  const phaseMatch = phase.match(/plan_validating_stage_(\d+)/);
+  const testMatch = phase.match(/plan_testing_stage_(\d+)/);
+
+  if (phaseMatch) {
+    const stageNum = parseInt(phaseMatch[1], 10);
+    return await handlePlanValidatingStage(run, plan, pipeline, stageNum, serviceClient);
+  }
+
+  if (testMatch) {
+    const stageNum = parseInt(testMatch[1], 10);
+    return await handlePlanTestingStage(run, plan, pipeline, stageNum, serviceClient);
+  }
+
+  if (phase === "plan_validated") {
+    return await handlePlanValidated(run, plan, pipeline, serviceClient);
+  }
+
+  // Unknown phase — return current state
+  return new Response(JSON.stringify({
+    run_id, status: "planning", phase,
+    stages: pipeline.map((s: any) => ({ stage: s.stage, name: s.name, type: s.type, status: "pending" })),
+  }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+}
+
+// ── Plan Validating Stage N: Discover actors, start micro test ──
+
+async function handlePlanValidatingStage(
+  run: any, plan: any, pipeline: any[], stageNum: number, serviceClient: any
+) {
+  const stageDef = pipeline.find((s: any) => s.stage === stageNum);
+  if (!stageDef) {
+    // No more stages — mark as validated
+    await serviceClient.from("signal_runs").update({
+      plan_phase: "plan_validated", updated_at: new Date().toISOString(),
+    }).eq("id", run.id);
+    return respondPlanStatus(run.id, "planning", "plan_validated", pipeline, run.plan_test_runs);
+  }
+
+  // AI filter stages don't need actor validation — auto-advance
+  if (stageDef.type === "ai_filter") {
+    const nextStage = pipeline.find((s: any) => s.stage === stageNum + 1);
+    const nextPhase = nextStage ? `plan_validating_stage_${nextStage.stage}` : "plan_validated";
+    
+    const testRuns = [...(run.plan_test_runs || []), {
+      stage: stageNum, name: stageDef.name, type: "ai_filter",
+      status: "auto_validated", reason: "AI filter — no actor needed",
+    }];
+    
+    await serviceClient.from("signal_runs").update({
+      plan_phase: nextPhase, plan_test_runs: testRuns, updated_at: new Date().toISOString(),
+    }).eq("id", run.id);
+    return respondPlanStatus(run.id, "planning", nextPhase, pipeline, testRuns);
+  }
+
+  // Scrape stage — discover actors and start micro test
+  const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN");
+  if (!APIFY_API_TOKEN) {
+    return new Response(JSON.stringify({ error: "APIFY_API_TOKEN not configured" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const category = stageDef.stage_category;
+  if (!category) {
+    // No category — skip validation, auto-advance
+    const nextStage = pipeline.find((s: any) => s.stage === stageNum + 1);
+    const nextPhase = nextStage ? `plan_validating_stage_${nextStage.stage}` : "plan_validated";
+    const testRuns = [...(run.plan_test_runs || []), {
+      stage: stageNum, name: stageDef.name, status: "skipped", reason: "No stage_category",
+    }];
+    await serviceClient.from("signal_runs").update({
+      plan_phase: nextPhase, plan_test_runs: testRuns, updated_at: new Date().toISOString(),
+    }).eq("id", run.id);
+    return respondPlanStatus(run.id, "planning", nextPhase, pipeline, testRuns);
+  }
+
+  // Discover actors for this category
+  const stageCat = STAGE_CATEGORIES[category];
+  const searchTerms = stageCat?.searchTerms || [category.replace("custom:", "").replace(/_/g, " ").replace(":", " ")];
+  
+  let discoveredActors: ActorEntry[] = [];
+  const seenActorIds = new Set<string>();
+  for (const term of searchTerms) {
+    const results = await discoverActors(term, serviceClient);
+    for (const actor of results) {
+      if (!seenActorIds.has(actor.actorId)) {
+        seenActorIds.add(actor.actorId);
+        (actor as any).subCategory = stageCat?.subCategory || category;
+        discoveredActors.push(actor);
+      }
+    }
+  }
+
+  if (discoveredActors.length === 0) {
+    // No actors found — skip with warning
+    const nextStage = pipeline.find((s: any) => s.stage === stageNum + 1);
+    const nextPhase = nextStage ? `plan_validating_stage_${nextStage.stage}` : "plan_validated";
+    const testRuns = [...(run.plan_test_runs || []), {
+      stage: stageNum, name: stageDef.name, status: "failed",
+      reason: `No actors found for category "${category}"`,
+    }];
+    await serviceClient.from("signal_runs").update({
+      plan_phase: nextPhase, plan_test_runs: testRuns, updated_at: new Date().toISOString(),
+    }).eq("id", run.id);
+    return respondPlanStatus(run.id, "planning", nextPhase, pipeline, testRuns);
+  }
+
+  // Pick top candidate and start micro test run
+  const candidate = discoveredActors[0];
+  await fetchAndMergeRuntimeSchema(candidate, APIFY_API_TOKEN);
+
+  // Build test input
+  const testInput = await buildMicroTestInput(candidate, stageDef, stageNum, run, plan, APIFY_API_TOKEN);
+  if (!testInput.proxyConfiguration) testInput.proxyConfiguration = { useApifyProxy: true };
+
+  // Start micro test (maxItems: 5)
+  const actorIdEncoded = candidate.actorId.replace("/", "~");
+  try {
+    const resp = await fetch(
+      `https://api.apify.com/v2/acts/${actorIdEncoded}/runs?token=${APIFY_API_TOKEN}`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(testInput) }
+    );
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.warn(`Micro test start failed for ${candidate.actorId}: ${errText.slice(0, 200)}`);
+      
+      // Try next candidate
+      if (discoveredActors.length > 1) {
+        const backup = discoveredActors[1];
+        await fetchAndMergeRuntimeSchema(backup, APIFY_API_TOKEN);
+        const backupInput = await buildMicroTestInput(backup, stageDef, stageNum, run, plan, APIFY_API_TOKEN);
+        if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
+        
+        const backupResp = await fetch(
+          `https://api.apify.com/v2/acts/${backup.actorId.replace("/", "~")}/runs?token=${APIFY_API_TOKEN}`,
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(backupInput) }
+        );
+        
+        if (backupResp.ok) {
+          const backupRunData = await backupResp.json();
+          return await saveMicroTestAndAdvance(run, stageNum, stageDef, backup, backupRunData.data, discoveredActors, serviceClient, pipeline);
+        }
+      }
+      
+      // All candidates failed — skip
+      const nextStage = pipeline.find((s: any) => s.stage === stageNum + 1);
+      const nextPhase = nextStage ? `plan_validating_stage_${nextStage.stage}` : "plan_validated";
+      const testRuns = [...(run.plan_test_runs || []), {
+        stage: stageNum, name: stageDef.name, status: "failed",
+        reason: `Could not start test run for "${category}"`,
+      }];
+      await serviceClient.from("signal_runs").update({
+        plan_phase: nextPhase, plan_test_runs: testRuns, updated_at: new Date().toISOString(),
+      }).eq("id", run.id);
+      return respondPlanStatus(run.id, "planning", nextPhase, pipeline, testRuns);
+    }
+
+    const runData = await resp.json();
+    return await saveMicroTestAndAdvance(run, stageNum, stageDef, candidate, runData.data, discoveredActors, serviceClient, pipeline);
+  } catch (err) {
+    console.error(`Micro test error for stage ${stageNum}:`, err);
+    const nextStage = pipeline.find((s: any) => s.stage === stageNum + 1);
+    const nextPhase = nextStage ? `plan_validating_stage_${nextStage.stage}` : "plan_validated";
+    const testRuns = [...(run.plan_test_runs || []), {
+      stage: stageNum, name: stageDef.name, status: "failed",
+      reason: `Test error: ${err instanceof Error ? err.message : String(err)}`,
+    }];
+    await serviceClient.from("signal_runs").update({
+      plan_phase: nextPhase, plan_test_runs: testRuns, updated_at: new Date().toISOString(),
+    }).eq("id", run.id);
+    return respondPlanStatus(run.id, "planning", nextPhase, pipeline, testRuns);
+  }
+}
+
+async function saveMicroTestAndAdvance(
+  run: any, stageNum: number, stageDef: any, actor: ActorEntry, 
+  apifyRun: any, allDiscovered: ActorEntry[], serviceClient: any, pipeline: any[]
+) {
+  const testRuns = [...(run.plan_test_runs || []), {
+    stage: stageNum, name: stageDef.name, status: "testing",
+    actor_id: actor.actorId, actor_key: actor.key, actor_label: actor.label,
+    run_id: apifyRun.id, dataset_id: apifyRun.defaultDatasetId,
+    monthly_users: actor.monthlyUsers, total_runs: actor.totalRuns, rating: actor.rating,
+    backup_actors: allDiscovered.slice(1, 3).map(a => ({
+      key: a.key, actorId: a.actorId, label: a.label,
+      monthlyUsers: a.monthlyUsers, totalRuns: a.totalRuns, rating: a.rating,
+    })),
+  }];
+
+  await serviceClient.from("signal_runs").update({
+    plan_phase: `plan_testing_stage_${stageNum}`,
+    plan_test_runs: testRuns,
+    updated_at: new Date().toISOString(),
+  }).eq("id", run.id);
+
+  return respondPlanStatus(run.id, "planning", `plan_testing_stage_${stageNum}`, pipeline, testRuns);
+}
+
+// ── Plan Testing Stage N: Poll micro test, validate output ──
+
+async function handlePlanTestingStage(
+  run: any, plan: any, pipeline: any[], stageNum: number, serviceClient: any
+) {
+  const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN")!;
+  const testRuns: any[] = [...(run.plan_test_runs || [])];
+  const stageTest = testRuns.find((t: any) => t.stage === stageNum && t.status === "testing");
+  
+  if (!stageTest || !stageTest.run_id) {
+    // No test running — advance
+    const nextStage = pipeline.find((s: any) => s.stage === stageNum + 1);
+    const nextPhase = nextStage ? `plan_validating_stage_${nextStage.stage}` : "plan_validated";
+    await serviceClient.from("signal_runs").update({
+      plan_phase: nextPhase, updated_at: new Date().toISOString(),
+    }).eq("id", run.id);
+    return respondPlanStatus(run.id, "planning", nextPhase, pipeline, testRuns);
+  }
+
+  // Poll the test run
+  try {
+    const pollResp = await fetch(
+      `https://api.apify.com/v2/actor-runs/${stageTest.run_id}?token=${APIFY_API_TOKEN}`,
+      { method: "GET" }
+    );
+    if (!pollResp.ok) {
+      stageTest.status = "failed";
+      stageTest.reason = "Poll failed";
+    } else {
+      const pollData = await pollResp.json();
+      const status = pollData.data?.status;
+
+      if (status === "RUNNING" || status === "READY") {
+        // Still running — check timeout (60s for micro tests)
+        const startedAt = pollData.data?.startedAt ? new Date(pollData.data.startedAt).getTime() : Date.now();
+        if (Date.now() - startedAt > 60000) {
+          try { await fetch(`https://api.apify.com/v2/actor-runs/${stageTest.run_id}/abort?token=${APIFY_API_TOKEN}`, { method: "POST" }); } catch {}
+          stageTest.status = "failed";
+          stageTest.reason = "Micro test timed out (60s)";
+        } else {
+          // Still running — return, next poll will check again
+          await serviceClient.from("signal_runs").update({
+            plan_test_runs: testRuns, updated_at: new Date().toISOString(),
+          }).eq("id", run.id);
+          return respondPlanStatus(run.id, "planning", `plan_testing_stage_${stageNum}`, pipeline, testRuns);
+        }
+      } else if (status === "SUCCEEDED") {
+        // Collect results and validate
+        const itemsResp = await fetch(
+          `https://api.apify.com/v2/datasets/${stageTest.dataset_id}/items?token=${APIFY_API_TOKEN}&clean=true&limit=10`,
+          { method: "GET" }
+        );
+
+        if (itemsResp.ok) {
+          const items = await itemsResp.json();
+          if (items && items.length > 0) {
+            // Normalize and analyze output
+            const normalised = normaliseGenericResults(null, items);
+            const populatedFields = new Set<string>();
+            for (const item of normalised) {
+              for (const [key, value] of Object.entries(item)) {
+                if (key !== "_raw" && value !== null && value !== undefined && value !== "") {
+                  populatedFields.add(key);
+                }
+              }
+            }
+
+            stageTest.status = "validated";
+            stageTest.output_fields = [...populatedFields];
+            stageTest.sample_count = items.length;
+            stageTest.reason = `OK — ${items.length} items, ${populatedFields.size} fields populated`;
+
+            // Store sample output for next stage's test input
+            const stageOutputs = { ...(run.plan_stage_outputs || {}), [stageNum]: normalised.slice(0, 5) };
+
+            // Check if next stage's input_from field is covered
+            const nextStageDef = pipeline.find((s: any) => s.stage === stageNum + 1);
+            if (nextStageDef?.input_from) {
+              const inputField = nextStageDef.input_from;
+              const inputAliases = FIELD_ALIASES[inputField] || [inputField];
+              const covered = inputAliases.some(a => populatedFields.has(a));
+              if (!covered) {
+                stageTest.chain_warning = `Next stage needs "${inputField}" but this output doesn't produce it. Fields: ${[...populatedFields].join(", ")}`;
+              }
+            }
+
+            // Build actor registry entry and assign to pipeline stage
+            const actorRegistry = plan.actor_registry || {};
+            actorRegistry[stageTest.actor_key] = {
+              key: stageTest.actor_key,
+              actorId: stageTest.actor_id,
+              label: stageTest.actor_label,
+              category: pipeline.find((s: any) => s.stage === stageNum)?.stage_category || "",
+              description: "",
+              inputSchema: {},
+              outputFields: {},
+              monthlyUsers: stageTest.monthly_users || 0,
+              totalRuns: stageTest.total_runs || 0,
+              rating: stageTest.rating || 0,
+            };
+            // Add backup actors to registry
+            for (const backup of (stageTest.backup_actors || [])) {
+              actorRegistry[backup.key] = {
+                ...backup, category: pipeline.find((s: any) => s.stage === stageNum)?.stage_category || "",
+                description: "", inputSchema: {}, outputFields: {},
+                _isBackup: true, _backupForSubCategory: pipeline.find((s: any) => s.stage === stageNum)?.stage_category,
+              };
+            }
+
+            // Update the pipeline stage with resolved actor
+            const stageDef = pipeline.find((s: any) => s.stage === stageNum);
+            if (stageDef) {
+              stageDef.actors = [stageTest.actor_key];
+              if (stageDef.params && !stageDef.params_per_actor) {
+                stageDef.params_per_actor = { [stageTest.actor_key]: stageDef.params };
+              }
+            }
+
+            const updatedPlan = { ...plan, pipeline, actor_registry: actorRegistry };
+            const nextStage = pipeline.find((s: any) => s.stage === stageNum + 1);
+            const nextPhase = nextStage ? `plan_validating_stage_${nextStage.stage}` : "plan_validated";
+
+            await serviceClient.from("signal_runs").update({
+              signal_plan: updatedPlan,
+              plan_phase: nextPhase,
+              plan_test_runs: testRuns,
+              plan_stage_outputs: stageOutputs,
+              updated_at: new Date().toISOString(),
+            }).eq("id", run.id);
+            return respondPlanStatus(run.id, "planning", nextPhase, pipeline, testRuns);
+          } else {
+            stageTest.status = "failed";
+            stageTest.reason = "Micro test returned 0 results";
+          }
+        } else {
+          stageTest.status = "failed";
+          stageTest.reason = "Failed to fetch test results";
+        }
+      } else {
+        stageTest.status = "failed";
+        stageTest.reason = `Test run status: ${status}`;
+      }
+    }
+  } catch (err) {
+    stageTest.status = "failed";
+    stageTest.reason = `Poll error: ${err instanceof Error ? err.message : String(err)}`;
+  }
+
+  // If we got here, the test failed — advance to next stage anyway
+  const nextStage = pipeline.find((s: any) => s.stage === stageNum + 1);
+  const nextPhase = nextStage ? `plan_validating_stage_${nextStage.stage}` : "plan_validated";
+  await serviceClient.from("signal_runs").update({
+    plan_phase: nextPhase, plan_test_runs: testRuns, updated_at: new Date().toISOString(),
+  }).eq("id", run.id);
+  return respondPlanStatus(run.id, "planning", nextPhase, pipeline, testRuns);
+}
+
+// ── Plan Validated: Compute cost estimate and return final plan ──
+
+async function handlePlanValidated(run: any, plan: any, pipeline: any[], serviceClient: any) {
+  // Compute cost estimation
+  const estimation = estimatePipelineCost(pipeline, plan.estimated_yield_rate);
+  
+  // Update run with final plan
+  await serviceClient.from("signal_runs").update({
+    status: "planned",
+    plan_phase: "plan_validated",
+    estimated_cost: estimation.totalCredits,
+    estimated_leads: estimation.totalEstimatedLeads,
+    updated_at: new Date().toISOString(),
+  }).eq("id", run.id);
+
+  const testRuns = run.plan_test_runs || [];
+  const warnings = validatePipelinePlan(plan, run.signal_query);
+
+  return new Response(JSON.stringify({
+    run_id: run.id,
+    status: "planned",
+    phase: "plan_validated",
+    plan: plan,
+    estimation: {
+      estimated_rows: estimation.totalEstimatedRows,
+      estimated_leads: estimation.totalEstimatedLeads,
+      credits_to_charge: estimation.totalCredits,
+      cost_per_lead: estimation.totalEstimatedLeads > 0
+        ? `$${(estimation.totalCredits / estimation.totalEstimatedLeads * 0.20).toFixed(2)}`
+        : "$0.00",
+      source_label: deriveSourceLabel(pipeline),
+      stage_funnel: estimation.stageFunnel,
+      yield_rate: estimation.yieldRate,
+      yield_label: estimation.yieldLabel,
+      yield_guidance: estimation.yieldGuidance,
+    },
+    test_results: testRuns,
+    warnings: warnings.length > 0 ? warnings : undefined,
+  }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+}
+
+// ── Build micro test input for a stage ──
+
+async function buildMicroTestInput(
+  actor: ActorEntry, stageDef: any, stageNum: number, run: any, plan: any, token: string
+): Promise<Record<string, any>> {
+  const params = stageDef.params || {};
+  
+  if (stageNum === 1 || !stageDef.input_from) {
+    // Stage 1: build from search query
+    const intent = {
+      roles: stageDef.role_filter || [],
+      industry: stageDef.role_filter ? (stageDef.search_query || "") : "",
+      location: params.location || params.searchLocation || "United States",
+      dateRange: "r604800",
+    };
+
+    const platform = (() => {
+      const id = actor.actorId.toLowerCase();
+      const sub = ((actor as any).subCategory || "").toLowerCase();
+      if (id.includes("linkedin") || sub.includes("linkedin")) return "linkedin" as const;
+      if (id.includes("indeed") || sub.includes("indeed")) return "indeed" as const;
+      if (id.includes("glassdoor") || sub.includes("glassdoor")) return "glassdoor" as const;
+      if (id.includes("google-places") || sub.includes("google_maps")) return "google_maps" as const;
+      if (id.includes("yelp") || sub.includes("yelp")) return "yelp" as const;
+      if (id.includes("google-search") || sub.includes("web_search")) return "google_search" as const;
+      return "generic" as const;
+    })();
+
+    let combinedKeyword = "";
+    if (intent.roles.length > 0 && intent.industry) {
+      combinedKeyword = platform === "linkedin" ? intent.roles.join(" OR ") : `${intent.roles.join(" OR ")} ${intent.industry}`;
+    } else if (intent.roles.length > 0) {
+      combinedKeyword = intent.roles.join(" OR ");
+    } else if (intent.industry) {
+      combinedKeyword = intent.industry;
+    } else {
+      combinedKeyword = stageDef.search_query || run.signal_query || "";
+    }
+
+    const testInput: Record<string, any> = { ...params, maxItems: 5 };
+    
+    switch (platform) {
+      case "linkedin": {
+        const url = `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(combinedKeyword)}&location=${encodeURIComponent(intent.location)}&f_TPR=r604800`;
+        testInput.urls = [url];
+        testInput.startUrls = [{ url }];
+        testInput.maxItems = 5;
+        testInput.splitByLocation = false;
+        break;
+      }
+      case "indeed":
+        testInput.position = combinedKeyword;
+        testInput.title = combinedKeyword;
+        testInput.location = intent.location;
+        testInput.maxItems = 5;
+        break;
+      case "google_maps":
+        testInput.searchStringsArray = [combinedKeyword];
+        testInput.maxCrawledPlacesPerSearch = 5;
+        break;
+      default:
+        testInput.search = combinedKeyword;
+        testInput.query = combinedKeyword;
+        testInput.maxItems = 5;
+        testInput.maxResults = 5;
+    }
+
+    return normalizeInputToSchema(actor, buildGenericInput(actor, testInput));
+  } else {
+    // Enrichment stage — use sample output from previous stage
+    const prevStageOutputs = (run.plan_stage_outputs || {})[stageNum - 1] || [];
+    const inputField = stageDef.input_from;
+    
+    const testInput: Record<string, any> = { ...params, maxItems: 5 };
+    
+    if (prevStageOutputs.length > 0 && inputField) {
+      // Extract input values from previous stage's test output
+      const inputValues = prevStageOutputs
+        .map((item: any) => item[inputField])
+        .filter((v: any) => v !== null && v !== undefined && v !== "")
+        .slice(0, 5);
+      
+      if (inputValues.length > 0) {
+        const looksLikeUrls = typeof inputValues[0] === "string" && inputValues[0].startsWith("http");
+        if (looksLikeUrls) {
+          testInput.startUrls = inputValues.map((url: string) => ({ url }));
+          testInput.urls = inputValues;
+        } else {
+          testInput.queries = inputValues;
+          testInput.searchStringsArray = inputValues;
+        }
+      }
+    }
+
+    return normalizeInputToSchema(actor, buildGenericInput(actor, testInput));
+  }
+}
+
+// Helper to normalize schema for micro test input
+function normalizeInputToSchema(actor: ActorEntry, input: Record<string, any>): Record<string, any> {
+  if (!actor.inputSchema || Object.keys(actor.inputSchema).length === 0) return input;
+  const result = { ...input };
+  for (const [field, schema] of Object.entries(actor.inputSchema)) {
+    if (result[field] === undefined) continue;
+    const value = result[field];
+    if (schema.type === "string[]" && Array.isArray(value) && value.length > 0 && typeof value[0] === "object") {
+      const first = value[0];
+      const stringProp = Object.keys(first).find(k => typeof first[k] === "string");
+      if (stringProp) result[field] = value.map((item: any) => typeof item === "object" ? item[stringProp] : String(item));
+    } else if (schema.type === "string[]" && typeof value === "string") {
+      result[field] = [value];
+    } else if (schema.type === "object[]" && Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
+      result[field] = value.map((item: string) => ({ url: item }));
+    } else if (schema.type === "number" && typeof value === "string") {
+      const parsed = parseFloat(value);
+      if (!isNaN(parsed)) result[field] = parsed;
+    }
+  }
+  return result;
+}
+
+// Helper to build plan status response
+function respondPlanStatus(runId: string, status: string, phase: string, pipeline: any[], testRuns: any[]) {
+  const stages = pipeline.map((s: any) => {
+    const testResult = testRuns?.find((t: any) => t.stage === s.stage);
+    let stageStatus = "pending";
+    if (testResult) {
+      stageStatus = testResult.status; // testing, validated, failed, auto_validated, skipped
+    }
+    // Mark stages after current phase as pending
+    const phaseMatch = phase.match(/plan_(?:validating|testing)_stage_(\d+)/);
+    if (phaseMatch) {
+      const currentStage = parseInt(phaseMatch[1], 10);
+      if (s.stage > currentStage) stageStatus = "pending";
+      if (s.stage === currentStage && !testResult) stageStatus = phase.includes("validating") ? "discovering" : "testing";
+    }
+    return {
+      stage: s.stage, name: s.name, type: s.type, status: stageStatus,
+      actor_label: testResult?.actor_label, chain_warning: testResult?.chain_warning,
+    };
+  });
+
+  return new Response(JSON.stringify({
+    run_id: runId, status, phase, stages, test_results: testRuns,
+  }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+}
 
 // ════════════════════════════════════════════════════════════════
 // ██  DRY RUN — Simulate actor inputs without executing
