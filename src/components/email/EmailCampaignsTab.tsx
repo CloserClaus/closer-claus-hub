@@ -183,12 +183,41 @@ export function EmailCampaignsTab() {
     }
   };
 
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const handleDelete = async (seqId: string) => {
-    await supabase.from('follow_up_sequence_steps').delete().eq('sequence_id', seqId);
-    await supabase.from('follow_up_sequences').delete().eq('id', seqId);
-    toast({ title: 'Sequence deleted' });
-    if (selectedCampaign?.id === seqId) setSelectedCampaign(null);
-    fetchSequences();
+    setDeleting(true);
+    try {
+      // Clean up active follow-ups and reset lead states before deleting
+      const { data: activeFups } = await supabase
+        .from('active_follow_ups')
+        .select('lead_id')
+        .eq('sequence_id', seqId)
+        .in('status', ['active', 'paused']);
+      
+      if (activeFups && activeFups.length > 0) {
+        await supabase
+          .from('active_follow_ups')
+          .update({ status: 'completed', completed_at: new Date().toISOString() } as any)
+          .eq('sequence_id', seqId)
+          .in('status', ['active', 'paused']);
+        
+        const leadIds = [...new Set((activeFups as any[]).map(f => f.lead_id))];
+        for (const leadId of leadIds) {
+          await supabase.from('leads').update({ email_sending_state: 'idle' } as any).eq('id', leadId);
+        }
+      }
+
+      await supabase.from('follow_up_sequence_steps').delete().eq('sequence_id', seqId);
+      await supabase.from('follow_up_sequences').delete().eq('id', seqId);
+      toast({ title: 'Sequence deleted' });
+      if (selectedCampaign?.id === seqId) setSelectedCampaign(null);
+      setDeleteConfirmId(null);
+      fetchSequences();
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleSave = async () => {
