@@ -123,7 +123,11 @@ export function SignalScraperTab() {
 
   const handleRerun = (run: SignalRun, refinementContext?: any) => {
     setQuery(run.signal_query);
-    const systemSettings = computeSystemSettings(advancedSettings);
+    const systemSettings: AdvancedSettings = {
+      ...advancedSettings,
+      max_results_per_source: advancedSettings.scrape_volume,
+      ai_strictness: advancedSettings.quality === 'high' ? 'high' : 'medium',
+    };
     generatePlan({ query: run.signal_query, advanced_settings: systemSettings, plan_override: refinementContext ? { refinement_context: refinementContext } : undefined });
   };
 
