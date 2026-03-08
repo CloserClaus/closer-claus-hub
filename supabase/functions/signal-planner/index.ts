@@ -343,14 +343,15 @@ If a stage category's outputs don't include a required field, you MUST add an en
 - Each actor run costs ~$0.001 per result scraped
 - AI filtering costs ~$0.001 per lead evaluated
 - ALWAYS start with the most CONSTRAINED source
-- ALWAYS filter aggressively BEFORE expensive enrichment
+- Filter on available data ASAP — but ONLY on fields that prior stages have actually produced. A filter on unscraped data wastes the entire pipeline.
 - Total pipeline cost should be MINIMIZED
 
 ## PIPELINE DESIGN RULES
 
 1. Start with the NARROWEST source
-2. AI filter stages come after discovery — narrow BEFORE enrichment
-3. Company enrichment comes AFTER filtering
+2. AI filter stages come after discovery — but ONLY filter on fields that the preceding scrape stages output (see DATA-AVAILABILITY RULES above)
+3. Company enrichment comes AFTER lightweight filtering (e.g., job title relevance)
+4. Deep filtering (industry type, headcount) comes AFTER enrichment stages that produce those fields
 4. Person-finding is near-last — only on qualified companies
 5. Contact enrichment is ALWAYS the last scrape stage
 6. input_from tells the processor which field from existing leads to use:
