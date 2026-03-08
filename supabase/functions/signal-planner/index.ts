@@ -12,7 +12,7 @@ const corsHeaders = {
 // ════════════════════════════════════════════════════════════════
 
 interface InputField {
-  type: "string" | "number" | "boolean" | "string[]" | "enum";
+  type: "string" | "number" | "boolean" | "string[]" | "object[]" | "enum";
   required?: boolean;
   default?: any;
   values?: string[];
