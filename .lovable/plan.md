@@ -1,47 +1,16 @@
 
 
-# Fix: Signal Planner Routing Mismatch + Missing Execute Handler
+## Fix: Empty String SelectItem Value in BulkAssignDialog
 
-## Problem
-The `signal-planner` edge function routes requests based on `url.pathname === "/generate-plan"` (line 779), but the frontend calls `supabase.functions.invoke('signal-planner', { body: { action: 'generate_plan', ... } })` which hits the function root path (`/signal-planner`). The pathname never matches, so **every request returns 404**.
+**Problem**: `src/components/crm/BulkAssignDialog.tsx` line 264 has `<SelectItem value="">All tags (distribute equally)</SelectItem>`. Radix UI's Select component does not allow empty string values on SelectItem — it's reserved for clearing the selection.
 
-Additionally, the frontend sends `action: 'execute_signal'` (line 171 of `useSignalScraper.ts`) but there is **no handler for it** in the edge function.
+**Fix**: Change the empty string value to `"all"` and update the logic that checks for this value.
 
-## Fix in `signal-planner/index.ts`
+### Changes in `src/components/crm/BulkAssignDialog.tsx`
 
-Replace the pathname-based routing (lines 778-785) with action-based routing that reads `action` from the request body:
+1. Change `<SelectItem value="">` to `<SelectItem value="all">` (line 264)
+2. Update the state initialization for the tag filter from `""` to `"all"` 
+3. Update any conditional logic that checks `=== ""` to check `=== "all"` instead
 
-```typescript
-const body = await req.json();
-const action = body.action || "generate_plan";
-const userId = req.headers.get("x-user-id") || body.user_id || "anonymous";
-
-if (action === "generate_plan") {
-  return await handleGeneratePlan(body, userId, supabaseClient);
-}
-
-if (action === "execute_signal") {
-  return await handleExecuteSignal(body, supabaseClient);
-}
-
-return new Response(JSON.stringify({ error: "Unknown action" }), {
-  status: 400,
-  headers: { ...corsHeaders, "Content-Type": "application/json" },
-});
-```
-
-Add `handleExecuteSignal` function that:
-1. Reads `run_id`, `workspace_id`, `schedule_type`, `schedule_hour` from body
-2. Fetches the planned signal run from `signal_runs`
-3. Deducts credits from `lead_credits`
-4. Updates signal run status to `queued`
-5. Returns `{ status: "queued", run_id }`
-
-The `process-signal-queue` cron picks up queued runs — no further changes needed there.
-
-## Files Modified
-- `supabase/functions/signal-planner/index.ts` — Replace pathname routing with action routing, add `handleExecuteSignal`
-
-## Estimated size
-~60 lines changed/added
+Single file, ~3 lines changed.
 
