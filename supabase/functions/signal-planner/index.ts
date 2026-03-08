@@ -654,6 +654,51 @@ function validateDataFlow(pipeline: any[]): { valid: boolean; issues: string[]; 
 // ██  PLAN-TIME WARNINGS & VALIDATION
 // ════════════════════════════════════════════════════════════════
 
+// ════════════════════════════════════════════════════════════════
+// ██  HELPER — Extract industry/vertical terms from user query
+// ════════════════════════════════════════════════════════════════
+
+const INDUSTRY_TERMS: Record<string, string[]> = {
+  "marketing": ["marketing", "marketing agency", "digital marketing", "advertising", "ad agency", "media agency"],
+  "saas": ["saas", "software", "software company", "tech company", "technology"],
+  "healthcare": ["healthcare", "health", "medical", "hospital", "clinic", "pharma", "pharmaceutical"],
+  "fintech": ["fintech", "financial technology", "finance", "banking", "insurance"],
+  "ecommerce": ["ecommerce", "e-commerce", "online store", "retail", "shopify"],
+  "real estate": ["real estate", "property", "realty", "mortgage", "housing"],
+  "construction": ["construction", "building", "contractor", "architecture"],
+  "legal": ["legal", "law firm", "attorney", "lawyer"],
+  "education": ["education", "edtech", "school", "university", "training"],
+  "manufacturing": ["manufacturing", "factory", "industrial", "production"],
+  "logistics": ["logistics", "shipping", "freight", "supply chain", "transportation"],
+  "consulting": ["consulting", "consultancy", "advisory", "management consulting"],
+  "recruitment": ["recruitment", "staffing", "hiring", "talent", "hr agency"],
+  "dental": ["dental", "dentist", "orthodontic"],
+  "fitness": ["fitness", "gym", "personal training", "wellness"],
+  "restaurant": ["restaurant", "food", "catering", "hospitality"],
+  "automotive": ["automotive", "car dealership", "auto"],
+  "solar": ["solar", "renewable energy", "clean energy"],
+  "cybersecurity": ["cybersecurity", "security", "infosec"],
+  "ai": ["ai", "artificial intelligence", "machine learning", "ml"],
+};
+
+function inferQueryIndustry(query: string): string[] {
+  const lowerQuery = query.toLowerCase();
+  const matches: string[] = [];
+
+  for (const [industry, terms] of Object.entries(INDUSTRY_TERMS)) {
+    // Sort by length descending to match longer phrases first
+    const sortedTerms = [...terms].sort((a, b) => b.length - a.length);
+    for (const term of sortedTerms) {
+      if (lowerQuery.includes(term)) {
+        matches.push(term);
+        break; // Only add the best match per industry group
+      }
+    }
+  }
+
+  return matches;
+}
+
 function validatePipelinePlan(plan: any, query: string): string[] {
   const warnings: string[] = [];
   const pipeline = plan.pipeline || [];
@@ -685,6 +730,60 @@ function validatePipelinePlan(plan: any, query: string): string[] {
       for (const actorKey of stage.actors) {
         if (!getActor(actorKey)) {
           warnings.push(`⚠️ Actor "${actorKey}" not found in discovered actors — it may fail at runtime.`);
+        }
+      }
+    }
+  }
+
+  // ── Industry precision enforcement ──
+  const industryTerms = inferQueryIndustry(query);
+  if (industryTerms.length > 0) {
+    const stage1 = pipeline.find((s: any) => s.type === "scrape" && !s.input_from);
+    if (stage1) {
+      const params = stage1.params_per_actor || {};
+      let hasIndustryInParams = false;
+      let hasIndustryInSearchQuery = false;
+
+      for (const [actorKey, actorParams] of Object.entries(params)) {
+        const p = actorParams as any;
+        // Check if any industry filter fields are set
+        for (const [k, v] of Object.entries(p || {})) {
+          if (/industry|category|vertical|sector/i.test(k) && v) {
+            hasIndustryInParams = true;
+          }
+        }
+        // Check if search query contains industry terms
+        const searchFields = [p?.search_query, p?.searchQuery, p?.queries, p?.search, p?.keyword, p?.keywords].filter(Boolean);
+        for (const sq of searchFields) {
+          const sqLower = String(sq).toLowerCase();
+          if (industryTerms.some(t => sqLower.includes(t))) {
+            hasIndustryInSearchQuery = true;
+          }
+        }
+      }
+
+      if (!hasIndustryInParams && !hasIndustryInSearchQuery) {
+        warnings.push(`🏭 Industry terms [${industryTerms.join(", ")}] from your query are missing from Stage 1 search params. Auto-fixing search queries.`);
+
+        // Auto-fix: prepend industry terms to search queries
+        const industryPrefix = industryTerms[0]; // Use the most specific match
+        for (const [actorKey, actorParams] of Object.entries(params)) {
+          const p = actorParams as any;
+          const searchFieldKeys = ["search_query", "searchQuery", "queries", "search", "keyword", "keywords"];
+          let fixed = false;
+          for (const sfk of searchFieldKeys) {
+            if (p?.[sfk] && typeof p[sfk] === "string") {
+              p[sfk] = `${industryPrefix} ${p[sfk]}`;
+              fixed = true;
+              break;
+            }
+          }
+          if (!fixed) {
+            // If no search query field exists, try to add one
+            if (p) {
+              p.search_query = `${industryPrefix} ${query}`;
+            }
+          }
         }
       }
     }

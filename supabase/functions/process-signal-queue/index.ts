@@ -1253,8 +1253,25 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         .eq("run_id", run.id);
 
       if (!leadCount || leadCount === 0) {
-        const userMessage = `No results found from ${(stageDef.actors || []).join(" + ")} in stage ${stageNum}. This can happen when job boards or search sources return empty results for your query. Try broadening your search terms, expanding the date range, or adjusting your criteria.`;
-        console.log(`Stage ${stageNum}: ZERO RESULTS — aborting pipeline`);
+        // Check if all actor runs actually succeeded (meaning they ran but returned 0 items)
+        const stageActorRuns = (run.apify_run_ids || []).filter((r: any) => (r.pipelineStage || 1) === stageNum);
+        const allSucceeded = stageActorRuns.length > 0 && stageActorRuns.every((r: any) => r.status === "SUCCEEDED");
+        const advSettings = run.advanced_settings || {};
+        const maxPerSource = advSettings.max_results_per_source || 100;
+
+        let userMessage: string;
+        let notifTitle: string;
+
+        if (allSucceeded && maxPerSource <= 500) {
+          // Actors ran fine but 0 items — likely the cap is too small for this niche
+          userMessage = `No results found from ${(stageDef.actors || []).join(" + ")} in stage ${stageNum}. The search sources returned empty results, which often happens when the max results per source (${maxPerSource}) is too low for niche queries like "${run.signal_query}". Try increasing max results per source to 1000–5000, or broadening your search criteria.`;
+          notifTitle = "Signal Search — No Results (Try Increasing Limits)";
+        } else {
+          userMessage = `No results found from ${(stageDef.actors || []).join(" + ")} in stage ${stageNum}. This can happen when job boards or search sources return empty results for your query. Try broadening your search terms, expanding the date range, or adjusting your criteria.`;
+          notifTitle = "Signal Failed — No Results Found";
+        }
+
+        console.log(`Stage ${stageNum}: ZERO RESULTS — aborting pipeline (allSucceeded=${allSucceeded}, maxPerSource=${maxPerSource})`);
         
         const { error: abortError } = await serviceClient.from("signal_runs").update({
           status: "failed",
@@ -1263,14 +1280,13 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
           pipeline_adjustments: [...(run.pipeline_adjustments || []), {
             stage: stageNum,
             quality: "USELESS",
-            reason: "Stage produced 0 results — hard abort",
+            reason: `Stage produced 0 results — hard abort (cap: ${maxPerSource})`,
             timestamp: new Date().toISOString(),
           }],
         }).eq("id", run.id);
 
         if (abortError) {
           console.error(`Stage ${stageNum}: Failed to update status to failed:`, abortError);
-          // Retry once
           const { error: retryError } = await serviceClient.from("signal_runs").update({
             status: "failed",
             error_message: userMessage,
@@ -1282,7 +1298,7 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         if (run.user_id) {
           await serviceClient.from("notifications").insert({
             user_id: run.user_id, workspace_id: run.workspace_id,
-            type: "signal_failed", title: "Signal Failed — No Results Found",
+            type: "signal_failed", title: notifTitle,
             message: userMessage,
           });
         }
