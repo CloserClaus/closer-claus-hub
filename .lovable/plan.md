@@ -1,74 +1,29 @@
 
+# Email Edge Cases Fixes Plan
 
-# Email System Review — Final Remaining Edge Cases
+Here is the technical plan to implement the 5 remaining edge case fixes for the email system:
 
-After a comprehensive review of all email components, edge functions, and data flows, the system is in excellent shape with all previous fixes correctly implemented. Five remaining edge cases exist, all related to data flow integrity between components.
+### 1. First Email Visibility in Sequences
+**File:** `src/components/email/FollowUpSequenceModal.tsx`
+- **Change:** After invoking the `send-email` edge function and creating the `email_conversations` record, I will manually insert the first message into `email_conversation_messages` using the newly created conversation ID.
+- **Details:** This ensures that the first email of a sequence is immediately visible in the Conversations tab. I'll also capture the first step's subject and body (with variables replaced) to accurately represent what was sent.
 
-## Issues Found
+### 2. Conversation Reply Deduplication
+**Files:** `supabase/functions/send-email/index.ts`, `src/components/email/EmailConversationsTab.tsx`
+- **Change:** I will pass `conversation_id` in the `send-email` request payload from the `EmailConversationsTab`.
+- **Details:** In the `send-email` edge function, when a `conversation_id` is provided, the function will use it directly to store the outbound message. This overrides the default behavior that mistakenly tries to find a conversation where `sequence_id IS NULL`, preventing the creation of duplicate conversation threads.
 
-### 1. FollowUpSequenceModal: First email message not stored in conversation
+### 3. Provider Disconnect Confirmation
+**File:** `src/components/email/EmailAccountsTab.tsx`
+- **Change:** Add a `DeleteConfirmDialog` before allowing a user to disconnect an email provider.
+- **Details:** I will add state to track `deleteProviderId`. When the user confirms deletion, the system will first fetch all inboxes for that provider, complete any `active_follow_ups` assigned to those inboxes, and reset the affected leads' `email_sending_state` to `idle`. Finally, it will delete the provider record.
 
-When `FollowUpSequenceModal.startSequence` sends the first email (line 187), it passes `sequence_id` to `send-email`. However, `send-email` only creates conversation messages for non-sequence sends (the check on line 312: `if (lead_id && !sequence_id)`). The conversation record is created by the modal (line 200), but it has no messages in it until the cron processes step 1.
+### 4. Sequence Edit Safety Warnings
+**Files:** `src/components/email/EmailSequencesTab.tsx`, `src/components/email/EmailCampaignsTab.tsx`
+- **Change:** Display an inline warning when a user edits an existing sequence.
+- **Details:** I'll import `AlertCircle` and add an alert banner in the sequence builder dialog if `editingSequence` is set. The banner will warn: *"Warning: Modifying a sequence that is currently active will affect all leads currently enrolled. They will receive the new steps."*
 
-**Result**: The first email in any sequence started via `FollowUpSequenceModal` is invisible in the Conversations thread.
-
-**Fix**: After the `send-email` invoke in `FollowUpSequenceModal.startSequence`, manually insert the outbound message into `email_conversation_messages` using the newly created conversation ID.
-
-**File**: `src/components/email/FollowUpSequenceModal.tsx`
-
----
-
-### 2. Conversation reply to sequence thread creates duplicate conversation
-
-When a user replies from `EmailConversationsTab` to a conversation that has a `sequence_id`, the call to `send-email` does not include `sequence_id`. The `send-email` function (line 314-320) then looks for a conversation where `sequence_id IS NULL` — it won't find the existing sequence conversation, so it creates a **new** conversation and stores the outbound message there.
-
-**Result**: The reply message appears in a newly-created conversation instead of the existing thread. The user sees the original conversation update its preview (line 194-197 in `EmailConversationsTab`), but the actual message is stored elsewhere.
-
-**Fix**: In `EmailConversationsTab.handleSendReply`, pass the `conversation_id` to `send-email` so the edge function can store the message in the correct conversation. Add a `conversation_id` parameter to `send-email` that, when present, skips the auto-create logic and directly appends the message to the specified conversation.
-
-**Files**: `src/components/email/EmailConversationsTab.tsx`, `supabase/functions/send-email/index.ts`
-
----
-
-### 3. Provider disconnect has no confirmation dialog
-
-`EmailAccountsTab.handleDisconnectProvider` (line 111) deletes the provider immediately with no confirmation. This cascade-deletes associated inboxes, which could orphan active sequences that reference those inboxes (the `sender_inbox_id` foreign key becomes invalid, causing the `process-sequences` cron to error out).
-
-**Fix**: Add a `DeleteConfirmDialog` before disconnecting. The description should warn about active sequences. Before deleting, clean up `active_follow_ups` referencing inboxes of that provider.
-
-**File**: `src/components/email/EmailAccountsTab.tsx`
-
----
-
-### 4. Editing a sequence with active follow-ups is unsafe
-
-`EmailSequencesTab.handleSave` and `EmailCampaignsTab.handleSave` delete all steps and re-insert them. If any active follow-ups reference this sequence, the step at `current_step` might no longer exist or might have different content. The cron would then mark the follow-up as completed (line 161-168 in `process-sequences`), silently ending sequences for enrolled leads.
-
-**Fix**: Before allowing step edits, check for active follow-ups. If any exist, show a warning dialog explaining that editing will affect in-progress sequences. Alternatively, prevent step deletion/reordering while leads are enrolled (only allow body/subject edits).
-
-**Files**: `src/components/email/EmailSequencesTab.tsx`, `src/components/email/EmailCampaignsTab.tsx`
-
----
-
-### 5. Resuming paused campaigns fires all queued emails immediately
-
-`EmailCampaignsTab.handleToggleCampaignStatus` (line 283-286) sets paused follow-ups back to `active` without updating `next_send_at`. If a campaign was paused for days, all follow-ups have stale `next_send_at` values in the past and the cron will fire them all simultaneously on the next run (within the 50-record limit).
-
-**Fix**: When resuming, recalculate `next_send_at` relative to now. Set it to `now()` for follow-ups that were already overdue, so the cron processes them in order with staggered delays.
-
-**File**: `src/components/email/EmailCampaignsTab.tsx`
-
----
-
-## Implementation Summary
-
-| # | Issue | Files | Risk |
-|---|-------|-------|------|
-| 1 | First sequence email invisible in thread | FollowUpSequenceModal.tsx | Low |
-| 2 | Reply to sequence thread creates duplicate conversation | EmailConversationsTab.tsx, send-email/index.ts | Medium |
-| 3 | Provider disconnect without confirmation | EmailAccountsTab.tsx | Medium |
-| 4 | Editing active sequences breaks enrolled leads | EmailSequencesTab.tsx, EmailCampaignsTab.tsx | Medium |
-| 5 | Resume fires all paused emails at once | EmailCampaignsTab.tsx | Medium |
-
-No database migrations needed. All fixes are frontend logic and edge function parameter handling.
-
+### 5. Campaign Resume Timing
+**File:** `src/components/email/EmailCampaignsTab.tsx`
+- **Change:** Update `handleToggleCampaignStatus` to reset the `next_send_at` timestamp.
+- **Details:** When resuming a paused campaign (changing status from `paused` to `active`), I will update the `next_send_at` field to `new Date().toISOString()` (`now()`) for all affected `active_follow_ups`. This ensures that overdue emails do not all fire simultaneously out of order, and the cron can process them systematically.
