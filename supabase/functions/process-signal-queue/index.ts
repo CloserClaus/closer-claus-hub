@@ -1146,23 +1146,54 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
       }
 
       let inputValues: string[] = [];
+      let peopleSearchMode: "structured" | "url" = "url"; // Track how we're passing people data
       if ((actor.category === "people_data" || actor.actorId.includes("linkedin") && actor.label.toLowerCase().includes("people")) && stageDef.search_titles) {
-        const titles = stageDef.search_titles.join(" OR ");
-        for (const lead of existingLeads) {
-          // Use company_linkedin_url if available, otherwise use company_name
-          const companyLinkedinUrl = lead.company_linkedin_url || lead.linkedin;
-          const companyName = lead.company_name || "";
+        const titles = stageDef.search_titles;
+        const titlesStr = titles.join(" OR ");
+        
+        // Detect whether this actor expects structured params or URLs
+        const hasSchema = Object.keys(actor.inputSchema).length > 0;
+        const schemaKeys = Object.keys(actor.inputSchema);
+        const hasCompanyField = hasSchema && schemaKeys.some((k: string) => /company|organization|employer/i.test(k));
+        const hasTitleField = hasSchema && schemaKeys.some((k: string) => /title|position|role|headline/i.test(k));
+        const hasNameField = hasSchema && schemaKeys.some((k: string) => /name|keyword|search|query/i.test(k));
+        const hasUrlField = hasSchema && (!!actor.inputSchema["startUrls"] || !!actor.inputSchema["urls"] || !!actor.inputSchema["profileUrls"]);
+        
+        // Prefer structured params when actor supports them (company + title fields)
+        const useStructured = hasCompanyField || hasTitleField || (hasNameField && !hasUrlField);
+        
+        if (useStructured) {
+          peopleSearchMode = "structured";
+          console.log(`Stage ${stageNum}: People search using STRUCTURED params for ${actorKey} (company field: ${hasCompanyField}, title field: ${hasTitleField})`);
           
-          if (companyLinkedinUrl && companyLinkedinUrl.includes("linkedin.com")) {
-            // Extract company identifier from LinkedIn URL for more targeted search
-            const encodedTitles = encodeURIComponent(titles);
+          // Build structured search entries — one per lead
+          // We'll store JSON-encoded objects and parse them in the batch builder
+          for (const lead of existingLeads) {
+            const companyName = lead.company_name || "";
+            const companyLinkedinUrl = lead.company_linkedin_url || lead.linkedin || "";
+            if (!companyName && !companyLinkedinUrl) continue;
+            
+            // Store as JSON so we can parse later and build proper structured input
+            inputValues.push(JSON.stringify({
+              company: companyName,
+              companyLinkedinUrl,
+              titles: titlesStr,
+              leadId: lead.id,
+            }));
+          }
+        } else {
+          // Fallback: build LinkedIn search URLs (original behavior, improved)
+          peopleSearchMode = "url";
+          console.log(`Stage ${stageNum}: People search using URL mode for ${actorKey}`);
+          
+          for (const lead of existingLeads) {
+            const companyName = lead.company_name || "";
+            if (!companyName) continue;
+            
+            // Build cleaner search URLs — separate title and company for better precision
+            const encodedTitles = encodeURIComponent(titlesStr);
             const encodedCompany = encodeURIComponent(companyName);
-            inputValues.push(`https://www.linkedin.com/search/results/people/?keywords=${encodedTitles}%20${encodedCompany}`);
-          } else if (companyName) {
-            // Fallback: search by company name
-            const encodedTitles = encodeURIComponent(titles);
-            const encodedCompany = encodeURIComponent(companyName);
-            inputValues.push(`https://www.linkedin.com/search/results/people/?keywords=${encodedTitles}%20${encodedCompany}`);
+            inputValues.push(`https://www.linkedin.com/search/results/people/?keywords=${encodedTitles}&company=${encodedCompany}`);
           }
         }
       } else if (inputField === "company_linkedin_url") {
@@ -1197,9 +1228,51 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
         const input: Record<string, any> = { ...actorParams };
 
         const hasSchema = Object.keys(actor.inputSchema).length > 0;
+        const schemaKeys = Object.keys(actor.inputSchema);
 
-        // Determine how to pass the batch to this actor
-        if (hasSchema) {
+        // For people_data with structured mode: build proper structured params
+        if (actor.category === "people_data" && peopleSearchMode === "structured") {
+          const parsedEntries = batch.map(v => { try { return JSON.parse(v); } catch { return null; } }).filter(Boolean);
+          
+          // Find the best schema fields for company and title
+          const companyField = schemaKeys.find((k: string) => /^company$|^organization$|^employer$/i.test(k)) 
+            || schemaKeys.find((k: string) => /company|organization|employer/i.test(k));
+          const titleField = schemaKeys.find((k: string) => /^title$|^position$|^role$/i.test(k))
+            || schemaKeys.find((k: string) => /title|position|role|headline/i.test(k));
+          const searchField = schemaKeys.find((k: string) => /^search$|^query$|^keyword$|^keywords$/i.test(k))
+            || schemaKeys.find((k: string) => /search|query|keyword/i.test(k));
+          
+          if (companyField || titleField) {
+            // Actor supports structured company/title — pass as search queries
+            const queries = parsedEntries.map((e: any) => `${e.titles} ${e.company}`);
+            if (companyField && titleField) {
+              // Best case: separate fields
+              input[companyField] = parsedEntries.map((e: any) => e.company);
+              input[titleField] = parsedEntries[0]?.titles || "";
+            } else if (searchField) {
+              input[searchField] = queries.join("\n");
+            }
+            // Also provide URLs as fallback
+            if (actor.inputSchema["startUrls"]) {
+              input.startUrls = parsedEntries.map((e: any) => ({
+                url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(e.titles)}%20${encodeURIComponent(e.company)}`
+              }));
+            }
+          } else if (searchField) {
+            input[searchField] = parsedEntries.map((e: any) => `${e.titles} ${e.company}`);
+          } else {
+            // Fallback to URL mode even in structured mode
+            input.startUrls = parsedEntries.map((e: any) => ({
+              url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(e.titles)}%20${encodeURIComponent(e.company)}`
+            }));
+            input.urls = parsedEntries.map((e: any) => 
+              `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(e.titles)}%20${encodeURIComponent(e.company)}`
+            );
+          }
+          console.log(`Stage ${stageNum}: Built structured people input — companyField: ${companyField}, titleField: ${titleField}, searchField: ${searchField}`);
+        }
+        // Determine how to pass the batch to this actor (non-people or URL mode people)
+        else if (hasSchema) {
           if (actor.inputSchema["startUrls"]) {
             input.startUrls = batch.map(url => ({ url }));
           } else if (actor.inputSchema["profileUrls"]) {
@@ -1485,58 +1558,110 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
       }
       console.log(`Stage ${stageNum}: LinkedIn URL discovery completed from dataset ${collectedIndex + 1}`);
     } else if (actor.category === "people_data") {
-      // People-finding stage: UPDATE existing leads with person data
+      // People-finding stage: UPDATE existing leads with person data using SCORED matching
       const { data: allRunLeads } = await serviceClient
-        .from("signal_leads").select("id, company_name, domain, company_linkedin_url").eq("run_id", run.id).limit(10000);
+        .from("signal_leads").select("id, company_name, domain, company_linkedin_url, website").eq("run_id", run.id).limit(10000);
       const runLeads = allRunLeads || [];
+      
+      const MIN_MATCH_SCORE = 70;
+      let matchedCount = 0;
+      let totalPersonItems = 0;
+      // Track which leads already have a person assigned (prevent overwriting with lower-score match)
+      const assignedLeadIds = new Set<string>();
 
       for (const item of normalised) {
         const personCompany = (item.company_name || "").trim().toLowerCase();
         if (!personCompany) continue;
-
-        let matchedLeadId: string | null = null;
+        totalPersonItems++;
 
         const personLinkedIn = item._raw?.currentCompanyLinkedinUrl || item._raw?.companyLinkedinUrl || "";
         const personDomain = extractDomain(item._raw?.companyUrl || item._raw?.website || "");
-        if (personDomain) {
-          const domainMatch = runLeads.find((l: any) => l.domain && l.domain === personDomain);
-          if (domainMatch) matchedLeadId = domainMatch.id;
+        
+        // Score each lead candidate
+        let bestMatch: { id: string; score: number } | null = null;
+        
+        for (const lead of runLeads) {
+          if (assignedLeadIds.has(lead.id)) continue; // Already assigned
+          let score = 0;
+          
+          // Domain match = 100 (strongest signal)
+          if (personDomain && lead.domain && personDomain === lead.domain) {
+            score = 100;
+          }
+          
+          // LinkedIn company URL match = 90
+          if (score < 90 && personLinkedIn && lead.company_linkedin_url) {
+            const normPerson = personLinkedIn.toLowerCase().replace(/\/$/, "").replace(/^https?:\/\/(www\.)?/, "");
+            const normLead = lead.company_linkedin_url.toLowerCase().replace(/\/$/, "").replace(/^https?:\/\/(www\.)?/, "");
+            if (normPerson === normLead) score = Math.max(score, 90);
+          }
+          
+          // Exact company name match = 80
+          const leadName = (lead.company_name || "").trim().toLowerCase();
+          if (leadName && leadName === personCompany) {
+            score = Math.max(score, 80);
+          }
+          
+          // Fuzzy containment = 50 (only if names are reasonably long to avoid false positives)
+          if (score < 50 && leadName && leadName.length >= 4 && personCompany.length >= 4) {
+            if (leadName.includes(personCompany) || personCompany.includes(leadName)) {
+              // Penalize if the shorter name is very short (too generic)
+              const shorter = Math.min(leadName.length, personCompany.length);
+              const longer = Math.max(leadName.length, personCompany.length);
+              const ratio = shorter / longer;
+              if (ratio >= 0.4) { // "Acme" vs "Acme Corporation" = ok; "A" vs "Acme Corp" = reject
+                score = Math.max(score, 50);
+              }
+            }
+          }
+          
+          if (score > (bestMatch?.score || 0)) {
+            bestMatch = { id: lead.id, score };
+          }
         }
 
-        if (!matchedLeadId) {
-          const nameMatch = runLeads.find((l: any) => (l.company_name || "").trim().toLowerCase() === personCompany);
-          if (nameMatch) matchedLeadId = nameMatch.id;
-        }
-
-        if (!matchedLeadId) {
-          const fuzzyMatch = runLeads.find((l: any) => {
-            const leadName = (l.company_name || "").trim().toLowerCase();
-            return leadName && (leadName.includes(personCompany) || personCompany.includes(leadName));
-          });
-          if (fuzzyMatch) matchedLeadId = fuzzyMatch.id;
-        }
-
-        if (!matchedLeadId && personLinkedIn) {
-          const normalizedPersonLI = personLinkedIn.toLowerCase().replace(/\/$/, "");
-          const liMatch = runLeads.find((l: any) => l.company_linkedin_url && l.company_linkedin_url.toLowerCase().replace(/\/$/, "") === normalizedPersonLI);
-          if (liMatch) matchedLeadId = liMatch.id;
-        }
-
-        if (matchedLeadId) {
+        if (bestMatch && bestMatch.score >= MIN_MATCH_SCORE) {
+          assignedLeadIds.add(bestMatch.id);
+          matchedCount++;
           await serviceClient.from("signal_leads").update({
             contact_name: item.contact_name || null,
             title: item.title || null,
             linkedin_profile_url: item.linkedin_profile || null,
             pipeline_stage: `stage_${stageNum}`,
-          }).eq("id", matchedLeadId);
+          }).eq("id", bestMatch.id);
         }
       }
-      console.log(`Stage ${stageNum}: Updated leads with person data from dataset ${collectedIndex + 1}`);
+      
+      const matchRate = totalPersonItems > 0 ? Math.round((matchedCount / totalPersonItems) * 100) : 0;
+      console.log(`Stage ${stageNum}: Person matching — ${matchedCount}/${totalPersonItems} matched (${matchRate}%, min score: ${MIN_MATCH_SCORE})`);
+      
+      // Stage-level retry detection: if match rate is <20%, log warning for potential retry
+      if (matchRate < 20 && totalPersonItems > 5) {
+        console.warn(`Stage ${stageNum}: LOW MATCH RATE (${matchRate}%) — people search results poorly match existing leads. Consider broadening search titles or using different actor.`);
+        // Record the low match rate in pipeline_adjustments
+        const adjustments = run.pipeline_adjustments || [];
+        adjustments.push({
+          type: "low_people_match_rate",
+          stage: stageNum,
+          match_rate: matchRate,
+          matched: matchedCount,
+          total: totalPersonItems,
+          timestamp: new Date().toISOString(),
+        });
+        await serviceClient.from("signal_runs").update({
+          pipeline_adjustments: adjustments,
+        }).eq("id", run.id);
+      }
     } else {
       // Enrichment stage: UPDATE existing leads with enriched data
+      // Support matching by domain OR company name (fallback when domain is missing)
+      const { data: allEnrichLeads } = await serviceClient
+        .from("signal_leads").select("id, company_name, domain").eq("run_id", run.id).limit(10000);
+      const enrichLeads = allEnrichLeads || [];
+      
       for (const item of normalised) {
         const domain = extractDomain(item.website || "");
-        if (!domain) continue;
+        const itemCompanyName = (item.company_name || "").trim().toLowerCase();
 
         const updateData: Record<string, any> = { pipeline_stage: `stage_${stageNum}` };
         const updatesFields = stageDef.updates_fields || [];
@@ -1555,8 +1680,33 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
         if (item.description) updateData.website_content = String(item.description).slice(0, 5000);
         if (item.linkedin) updateData.company_linkedin_url = item.linkedin;
 
-        await serviceClient.from("signal_leads").update(updateData)
-          .eq("run_id", run.id).eq("domain", domain);
+        // Primary match: by domain
+        if (domain) {
+          await serviceClient.from("signal_leads").update(updateData)
+            .eq("run_id", run.id).eq("domain", domain);
+        } 
+        // Fallback match: by company name when domain is missing
+        else if (itemCompanyName) {
+          // Find leads matching by exact company name (case-insensitive)
+          const matchingLeads = enrichLeads.filter((l: any) => {
+            const leadName = (l.company_name || "").trim().toLowerCase();
+            return leadName === itemCompanyName;
+          });
+          for (const lead of matchingLeads) {
+            await serviceClient.from("signal_leads").update(updateData).eq("id", lead.id);
+          }
+          // If no exact match, try fuzzy
+          if (matchingLeads.length === 0) {
+            const fuzzyLeads = enrichLeads.filter((l: any) => {
+              const leadName = (l.company_name || "").trim().toLowerCase();
+              return leadName && leadName.length >= 4 && itemCompanyName.length >= 4 && 
+                (leadName.includes(itemCompanyName) || itemCompanyName.includes(leadName));
+            });
+            for (const lead of fuzzyLeads) {
+              await serviceClient.from("signal_leads").update(updateData).eq("id", lead.id);
+            }
+          }
+        }
       }
       console.log(`Stage ${stageNum}: Enriched leads from dataset ${collectedIndex + 1}`);
     }
