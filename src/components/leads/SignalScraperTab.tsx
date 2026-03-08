@@ -39,40 +39,35 @@ const PAGE_SIZE = 25;
 const ICON_MAP: Record<string, any> = { Briefcase, Rocket, MapPin, Zap, Sparkles };
 
 export interface AdvancedSettings {
-  target_leads: number;
+  scrape_volume: number;
   location: string;
   company_size: 'any' | '1-10' | '11-50' | '51-200' | '200+';
   decision_maker_titles: string;
   date_range: 'past_24h' | 'past_week' | 'past_2_weeks' | 'past_month';
   quality: 'standard' | 'high';
-  // Legacy fields — computed internally for backend compatibility
+  // Computed internally for backend compatibility
   max_results_per_source: number;
   ai_strictness: 'low' | 'medium' | 'high';
 }
 
 const DEFAULT_ADVANCED: AdvancedSettings = {
-  target_leads: 100,
+  scrape_volume: 1000,
   location: '',
   company_size: 'any',
   decision_maker_titles: '',
   date_range: 'past_week',
   quality: 'standard',
-  max_results_per_source: 500,
+  max_results_per_source: 1000,
   ai_strictness: 'medium',
 };
 
-// Translate user-intent settings into system settings
-function computeSystemSettings(settings: AdvancedSettings): AdvancedSettings {
-  // Target leads → max_results_per_source (assume ~20% pass rate)
-  const maxResults = settings.target_leads * 5;
-  // Quality → AI strictness
-  const strictness = settings.quality === 'high' ? 'high' : 'medium';
-  return {
-    ...settings,
-    max_results_per_source: maxResults,
-    ai_strictness: strictness,
-  };
-}
+const SCRAPE_VOLUME_OPTIONS = [
+  { value: 250, label: '250 records' },
+  { value: 500, label: '500 records' },
+  { value: 1000, label: '1,000 records' },
+  { value: 2500, label: '2,500 records' },
+  { value: 5000, label: '5,000 records' },
+];
 
 export function SignalScraperTab() {
   const [query, setQuery] = useState('');
