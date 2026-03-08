@@ -62,6 +62,69 @@ const VERIFIED_ACTOR_CATALOG: Record<string, { actorId: string; category: string
   "enrichment:contact": { actorId: "alexey/contact-info-scraper", category: "enrichment", subCategory: "enrichment:contact", label: "Website Contact Info Scraper", inputSchema: { startUrls: { type: "string[]", required: true, description: "Website URLs to scrape contacts from" }, maxRequestsPerStartUrl: { type: "number", required: false, default: 5, description: "Max pages per site" } }, outputFields: { email: ["emails", "email"], phone: ["phones", "phone", "phoneNumbers"], linkedin: ["linkedIn", "linkedin"], website: ["url"] } },
 };
 
+// ── Runtime Schema Authority — always fetch live schema, cache in-memory ──
+const _runtimeSchemaCache = new Map<string, Record<string, InputField>>();
+
+async function fetchAndMergeRuntimeSchema(actor: ActorEntry, token: string): Promise<void> {
+  const cacheKey = actor.actorId;
+
+  // Return cached result if available
+  if (_runtimeSchemaCache.has(cacheKey)) {
+    const cached = _runtimeSchemaCache.get(cacheKey)!;
+    // Merge: runtime types override hardcoded, but keep hardcoded fields as fallback
+    const merged: Record<string, InputField> = { ...(actor.inputSchema || {}) };
+    for (const [key, val] of Object.entries(cached)) {
+      merged[key] = { ...(merged[key] || {}), ...val, type: val.type }; // runtime type always wins
+    }
+    actor.inputSchema = merged;
+    return;
+  }
+
+  try {
+    const actorIdEncoded = actor.actorId.replace("/", "~");
+    const schemaResp = await fetch(
+      `https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${token}`,
+      { method: "GET" }
+    );
+    if (!schemaResp.ok) {
+      console.warn(`Runtime schema fetch returned ${schemaResp.status} for ${actor.actorId}, using catalog fallback`);
+      return;
+    }
+    const schemaData = await schemaResp.json();
+    const props = schemaData.properties || schemaData.data?.properties || {};
+    if (Object.keys(props).length === 0) {
+      console.warn(`Runtime schema for ${actor.actorId} has no properties, using catalog fallback`);
+      return;
+    }
+
+    const fetchedSchema: Record<string, InputField> = {};
+    for (const [key, val] of Object.entries(props as Record<string, any>)) {
+      const type = val.type === "array"
+        ? (val.items?.type === "object" || val.items?.properties ? "object[]" : "string[]")
+        : (val.type === "integer" ? "number" : (val.type || "string"));
+      fetchedSchema[key] = {
+        type: type as any,
+        required: false,
+        default: val.default,
+        description: (val.description || key).slice(0, 200),
+      };
+    }
+
+    // Cache the fetched schema
+    _runtimeSchemaCache.set(cacheKey, fetchedSchema);
+    console.log(`Runtime schema fetched for ${actor.actorId}: ${Object.keys(fetchedSchema).length} fields`);
+
+    // Merge: runtime types override hardcoded, keep hardcoded fields as fallback
+    const merged: Record<string, InputField> = { ...(actor.inputSchema || {}) };
+    for (const [key, val] of Object.entries(fetchedSchema)) {
+      merged[key] = { ...(merged[key] || {}), ...val, type: val.type };
+    }
+    actor.inputSchema = merged;
+  } catch (e) {
+    console.warn(`Runtime schema fetch failed for ${actor.actorId}, using catalog fallback:`, e);
+  }
+}
+
 function resolveVerifiedActor(stageCategory: string): ActorEntry | null {
   const v = VERIFIED_ACTOR_CATALOG[stageCategory];
   if (!v) return null;
@@ -619,28 +682,8 @@ async function startApifyRunWithFallback(
     for (const backup of backups) {
       try {
         console.log(`Trying backup actor: ${backup.key} (${backup.label})`);
-        // Runtime schema fetch if backup has no inputSchema
-        if (!backup.inputSchema || Object.keys(backup.inputSchema).length === 0) {
-          try {
-            const actorIdEncoded = backup.actorId.replace("/", "~");
-            const schemaResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${token}`, { method: "GET" });
-            if (schemaResp.ok) {
-              const schemaData = await schemaResp.json();
-              const props = schemaData.properties || schemaData.data?.properties || {};
-              if (Object.keys(props).length > 0) {
-                const fetchedSchema: Record<string, InputField> = {};
-                for (const [key, val] of Object.entries(props as Record<string, any>)) {
-                  const type = val.type === "array"
-                    ? (val.items?.type === "object" || val.items?.properties ? "object[]" : "string[]")
-                    : (val.type === "integer" ? "number" : (val.type || "string"));
-                  fetchedSchema[key] = { type: type as any, required: false, default: val.default, description: (val.description || key).slice(0, 200) };
-                }
-                backup.inputSchema = fetchedSchema;
-                console.log(`Runtime schema fetch for ${backup.key}: ${Object.keys(fetchedSchema).length} fields discovered`);
-              }
-            }
-          } catch (e) { console.warn(`Runtime schema fetch failed for ${backup.key}:`, e); }
-        }
+        // Always fetch runtime schema (merges with catalog, cached)
+        await fetchAndMergeRuntimeSchema(backup, token);
         const backupInput = normalizeInputToSchema(backup, buildGenericInput(backup, input));
         if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
         const result = await startApifyRun(backup, backupInput, token);
@@ -1415,31 +1458,8 @@ async function pipelineScrapeStarting(run: any, stageDef: any, stageNum: number,
     const actor = getActor(actorKey);
     if (!actor) continue;
 
-    // Runtime schema fetch: skip for verified actors (schema is hardcoded and accurate)
-    // Only fetch for dynamically-discovered actors with missing schemas
-    if (!(actor as any)._verified && (!actor.inputSchema || Object.keys(actor.inputSchema).length === 0)) {
-      try {
-        const actorIdEncoded = actor.actorId.replace("/", "~");
-        const schemaResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${APIFY_API_TOKEN}`, { method: "GET" });
-        if (schemaResp.ok) {
-          const schemaData = await schemaResp.json();
-          const props = schemaData.properties || schemaData.data?.properties || {};
-          if (Object.keys(props).length > 0) {
-            const fetchedSchema: Record<string, InputField> = {};
-            for (const [key, val] of Object.entries(props as Record<string, any>)) {
-              const type = val.type === "array"
-                ? (val.items?.type === "object" || val.items?.properties ? "object[]" : "string[]")
-                : (val.type === "integer" ? "number" : (val.type || "string"));
-              fetchedSchema[key] = { type: type as any, required: false, default: val.default, description: (val.description || key).slice(0, 200) };
-            }
-            actor.inputSchema = fetchedSchema;
-            console.log(`Runtime schema fetch for ${actorKey}: ${Object.keys(fetchedSchema).length} fields discovered`);
-          }
-        }
-      } catch (e) { console.warn(`Runtime schema fetch failed for ${actorKey}:`, e); }
-    } else if ((actor as any)._verified) {
-      console.log(`Skipping runtime schema fetch for verified actor ${actorKey}`);
-    }
+    // Always fetch runtime schema — live types override hardcoded catalog (cached per actorId)
+    await fetchAndMergeRuntimeSchema(actor, APIFY_API_TOKEN);
 
     if (stageNum === 1) {
       // Discovery stage: use Query Normalization Engine
