@@ -1389,7 +1389,7 @@ When the user's query specifies particular job roles (e.g., "SDR", "Sales Repres
           }
           // Infer this actor's expected output
           const inferred = inferRowCapFromParams(actorParams);
-          totalInferred += inferred || (maxCap || 2500);
+          totalInferred += inferred || (maxCap || 500);
         }
       } else {
         totalInferred = maxCap || 2500;
