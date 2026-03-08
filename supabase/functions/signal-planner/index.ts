@@ -692,7 +692,29 @@ function inferQueryIndustry(query: string): string[] {
   return matches;
 }
 
-function validatePipelinePlan(plan: any, query: string): string[] {
+function extractGeography(query: string): string[] {
+  const lowerQuery = query.toLowerCase();
+  const geoPatterns: string[] = [];
+  const states = ["california", "texas", "new york", "florida", "illinois", "pennsylvania", "ohio", "georgia", "michigan", "north carolina", "colorado", "arizona", "massachusetts", "washington", "virginia", "tennessee", "minnesota", "utah", "oregon", "connecticut"];
+  for (const s of states) { if (lowerQuery.includes(s)) geoPatterns.push(s); }
+  const countries = ["united states", "usa", "uk", "united kingdom", "canada", "australia", "germany", "france", "india", "brazil", "mexico", "spain", "italy", "netherlands", "sweden", "norway", "denmark", "japan", "singapore"];
+  for (const c of countries) { if (lowerQuery.includes(c)) geoPatterns.push(c); }
+  const cities = ["new york", "los angeles", "chicago", "houston", "phoenix", "san francisco", "seattle", "denver", "austin", "miami", "boston", "atlanta", "dallas", "london", "toronto", "sydney", "berlin", "paris", "mumbai", "dubai"];
+  for (const c of cities) { if (lowerQuery.includes(c) && !geoPatterns.includes(c)) geoPatterns.push(c); }
+  return geoPatterns;
+}
+
+function classifySignalType(query: string): string {
+  const lower = query.toLowerCase();
+  if (/hiring|recruit|job|vacancy|open position|looking for|sales rep|sdr|bdr|account exec/i.test(lower)) return "hiring_intent";
+  if (/local|near|maps|yelp|restaurant|clinic|store|shop/i.test(lower)) return "local_business";
+  if (/company|companies|agency|agencies|firm|firms|startup/i.test(lower)) return "company_research";
+  if (/people|person|founder|ceo|decision maker|owner|director|vp/i.test(lower)) return "people_search";
+  if (/email|contact|phone|reach out/i.test(lower)) return "contact_enrichment";
+  return "general";
+}
+
+
   const warnings: string[] = [];
   const pipeline = plan.pipeline || [];
 
