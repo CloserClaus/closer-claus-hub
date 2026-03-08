@@ -490,6 +490,15 @@ export function EmailCampaignsTab() {
             <DialogTitle>{editingSequence ? 'Edit Sequence' : 'Create Sequence'}</DialogTitle>
           </DialogHeader>
 
+          {editingSequence && (
+            <Alert variant="destructive" className="mt-2">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Warning: Modifying a sequence that is currently active will affect all leads currently enrolled. They will receive the new steps.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

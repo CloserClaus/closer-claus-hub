@@ -308,9 +308,25 @@ serve(async (req) => {
         .eq('id', lead_id);
     }
 
-    // Auto-create email conversation for one-off sends (not sequence sends)
-    if (lead_id && !sequence_id) {
-      // Check if conversation already exists for this lead
+    // Handle conversation tracking
+    if (conversation_id) {
+      // Caller provided an existing conversation — append message directly (dedup fix)
+      await supabase.from('email_conversations').update({
+        last_message_preview: body.substring(0, 100),
+        last_activity_at: new Date().toISOString(),
+        status: 'active',
+      } as any).eq('id', conversation_id);
+
+      await supabase.from('email_conversation_messages').insert({
+        conversation_id,
+        direction: 'outbound',
+        subject,
+        body,
+        sender_email: inbox.email_address,
+        message_type: 'email',
+      } as any);
+    } else if (lead_id && !sequence_id) {
+      // Auto-create email conversation for one-off sends (not sequence sends)
       const { data: existingConvo } = await supabase
         .from('email_conversations')
         .select('id')
@@ -321,14 +337,12 @@ serve(async (req) => {
         .maybeSingle();
 
       if (existingConvo) {
-        // Update existing conversation
         await supabase.from('email_conversations').update({
           last_message_preview: body.substring(0, 100),
           last_activity_at: new Date().toISOString(),
           status: 'active',
         } as any).eq('id', existingConvo.id);
 
-        // Add message to conversation
         await supabase.from('email_conversation_messages').insert({
           conversation_id: existingConvo.id,
           direction: 'outbound',
@@ -338,7 +352,6 @@ serve(async (req) => {
           message_type: 'email',
         } as any);
       } else {
-        // Create new conversation
         const { data: newConvo } = await supabase.from('email_conversations').insert({
           workspace_id,
           lead_id,

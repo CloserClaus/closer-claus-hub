@@ -185,6 +185,7 @@ export function EmailConversationsTab() {
           body: replyBody,
           lead_id: selectedConvo.lead_id,
           workspace_id: currentWorkspace.id,
+          conversation_id: selectedConvo.id,
         },
       });
       if (error) throw error;

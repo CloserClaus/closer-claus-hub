@@ -197,7 +197,9 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
       });
 
       // Create email conversation so it appears in Conversations tab
-      await supabase.from('email_conversations').insert({
+      const resolvedSubject = steps[0].subject.replace(/\{\{first_name\}\}/g, lead.first_name);
+      const resolvedBody = steps[0].body.replace(/\{\{first_name\}\}/g, lead.first_name);
+      const { data: newConvo } = await supabase.from('email_conversations').insert({
         workspace_id: currentWorkspace.id,
         lead_id: lead.id,
         assigned_to: user.id,
@@ -205,7 +207,21 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
         sequence_id: sequenceId,
         campaign_name: name,
         status: 'active',
-      } as any);
+        last_message_preview: resolvedBody.substring(0, 100),
+        last_activity_at: new Date().toISOString(),
+      } as any).select('id').single();
+
+      // Insert the first message so it's immediately visible in Conversations
+      if (newConvo) {
+        await supabase.from('email_conversation_messages').insert({
+          conversation_id: newConvo.id,
+          direction: 'outbound',
+          subject: resolvedSubject,
+          body: resolvedBody,
+          sender_email: assignedInbox.email_address,
+          message_type: 'email',
+        } as any);
+      }
 
       // Audit log
       await supabase.from('email_audit_log').insert({
