@@ -2248,7 +2248,14 @@ async function pipelineAiFilter(run: any, stageDef: any, stageNum: number, pipel
     return;
   }
 
+  // Debug logging: show sample lead objects being sent to classifier
+  const sampleForLog = leads.slice(0, 3).map((b: any) => ({
+    company_name: b.company_name || "", domain: b.domain || "",
+    industry: b.industry || "", title: b.title || "",
+    employee_count: b.employee_count || "",
+  }));
   console.log(`Stage ${stageNum} AI filter: Processing ${leads.length} leads with prompt: "${stageDef.prompt?.slice(0, 80)}..."`);
+  console.log(`Stage ${stageNum} AI filter: Sample leads being classified:`, JSON.stringify(sampleForLog));
 
   const inputFields = stageDef.input_fields || ["company_name", "website", "industry"];
   const batchSize = 25;
