@@ -777,6 +777,7 @@ async function qualityCheckStage(
     .from("signal_leads")
     .select("*", { count: "exact" })
     .eq("run_id", run.id)
+    .neq("pipeline_stage", "filtered_out")
     .limit(50);
 
   if (!sampleLeads || sampleLeads.length === 0) {
@@ -1311,7 +1312,13 @@ async function advancePipelineStage(run: any, currentStage: number, pipeline: an
 // ── Pipeline: Validation ──
 
 async function pipelineValidating(run: any, stageDef: any, stageNum: number, pipeline: any[], serviceClient: any) {
-  const qualityResult = await qualityCheckStage(run, stageNum, stageDef, pipeline, serviceClient);
+  let qualityResult: { quality: string; reason: string; suggestedAction: string; reconfiguredPipeline?: any[] };
+  try {
+    qualityResult = await qualityCheckStage(run, stageNum, stageDef, pipeline, serviceClient);
+  } catch (err) {
+    console.warn(`Stage ${stageNum} quality check threw error, defaulting to MEDIUM:`, err);
+    qualityResult = { quality: "MEDIUM", reason: "Quality check threw an error, proceeding cautiously", suggestedAction: "continue" };
+  }
   console.log(`Stage ${stageNum} quality: ${qualityResult.quality} — ${qualityResult.reason}`);
 
   const adjustments = [...(run.pipeline_adjustments || []), {
@@ -2248,7 +2255,14 @@ async function pipelineAiFilter(run: any, stageDef: any, stageNum: number, pipel
     return;
   }
 
+  // Debug logging: show sample lead objects being sent to classifier
+  const sampleForLog = leads.slice(0, 3).map((b: any) => ({
+    company_name: b.company_name || "", domain: b.domain || "",
+    industry: b.industry || "", title: b.title || "",
+    employee_count: b.employee_count || "",
+  }));
   console.log(`Stage ${stageNum} AI filter: Processing ${leads.length} leads with prompt: "${stageDef.prompt?.slice(0, 80)}..."`);
+  console.log(`Stage ${stageNum} AI filter: Sample leads being classified:`, JSON.stringify(sampleForLog));
 
   const inputFields = stageDef.input_fields || ["company_name", "website", "industry"];
   const batchSize = 25;
@@ -2312,9 +2326,34 @@ Return a JSON array of booleans, one per company. Only return the JSON array, no
   }
 
   if (failedIds.length > 0) {
-    console.log(`Stage ${stageNum} AI filter: Removing ${failedIds.length}/${leads.length} leads`);
-    for (let i = 0; i < failedIds.length; i += 200) {
-      await serviceClient.from("signal_leads").delete().in("id", failedIds.slice(i, i + 200));
+    const rejectionRate = failedIds.length / leads.length;
+    console.log(`Stage ${stageNum} AI filter: ${failedIds.length}/${leads.length} leads rejected (${Math.round(rejectionRate * 100)}%)`);
+
+    // Circuit breaker: if >85% rejected, it's likely a prompt mismatch — soft-delete instead of hard-delete
+    if (rejectionRate > 0.85) {
+      console.warn(`Stage ${stageNum} AI filter: CIRCUIT BREAKER TRIGGERED — ${Math.round(rejectionRate * 100)}% rejection rate exceeds 85% threshold. Soft-deleting instead of hard-deleting to preserve data.`);
+      
+      // Soft-delete: mark as filtered_out instead of deleting
+      for (let i = 0; i < failedIds.length; i += 200) {
+        await serviceClient.from("signal_leads").update({ pipeline_stage: "filtered_out" }).in("id", failedIds.slice(i, i + 200));
+      }
+
+      // Record the circuit breaker event
+      const adjustments = [...(run.pipeline_adjustments || []), {
+        type: "ai_filter_circuit_breaker",
+        stage: stageNum,
+        rejection_rate: Math.round(rejectionRate * 100),
+        rejected_count: failedIds.length,
+        total_count: leads.length,
+        reason: `AI filter rejected ${Math.round(rejectionRate * 100)}% of leads — likely prompt/data mismatch. Leads soft-deleted (pipeline_stage='filtered_out') instead of permanently removed.`,
+        timestamp: new Date().toISOString(),
+      }];
+      await serviceClient.from("signal_runs").update({ pipeline_adjustments: adjustments }).eq("id", run.id);
+    } else {
+      // Normal case: hard-delete rejected leads
+      for (let i = 0; i < failedIds.length; i += 200) {
+        await serviceClient.from("signal_leads").delete().in("id", failedIds.slice(i, i + 200));
+      }
     }
   }
 
