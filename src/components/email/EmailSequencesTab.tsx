@@ -388,6 +388,15 @@ export function EmailSequencesTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={!!deleteConfirmId}
+        onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}
+        title="Delete Sequence"
+        description="This will permanently delete this sequence, stop all active follow-ups, and reset affected leads. This action cannot be undone."
+        onConfirm={() => deleteConfirmId && handleDelete(deleteConfirmId)}
+        isProcessing={deleting}
+      />
     </div>
   );
 }

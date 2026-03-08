@@ -607,6 +607,15 @@ export function EmailCampaignsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={!!deleteConfirmId}
+        onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}
+        title="Delete Campaign"
+        description="This will permanently delete this campaign sequence, stop all active follow-ups, and reset affected leads. This action cannot be undone."
+        onConfirm={() => deleteConfirmId && handleDelete(deleteConfirmId)}
+        isProcessing={deleting}
+      />
     </div>
   );
 }
