@@ -62,6 +62,8 @@ const DEFAULT_ADVANCED: AdvancedSettings = {
 };
 
 const SCRAPE_VOLUME_OPTIONS = [
+  { value: 50, label: '50 records' },
+  { value: 100, label: '100 records' },
   { value: 250, label: '250 records' },
   { value: 500, label: '500 records' },
   { value: 1000, label: '1,000 records' },
