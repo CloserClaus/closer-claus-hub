@@ -1016,11 +1016,15 @@ async function handleGeneratePlan(
   // Step 1: Build category-based prompt (no actor discovery needed upfront)
   let systemPrompt = buildPipelinePlannerPrompt();
 
-  // Inject advanced settings
+  // Inject advanced settings as explicit user constraints
   if (advanced_settings) {
     const maxResults = advanced_settings.max_results_per_source || 500;
     const dateRange = advanced_settings.date_range || "past_week";
     const strictness = advanced_settings.ai_strictness || "medium";
+    const location = advanced_settings.location || "";
+    const companySize = advanced_settings.company_size || "any";
+    const decisionMakerTitles = advanced_settings.decision_maker_titles || "";
+    const targetLeads = advanced_settings.target_leads || 100;
 
     const dateMap: Record<string, string> = {
       past_24h: "past 24 hours only", past_week: "past week",
@@ -1031,11 +1035,30 @@ async function handleGeneratePlan(
       medium: "Balanced filtering. expected_pass_rate: 0.15-0.30.",
       high: "Very strict — only strong matches. expected_pass_rate: 0.05-0.15.",
     };
+    const companySizeMap: Record<string, string> = {
+      any: "Any company size",
+      "1-10": "1-10 employees (very small / micro businesses)",
+      "11-50": "11-50 employees (small businesses)",
+      "51-200": "51-200 employees (mid-market)",
+      "200+": "200+ employees (enterprise)",
+    };
 
-    systemPrompt += `\n\n## USER PREFERENCES (OVERRIDE DEFAULTS)\n`;
-    systemPrompt += `- Max results per source in stage 1: ${maxResults}\n`;
+    systemPrompt += `\n\n## USER PREFERENCES (OVERRIDE DEFAULTS — these are EXPLICIT user constraints)\n`;
+    systemPrompt += `- Target leads: ${targetLeads} (set max results per source in stage 1 to: ${maxResults})\n`;
     systemPrompt += `- Date range: ${dateMap[dateRange] || "past week"}\n`;
     systemPrompt += `- Filtering strictness: ${strictnessMap[strictness] || strictnessMap.medium}\n`;
+    
+    if (location) {
+      systemPrompt += `- LOCATION CONSTRAINT (CRITICAL): "${location}" — ALL stage 1 params MUST include location="${location}". LinkedIn URLs must encode this location. Do NOT default to United States.\n`;
+    }
+    
+    if (companySize !== "any") {
+      systemPrompt += `- COMPANY SIZE CONSTRAINT: Only target companies with ${companySizeMap[companySize]}. Your ai_filter prompt MUST explicitly reject companies outside this size range.\n`;
+    }
+    
+    if (decisionMakerTitles) {
+      systemPrompt += `- DECISION MAKER TITLES (OVERRIDE): Use these exact titles for people_data search: ${decisionMakerTitles}. Add as search_titles on the people_data stage.\n`;
+    }
   }
 
   // Inject plan_override hints from templates
@@ -1049,6 +1072,24 @@ async function handleGeneratePlan(
     }
     if (plan_override.person_enrichment) {
       systemPrompt += `- PERSON ENRICHMENT: ${plan_override.person_enrichment}\n`;
+    }
+    if (plan_override.refinement_context) {
+      const rc = plan_override.refinement_context;
+      const typeDescriptions: Record<string, string> = {
+        wrong_industry: "Results contained companies from the wrong industry/vertical. The AI filter must be MORE aggressive at rejecting irrelevant industries.",
+        too_large: "Results contained too many large enterprises. Strictly filter companies with >200 employees. Prefer smaller businesses.",
+        too_small: "Results contained too many micro businesses. Filter out companies with <10 employees.",
+        wrong_location: "Results were from the wrong geographic location. Ensure location parameters are set correctly in ALL stages.",
+        wrong_titles: "The decision maker titles found were not relevant. Adjust search_titles to better match the user's intent.",
+        other: "General quality issue.",
+      };
+      systemPrompt += `\n## REFINEMENT CONTEXT (CRITICAL — the previous run had issues)\n`;
+      systemPrompt += `- Issue type: ${typeDescriptions[rc.type] || rc.type}\n`;
+      if (rc.reason) {
+        systemPrompt += `- User feedback: "${rc.reason}"\n`;
+      }
+      systemPrompt += `- Original query: "${rc.original_query}"\n`;
+      systemPrompt += `- ACTION REQUIRED: Adjust the pipeline to address this feedback. Make the ai_filter prompt stricter about this specific issue.\n`;
     }
     if (typeof plan_override === "string") {
       systemPrompt += `- ${plan_override}\n`;
