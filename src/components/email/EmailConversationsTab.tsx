@@ -164,6 +164,18 @@ export function EmailConversationsTab() {
 
   const handleSendReply = async () => {
     if (!selectedConvo || !replyBody.trim() || !assignedInbox || !currentWorkspace) return;
+
+    // Check opt-out before replying
+    const { data: leadCheck } = await supabase
+      .from('leads')
+      .select('opted_out')
+      .eq('id', selectedConvo.lead_id)
+      .single();
+    if ((leadCheck as any)?.opted_out) {
+      toast({ variant: 'destructive', title: 'Lead opted out', description: 'This lead has unsubscribed and cannot receive emails.' });
+      return;
+    }
+
     setSending(true);
     try {
       const { error } = await supabase.functions.invoke('send-email', {
@@ -177,15 +189,8 @@ export function EmailConversationsTab() {
       });
       if (error) throw error;
 
-      await supabase.from('email_conversation_messages').insert({
-        conversation_id: selectedConvo.id,
-        direction: 'outbound',
-        subject: replySubject,
-        body: replyBody,
-        sender_email: assignedInbox.email_address,
-        message_type: 'email',
-      } as any);
-
+      // Don't manually insert into email_conversation_messages — send-email already does it.
+      // Only update the conversation's preview.
       await supabase.from('email_conversations').update({
         last_message_preview: replyBody.substring(0, 100),
         last_activity_at: new Date().toISOString(),

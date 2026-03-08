@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Copy, Loader2, ChevronDown, Play, Pause, Eye, Calendar, Mail as MailIcon, Users, ArrowRight } from 'lucide-react';
+import { DeleteConfirmDialog } from '@/components/crm/DeleteConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -183,12 +184,41 @@ export function EmailCampaignsTab() {
     }
   };
 
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const handleDelete = async (seqId: string) => {
-    await supabase.from('follow_up_sequence_steps').delete().eq('sequence_id', seqId);
-    await supabase.from('follow_up_sequences').delete().eq('id', seqId);
-    toast({ title: 'Sequence deleted' });
-    if (selectedCampaign?.id === seqId) setSelectedCampaign(null);
-    fetchSequences();
+    setDeleting(true);
+    try {
+      // Clean up active follow-ups and reset lead states before deleting
+      const { data: activeFups } = await supabase
+        .from('active_follow_ups')
+        .select('lead_id')
+        .eq('sequence_id', seqId)
+        .in('status', ['active', 'paused']);
+      
+      if (activeFups && activeFups.length > 0) {
+        await supabase
+          .from('active_follow_ups')
+          .update({ status: 'completed', completed_at: new Date().toISOString() } as any)
+          .eq('sequence_id', seqId)
+          .in('status', ['active', 'paused']);
+        
+        const leadIds = [...new Set((activeFups as any[]).map(f => f.lead_id))];
+        for (const leadId of leadIds) {
+          await supabase.from('leads').update({ email_sending_state: 'idle' } as any).eq('id', leadId);
+        }
+      }
+
+      await supabase.from('follow_up_sequence_steps').delete().eq('sequence_id', seqId);
+      await supabase.from('follow_up_sequences').delete().eq('id', seqId);
+      toast({ title: 'Sequence deleted' });
+      if (selectedCampaign?.id === seqId) setSelectedCampaign(null);
+      setDeleteConfirmId(null);
+      fetchSequences();
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleSave = async () => {
@@ -441,7 +471,7 @@ export function EmailCampaignsTab() {
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDuplicate(seq)}>
                       <Copy className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(seq.id)}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeleteConfirmId(seq.id)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -577,6 +607,15 @@ export function EmailCampaignsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={!!deleteConfirmId}
+        onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}
+        title="Delete Campaign"
+        description="This will permanently delete this campaign sequence, stop all active follow-ups, and reset affected leads. This action cannot be undone."
+        onConfirm={() => deleteConfirmId && handleDelete(deleteConfirmId)}
+        isProcessing={deleting}
+      />
     </div>
   );
 }

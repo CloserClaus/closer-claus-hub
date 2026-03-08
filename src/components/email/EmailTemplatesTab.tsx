@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Copy, Loader2, FileText, ChevronDown } from 'lucide-react';
+import { DeleteConfirmDialog } from '@/components/crm/DeleteConfirmDialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -119,9 +120,12 @@ export function EmailTemplatesTab() {
     }
   };
 
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
   const handleDelete = async (id: string) => {
     await supabase.from('email_templates').delete().eq('id', id);
     toast({ title: 'Template deleted' });
+    setDeleteConfirmId(null);
     fetchTemplates();
   };
 
@@ -181,7 +185,7 @@ export function EmailTemplatesTab() {
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDuplicate(t)}>
                       <Copy className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(t.id)}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeleteConfirmId(t.id)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -257,6 +261,14 @@ export function EmailTemplatesTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={!!deleteConfirmId}
+        onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}
+        title="Delete Template"
+        description="This will permanently delete this email template. This action cannot be undone."
+        onConfirm={() => deleteConfirmId && handleDelete(deleteConfirmId)}
+      />
     </div>
   );
 }
