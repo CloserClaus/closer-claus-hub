@@ -1378,24 +1378,98 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
       await dedupLeads(run, serviceClient);
     }
 
-    // HARD ABORT: If this is a discovery stage (stage 1 or no input_from) and we have 0 leads, fail immediately
+    // HARD ABORT: If this is a discovery stage (stage 1 or no input_from) and we have 0 leads, try backup actors first
     if (!stageDef.input_from) {
       const { count: leadCount } = await serviceClient
         .from("signal_leads").select("*", { count: "exact", head: true })
         .eq("run_id", run.id);
 
       if (!leadCount || leadCount === 0) {
-        // Check if all actor runs actually succeeded (meaning they ran but returned 0 items)
+        const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN")!;
         const stageActorRuns = (run.apify_run_ids || []).filter((r: any) => (r.pipelineStage || 1) === stageNum);
         const allSucceeded = stageActorRuns.length > 0 && stageActorRuns.every((r: any) => r.status === "SUCCEEDED");
         const advSettings = run.advanced_settings || {};
         const maxPerSource = advSettings.max_results_per_source || 100;
 
+        // ── ZERO-RESULT FALLBACK: Try backup actors before aborting ──
+        const usedActorKeys = new Set(stageActorRuns.map((r: any) => r.actorKey));
+        const primaryActors = (stageDef.actors || []).map((k: string) => getActor(k)).filter(Boolean);
+        const allBackups: ActorEntry[] = [];
+        for (const primary of primaryActors) {
+          if (!primary) continue;
+          const backups = findBackupActors(primary).filter(b => !usedActorKeys.has(b.key));
+          allBackups.push(...backups);
+        }
+        
+        // Only attempt backup if we haven't already tried (check pipeline_adjustments)
+        const adjustments = run.pipeline_adjustments || [];
+        const alreadyTriedBackup = adjustments.some((a: any) => a.type === "zero_result_backup_attempt" && a.stage === stageNum);
+
+        if (allBackups.length > 0 && !alreadyTriedBackup) {
+          console.log(`Stage ${stageNum}: ZERO RESULTS from primary actors — trying ${allBackups.length} backup actors before aborting`);
+          
+          const backupRefs: ApifyRunRef[] = [];
+          for (const backup of allBackups.slice(0, 2)) { // Try max 2 backups
+            // Runtime schema fetch for backup
+            if (!backup.inputSchema || Object.keys(backup.inputSchema).length === 0) {
+              try {
+                const actorIdEncoded = backup.actorId.replace("/", "~");
+                const schemaResp = await fetch(`https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${APIFY_API_TOKEN}`, { method: "GET" });
+                if (schemaResp.ok) {
+                  const schemaData = await schemaResp.json();
+                  const props = schemaData.properties || schemaData.data?.properties || {};
+                  if (Object.keys(props).length > 0) {
+                    const fetchedSchema: Record<string, InputField> = {};
+                    for (const [key, val] of Object.entries(props as Record<string, any>)) {
+                      const type = val.type === "array" ? "string[]" : (val.type === "integer" ? "number" : (val.type || "string"));
+                      fetchedSchema[key] = { type: type as any, required: false, default: val.default, description: (val.description || key).slice(0, 200) };
+                    }
+                    backup.inputSchema = fetchedSchema;
+                    console.log(`Backup schema fetch for ${backup.key}: ${Object.keys(fetchedSchema).length} fields`);
+                  }
+                } else { await schemaResp.text(); }
+              } catch (e) { console.warn(`Backup schema fetch failed for ${backup.key}:`, e); }
+            }
+            
+            // Build input using primary actor's params (adapted to backup)
+            const primaryActorKey = (stageDef.actors || [])[0];
+            const primaryParams = stageDef.params_per_actor?.[primaryActorKey] || {};
+            const backupInput = buildGenericInput(backup, primaryParams);
+            if (!backupInput.proxyConfiguration) backupInput.proxyConfiguration = { useApifyProxy: true };
+            
+            try {
+              const result = await startApifyRun(backup, backupInput, APIFY_API_TOKEN);
+              backupRefs.push({ actorKey: backup.key, keyword: "backup_retry", runId: result.runId, datasetId: result.datasetId, status: "RUNNING", startedAt: new Date().toISOString(), pipelineStage: stageNum });
+              console.log(`Stage ${stageNum}: Backup actor ${backup.key} started → run ${result.runId}`);
+            } catch (err) {
+              console.warn(`Stage ${stageNum}: Backup actor ${backup.key} failed to start:`, err);
+            }
+          }
+
+          if (backupRefs.length > 0) {
+            // Record that we tried backups, then go back to scraping phase
+            adjustments.push({
+              type: "zero_result_backup_attempt",
+              stage: stageNum,
+              backup_actors: backupRefs.map(r => r.actorKey),
+              timestamp: new Date().toISOString(),
+            });
+            await serviceClient.from("signal_runs").update({
+              apify_run_ids: [...(run.apify_run_ids || []), ...backupRefs],
+              processing_phase: `stage_${stageNum}_scraping`,
+              collected_dataset_index: 0,
+              pipeline_adjustments: adjustments,
+              updated_at: new Date().toISOString(),
+            }).eq("id", run.id);
+            return; // Go back to scraping/polling phase for the backup runs
+          }
+        }
+
+        // ── No backups available or backups already tried — abort ──
         let userMessage: string;
         let notifTitle: string;
 
         if (allSucceeded && maxPerSource <= 500) {
-          // Actors ran fine but 0 items — likely the cap is too small for this niche
           userMessage = `No results found from ${(stageDef.actors || []).join(" + ")} in stage ${stageNum}. The search sources returned empty results, which often happens when the max results per source (${maxPerSource}) is too low for niche queries like "${run.signal_query}". Try increasing max results per source to 1000–5000, or broadening your search criteria.`;
           notifTitle = "Signal Search — No Results (Try Increasing Limits)";
         } else {
@@ -1403,29 +1477,19 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
           notifTitle = "Signal Failed — No Results Found";
         }
 
-        console.log(`Stage ${stageNum}: ZERO RESULTS — aborting pipeline (allSucceeded=${allSucceeded}, maxPerSource=${maxPerSource})`);
+        console.log(`Stage ${stageNum}: ZERO RESULTS — aborting pipeline (allSucceeded=${allSucceeded}, maxPerSource=${maxPerSource}, backupsAvailable=${allBackups.length})`);
         
-        const { error: abortError } = await serviceClient.from("signal_runs").update({
+        await serviceClient.from("signal_runs").update({
           status: "failed",
           error_message: userMessage,
           processing_phase: "aborted",
-          pipeline_adjustments: [...(run.pipeline_adjustments || []), {
+          pipeline_adjustments: [...adjustments, {
             stage: stageNum,
             quality: "USELESS",
-            reason: `Stage produced 0 results — hard abort (cap: ${maxPerSource})`,
+            reason: `Stage produced 0 results — hard abort (cap: ${maxPerSource}, backups tried: ${alreadyTriedBackup})`,
             timestamp: new Date().toISOString(),
           }],
         }).eq("id", run.id);
-
-        if (abortError) {
-          console.error(`Stage ${stageNum}: Failed to update status to failed:`, abortError);
-          const { error: retryError } = await serviceClient.from("signal_runs").update({
-            status: "failed",
-            error_message: userMessage,
-            processing_phase: "aborted",
-          }).eq("id", run.id);
-          if (retryError) console.error(`Stage ${stageNum}: Retry also failed:`, retryError);
-        }
 
         if (run.user_id) {
           await serviceClient.from("notifications").insert({

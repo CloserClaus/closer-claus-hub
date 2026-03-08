@@ -1392,7 +1392,7 @@ When the user's query specifies particular job roles (e.g., "SDR", "Sales Repres
           totalInferred += inferred || (maxCap || 500);
         }
       } else {
-        totalInferred = maxCap || 2500;
+        totalInferred = maxCap || 500;
       }
       // ALWAYS set expected_output_count for stage 1 so the estimator uses it
       const computedCount = maxCap ? Math.min(totalInferred, maxCap * actorCount) : totalInferred;
