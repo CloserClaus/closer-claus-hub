@@ -1040,31 +1040,323 @@ async function handleGeneratePlan(
   );
 }
 
-// Placeholder implementations for helper functions used above (to be replaced with actual implementations)
+// ════════════════════════════════════════════════════════════════
+// ██  HELPER FUNCTIONS — Query parsing, actor discovery, validation
+// ════════════════════════════════════════════════════════════════
+
+const INDUSTRY_KEYWORDS: Record<string, string[]> = {
+  "marketing": ["marketing", "advertising", "digital marketing", "media agency", "ad agency", "creative agency"],
+  "saas": ["saas", "software", "software-as-a-service", "tech company", "cloud software"],
+  "healthcare": ["healthcare", "medical", "health", "hospital", "clinic", "pharma", "pharmaceutical"],
+  "fintech": ["fintech", "financial technology", "banking", "payments", "lending"],
+  "real_estate": ["real estate", "property", "realty", "mortgage", "brokerage"],
+  "ecommerce": ["ecommerce", "e-commerce", "online store", "retail", "shopify"],
+  "construction": ["construction", "contractor", "building", "renovation", "plumbing", "hvac", "roofing", "electrical"],
+  "legal": ["legal", "law firm", "attorney", "lawyer"],
+  "accounting": ["accounting", "cpa", "bookkeeping", "tax"],
+  "insurance": ["insurance", "insurer", "underwriting"],
+  "education": ["education", "edtech", "school", "university", "training"],
+  "consulting": ["consulting", "consultancy", "advisory"],
+  "logistics": ["logistics", "shipping", "freight", "supply chain", "trucking"],
+  "manufacturing": ["manufacturing", "factory", "production"],
+  "restaurant": ["restaurant", "food", "dining", "catering", "cafe"],
+  "automotive": ["automotive", "car dealership", "auto repair"],
+};
+
 function inferQueryIndustry(query: string): string[] {
-  // Dummy implementation
-  return [];
+  const lower = query.toLowerCase();
+  const matches: string[] = [];
+  for (const [industry, keywords] of Object.entries(INDUSTRY_KEYWORDS)) {
+    if (keywords.some(kw => lower.includes(kw))) {
+      matches.push(industry);
+    }
+  }
+  return matches;
 }
+
+const GEO_PATTERNS = [
+  // US states
+  /\b(Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Delaware|Florida|Georgia|Hawaii|Idaho|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|New Hampshire|New Jersey|New Mexico|New York|North Carolina|North Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Rhode Island|South Carolina|South Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West Virginia|Wisconsin|Wyoming)\b/gi,
+  // US state abbreviations with comma before (e.g., "Austin, TX")
+  /,\s*(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/gi,
+  // Major US cities
+  /\b(New York|Los Angeles|Chicago|Houston|Phoenix|Philadelphia|San Antonio|San Diego|Dallas|San Jose|Austin|Jacksonville|Fort Worth|Columbus|Charlotte|Indianapolis|San Francisco|Seattle|Denver|Nashville|Boston|Miami|Atlanta|Portland|Las Vegas|Memphis|Louisville|Baltimore|Milwaukee|Albuquerque|Tucson|Sacramento|Kansas City|Mesa|Omaha|Raleigh|Cleveland|Tampa|Minneapolis|Pittsburgh|Cincinnati|Orlando|St\.?\s*Louis|Detroit)\b/gi,
+  // Countries
+  /\b(United States|USA|US|UK|United Kingdom|Canada|Australia|Germany|France|India|Brazil|Mexico|Japan|China|South Korea|Netherlands|Spain|Italy|Sweden|Norway|Denmark|Finland|Ireland|Israel|Singapore|UAE|Dubai)\b/gi,
+  // Generic geo terms
+  /\b(in|near|around|based in|located in)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g,
+];
+
 function extractGeography(query: string): string[] {
-  // Dummy implementation
-  return [];
+  const geos = new Set<string>();
+  for (const pattern of GEO_PATTERNS) {
+    const regex = new RegExp(pattern.source, pattern.flags);
+    let match;
+    while ((match = regex.exec(query)) !== null) {
+      const geo = (match[2] || match[1] || match[0]).trim();
+      if (geo.length > 1 && !["in", "near", "around", "based", "located"].includes(geo.toLowerCase())) {
+        geos.add(geo);
+      }
+    }
+  }
+  return [...geos];
 }
+
+const SIGNAL_CLASSIFIERS: Record<string, RegExp[]> = {
+  "hiring_intent": [/hiring|recruit|job|career|open position|talent|vacancy|looking for|SDR|BDR|sales rep/i],
+  "local_business": [/local|near me|google maps|yelp|directory|plumber|contractor|restaurant|shop|store|clinic/i],
+  "funded_companies": [/funded|raised|series [a-d]|seed round|venture|investment|vc backed|funding/i],
+  "poor_reviews": [/bad review|poor rating|negative review|1 star|2 star|complaint|unhappy customer/i],
+  "new_business": [/new business|newly registered|startup|recently founded|just opened|new company/i],
+  "expansion": [/expanding|new office|new location|growth|scaling|opening new/i],
+  "technology": [/using|technology|tech stack|tool|platform|software|integration/i],
+};
+
 function classifySignalType(query: string): string | null {
-  // Dummy implementation
+  for (const [signalType, patterns] of Object.entries(SIGNAL_CLASSIFIERS)) {
+    if (patterns.some(p => p.test(query))) return signalType;
+  }
   return null;
 }
+
+// ── Dynamic Actor Discovery via Apify Store API ──
+
 async function discoverActors(searchTerm: string, serviceClient: any): Promise<ActorEntry[]> {
-  // Dummy implementation: should query Apify Store or other registry
-  return [];
+  const APIFY_API_TOKEN = Deno.env.get("APIFY_API_TOKEN");
+  if (!APIFY_API_TOKEN) return [];
+
+  // Check cache first (7-day TTL) — table stores individual actor rows with category column
+  const categoryKey = searchTerm.toLowerCase().trim();
+  const ttlThreshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: cachedActors } = await serviceClient
+    .from("signal_actor_cache")
+    .select("*")
+    .eq("category", categoryKey)
+    .gte("cached_at", ttlThreshold)
+    .order("monthly_users", { ascending: false })
+    .limit(10);
+
+  if (cachedActors && cachedActors.length > 0) {
+    console.log(`Actor cache HIT for "${searchTerm}": ${cachedActors.length} actors`);
+    return cachedActors.map((row: any) => ({
+      key: row.actor_key || row.actor_id.replace(/[^a-zA-Z0-9]/g, "_"),
+      actorId: row.actor_id,
+      label: row.label || row.actor_id,
+      category: row.category || searchTerm,
+      description: row.description || "",
+      inputSchema: row.input_schema || {},
+      outputFields: row.output_fields || {},
+      monthlyUsers: row.monthly_users || 0,
+      totalRuns: row.total_runs || 0,
+      rating: row.rating || 0,
+    }));
+  }
+
+  // Search Apify Store
+  console.log(`Discovering actors for: "${searchTerm}"`);
+  try {
+    const resp = await fetch(
+      `https://api.apify.com/v2/store?token=${APIFY_API_TOKEN}&search=${encodeURIComponent(searchTerm)}&limit=10&sortBy=popularity`,
+      { method: "GET" }
+    );
+    if (!resp.ok) {
+      console.warn(`Apify Store search failed (${resp.status})`);
+      return [];
+    }
+    const data = await resp.json();
+    const items = data.data?.items || data.items || [];
+
+    const actors: ActorEntry[] = [];
+    for (const item of items.slice(0, 5)) {
+      const actorId = item.username && item.name ? `${item.username}/${item.name}` : item.id || "";
+      if (!actorId) continue;
+
+      // Fetch input schema
+      let inputSchema: Record<string, InputField> = {};
+      try {
+        const actorIdEncoded = actorId.replace("/", "~");
+        const schemaResp = await fetch(
+          `https://api.apify.com/v2/acts/${actorIdEncoded}/input-schema?token=${APIFY_API_TOKEN}`,
+          { method: "GET" }
+        );
+        if (schemaResp.ok) {
+          const schemaData = await schemaResp.json();
+          const props = schemaData.properties || schemaData.data?.properties ||
+            schemaData.schema?.properties || {};
+          for (const [key, val] of Object.entries(props as Record<string, any>)) {
+            const type = val.type === "array" ? "string[]" : (val.type === "integer" ? "number" : (val.type || "string"));
+            inputSchema[key] = {
+              type: type as any,
+              required: val.required || false,
+              default: val.default,
+              description: (val.description || key).slice(0, 200),
+            };
+          }
+        }
+      } catch { /* proceed without schema */ }
+
+      const actorKey = actorId.replace(/[^a-zA-Z0-9]/g, "_");
+      const monthlyUsers = item.stats?.totalUsers30Days || item.monthlyUsers || 0;
+      const totalRuns = item.stats?.totalRuns || item.totalRuns || 0;
+      const rating = item.stats?.rating || 0;
+
+      actors.push({
+        key: actorKey,
+        actorId,
+        label: item.title || item.name || actorId,
+        category: categoryKey,
+        description: (item.description || item.title || "").slice(0, 300),
+        inputSchema,
+        outputFields: {},
+        monthlyUsers,
+        totalRuns,
+        rating,
+      });
+
+      // Cache each actor as a separate row
+      await serviceClient.from("signal_actor_cache").upsert({
+        actor_id: actorId,
+        actor_key: actorKey,
+        label: item.title || item.name || actorId,
+        category: categoryKey,
+        description: (item.description || item.title || "").slice(0, 300),
+        input_schema: inputSchema,
+        output_fields: {},
+        monthly_users: monthlyUsers,
+        total_runs: totalRuns,
+        rating,
+        cached_at: new Date().toISOString(),
+      }, { onConflict: "actor_id" }).catch(() => {});
+    }
+
+    actors.sort((a, b) => (b.monthlyUsers || 0) - (a.monthlyUsers || 0));
+    console.log(`Discovered ${actors.length} actors for "${searchTerm}"`);
+    return actors;
+  } catch (err) {
+    console.error(`Actor discovery error for "${searchTerm}":`, err);
+    return [];
+  }
 }
+
+// ── Pipeline Validation ──
+
 function validatePipelinePlan(plan: any, query: string): string[] {
-  // Dummy implementation
-  return [];
+  const warnings: string[] = [];
+  const pipeline = plan.pipeline || [];
+
+  if (pipeline.length === 0) {
+    warnings.push("Pipeline has no stages");
+    return warnings;
+  }
+
+  // Check stage 1 is a scrape with no input_from
+  const stage1 = pipeline[0];
+  if (stage1.type !== "scrape") {
+    warnings.push("Stage 1 should be a scrape stage (discovery)");
+  }
+  if (stage1.input_from) {
+    warnings.push("Stage 1 should not have input_from (it's the initial discovery)");
+  }
+
+  // Check for mandatory output fields coverage
+  const mandatoryFields = ["contact_name", "industry", "website", "company_linkedin_url", "linkedin_profile_url", "employee_count"];
+  const producedFields = new Set<string>();
+  for (const stage of pipeline) {
+    if (stage.type === "scrape" && stage.stage_category) {
+      const verified = VERIFIED_ACTORS[stage.stage_category];
+      if (verified) {
+        for (const [field, paths] of Object.entries(verified.outputFields)) {
+          if (paths.length > 0) producedFields.add(field);
+        }
+      }
+    }
+    if (stage.updates_fields) {
+      stage.updates_fields.forEach((f: string) => producedFields.add(f));
+    }
+  }
+
+  // Map aliases
+  if (producedFields.has("linkedin")) producedFields.add("company_linkedin_url");
+  if (producedFields.has("linkedin_profile")) producedFields.add("linkedin_profile_url");
+
+  const missing = mandatoryFields.filter(f => !producedFields.has(f));
+  if (missing.length > 0) {
+    warnings.push(`Pipeline may not produce mandatory fields: ${missing.join(", ")}. Consider adding enrichment stages.`);
+  }
+
+  // Check for people enrichment stage
+  const hasPeopleStage = pipeline.some((s: any) =>
+    s.stage_category?.startsWith("people_data") ||
+    s.name?.toLowerCase().includes("decision maker") ||
+    s.name?.toLowerCase().includes("people")
+  );
+  if (!hasPeopleStage) {
+    warnings.push("Pipeline has no people enrichment stage — contact_name and linkedin_profile_url may be missing");
+  }
+
+  return warnings;
 }
-function estimatePipelineCost(pipeline: any[]): { totalCredits: number; totalEstimatedRows: number; totalEstimatedLeads: number; stageFunnel: any } {
-  // Dummy implementation
-  return { totalCredits: 0, totalEstimatedRows: 0, totalEstimatedLeads: 0, stageFunnel: null };
+
+// ── Cost Estimation ──
+
+function estimatePipelineCost(pipeline: any[]): {
+  totalCredits: number;
+  totalEstimatedRows: number;
+  totalEstimatedLeads: number;
+  stageFunnel: any;
+} {
+  let totalEstimatedRows = 0;
+  let currentRowCount = 0;
+  let totalCredits = 0;
+  const stageFunnel: any[] = [];
+
+  for (const stage of pipeline) {
+    if (stage.type === "scrape") {
+      const expectedCount = stage.expected_output_count || 500;
+      if (stage.stage === 1 || !stage.input_from) {
+        // Discovery stage: use expected output count directly
+        currentRowCount = expectedCount;
+      } else {
+        // Enrichment stage: processes existing leads
+        // Cost is proportional to current row count
+        currentRowCount = Math.min(currentRowCount, expectedCount);
+      }
+      totalEstimatedRows += currentRowCount;
+      // Apify cost: ~$0.001 per result (1 credit = $0.01)
+      const stageCost = Math.ceil(currentRowCount * 0.1);
+      totalCredits += stageCost;
+      stageFunnel.push({
+        stage: stage.stage,
+        name: stage.name,
+        type: "scrape",
+        estimatedRows: currentRowCount,
+        estimatedCost: stageCost,
+      });
+    } else if (stage.type === "ai_filter") {
+      const passRate = stage.expected_pass_rate || 0.3;
+      const inputRows = currentRowCount;
+      currentRowCount = Math.ceil(inputRows * passRate);
+      const filterCost = Math.ceil(inputRows * 0.05); // ~$0.0005 per evaluation
+      totalCredits += filterCost;
+      stageFunnel.push({
+        stage: stage.stage,
+        name: stage.name,
+        type: "ai_filter",
+        inputRows,
+        outputRows: currentRowCount,
+        passRate,
+        estimatedCost: filterCost,
+      });
+    }
+  }
+
+  const totalEstimatedLeads = currentRowCount;
+  // Minimum 1 credit
+  totalCredits = Math.max(1, totalCredits);
+
+  return { totalCredits, totalEstimatedRows, totalEstimatedLeads, stageFunnel };
 }
+
 const ROW_CAP_KEYS = ["maxItems", "maxResults", "maxCrawledPlacesPerSearch"];
 function inferRowCapFromParams(params: any): number | null {
   for (const key of ROW_CAP_KEYS) {
