@@ -15,6 +15,7 @@ interface InputField {
   default?: any;
   values?: string[];
   description: string;
+  _schemaSource?: "runtime" | "catalog_fallback"; // tracks trust level
 }
 
 interface ActorEntry {
