@@ -1361,7 +1361,7 @@ async function pipelineScrapeCollecting(run: any, stageDef: any, stageNum: numbe
   const ref = stageRefs[collectedIndex];
   try {
     // Infer the max items cap from the stage's actor params to avoid over-fetching
-    const stageActorParams = currentStageDef?.params_per_actor?.[ref.actorKey] || {};
+    const stageActorParams = stageDef?.params_per_actor?.[ref.actorKey] || {};
     const KNOWN_LIMIT_FIELDS = ["maxItems", "limit", "count", "maxResults", "max_results", "rows", "numResults", "maxCrawledPlacesPerSearch"];
     const stageMaxItems = KNOWN_LIMIT_FIELDS.reduce((cap: number | undefined, f) => {
       if (cap !== undefined) return cap;

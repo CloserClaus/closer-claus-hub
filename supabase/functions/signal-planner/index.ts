@@ -1007,6 +1007,26 @@ async function handleGeneratePlan(
     systemPrompt += `- Filtering strictness: ${strictnessMap[strictness] || strictnessMap.medium}\n`;
   }
 
+  // Enrich user query with parsed context so the AI doesn't have to re-derive intent
+  const parsedIndustryTerms = inferQueryIndustry(query);
+  const geographyTerms = extractGeography(query);
+  const signalType = classifySignalType(query);
+
+  let enrichedUserMessage = query;
+  const contextParts: string[] = [];
+  if (parsedIndustryTerms.length > 0) {
+    contextParts.push(`Industry/vertical: ${parsedIndustryTerms.join(", ")}`);
+  }
+  if (geographyTerms.length > 0) {
+    contextParts.push(`Geography: ${geographyTerms.join(", ")}`);
+  }
+  if (signalType) {
+    contextParts.push(`Signal type: ${signalType}`);
+  }
+  if (contextParts.length > 0) {
+    enrichedUserMessage = `${query}\n\n[PARSED CONTEXT — use this to ensure Stage 1 precision]\n${contextParts.join("\n")}`;
+  }
+
   const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
@@ -1014,7 +1034,7 @@ async function handleGeneratePlan(
       model: "google/gemini-3-flash-preview",
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: query },
+        { role: "user", content: enrichedUserMessage },
       ],
     }),
   });
