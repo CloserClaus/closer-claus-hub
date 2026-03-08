@@ -29,6 +29,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
+import { CRMPagination } from '@/components/crm/Pagination';
+
+const PAGE_SIZE = 25;
 
 const ICON_MAP: Record<string, any> = { Briefcase, Rocket, MapPin, Zap, Sparkles };
 
@@ -50,6 +53,7 @@ export function SignalScraperTab() {
   const [viewingRunId, setViewingRunId] = useState<string | null>(null);
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedSettings>(DEFAULT_ADVANCED);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -293,31 +297,40 @@ export function SignalScraperTab() {
               No signals yet. Describe the leads you want above to get started.
             </p>
           ) : (
-            <div className="relative w-full overflow-auto">
-              <table className="w-full caption-bottom text-sm">
-                <thead className="[&_tr]:border-b">
-                  <tr className="border-b transition-colors">
-                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Signal</th>
-                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">Status</th>
-                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden sm:table-cell">Leads</th>
-                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden lg:table-cell">Credits</th>
-                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">Run</th>
-                    <th className="h-10 px-3 text-right align-middle font-medium text-muted-foreground">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="[&_tr:last-child]:border-0">
-                  {signalHistory.map((run) => (
-                    <SignalHistoryRow
-                      key={run.id}
-                      run={run}
-                      onView={() => setViewingRunId(run.id)}
-                      onRerun={() => handleRerun(run)}
-                      onDelete={() => deleteSignal(run.id)}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="relative w-full overflow-auto">
+                <table className="w-full caption-bottom text-sm">
+                  <thead className="[&_tr]:border-b">
+                    <tr className="border-b transition-colors">
+                      <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Signal</th>
+                      <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">Status</th>
+                      <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden sm:table-cell">Leads</th>
+                      <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden lg:table-cell">Credits</th>
+                      <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">Run</th>
+                      <th className="h-10 px-3 text-right align-middle font-medium text-muted-foreground">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="[&_tr:last-child]:border-0">
+                    {signalHistory
+                      .slice((historyPage - 1) * PAGE_SIZE, historyPage * PAGE_SIZE)
+                      .map((run) => (
+                        <SignalHistoryRow
+                          key={run.id}
+                          run={run}
+                          onView={() => setViewingRunId(run.id)}
+                          onRerun={() => handleRerun(run)}
+                          onDelete={() => deleteSignal(run.id)}
+                        />
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              <CRMPagination
+                currentPage={historyPage}
+                totalPages={Math.ceil(signalHistory.length / PAGE_SIZE)}
+                onPageChange={setHistoryPage}
+              />
+            </>
           )}
         </CardContent>
       </Card>
@@ -647,22 +660,43 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectAllAcrossPages, setSelectAllAcrossPages] = useState(false);
   const [addToListOpen, setAddToListOpen] = useState(false);
   const [savedApolloIds, setSavedApolloIds] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const { data: leads = [], isLoading } = useQuery({
-    queryKey: ['signal-leads', runId],
+  // Server-side paginated query
+  const { data: leadsResult, isLoading } = useQuery({
+    queryKey: ['signal-leads', runId, currentPage],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const from = (currentPage - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      const { data, error, count } = await supabase
         .from('signal_leads')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('run_id', runId)
         .order('discovered_at', { ascending: false })
-        .limit(10000);
+        .range(from, to);
       if (error) throw error;
-      return (data || []) as SignalLead[];
+      return { leads: (data || []) as SignalLead[], totalCount: count || 0 };
     },
   });
+
+  const leads = leadsResult?.leads || [];
+  const totalCount = leadsResult?.totalCount || 0;
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+  // Helper to fetch ALL leads for bulk operations across pages
+  const fetchAllLeads = async (): Promise<SignalLead[]> => {
+    const { data, error } = await supabase
+      .from('signal_leads')
+      .select('*')
+      .eq('run_id', runId)
+      .order('discovered_at', { ascending: false })
+      .limit(10000);
+    if (error) throw error;
+    return (data || []) as SignalLead[];
+  };
 
   const addToCRM = async (lead: SignalLead) => {
     const userId = (await supabase.auth.getUser()).data.user?.id || '';
@@ -689,9 +723,15 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
   };
 
   const addAllToCRM = async () => {
-    const targetLeads = selectedIds.size > 0
-      ? leads.filter(l => selectedIds.has(l.id) && !l.added_to_crm)
-      : leads.filter(l => !l.added_to_crm);
+    let targetLeads: SignalLead[];
+    if (selectAllAcrossPages) {
+      const allLeads = await fetchAllLeads();
+      targetLeads = allLeads.filter(l => !l.added_to_crm);
+    } else if (selectedIds.size > 0) {
+      targetLeads = leads.filter(l => selectedIds.has(l.id) && !l.added_to_crm);
+    } else {
+      targetLeads = leads.filter(l => !l.added_to_crm);
+    }
     if (targetLeads.length === 0) return;
     const userId = (await supabase.auth.getUser()).data.user?.id || '';
     const rows = targetLeads.map((lead) => {
@@ -720,6 +760,7 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
     }
     toast({ title: `${targetLeads.length} leads added to CRM` });
     setSelectedIds(new Set());
+    setSelectAllAcrossPages(false);
     queryClient.invalidateQueries({ queryKey: ['signal-leads', runId] });
   };
 
@@ -762,7 +803,6 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
     },
   });
 
-  // Save signal leads to apollo_leads (for list functionality)
   const saveToApolloLeads = async (targetLeads: SignalLead[]): Promise<string[]> => {
     const userId = (await supabase.auth.getUser()).data.user?.id || '';
     const rows = targetLeads.map((lead) => ({
@@ -800,9 +840,14 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
   });
 
   const handleAddToList = async () => {
-    const targetLeads = selectedIds.size > 0
-      ? leads.filter(l => selectedIds.has(l.id))
-      : leads;
+    let targetLeads: SignalLead[];
+    if (selectAllAcrossPages) {
+      targetLeads = await fetchAllLeads();
+    } else if (selectedIds.size > 0) {
+      targetLeads = leads.filter(l => selectedIds.has(l.id));
+    } else {
+      targetLeads = leads;
+    }
     try {
       const ids = await saveToApolloLeads(targetLeads);
       setSavedApolloIds(ids);
@@ -812,21 +857,40 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
     }
   };
 
+  const handleExportCSV = async () => {
+    toast({ title: 'Exporting...', description: 'Preparing CSV export' });
+    const allLeads = await fetchAllLeads();
+    exportLeadsToCSV(allLeads, `signal-leads-${runId.slice(0, 8)}`);
+  };
+
   const toggleSelect = (id: string) => {
+    setSelectAllAcrossPages(false);
     setSelectedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   };
   const toggleAll = () => {
-    if (selectedIds.size === leads.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(leads.map(l => l.id)));
+    if (selectedIds.size === leads.length) {
+      setSelectedIds(new Set());
+      setSelectAllAcrossPages(false);
+    } else {
+      setSelectedIds(new Set(leads.map(l => l.id)));
+    }
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    setSelectedIds(new Set());
+    setSelectAllAcrossPages(false);
   };
 
   if (isLoading) {
     return <Card><CardContent className="py-8 flex justify-center"><Loader2 className="h-6 w-6 animate-spin" /></CardContent></Card>;
   }
 
-  const notInCrmCount = selectedIds.size > 0
-    ? leads.filter(l => selectedIds.has(l.id) && !l.added_to_crm).length
-    : leads.filter(l => !l.added_to_crm).length;
+  const notInCrmCount = selectAllAcrossPages
+    ? totalCount
+    : selectedIds.size > 0
+      ? leads.filter(l => selectedIds.has(l.id) && !l.added_to_crm).length
+      : leads.filter(l => !l.added_to_crm).length;
 
   const formatLocation = (lead: SignalLead) => {
     const parts = [lead.city, lead.state, lead.country].filter(Boolean);
@@ -835,35 +899,32 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
 
   const formatIndustry = (industry: string) => {
     if (!industry) return '';
-    // Clean up common patterns
-    let clean = industry
-      .replace(/ and /gi, ' & ')
-      .replace(/,\s*/g, ', ');
-    // Take first category if comma-separated
+    let clean = industry.replace(/ and /gi, ' & ').replace(/,\s*/g, ', ');
     const parts = clean.split(',').map(s => s.trim());
     if (parts.length > 1) clean = parts[0];
-    // Truncate long strings
     return clean.length > 30 ? clean.slice(0, 28) + '…' : clean;
   };
+
+  const allOnPageSelected = leads.length > 0 && selectedIds.size === leads.length;
 
   return (
     <Card>
       <CardHeader className="pb-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <CardTitle className="text-lg">Signal Results — {leads.length} leads</CardTitle>
+          <CardTitle className="text-lg">Signal Results — {totalCount.toLocaleString()} leads</CardTitle>
           <div className="flex gap-2 flex-wrap">
-            <Button size="sm" variant="outline" onClick={() => exportLeadsToCSV(leads, `signal-leads-${runId.slice(0, 8)}`)}>
+            <Button size="sm" variant="outline" onClick={handleExportCSV}>
               <Download className="h-3.5 w-3.5 mr-1" />
               Export CSV
             </Button>
             <Button size="sm" variant="outline" onClick={handleAddToList}>
               <List className="h-3.5 w-3.5 mr-1" />
-              {selectedIds.size > 0 ? `Add to List (${selectedIds.size})` : 'Add All to List'}
+              {selectAllAcrossPages ? `Add All to List (${totalCount})` : selectedIds.size > 0 ? `Add to List (${selectedIds.size})` : 'Add All to List'}
             </Button>
             {notInCrmCount > 0 && (
               <Button size="sm" variant="outline" onClick={addAllToCRM}>
                 <Plus className="h-3.5 w-3.5 mr-1" />
-                {selectedIds.size > 0 ? `Add to CRM (${notInCrmCount})` : `Add All to CRM (${notInCrmCount})`}
+                {selectAllAcrossPages ? `Add All to CRM (${totalCount})` : selectedIds.size > 0 ? `Add to CRM (${notInCrmCount})` : `Add All to CRM (${notInCrmCount})`}
               </Button>
             )}
             <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
@@ -874,126 +935,151 @@ function SignalResultsView({ runId, onClose, workspaceId }: { runId: string; onC
         {leads.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">No leads found for this run.</p>
         ) : (
-          <div className="relative w-full overflow-auto">
-            <table className="w-full caption-bottom text-sm">
-              <thead className="[&_tr]:border-b">
-                <tr className="border-b transition-colors">
-                  <th className="h-10 px-2 text-left align-middle w-10">
-                    <input type="checkbox" checked={selectedIds.size === leads.length && leads.length > 0} onChange={toggleAll} className="rounded border-border" />
-                  </th>
-                  <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Name</th>
-                  <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Company</th>
-                  <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">Location</th>
-                  <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden lg:table-cell">Industry</th>
-                  <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Links</th>
-                  <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Contact</th>
-                  <th className="h-10 px-3 text-right align-middle font-medium text-muted-foreground">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="[&_tr:last-child]:border-0">
-                {leads.map((lead) => (
-                  <tr key={lead.id} className="border-b transition-colors hover:bg-muted/50">
-                    <td className="p-2 align-middle">
-                      <input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => toggleSelect(lead.id)} className="rounded border-border" />
-                    </td>
-                    <td className="p-3 align-middle">
-                      <div className="font-medium text-sm">{lead.contact_name || '—'}</div>
-                      {lead.title && <div className="text-xs text-muted-foreground">{lead.title}</div>}
-                    </td>
-                    <td className="p-3 align-middle">
-                      <div className="font-medium text-sm">{lead.company_name || '—'}</div>
-                      {lead.domain && <div className="text-xs text-muted-foreground">{lead.domain}</div>}
-                      {lead.employee_count && <div className="text-xs text-muted-foreground">{lead.employee_count} employees</div>}
-                    </td>
-                    <td className="p-3 align-middle hidden md:table-cell">
-                      <div className="text-sm text-muted-foreground">{formatLocation(lead) || '—'}</div>
-                    </td>
-                    <td className="p-3 align-middle hidden lg:table-cell">
-                      {lead.industry ? (
-                        <Badge variant="secondary" className="text-xs font-normal max-w-[140px] truncate" title={lead.industry}>
-                          {formatIndustry(lead.industry)}
-                        </Badge>
-                      ) : <span className="text-sm text-muted-foreground">—</span>}
-                    </td>
-                    <td className="p-3 align-middle">
-                      <div className="flex gap-1">
-                        {lead.website && (
-                          <a href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`} target="_blank" rel="noopener" className="text-muted-foreground hover:text-foreground">
-                            <Globe className="h-4 w-4" />
-                          </a>
-                        )}
-                        {(lead.linkedin_profile_url || lead.linkedin) && (
-                          <a href={(lead.linkedin_profile_url || lead.linkedin || '').startsWith('http') ? (lead.linkedin_profile_url || lead.linkedin || '') : `https://${lead.linkedin_profile_url || lead.linkedin}`} target="_blank" rel="noopener" className="text-muted-foreground hover:text-foreground" title="LinkedIn Profile">
-                            <User className="h-4 w-4" />
-                          </a>
-                        )}
-                        {lead.company_linkedin_url && (
-                          <a href={lead.company_linkedin_url.startsWith('http') ? lead.company_linkedin_url : `https://${lead.company_linkedin_url}`} target="_blank" rel="noopener" className="text-muted-foreground hover:text-foreground" title="Company LinkedIn">
-                            <Building2 className="h-4 w-4" />
-                          </a>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-3 align-middle">
-                      {lead.enriched ? (
-                        <div className="space-y-0.5">
-                          {lead.email && <div className="text-xs flex items-center gap-1"><Mail className="h-3 w-3" />{lead.email}</div>}
-                          {lead.phone && <div className="text-xs flex items-center gap-1"><Phone className="h-3 w-3" />{lead.phone}</div>}
-                          {!lead.email && !lead.phone && <span className="text-xs text-muted-foreground">No data found</span>}
+          <>
+            {/* Select all across pages banner */}
+            {allOnPageSelected && totalCount > PAGE_SIZE && !selectAllAcrossPages && (
+              <div className="bg-muted border border-border rounded-md px-4 py-2 mb-3 flex items-center justify-between text-sm">
+                <span>All {leads.length} leads on this page are selected.</span>
+                <Button variant="link" size="sm" className="text-primary p-0 h-auto" onClick={() => setSelectAllAcrossPages(true)}>
+                  Select all {totalCount.toLocaleString()} leads across all pages
+                </Button>
+              </div>
+            )}
+            {selectAllAcrossPages && (
+              <div className="bg-primary/10 border border-primary/30 rounded-md px-4 py-2 mb-3 flex items-center justify-between text-sm">
+                <span className="font-medium">All {totalCount.toLocaleString()} leads across all pages are selected.</span>
+                <Button variant="link" size="sm" className="text-primary p-0 h-auto" onClick={() => { setSelectAllAcrossPages(false); setSelectedIds(new Set()); }}>
+                  Clear selection
+                </Button>
+              </div>
+            )}
+
+            <div className="relative w-full overflow-auto">
+              <table className="w-full caption-bottom text-sm">
+                <thead className="[&_tr]:border-b">
+                  <tr className="border-b transition-colors">
+                    <th className="h-10 px-2 text-left align-middle w-10">
+                      <input type="checkbox" checked={allOnPageSelected || selectAllAcrossPages} onChange={toggleAll} className="rounded border-border" />
+                    </th>
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Name</th>
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Company</th>
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">Location</th>
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground hidden lg:table-cell">Industry</th>
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Links</th>
+                    <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Contact</th>
+                    <th className="h-10 px-3 text-right align-middle font-medium text-muted-foreground">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="[&_tr:last-child]:border-0">
+                  {leads.map((lead) => (
+                    <tr key={lead.id} className="border-b transition-colors hover:bg-muted/50">
+                      <td className="p-2 align-middle">
+                        <input type="checkbox" checked={selectedIds.has(lead.id) || selectAllAcrossPages} onChange={() => toggleSelect(lead.id)} className="rounded border-border" />
+                      </td>
+                      <td className="p-3 align-middle">
+                        <div className="font-medium text-sm">{lead.contact_name || '—'}</div>
+                        {lead.title && <div className="text-xs text-muted-foreground">{lead.title}</div>}
+                      </td>
+                      <td className="p-3 align-middle">
+                        <div className="font-medium text-sm">{lead.company_name || '—'}</div>
+                        {lead.domain && <div className="text-xs text-muted-foreground">{lead.domain}</div>}
+                        {lead.employee_count && <div className="text-xs text-muted-foreground">{lead.employee_count} employees</div>}
+                      </td>
+                      <td className="p-3 align-middle hidden md:table-cell">
+                        <div className="text-sm text-muted-foreground">{formatLocation(lead) || '—'}</div>
+                      </td>
+                      <td className="p-3 align-middle hidden lg:table-cell">
+                        {lead.industry ? (
+                          <Badge variant="secondary" className="text-xs font-normal max-w-[140px] truncate" title={lead.industry}>
+                            {formatIndustry(lead.industry)}
+                          </Badge>
+                        ) : <span className="text-sm text-muted-foreground">—</span>}
+                      </td>
+                      <td className="p-3 align-middle">
+                        <div className="flex gap-1">
+                          {lead.website && (
+                            <a href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`} target="_blank" rel="noopener" className="text-muted-foreground hover:text-foreground">
+                              <Globe className="h-4 w-4" />
+                            </a>
+                          )}
+                          {(lead.linkedin_profile_url || lead.linkedin) && (
+                            <a href={(lead.linkedin_profile_url || lead.linkedin || '').startsWith('http') ? (lead.linkedin_profile_url || lead.linkedin || '') : `https://${lead.linkedin_profile_url || lead.linkedin}`} target="_blank" rel="noopener" className="text-muted-foreground hover:text-foreground" title="LinkedIn Profile">
+                              <User className="h-4 w-4" />
+                            </a>
+                          )}
+                          {lead.company_linkedin_url && (
+                            <a href={lead.company_linkedin_url.startsWith('http') ? lead.company_linkedin_url : `https://${lead.company_linkedin_url}`} target="_blank" rel="noopener" className="text-muted-foreground hover:text-foreground" title="Company LinkedIn">
+                              <Building2 className="h-4 w-4" />
+                            </a>
+                          )}
                         </div>
-                      ) : (
-                        <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => enrichLeadMutation.mutate(lead)} disabled={enrichLeadMutation.isPending}>
-                          {enrichLeadMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3 mr-1" />}
-                          Reveal
-                        </Button>
-                      )}
-                    </td>
-                    <td className="p-3 align-middle text-right">
-                      <div className="flex gap-1 justify-end">
-                        {!lead.added_to_crm && (
-                          <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => addToCRM(lead)}>
-                            <Plus className="h-3 w-3 mr-1" /> CRM
+                      </td>
+                      <td className="p-3 align-middle">
+                        {lead.enriched ? (
+                          <div className="space-y-0.5">
+                            {lead.email && <div className="text-xs flex items-center gap-1"><Mail className="h-3 w-3" />{lead.email}</div>}
+                            {lead.phone && <div className="text-xs flex items-center gap-1"><Phone className="h-3 w-3" />{lead.phone}</div>}
+                            {!lead.email && !lead.phone && <span className="text-xs text-muted-foreground">No data found</span>}
+                          </div>
+                        ) : (
+                          <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => enrichLeadMutation.mutate(lead)} disabled={enrichLeadMutation.isPending}>
+                            {enrichLeadMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3 mr-1" />}
+                            Reveal
                           </Button>
                         )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
-                              <MoreHorizontal className="h-3.5 w-3.5" />
+                      </td>
+                      <td className="p-3 align-middle text-right">
+                        <div className="flex gap-1 justify-end">
+                          {!lead.added_to_crm && (
+                            <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => addToCRM(lead)}>
+                              <Plus className="h-3 w-3 mr-1" /> CRM
                             </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-popover border-border">
-                            <DropdownMenuItem onClick={() => saveLeadMutation.mutate(lead)}>
-                              <Bookmark className="h-4 w-4 mr-2" /> Save Lead
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={async () => {
-                              try {
-                                const ids = await saveToApolloLeads([lead]);
-                                setSavedApolloIds(ids);
-                                setAddToListOpen(true);
-                              } catch (err: any) {
-                                toast({ title: 'Failed', description: err.message, variant: 'destructive' });
-                              }
-                            }}>
-                              <List className="h-4 w-4 mr-2" /> Add to List
-                            </DropdownMenuItem>
-                            {lead.added_to_crm && (
-                              <DropdownMenuItem asChild>
-                                <a href="/crm"><Mail className="h-4 w-4 mr-2" /> Outreach</a>
+                          )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="bg-popover border-border">
+                              <DropdownMenuItem onClick={() => saveLeadMutation.mutate(lead)}>
+                                <Bookmark className="h-4 w-4 mr-2" /> Save Lead
                               </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                              <DropdownMenuItem onClick={async () => {
+                                try {
+                                  const ids = await saveToApolloLeads([lead]);
+                                  setSavedApolloIds(ids);
+                                  setAddToListOpen(true);
+                                } catch (err: any) {
+                                  toast({ title: 'Failed', description: err.message, variant: 'destructive' });
+                                }
+                              }}>
+                                <List className="h-4 w-4 mr-2" /> Add to List
+                              </DropdownMenuItem>
+                              {lead.added_to_crm && (
+                                <DropdownMenuItem asChild>
+                                  <a href="/crm"><Mail className="h-4 w-4 mr-2" /> Outreach</a>
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <CRMPagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={handlePageChange}
+            />
+          </>
         )}
       </CardContent>
 
-      {/* Add to List Dialog */}
       <AddToListDialog
         open={addToListOpen}
         onOpenChange={setAddToListOpen}
