@@ -1029,13 +1029,13 @@ async function handleGeneratePlan(
 
   // Inject advanced settings as explicit user constraints
   if (advanced_settings) {
-    const maxResults = advanced_settings.max_results_per_source || 500;
+    const scrapeVolume = advanced_settings.scrape_volume || advanced_settings.max_results_per_source || 1000;
+    const maxResults = advanced_settings.max_results_per_source || scrapeVolume;
     const dateRange = advanced_settings.date_range || "past_week";
     const strictness = advanced_settings.ai_strictness || "medium";
     const location = advanced_settings.location || "";
     const companySize = advanced_settings.company_size || "any";
     const decisionMakerTitles = advanced_settings.decision_maker_titles || "";
-    const targetLeads = advanced_settings.target_leads || 100;
 
     const dateMap: Record<string, string> = {
       past_24h: "past 24 hours only", past_week: "past week",
@@ -1055,7 +1055,7 @@ async function handleGeneratePlan(
     };
 
     systemPrompt += `\n\n## USER PREFERENCES (OVERRIDE DEFAULTS — these are EXPLICIT user constraints)\n`;
-    systemPrompt += `- Target leads: ${targetLeads} (set max results per source in stage 1 to: ${maxResults})\n`;
+    systemPrompt += `- Scrape volume: ${scrapeVolume} records. Set Stage 1 maxItems/maxCrawledPlacesPerSearch to ${maxResults}. This directly controls how many records to scrape.\n`;
     systemPrompt += `- Date range: ${dateMap[dateRange] || "past week"}\n`;
     systemPrompt += `- Filtering strictness: ${strictnessMap[strictness] || strictnessMap.medium}\n`;
     
