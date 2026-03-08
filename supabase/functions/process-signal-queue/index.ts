@@ -777,6 +777,7 @@ async function qualityCheckStage(
     .from("signal_leads")
     .select("*", { count: "exact" })
     .eq("run_id", run.id)
+    .neq("pipeline_stage", "filtered_out")
     .limit(50);
 
   if (!sampleLeads || sampleLeads.length === 0) {
