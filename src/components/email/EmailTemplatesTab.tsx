@@ -120,9 +120,12 @@ export function EmailTemplatesTab() {
     }
   };
 
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
   const handleDelete = async (id: string) => {
     await supabase.from('email_templates').delete().eq('id', id);
     toast({ title: 'Template deleted' });
+    setDeleteConfirmId(null);
     fetchTemplates();
   };
 
