@@ -67,6 +67,14 @@ export function SendEmailButton({ leadId, leadEmail, leadName, variant = 'outlin
     if (!currentWorkspace || !subject.trim() || !body.trim()) return;
     setSending(true);
     try {
+      // Check opt-out before sending
+      const { data: leadCheck } = await supabase.from('leads').select('opted_out').eq('id', leadId).single();
+      if ((leadCheck as any)?.opted_out) {
+        toast({ variant: 'destructive', title: 'Lead opted out', description: 'This lead has unsubscribed from emails.' });
+        setSending(false);
+        setShowComposer(false);
+        return;
+      }
       const { error } = await supabase.functions.invoke('send-email', {
         body: { to_email: leadEmail, subject, body, lead_id: leadId, workspace_id: currentWorkspace.id },
       });
