@@ -801,6 +801,100 @@ serve(async (req) => {
 });
 
 // ════════════════════════════════════════════════════════════════
+// ██  EXECUTE SIGNAL (queue a planned run)
+// ════════════════════════════════════════════════════════════════
+
+async function handleExecuteSignal(
+  body: { run_id: string; workspace_id: string; schedule_type?: string; schedule_hour?: number },
+  serviceClient: any
+) {
+  const { run_id, workspace_id, schedule_type, schedule_hour } = body;
+  if (!run_id || !workspace_id) {
+    return new Response(JSON.stringify({ error: "run_id and workspace_id are required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { data: run, error: fetchErr } = await serviceClient
+    .from("signal_runs")
+    .select("*")
+    .eq("id", run_id)
+    .eq("workspace_id", workspace_id)
+    .single();
+
+  if (fetchErr || !run) {
+    return new Response(JSON.stringify({ error: "Signal run not found" }), {
+      status: 404,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  if (run.status !== "planned") {
+    return new Response(JSON.stringify({ error: `Cannot execute run in status: ${run.status}` }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const estimatedCredits = run.signal_plan?.estimated_credits || 10;
+  const { data: credits, error: credErr } = await serviceClient
+    .from("lead_credits")
+    .select("credits_balance")
+    .eq("workspace_id", workspace_id)
+    .single();
+
+  if (credErr || !credits) {
+    return new Response(JSON.stringify({ error: "Could not fetch credit balance" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  if (credits.credits_balance < estimatedCredits) {
+    return new Response(JSON.stringify({ error: "Insufficient lead credits", required: estimatedCredits, available: credits.credits_balance }), {
+      status: 402,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { error: deductErr } = await serviceClient
+    .from("lead_credits")
+    .update({ credits_balance: credits.credits_balance - estimatedCredits })
+    .eq("workspace_id", workspace_id);
+
+  if (deductErr) {
+    return new Response(JSON.stringify({ error: "Failed to deduct credits" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const updatePayload: any = { status: "queued", updated_at: new Date().toISOString() };
+  if (schedule_type) updatePayload.schedule_type = schedule_type;
+  if (schedule_hour !== undefined) updatePayload.schedule_hour = schedule_hour;
+
+  const { error: updateErr } = await serviceClient
+    .from("signal_runs")
+    .update(updatePayload)
+    .eq("id", run_id);
+
+  if (updateErr) {
+    return new Response(JSON.stringify({ error: "Failed to queue run" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  console.log(`Signal run ${run_id} queued. Deducted ${estimatedCredits} credits.`);
+
+  return new Response(JSON.stringify({ status: "queued", run_id, credits_deducted: estimatedCredits }), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
 // ██  GENERATE PLAN
 // ════════════════════════════════════════════════════════════════
 
