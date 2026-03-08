@@ -6,6 +6,22 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+async function generateUnsubscribeToken(leadId: string): Promise<string> {
+  const secret = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw', encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(leadId));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function appendUnsubscribeFooter(body: string, leadId: string, token: string, supabaseUrl: string): string {
+  const unsubUrl = `${supabaseUrl}/functions/v1/unsubscribe?lead_id=${leadId}&token=${token}`;
+  return body + `\n\n---\nIf you no longer wish to receive these emails, click here to unsubscribe: ${unsubUrl}`;
+}
+
 interface SendResult {
   success: boolean;
   external_id?: string;
