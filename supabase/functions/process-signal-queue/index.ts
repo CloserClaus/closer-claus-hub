@@ -10,7 +10,7 @@ const corsHeaders = {
 // ── Universal Output Field Paths — works with ANY Apify actor ──
 
 interface InputField {
-  type: "string" | "number" | "boolean" | "string[]" | "enum";
+  type: "string" | "number" | "boolean" | "string[]" | "object[]" | "enum";
   required?: boolean;
   default?: any;
   values?: string[];
