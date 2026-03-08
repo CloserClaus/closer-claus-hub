@@ -427,8 +427,8 @@ function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExe
   isExecuting: boolean;
   credits: number;
 }) {
-  const plan = currentPlan.plan;
-  const estimation = currentPlan.estimation;
+  const plan = currentPlan?.plan;
+  const estimation = currentPlan?.estimation || {};
   const isPipeline = plan && typeof plan === 'object' && !Array.isArray(plan) && plan.pipeline;
 
   if (!isPipeline) {
