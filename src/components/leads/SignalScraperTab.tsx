@@ -424,7 +424,7 @@ export function SignalScraperTab() {
 
 // ── Pipeline Plan Display ──
 
-function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExecute, onCancel, isExecuting, credits }: {
+function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExecute, onCancel, isExecuting, credits, onDryRun, isDryRunning }: {
   currentPlan: { run_id: string; plan: any; estimation: any; warnings?: string[]; data_flow_fixes?: string[] };
   scheduleType: string;
   setScheduleType: (v: 'once' | 'daily' | 'weekly') => void;
@@ -432,6 +432,8 @@ function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExe
   onCancel: () => void;
   isExecuting: boolean;
   credits: number;
+  onDryRun: () => Promise<any>;
+  isDryRunning: boolean;
 }) {
   const plan = currentPlan?.plan;
   const estimation = currentPlan?.estimation || {};
