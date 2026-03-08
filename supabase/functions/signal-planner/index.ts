@@ -281,10 +281,13 @@ For "ai_filter" stages:
   "stage": <number>,
   "name": "<human-readable stage name>",
   "type": "ai_filter",
-  "prompt": "<classification prompt>",
+  "prompt": "<classification prompt — ONLY reference fields listed in requires_fields>",
   "input_fields": ["company_name", "website", "industry"],
+  "requires_fields": ["company_name", "industry"],
   "expected_pass_rate": 0.20
 }
+
+CRITICAL: "requires_fields" declares which data fields the filter prompt depends on. Every field in requires_fields MUST have been produced by a prior scrape stage. If not, the validator will reject or auto-fix the pipeline.
 
 ## ROLE FILTER vs SEARCH QUERY (CRITICAL for hiring_intent pipelines)
 
