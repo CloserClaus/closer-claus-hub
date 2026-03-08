@@ -1694,33 +1694,33 @@ function validatePipelinePlan(plan: any, query: string): string[] {
 
 // ── Cost Estimation ──
 
-function estimatePipelineCost(pipeline: any[]): {
+function estimatePipelineCost(pipeline: any[], aiYieldRate?: number | null): {
   totalCredits: number;
   totalEstimatedRows: number;
   totalEstimatedLeads: number;
   stageFunnel: any;
+  yieldRate: number;
+  yieldLabel: string;
+  yieldGuidance: string | null;
 } {
   let totalEstimatedRows = 0;
   let currentRowCount = 0;
   let totalCredits = 0;
-  let discoveryRowCount = 0; // Track Stage 1 discovery volume separately
+  let discoveryRowCount = 0;
   const stageFunnel: any[] = [];
+  let compoundPassRate = 1.0;
 
   for (const stage of pipeline) {
     if (stage.type === "scrape") {
       if (stage.stage === 1) {
-        // Stage 1 = discovery: this defines "Records to scan"
         const expectedCount = stage.expected_output_count || 500;
         currentRowCount = expectedCount;
         discoveryRowCount = expectedCount;
         totalEstimatedRows = discoveryRowCount;
       } else {
-        // Enrichment stages: process existing leads, never exceed current pipeline flow
         const expectedCount = stage.expected_output_count || currentRowCount;
         currentRowCount = Math.min(currentRowCount, expectedCount);
-        // Do NOT update totalEstimatedRows — it stays as Stage 1 volume
       }
-      // Apify cost: ~$0.001 per result (1 credit = $0.01)
       const stageCost = Math.ceil(currentRowCount * 0.1);
       totalCredits += stageCost;
       stageFunnel.push({
@@ -1732,9 +1732,10 @@ function estimatePipelineCost(pipeline: any[]): {
       });
     } else if (stage.type === "ai_filter") {
       const passRate = stage.expected_pass_rate || 0.3;
+      compoundPassRate *= passRate;
       const inputRows = currentRowCount;
       currentRowCount = Math.ceil(inputRows * passRate);
-      const filterCost = Math.ceil(inputRows * 0.05); // ~$0.0005 per evaluation
+      const filterCost = Math.ceil(inputRows * 0.05);
       totalCredits += filterCost;
       stageFunnel.push({
         stage: stage.stage,
@@ -1748,11 +1749,32 @@ function estimatePipelineCost(pipeline: any[]): {
     }
   }
 
-  const totalEstimatedLeads = currentRowCount;
-  // Minimum 1 credit
+  // Use AI yield rate if provided, otherwise fall back to compound pass rate
+  const yieldRate = aiYieldRate && aiYieldRate > 0 && aiYieldRate <= 1
+    ? aiYieldRate
+    : compoundPassRate;
+
+  const totalEstimatedLeads = aiYieldRate && aiYieldRate > 0 && aiYieldRate <= 1
+    ? Math.ceil(discoveryRowCount * aiYieldRate)
+    : currentRowCount;
+
+  // Yield label and guidance
+  let yieldLabel: string;
+  let yieldGuidance: string | null;
+  if (yieldRate < 0.05) {
+    yieldLabel = "Niche";
+    yieldGuidance = "Niche search — increase scrape volume for more results";
+  } else if (yieldRate < 0.20) {
+    yieldLabel = "Moderate";
+    yieldGuidance = null;
+  } else {
+    yieldLabel = "Broad";
+    yieldGuidance = "Broad search — you can reduce volume to save credits";
+  }
+
   totalCredits = Math.max(1, totalCredits);
 
-  return { totalCredits, totalEstimatedRows, totalEstimatedLeads, stageFunnel };
+  return { totalCredits, totalEstimatedRows, totalEstimatedLeads, stageFunnel, yieldRate, yieldLabel, yieldGuidance };
 }
 
 const ROW_CAP_KEYS = [

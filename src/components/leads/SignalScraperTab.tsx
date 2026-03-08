@@ -510,7 +510,22 @@ function PipelinePlanDisplay({ currentPlan, scheduleType, setScheduleType, onExe
           </div>
         </div>
 
-        {/* Pipeline Stages Visualization */}
+        {/* Yield Confidence */}
+        {estimation.yield_label && (
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+            <Badge variant="outline" className={
+              estimation.yield_label === 'Niche' ? 'border-destructive/50 text-destructive' :
+              estimation.yield_label === 'Broad' ? 'border-green-500/50 text-green-500' :
+              'border-yellow-500/50 text-yellow-500'
+            }>
+              {estimation.yield_label}
+            </Badge>
+            <span className="text-sm text-muted-foreground">
+              ~{Math.round((estimation.yield_rate || 0) * 100)}% yield rate
+              {estimation.yield_guidance && ` — ${estimation.yield_guidance}`}
+            </span>
+          </div>
+        )}
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-muted-foreground">Pipeline Stages</h4>
           <div className="space-y-1.5">
