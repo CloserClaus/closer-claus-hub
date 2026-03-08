@@ -22,6 +22,7 @@ export type Database = {
           id: string
           lead_id: string
           next_send_at: string | null
+          retry_count: number
           sender_inbox_id: string | null
           sender_provider_id: string | null
           sequence_id: string
@@ -38,6 +39,7 @@ export type Database = {
           id?: string
           lead_id: string
           next_send_at?: string | null
+          retry_count?: number
           sender_inbox_id?: string | null
           sender_provider_id?: string | null
           sequence_id: string
@@ -54,6 +56,7 @@ export type Database = {
           id?: string
           lead_id?: string
           next_send_at?: string | null
+          retry_count?: number
           sender_inbox_id?: string | null
           sender_provider_id?: string | null
           sequence_id?: string
@@ -2353,6 +2356,8 @@ export type Database = {
           last_name: string
           linkedin_url: string | null
           notes: string | null
+          opted_out: boolean
+          opted_out_at: string | null
           phone: string | null
           readiness_notes: string | null
           readiness_score: number | null
@@ -2385,6 +2390,8 @@ export type Database = {
           last_name: string
           linkedin_url?: string | null
           notes?: string | null
+          opted_out?: boolean
+          opted_out_at?: string | null
           phone?: string | null
           readiness_notes?: string | null
           readiness_score?: number | null
@@ -2417,6 +2424,8 @@ export type Database = {
           last_name?: string
           linkedin_url?: string | null
           notes?: string | null
+          opted_out?: boolean
+          opted_out_at?: string | null
           phone?: string | null
           readiness_notes?: string | null
           readiness_score?: number | null
