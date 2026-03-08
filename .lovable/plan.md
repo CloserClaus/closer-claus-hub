@@ -1,29 +1,52 @@
 
-# Email Edge Cases Fixes Plan
 
-Here is the technical plan to implement the 5 remaining edge case fixes for the email system:
+# Email Edge Cases — Implementation Plan
 
-### 1. First Email Visibility in Sequences
-**File:** `src/components/email/FollowUpSequenceModal.tsx`
-- **Change:** After invoking the `send-email` edge function and creating the `email_conversations` record, I will manually insert the first message into `email_conversation_messages` using the newly created conversation ID.
-- **Details:** This ensures that the first email of a sequence is immediately visible in the Conversations tab. I'll also capture the first step's subject and body (with variables replaced) to accurately represent what was sent.
+All 5 fixes are straightforward code changes with no database migrations needed.
 
-### 2. Conversation Reply Deduplication
-**Files:** `supabase/functions/send-email/index.ts`, `src/components/email/EmailConversationsTab.tsx`
-- **Change:** I will pass `conversation_id` in the `send-email` request payload from the `EmailConversationsTab`.
-- **Details:** In the `send-email` edge function, when a `conversation_id` is provided, the function will use it directly to store the outbound message. This overrides the default behavior that mistakenly tries to find a conversation where `sequence_id IS NULL`, preventing the creation of duplicate conversation threads.
+## Fix 1: First Email Visibility in Sequences
+**File:** `src/components/email/FollowUpSequenceModal.tsx` (lines 199-208)
 
-### 3. Provider Disconnect Confirmation
+Change the `email_conversations` insert to return the new ID via `.select('id').single()`, then add `last_message_preview` and `last_activity_at` to the insert. After the insert, add a second insert into `email_conversation_messages` with direction `outbound`, the resolved subject/body, and `sender_email` from the assigned inbox.
+
+## Fix 2: Conversation Reply Deduplication
+**File 1:** `supabase/functions/send-email/index.ts` (line 177)
+- Add `conversation_id` to the destructured request body.
+- At line 312, change the condition to: `if (conversation_id)` — use the provided ID directly to insert a message and update the conversation preview. Else fall through to the existing `if (lead_id && !sequence_id)` logic.
+
+**File 2:** `src/components/email/EmailConversationsTab.tsx` (lines 181-189)
+- Add `conversation_id: selectedConvo.id` to the `send-email` invoke body.
+
+## Fix 3: Provider Disconnect Confirmation
 **File:** `src/components/email/EmailAccountsTab.tsx`
-- **Change:** Add a `DeleteConfirmDialog` before allowing a user to disconnect an email provider.
-- **Details:** I will add state to track `deleteProviderId`. When the user confirms deletion, the system will first fetch all inboxes for that provider, complete any `active_follow_ups` assigned to those inboxes, and reset the affected leads' `email_sending_state` to `idle`. Finally, it will delete the provider record.
+- Import `DeleteConfirmDialog` from `@/components/crm/DeleteConfirmDialog`.
+- Add state: `deleteProviderId` and `disconnecting`.
+- Change `handleDisconnectProvider` to just set `deleteProviderId`.
+- Add `confirmDisconnect` that: fetches inboxes for the provider, updates `active_follow_ups` using those inbox IDs to `completed`, resets affected leads' `email_sending_state` to `idle`, then deletes the provider.
+- Render `DeleteConfirmDialog` at the bottom with a warning about active sequences.
 
-### 4. Sequence Edit Safety Warnings
-**Files:** `src/components/email/EmailSequencesTab.tsx`, `src/components/email/EmailCampaignsTab.tsx`
-- **Change:** Display an inline warning when a user edits an existing sequence.
-- **Details:** I'll import `AlertCircle` and add an alert banner in the sequence builder dialog if `editingSequence` is set. The banner will warn: *"Warning: Modifying a sequence that is currently active will affect all leads currently enrolled. They will receive the new steps."*
+## Fix 4: Sequence Edit Safety Warnings
+**File 1:** `src/components/email/EmailSequencesTab.tsx` (line 2)
+- Add `AlertCircle` to lucide imports.
+- After the `DialogTitle` (line 299), add: if `editingSequence`, render an `Alert` with `AlertCircle` icon warning that modifying an active sequence affects enrolled leads.
 
-### 5. Campaign Resume Timing
-**File:** `src/components/email/EmailCampaignsTab.tsx`
-- **Change:** Update `handleToggleCampaignStatus` to reset the `next_send_at` timestamp.
-- **Details:** When resuming a paused campaign (changing status from `paused` to `active`), I will update the `next_send_at` field to `new Date().toISOString()` (`now()`) for all affected `active_follow_ups`. This ensures that overdue emails do not all fire simultaneously out of order, and the cron can process them systematically.
+**File 2:** `src/components/email/EmailCampaignsTab.tsx` (line 2)
+- Add `AlertCircle` to lucide imports. Import `Alert, AlertDescription` from `@/components/ui/alert`.
+- After the `DialogTitle` (line 489), add the same warning banner when `editingSequence` is set.
+
+## Fix 5: Campaign Resume Timing
+**File:** `src/components/email/EmailCampaignsTab.tsx` (lines 284-286)
+
+When resuming (newStatus === 'active'), change the update to also set `next_send_at: new Date().toISOString()`:
+```typescript
+await supabase.from('active_follow_ups')
+  .update({ status: 'active', next_send_at: new Date().toISOString() } as any)
+  .eq('sequence_id', seqId)
+  .eq('status', 'paused');
+```
+
+## Summary
+- 5 files edited, 1 edge function redeployed
+- No database migrations
+- All changes are additive safety improvements
+
