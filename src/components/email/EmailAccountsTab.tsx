@@ -171,10 +171,14 @@ export function EmailAccountsTab() {
     }
   };
 
-  const handleUpdateDailyLimit = async (inboxId: string, limit: number) => {
-    await supabase.from('email_inboxes').update({ daily_send_limit: limit } as any).eq('id', inboxId);
-    refresh();
-  };
+  const debounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const handleUpdateDailyLimit = useCallback((inboxId: string, limit: number) => {
+    if (debounceRef.current[inboxId]) clearTimeout(debounceRef.current[inboxId]);
+    debounceRef.current[inboxId] = setTimeout(async () => {
+      await supabase.from('email_inboxes').update({ daily_send_limit: limit } as any).eq('id', inboxId);
+      refresh();
+    }, 600);
+  }, [refresh]);
 
   const handleToggleWarmup = async (inboxId: string, enabled: boolean) => {
     await supabase.from('email_inboxes').update({ warmup_enabled: enabled } as any).eq('id', inboxId);
