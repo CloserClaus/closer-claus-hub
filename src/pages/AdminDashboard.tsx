@@ -133,6 +133,8 @@ export default function AdminDashboard() {
         return <OfferDiagnosticLeadsTable />;
       case 'events':
         return <EventInspector />;
+      case 'sdr_applicants':
+        return <SDRApplicationsTable />;
       case 'settings':
         return <AdminSettings />;
       default:
