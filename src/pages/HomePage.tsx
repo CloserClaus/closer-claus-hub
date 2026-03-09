@@ -31,7 +31,16 @@ import {
 import logoFull from '@/assets/logo-full.png';
 
 const HomePage = () => {
-  usePageTracking();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsLoggedIn(!!session);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(!!session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
   const [appForm, setAppForm] = useState({ full_name: '', email: '', country: '', experience: '', resume_text: '' });
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
