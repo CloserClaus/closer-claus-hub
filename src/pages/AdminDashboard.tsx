@@ -1,6 +1,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { SDRApplicationsTable } from '@/components/admin/SDRApplicationsTable';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { AdminOverview } from '@/components/admin/AdminOverview';
 import { AgenciesTable } from '@/components/admin/AgenciesTable';
