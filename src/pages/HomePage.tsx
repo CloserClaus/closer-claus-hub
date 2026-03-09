@@ -90,9 +90,9 @@ const HomePage = () => {
             <Link to="/" className="flex items-center">
               <img src={logoFull} alt="Closer Claus" className="h-8 md:h-10" />
             </Link>
-            <Link to="/auth">
+            <Link to={isLoggedIn ? '/dashboard' : '/auth'}>
               <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                Try It Out For Free
+                Go to Platform
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
