@@ -224,6 +224,15 @@ const HomePage = () => {
               </div>
             </div>
           </div>
+
+          <div className="text-center mt-12">
+            <Link to="/auth">
+              <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground h-14 px-10 text-lg glow">
+                Try It Out For Free
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+            </Link>
+          </div>
         </div>
       </section>
 
