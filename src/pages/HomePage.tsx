@@ -129,10 +129,6 @@ const HomePage = () => {
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-success" />
-                <span className="text-sm">$2M+ in closed deals</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-success" />
                 <span className="text-sm">Hundreds of pre-vetted reps</span>
               </div>
             </div>
