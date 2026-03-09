@@ -109,7 +109,17 @@ export function SendEmailButton({ leadId, leadEmail, leadName, variant = 'outlin
         return;
       }
 
-      // Create active follow-up with next_send_at so the cron picks it up
+      // Fetch sequence steps to send first email immediately
+      const { data: seqSteps } = await supabase
+        .from('follow_up_sequence_steps')
+        .select('delay_days, subject, body')
+        .eq('sequence_id', selectedSequence)
+        .order('step_order', { ascending: true });
+
+      const steps = (seqSteps as any[]) || [];
+      const seqName = sequences.find(s => s.id === selectedSequence)?.name || null;
+
+      // Create active follow-up with LOCKED sender identity
       const { error } = await supabase.from('active_follow_ups').insert({
         workspace_id: currentWorkspace.id,
         sequence_id: selectedSequence,
@@ -118,6 +128,7 @@ export function SendEmailButton({ leadId, leadEmail, leadName, variant = 'outlin
         status: 'active',
         current_step: 0,
         sender_inbox_id: assignedInbox?.id || null,
+        sender_provider_id: assignedInbox?.provider_id || null,
         next_send_at: new Date().toISOString(),
       } as any);
       if (error) throw error;
@@ -125,16 +136,52 @@ export function SendEmailButton({ leadId, leadEmail, leadName, variant = 'outlin
       // Update lead state
       await supabase.from('leads').update({ email_sending_state: 'active_sequence' } as any).eq('id', leadId);
 
-      // Create email conversation
-      await supabase.from('email_conversations').insert({
+      // Send first email immediately if step 0 exists
+      let resolvedSubject = '';
+      let resolvedBody = '';
+      if (steps.length > 0) {
+        const replaceVars = (text: string) =>
+          text.replace(/\{\{first_name\}\}/g, leadName.split(' ')[0] || '');
+        resolvedSubject = replaceVars(steps[0].subject);
+        resolvedBody = replaceVars(steps[0].body);
+
+        await supabase.functions.invoke('send-email', {
+          body: {
+            workspace_id: currentWorkspace.id,
+            to_email: leadEmail,
+            subject: resolvedSubject,
+            body: resolvedBody,
+            lead_id: leadId,
+            sequence_id: selectedSequence,
+            sequence_step: 0,
+          },
+        });
+      }
+
+      // Create email conversation with preview
+      const { data: newConvo } = await supabase.from('email_conversations').insert({
         workspace_id: currentWorkspace.id,
         lead_id: leadId,
         assigned_to: user.id,
         inbox_id: assignedInbox?.id || null,
         sequence_id: selectedSequence,
-        campaign_name: sequences.find(s => s.id === selectedSequence)?.name || null,
+        campaign_name: seqName,
         status: 'active',
-      } as any);
+        last_message_preview: resolvedBody ? resolvedBody.substring(0, 100) : null,
+        last_activity_at: new Date().toISOString(),
+      } as any).select('id').single();
+
+      // Insert first message into conversation
+      if (newConvo && resolvedSubject) {
+        await supabase.from('email_conversation_messages').insert({
+          conversation_id: newConvo.id,
+          direction: 'outbound',
+          subject: resolvedSubject,
+          body: resolvedBody,
+          sender_email: assignedInbox?.email_address || 'unknown',
+          message_type: 'email',
+        } as any);
+      }
 
       toast({ title: 'Sequence started', description: `Sequence started for ${leadName}` });
       setShowSequencePicker(false);
