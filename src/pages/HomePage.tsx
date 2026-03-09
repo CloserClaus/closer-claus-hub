@@ -33,6 +33,7 @@ import logoFull from '@/assets/logo-full.png';
 const HomePage = () => {
   usePageTracking();
   const [appForm, setAppForm] = useState({ full_name: '', email: '', country: '', experience: '', resume_text: '' });
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -44,12 +45,22 @@ const HomePage = () => {
     }
     setSubmitting(true);
     try {
+      let resumeUrl: string | null = null;
+      if (resumeFile) {
+        const fileExt = resumeFile.name.split('.').pop();
+        const filePath = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('sdr-resumes').upload(filePath, resumeFile);
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage.from('sdr-resumes').getPublicUrl(filePath);
+        resumeUrl = urlData.publicUrl;
+      }
       const { error } = await supabase.from('sdr_applications' as any).insert({
         full_name: appForm.full_name.trim(),
         email: appForm.email.trim(),
         country: appForm.country.trim(),
         experience: appForm.experience,
         resume_text: appForm.resume_text.trim() || null,
+        resume_url: resumeUrl,
       });
       if (error) throw error;
       setSubmitted(true);
@@ -126,10 +137,6 @@ const HomePage = () => {
                   ))}
                 </div>
                 <span className="text-sm">70+ agencies scaled</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-success" />
-                <span className="text-sm">$2M+ in closed deals</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-success" />
@@ -227,6 +234,15 @@ const HomePage = () => {
                 />
               </div>
             </div>
+          </div>
+
+          <div className="text-center mt-12">
+            <Link to="/auth">
+              <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground h-14 px-10 text-lg glow">
+                Try It Out For Free
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
@@ -523,14 +539,33 @@ const HomePage = () => {
                         </Select>
                       </div>
                       <div>
-                        <Label htmlFor="resume">Resume / Experience Summary</Label>
-                        <Textarea
+                        <Label htmlFor="resume">Upload Resume (PDF) *</Label>
+                        <Input
                           id="resume"
+                          type="file"
+                          accept=".pdf"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file && file.size > 5 * 1024 * 1024) {
+                              toast.error('File must be under 5MB');
+                              return;
+                            }
+                            setResumeFile(file || null);
+                          }}
+                          required
+                          className="cursor-pointer"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">PDF only, max 5MB</p>
+                      </div>
+                      <div>
+                        <Label htmlFor="resume_text">Additional Notes (optional)</Label>
+                        <Textarea
+                          id="resume_text"
                           value={appForm.resume_text}
                           onChange={(e) => setAppForm(p => ({ ...p, resume_text: e.target.value }))}
-                          placeholder="Tell us about your sales experience, industries you've worked in, and results you've achieved..."
-                          rows={4}
-                          maxLength={2000}
+                          placeholder="Anything else you'd like us to know..."
+                          rows={3}
+                          maxLength={1000}
                         />
                       </div>
                       <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={submitting}>
