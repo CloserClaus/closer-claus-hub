@@ -183,22 +183,31 @@ export function FollowUpSequenceModal({ open, onClose, lead, onSequenceStarted }
         .update({ email_sending_state: 'active_sequence' } as any)
         .eq('id', lead.id);
 
+      // Replace all variables in first step
+      const replaceVars = (text: string) =>
+        text
+          .replace(/\{\{first_name\}\}/g, lead.first_name || '')
+          .replace(/\{\{last_name\}\}/g, lead.last_name || '')
+          .replace(/\{\{email\}\}/g, lead.email || '')
+          .replace(/\{\{company\}\}/g, (lead as any).company || '')
+          .replace(/\{\{title\}\}/g, (lead as any).title || '')
+          .replace(/\{\{phone\}\}/g, (lead as any).phone || '');
+
+      const resolvedSubject = replaceVars(steps[0].subject);
+      const resolvedBody = replaceVars(steps[0].body);
+
       // Send first email via edge function
       await supabase.functions.invoke('send-email', {
         body: {
           workspace_id: currentWorkspace.id,
           to_email: lead.email,
-          subject: steps[0].subject.replace(/\{\{first_name\}\}/g, lead.first_name),
-          body: steps[0].body,
+          subject: resolvedSubject,
+          body: resolvedBody,
           lead_id: lead.id,
           sequence_id: sequenceId,
           sequence_step: 0,
         },
       });
-
-      // Create email conversation so it appears in Conversations tab
-      const resolvedSubject = steps[0].subject.replace(/\{\{first_name\}\}/g, lead.first_name);
-      const resolvedBody = steps[0].body.replace(/\{\{first_name\}\}/g, lead.first_name);
       const { data: newConvo } = await supabase.from('email_conversations').insert({
         workspace_id: currentWorkspace.id,
         lead_id: lead.id,
