@@ -33,6 +33,7 @@ import logoFull from '@/assets/logo-full.png';
 const HomePage = () => {
   usePageTracking();
   const [appForm, setAppForm] = useState({ full_name: '', email: '', country: '', experience: '', resume_text: '' });
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
