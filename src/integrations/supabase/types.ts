@@ -3113,6 +3113,42 @@ export type Database = {
           },
         ]
       }
+      sdr_applications: {
+        Row: {
+          country: string
+          created_at: string
+          email: string
+          experience: string
+          full_name: string
+          id: string
+          resume_text: string | null
+          reviewed_at: string | null
+          status: string
+        }
+        Insert: {
+          country: string
+          created_at?: string
+          email: string
+          experience: string
+          full_name: string
+          id?: string
+          resume_text?: string | null
+          reviewed_at?: string | null
+          status?: string
+        }
+        Update: {
+          country?: string
+          created_at?: string
+          email?: string
+          experience?: string
+          full_name?: string
+          id?: string
+          resume_text?: string | null
+          reviewed_at?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       signal_actor_cache: {
         Row: {
           actor_id: string
