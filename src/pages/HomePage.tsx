@@ -45,12 +45,22 @@ const HomePage = () => {
     }
     setSubmitting(true);
     try {
+      let resumeUrl: string | null = null;
+      if (resumeFile) {
+        const fileExt = resumeFile.name.split('.').pop();
+        const filePath = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('sdr-resumes').upload(filePath, resumeFile);
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage.from('sdr-resumes').getPublicUrl(filePath);
+        resumeUrl = urlData.publicUrl;
+      }
       const { error } = await supabase.from('sdr_applications' as any).insert({
         full_name: appForm.full_name.trim(),
         email: appForm.email.trim(),
         country: appForm.country.trim(),
         experience: appForm.experience,
         resume_text: appForm.resume_text.trim() || null,
+        resume_url: resumeUrl,
       });
       if (error) throw error;
       setSubmitted(true);
