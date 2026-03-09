@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePageTracking } from '@/hooks/usePageTracking';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
