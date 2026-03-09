@@ -46,6 +46,7 @@ const platformAdminNav: NavItem[] = [
   { title: 'Features', url: '/admin?tab=features', icon: Lightbulb },
   { title: 'Referrals', url: '/admin?tab=referrals', icon: Gift },
   { title: 'Diagnostic Leads', url: '/admin?tab=diagnostic_leads', icon: Target },
+  { title: 'SDR Applicants', url: '/admin?tab=sdr_applicants', icon: UserCircle },
   { title: 'Conversations', url: '/conversations', icon: MessageSquare },
   { title: 'Admin Controls', url: '/admin?tab=settings', icon: Shield, tourId: 'admin-controls' },
 ];
