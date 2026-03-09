@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { Eye } from 'lucide-react';
+import { Eye, FileDown } from 'lucide-react';
 
 interface SDRApplication {
   id: string;
@@ -18,6 +18,7 @@ interface SDRApplication {
   country: string;
   experience: string;
   resume_text: string | null;
+  resume_url: string | null;
   status: string;
   created_at: string;
   reviewed_at: string | null;
@@ -76,6 +77,7 @@ export function SDRApplicationsTable() {
                 <TableHead>Email</TableHead>
                 <TableHead>Country</TableHead>
                 <TableHead>Experience</TableHead>
+                <TableHead>Resume</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Submitted</TableHead>
                 <TableHead className="w-[100px]">Actions</TableHead>
@@ -84,7 +86,7 @@ export function SDRApplicationsTable() {
             <TableBody>
               {applications.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                     No applications yet
                   </TableCell>
                 </TableRow>
@@ -95,6 +97,18 @@ export function SDRApplicationsTable() {
                     <TableCell>{app.email}</TableCell>
                     <TableCell>{app.country}</TableCell>
                     <TableCell>{app.experience}</TableCell>
+                    <TableCell>
+                      {app.resume_url ? (
+                        <a href={app.resume_url} target="_blank" rel="noopener noreferrer">
+                          <Button variant="ghost" size="sm" className="gap-1 text-primary">
+                            <FileDown className="h-4 w-4" />
+                            PDF
+                          </Button>
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Select
                         value={app.status}
@@ -156,9 +170,20 @@ export function SDRApplicationsTable() {
                   </Badge>
                 </div>
               </div>
+              {selectedApp.resume_url && (
+                <div>
+                  <p className="text-muted-foreground text-sm mb-2">Resume</p>
+                  <a href={selectedApp.resume_url} target="_blank" rel="noopener noreferrer">
+                    <Button variant="outline" size="sm" className="gap-2">
+                      <FileDown className="h-4 w-4" />
+                      Download Resume (PDF)
+                    </Button>
+                  </a>
+                </div>
+              )}
               {selectedApp.resume_text && (
                 <div>
-                  <p className="text-muted-foreground text-sm mb-1">Resume / Experience</p>
+                  <p className="text-muted-foreground text-sm mb-1">Additional Notes</p>
                   <p className="text-sm whitespace-pre-wrap bg-muted/50 p-4 rounded-lg">{selectedApp.resume_text}</p>
                 </div>
               )}

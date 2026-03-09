@@ -539,14 +539,33 @@ const HomePage = () => {
                         </Select>
                       </div>
                       <div>
-                        <Label htmlFor="resume">Resume / Experience Summary</Label>
-                        <Textarea
+                        <Label htmlFor="resume">Upload Resume (PDF) *</Label>
+                        <Input
                           id="resume"
+                          type="file"
+                          accept=".pdf"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file && file.size > 5 * 1024 * 1024) {
+                              toast.error('File must be under 5MB');
+                              return;
+                            }
+                            setResumeFile(file || null);
+                          }}
+                          required
+                          className="cursor-pointer"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">PDF only, max 5MB</p>
+                      </div>
+                      <div>
+                        <Label htmlFor="resume_text">Additional Notes (optional)</Label>
+                        <Textarea
+                          id="resume_text"
                           value={appForm.resume_text}
                           onChange={(e) => setAppForm(p => ({ ...p, resume_text: e.target.value }))}
-                          placeholder="Tell us about your sales experience, industries you've worked in, and results you've achieved..."
-                          rows={4}
-                          maxLength={2000}
+                          placeholder="Anything else you'd like us to know..."
+                          rows={3}
+                          maxLength={1000}
                         />
                       </div>
                       <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={submitting}>
