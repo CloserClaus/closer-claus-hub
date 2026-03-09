@@ -58,6 +58,7 @@ const tabTitles: Record<string, string> = {
   referrals: 'Referrals',
   diagnostic_leads: 'Diagnostic Leads',
   events: 'Event Inspector',
+  sdr_applicants: 'SDR Applicants',
   settings: 'Admin Controls',
 };
 
