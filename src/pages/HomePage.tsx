@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePageTracking } from '@/hooks/usePageTracking';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -31,7 +31,16 @@ import {
 import logoFull from '@/assets/logo-full.png';
 
 const HomePage = () => {
-  usePageTracking();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsLoggedIn(!!session);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(!!session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
   const [appForm, setAppForm] = useState({ full_name: '', email: '', country: '', experience: '', resume_text: '' });
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -81,9 +90,9 @@ const HomePage = () => {
             <Link to="/" className="flex items-center">
               <img src={logoFull} alt="Closer Claus" className="h-8 md:h-10" />
             </Link>
-            <Link to="/auth">
+            <Link to={isLoggedIn ? '/dashboard' : '/auth'}>
               <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                Try It Out For Free
+                Go to Platform
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
@@ -330,6 +339,87 @@ const HomePage = () => {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Offer Diagnostic */}
+      <section className="py-20 md:py-32 bg-card/30">
+        <div className="container mx-auto px-4 md:px-6">
+          <div className="max-w-4xl mx-auto">
+            <div className="grid md:grid-cols-2 gap-12 items-center">
+              <div>
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium mb-6">
+                  <BarChart3 className="h-4 w-4" />
+                  Free Tool
+                </div>
+                <h2 className="text-3xl md:text-4xl font-bold mb-4">
+                  Not sure if your offer is ready for cold outbound?
+                </h2>
+                <p className="text-muted-foreground mb-6">
+                  Our AI-powered Offer Diagnostic analyzes your positioning, pricing, proof, and targeting — 
+                  then gives you a readiness score with actionable prescriptions to fix what's broken before you start dialing.
+                </p>
+                <ul className="space-y-3 mb-8">
+                  {[
+                    'Get a clear outbound readiness score',
+                    'Identify weak spots in your offer',
+                    'Receive AI-generated prescriptions to improve',
+                    'Completely free — no signup required',
+                  ].map((item, i) => (
+                    <li key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <CheckCircle2 className="h-4 w-4 text-success flex-shrink-0" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+                <Link to="/offer-diagnostic">
+                  <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground glow">
+                    Run Your Free Diagnostic
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Button>
+                </Link>
+              </div>
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-secondary/10 rounded-2xl blur-xl" />
+                <Card className="relative bg-card/80 border-border/30">
+                  <CardContent className="p-8">
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-success/10 flex items-center justify-center">
+                          <CheckCircle2 className="h-6 w-6 text-success" />
+                        </div>
+                        <div>
+                          <p className="font-semibold">Readiness Score</p>
+                          <p className="text-2xl font-bold text-success">78/100</p>
+                        </div>
+                      </div>
+                      <div className="h-px bg-border/30" />
+                      <div className="space-y-3">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Positioning</span>
+                          <span className="font-medium text-success">Strong</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Pricing Model</span>
+                          <span className="font-medium text-warning">Needs Work</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Social Proof</span>
+                          <span className="font-medium text-success">Strong</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Target Market</span>
+                          <span className="font-medium text-destructive">Weak</span>
+                        </div>
+                      </div>
+                      <div className="h-px bg-border/30" />
+                      <p className="text-xs text-muted-foreground italic">Sample diagnostic output</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
           </div>
         </div>
       </section>
