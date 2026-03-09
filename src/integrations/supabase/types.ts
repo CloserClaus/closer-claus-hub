@@ -3122,6 +3122,7 @@ export type Database = {
           full_name: string
           id: string
           resume_text: string | null
+          resume_url: string | null
           reviewed_at: string | null
           status: string
         }
@@ -3133,6 +3134,7 @@ export type Database = {
           full_name: string
           id?: string
           resume_text?: string | null
+          resume_url?: string | null
           reviewed_at?: string | null
           status?: string
         }
@@ -3144,6 +3146,7 @@ export type Database = {
           full_name?: string
           id?: string
           resume_text?: string | null
+          resume_url?: string | null
           reviewed_at?: string | null
           status?: string
         }
