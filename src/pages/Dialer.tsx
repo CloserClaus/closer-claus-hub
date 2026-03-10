@@ -93,7 +93,7 @@ export default function Dialer() {
   const [demoCallActive, setDemoCallActive] = useState(false);
   const [demoCallStatus, setDemoCallStatus] = useState<string>('idle');
   const [demoCallDuration, setDemoCallDuration] = useState(0);
-  const demoTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const demoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Handle purchase success/cancel from Stripe redirect
   useEffect(() => {

@@ -188,8 +188,8 @@ export function PowerDialer({ workspaceId, dialerAvailable, onCreditsUpdated, ph
   // Session tracking state
   const [sessionId, setSessionId] = useState<string | null>(null);
   
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Fetch leads with phone numbers and their associated deals
   useEffect(() => {
