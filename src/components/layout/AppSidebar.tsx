@@ -109,7 +109,7 @@ const sdrSections: NavSection[] = [
       { title: 'Leads', url: '/leads', icon: Search, tourId: 'nav-leads' },
       { title: 'CRM', url: '/crm', icon: FileText, tourId: 'nav-crm' },
       { title: 'Dialer', url: '/dialer', icon: Phone, tourId: 'nav-dialer' },
-      { title: 'Email', url: '/email', icon: Mail },
+      { title: 'Email', url: '/email', icon: Mail, badge: 'Beta' },
     ],
   },
   {
