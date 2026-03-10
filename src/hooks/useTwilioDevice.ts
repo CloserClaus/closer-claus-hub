@@ -44,10 +44,10 @@ export function useTwilioDevice(options: UseTwilioDeviceOptions) {
 
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
-  const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const callStartTimeRef = useRef<number | null>(null);
-  const tokenRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const healthCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const tokenRefreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const healthCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isInitializingRef = useRef<boolean>(false);
   const workspaceIdRef = useRef<string | null>(workspaceId);
   const lastTokenRefreshRef = useRef<number>(0);
