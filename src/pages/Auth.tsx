@@ -215,6 +215,15 @@ export default function Auth() {
         title: 'Account created',
         description: 'Welcome to Closer Claus! Start finding jobs.',
       });
+      // Notify admin of new signup (fire-and-forget)
+      supabase.functions.invoke('notify-admin-signup', {
+        body: {
+          type: 'new_user',
+          fullName: data.fullName,
+          email: data.email,
+          role: 'sdr',
+        },
+      }).catch(() => {});
     }
   };
 

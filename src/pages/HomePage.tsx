@@ -74,6 +74,18 @@ const HomePage = () => {
       if (error) throw error;
       setSubmitted(true);
       toast.success('Application submitted! We\'ll be in touch.');
+      // Notify admin of new SDR application (fire-and-forget)
+      supabase.functions.invoke('notify-admin-signup', {
+        body: {
+          type: 'sdr_application',
+          fullName: appForm.full_name.trim(),
+          email: appForm.email.trim(),
+          country: appForm.country.trim(),
+          experience: appForm.experience,
+          resumeText: appForm.resume_text.trim() || undefined,
+          resumeUrl: resumeUrl || undefined,
+        },
+      }).catch(() => {});
     } catch {
       toast.error('Failed to submit application. Please try again.');
     } finally {
