@@ -138,7 +138,16 @@ function NavItemRenderer({ item, collapsed, location }: { item: NavItem; collaps
           data-tour={item.tourId}
         >
           <item.icon className="h-5 w-5 shrink-0" />
-          {!collapsed && <span>{item.title}</span>}
+          {!collapsed && (
+            <span className="flex items-center gap-2">
+              {item.title}
+              {item.badge && (
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary leading-none">
+                  {item.badge}
+                </span>
+              )}
+            </span>
+          )}
         </NavLink>
       </SidebarMenuButton>
     </SidebarMenuItem>
