@@ -103,7 +103,10 @@ export function HelpWidget() {
                       <Bot className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <p className="font-medium">Ask Klaus</p>
+                      <p className="font-medium flex items-center gap-2">
+                        Ask Klaus
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary leading-none">Beta</span>
+                      </p>
                       <p className="text-sm text-muted-foreground">Ask anything or tell him what to do…</p>
                     </div>
                     <ChevronUp className="h-4 w-4 ml-auto text-muted-foreground rotate-90" />
