@@ -166,6 +166,16 @@ export default function Auth() {
         title: 'Account created',
         description: 'Welcome to Closer Claus! Complete your agency setup.',
       });
+      // Notify admin of new signup (fire-and-forget)
+      supabase.functions.invoke('notify-admin-signup', {
+        body: {
+          type: 'new_user',
+          fullName: data.fullName,
+          email: data.email,
+          role: 'agency_owner',
+          referralCode: searchParams.get('ref') || undefined,
+        },
+      }).catch(() => {});
     }
   };
 
