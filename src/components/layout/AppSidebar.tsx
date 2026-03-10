@@ -16,6 +16,7 @@ interface NavItem {
   url: string;
   icon: React.ComponentType<{ className?: string }>;
   tourId?: string;
+  badge?: string;
 }
 
 interface NavSection {
