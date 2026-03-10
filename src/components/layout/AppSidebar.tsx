@@ -16,6 +16,7 @@ interface NavItem {
   url: string;
   icon: React.ComponentType<{ className?: string }>;
   tourId?: string;
+  badge?: string;
 }
 
 interface NavSection {
@@ -73,7 +74,7 @@ const agencyOwnerSections: NavSection[] = [
       { title: 'Leads', url: '/leads', icon: Search, tourId: 'nav-leads' },
       { title: 'CRM', url: '/crm', icon: FileText, tourId: 'nav-crm' },
       { title: 'Dialer', url: '/dialer', icon: Phone, tourId: 'nav-dialer' },
-      { title: 'Email', url: '/email', icon: Mail },
+      { title: 'Email', url: '/email', icon: Mail, badge: 'Beta' },
     ],
   },
   {
@@ -108,7 +109,7 @@ const sdrSections: NavSection[] = [
       { title: 'Leads', url: '/leads', icon: Search, tourId: 'nav-leads' },
       { title: 'CRM', url: '/crm', icon: FileText, tourId: 'nav-crm' },
       { title: 'Dialer', url: '/dialer', icon: Phone, tourId: 'nav-dialer' },
-      { title: 'Email', url: '/email', icon: Mail },
+      { title: 'Email', url: '/email', icon: Mail, badge: 'Beta' },
     ],
   },
   {
@@ -137,7 +138,16 @@ function NavItemRenderer({ item, collapsed, location }: { item: NavItem; collaps
           data-tour={item.tourId}
         >
           <item.icon className="h-5 w-5 shrink-0" />
-          {!collapsed && <span>{item.title}</span>}
+          {!collapsed && (
+            <span className="flex items-center gap-2">
+              {item.title}
+              {item.badge && (
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary leading-none">
+                  {item.badge}
+                </span>
+              )}
+            </span>
+          )}
         </NavLink>
       </SidebarMenuButton>
     </SidebarMenuItem>
